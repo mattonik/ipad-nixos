@@ -17,7 +17,7 @@ If you have an iPad with an A7–A11 chip (2013–2017), your hardware reports a
 1. Fork the repository
 2. Create a feature branch: `git checkout -b feat/your-feature`
 3. Make your changes
-4. Test: `nix flake check` and `nix build .#kernel` / `nix build .#initramfs`
+4. Test: `nix flake check` and the `packages.x86_64-linux.kernel` / `packages.x86_64-linux.initramfs` builds
 5. Commit with descriptive messages
 6. Open a Pull Request
 

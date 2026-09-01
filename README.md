@@ -27,8 +27,8 @@ The boot is **tethered** — the iPad must be connected to a host computer via U
 
 ### Prerequisites
 
-- NixOS or any Linux with [Nix](https://nixos.org/download) installed
-- x86_64 build machine (cross-compiles to aarch64)
+- NixOS/Linux with [Nix](https://nixos.org/download), or macOS with a configured Linux builder
+- x86_64 Linux build target (the kernel and initramfs cross-compile to aarch64)
 - iPad Air 2 + Lightning-to-USB cable
 
 ### Build
@@ -39,18 +39,18 @@ git clone https://github.com/jacopone/ipad-nixos.git
 cd ipad-nixos
 
 # Build kernel (~4-5 hours first time, cached after)
-nix build .#kernel
+nix build .#packages.x86_64-linux.kernel -o result-kernel
 
 # Build initramfs (~5 minutes)
-nix build .#initramfs
+nix build .#packages.x86_64-linux.initramfs -o result-initramfs
 
 # Compress kernel for pongoOS
-lzma -z -k -9 -c result/Image > boot/Image.lzma
+xz --format=lzma -z -k -9 -c result-kernel/Image > boot/Image.lzma
 
 # Build device tree pack (iPad Air 2)
 ./boot/mkdtbpack.sh boot/dtbpack \
-  J81:result/dtbs/apple/t7001-j81.dtb \
-  J82:result/dtbs/apple/t7001-j82.dtb
+  J81:result-kernel/dtbs/apple/t7001-j81.dtb \
+  J82:result-kernel/dtbs/apple/t7001-j82.dtb
 ```
 
 ### Boot
@@ -59,7 +59,7 @@ lzma -z -k -9 -c result/Image > boot/Image.lzma
 # 1. Put iPad in DFU mode:
 #    Hold Home + Power → after 3s release Power → hold Home 10s more
 #    Screen stays BLACK (no Apple logo = success)
-#    Verify: lsusb | grep "05ac:1227"
+#    Optional Linux check: lsusb | grep "05ac:1227"
 
 # 2. Flash and boot
 sudo ./boot/flash.sh
@@ -199,11 +199,11 @@ WiFi (BCM4354) and touch (BCM5976) require firmware blobs extracted from an iPad
 
 ```bash
 # Enter dev shell with RE and USB tools
-nix develop
+nix develop --no-pure-eval
 # or: devenv shell
 
 # Available tools: ghidra, radare2, libimobiledevice,
-# libirecovery, picocom, dtc, python3, lsusb
+# libirecovery, picocom, dtc, python3
 ```
 
 ## Research

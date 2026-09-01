@@ -74,15 +74,15 @@ Nix derivation that:
 - Uses Linux 6.13+ (or latest stable with A8X device tree patches)
 - Applies the iPad Air 2 kernel config
 - Cross-compiles for aarch64 with 16KB pages
-- Outputs: `Image` (raw kernel binary), `Image.lzma` (compressed), DTBs
+- Outputs: `Image` (raw kernel binary) and DTBs; `Image.lzma` is generated separately for pongoOS
 
 **Step 4: Test build**
 
 ```bash
-nix build .#kernel
+nix build .#packages.x86_64-linux.kernel -o result-kernel
 ```
 
-Verify it produces `Image.lzma` and the `apple/j81.dtb` / `apple/j82.dtb` device tree blobs.
+Verify it produces `Image` and the `apple/t7001-j81.dtb` / `apple/t7001-j82.dtb` device tree blobs.
 
 **Step 5: Commit**
 
@@ -120,7 +120,7 @@ packages.${system}.initramfs = ...;
 **Step 4: Test build**
 
 ```bash
-nix build .#initramfs
+nix build .#packages.x86_64-linux.initramfs -o result-initramfs
 ```
 
 Verify it produces a cpio.lzma archive of reasonable size (<200MB compressed target).
@@ -207,8 +207,8 @@ git commit -m "docs: add boot process documentation"
 **Step 1: Build all artifacts**
 
 ```bash
-nix build .#kernel
-nix build .#initramfs
+nix build .#packages.x86_64-linux.kernel -o result-kernel
+nix build .#packages.x86_64-linux.initramfs -o result-initramfs
 ```
 
 **Step 2: Connect iPad, enter DFU mode**

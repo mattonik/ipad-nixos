@@ -4,7 +4,7 @@
 # From: https://github.com/checkra1n/PongoOS/blob/master/scripts/load_linux.py
 # License: MIT (checkra1n project)
 #
-# Usage: sudo python3 load_linux.py -k Image.lzma -d dtbpack -r initramfs.cpio.lzma -c "cmdline"
+# Usage: sudo python3 load_linux.py -k Image.lzma -d dtbpack -r initrd -c "cmdline"
 #
 # Requires: pyusb (pip install pyusb)
 # The pongoOS USB device presents as 05ac:4141 (Apple DFU/recovery variant)

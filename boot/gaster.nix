@@ -16,17 +16,17 @@
 
 stdenv.mkDerivation {
   pname = "gaster";
-  version = "unstable-2024-01-01";
+  version = "unstable-7fffffff";
 
   src = fetchFromGitHub {
     owner = "0x7ff";
     repo = "gaster";
-    rev = "main";
-    hash = "sha256-0000000000000000000000000000000000000000000=";
+    rev = "7fffffff38a1bed1cdc1c5bae0df70f14395129b";
+    hash = "sha256-TZu4IoV7Zu30mEW+ctPtpYjhF8iRTjioz8HAKXKcRdo=";
   };
 
   nativeBuildInputs = [ xxd ];
-  buildInputs = [ libusb1 openssl ];
+  buildInputs = lib.optionals stdenv.isLinux [ libusb1 openssl ];
 
   buildPhase = ''
     runHook preBuild
@@ -37,11 +37,7 @@ stdenv.mkDerivation {
       xxd -iC "$f" "''${f%.bin}.h"
     done
 
-    # Build with libusb support (Linux)
-    $CC -Wall -Wextra -Wpedantic -DHAVE_LIBUSB \
-      gaster.c lzfse.c \
-      -o gaster \
-      -lusb-1.0 -lcrypto -Os
+    ${if stdenv.isDarwin then "make macos" else "make libusb CC=\"$CC\""}
 
     runHook postBuild
   '';
@@ -56,6 +52,6 @@ stdenv.mkDerivation {
     description = "checkm8 (CVE-2019-8900) bootrom exploit tool for Apple A5-A11";
     homepage = "https://github.com/0x7ff/gaster";
     license = licenses.mit;
-    platforms = platforms.linux;
+    platforms = platforms.unix;
   };
 }

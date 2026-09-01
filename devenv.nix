@@ -1,8 +1,12 @@
 { pkgs, ... }:
 
+let
+  gaster = pkgs.callPackage ./boot/gaster.nix {};
+in
+
 {
   # iPad RE workstation tools
-  packages = with pkgs; [
+  packages = (with pkgs; [
     # iOS device communication
     libimobiledevice  # ideviceinfo, idevicepair, idevicesyslog
     libirecovery      # irecovery — recovery/DFU mode USB communication
@@ -21,6 +25,7 @@
     ghidra            # NSA reverse engineering framework (free, Java-based)
     radare2           # CLI reverse engineering toolkit
     python3           # Many RE scripts are Python
+    python3Packages.pyusb  # PyUSB for boot/load_linux.py
 
     # Build tools
     gnumake
@@ -32,10 +37,10 @@
     jq                # JSON processing (for API/device tree analysis)
     curl
     wget
-  ];
+  ]) ++ [ gaster ];
 
   # aarch64 cross-compilation via Nix
-  # Usage: nix build .#packages.aarch64-linux.kernel (when we get there)
+  # Usage: nix build .#packages.x86_64-linux.kernel
 
   enterShell = ''
     echo ""

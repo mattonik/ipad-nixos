@@ -17,10 +17,11 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 GASTER="${GASTER:-gaster}"
 LOAD_LINUX="${LOAD_LINUX:-$SCRIPT_DIR/load_linux.py}"
 PONGO_BIN="${PONGO_BIN:-$SCRIPT_DIR/Pongo.bin}"
-KERNEL="${KERNEL:-$PROJECT_DIR/result/Image.lzma}"
+KERNEL="${KERNEL:-$PROJECT_DIR/boot/Image.lzma}"
 DTBPACK="${DTBPACK:-$SCRIPT_DIR/dtbpack}"
 INITRAMFS="${INITRAMFS:-$PROJECT_DIR/result-initramfs/initrd}"
 CMDLINE="${CMDLINE:-console=tty0 earlycon loglevel=7 root=/dev/ram0}"
+INITRAMFS_ARGS=()
 
 echo "iPad NixOS — Boot Script"
 echo "========================"
@@ -43,13 +44,13 @@ done
 if [[ ! -f "$INITRAMFS" ]]; then
     echo "WARNING: No initramfs found at $INITRAMFS"
     echo "         Boot will likely panic with 'unable to mount root fs'"
-    INITRAMFS_ARGS=""
+    INITRAMFS_ARGS=()
 else
-    INITRAMFS_ARGS="-r $INITRAMFS"
+    INITRAMFS_ARGS=(-r "$INITRAMFS")
 fi
 
 echo "==> Step 1: Running checkm8 exploit (device must be in DFU mode)..."
-$GASTER pwn
+"$GASTER" pwn
 echo "    checkm8 exploit successful"
 
 echo ""
@@ -58,25 +59,12 @@ irecovery -f "$PONGO_BIN"
 echo "    pongoOS loaded"
 
 echo ""
-echo "==> Step 3: Waiting for pongoOS USB device (05ac:4141)..."
-for i in $(seq 1 30); do
-    if lsusb | grep -q "05ac:4141"; then
-        echo "    pongoOS USB device detected"
-        break
-    fi
-    if [[ $i -eq 30 ]]; then
-        echo "ERROR: pongoOS USB device not detected after 30 seconds"
-        exit 1
-    fi
-    sleep 1
-done
-
-echo ""
-echo "==> Step 4: Uploading kernel, device tree, and initramfs..."
+echo "==> Step 3: Uploading kernel, device tree, and initramfs..."
+echo "    load_linux.py waits for pongoOS USB device (05ac:4141)"
 python3 "$LOAD_LINUX" \
     -k "$KERNEL" \
     -d "$DTBPACK" \
-    $INITRAMFS_ARGS \
+    "${INITRAMFS_ARGS[@]}" \
     -c "$CMDLINE"
 
 echo ""
@@ -86,4 +74,4 @@ echo "    If using USB gadget Ethernet, wait ~10s then check for a new"
 echo "    network interface on this host (usb0 or enp*s*)."
 echo ""
 echo "    To connect via SSH (once USB Ethernet is working):"
-echo "      ssh root@172.16.42.1"
+echo "      ssh root@192.168.7.2"

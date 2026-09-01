@@ -32,6 +32,7 @@ buildLinux (args // {
 
     # --- Apple platform support ---
     # ARCH_APPLE is for M-series Macs; A-series iPads use generic ARM64
+    ARCH_APPLE = yes;
     # COMPILE_TEST unlocks drivers gated on ARCH_APPLE
     COMPILE_TEST = yes;
 

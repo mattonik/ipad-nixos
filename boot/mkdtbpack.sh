@@ -37,7 +37,7 @@ for entry in "$@"; do
         exit 1
     fi
 
-    SIZE=$(stat -c'%s' "$DTB_PATH")
+    SIZE=$(( $(wc -c < "$DTB_PATH") ))
     echo "  Adding $BOARD_ID ($DTB_PATH, $SIZE bytes)"
 
     # Board ID (null-terminated string)
@@ -54,4 +54,4 @@ done
 # Terminator
 printf '\0\0\0\0\0' >> "$OUTPUT"
 
-echo "Created $OUTPUT ($(stat -c'%s' "$OUTPUT") bytes)"
+echo "Created $OUTPUT ($(( $(wc -c < "$OUTPUT") )) bytes)"

@@ -1,7 +1,7 @@
 # iPad Air 2 (A8X) initramfs — minimal RAM-only root filesystem
 #
 # Build:
-#   nix build .#initramfs
+#   nix build .#packages.x86_64-linux.initramfs -o result-initramfs
 #
 # Output:  result/initrd     (symlink → result/initrd.zst)
 #          result/initrd.zst (the compressed cpio archive)
@@ -24,6 +24,7 @@
 , dropbear
 , kmod
 , writeScript
+, authorizedKeysFile ? null
 }:
 
 let
@@ -165,6 +166,8 @@ let
     # ---- /etc minimal setup -------------------------------------------------
     mkdir -p /etc /var/log /var/run /var/empty /root/.ssh
     chmod 700 /root
+    chmod 700 /root/.ssh
+    [ ! -f /root/.ssh/authorized_keys ] || chmod 600 /root/.ssh/authorized_keys
 
     # Minimal passwd/group — required by dropbear session handling
     # and by getpwuid() calls in any libc-linked binary.
@@ -204,12 +207,13 @@ RESOLV
       | grep Fingerprint || true
 
     # ---- authorized_keys -----------------------------------------------------
-    # The initrd has no authorized_keys baked in.  Add yours here or copy it
-    # over the USB connection before SSHing.
+    # The default initrd has no SSH login key.  Pass authorizedKeysFile to this
+    # derivation from a private wrapper, or add a key on the local console
+    # before starting dropbear.
     #
     # To bake a key in, add to `contents` in this file:
     #   { source = ./authorized_keys; target = "/root/.ssh/authorized_keys"; }
-    # Then rebuild: nix build .#initramfs
+    # Then rebuild: nix build .#packages.x86_64-linux.initramfs -o result-initramfs
 
     # ---- dropbear SSH daemon ------------------------------------------------
     # -s   disable password auth (key-only); protects against brute force
@@ -373,7 +377,10 @@ makeInitrdNG {
       source = "${kmod}/bin/rmmod";
       target = "/usr/local/bin/rmmod";
     }
-  ];
+  ] ++ lib.optional (authorizedKeysFile != null) {
+    source = authorizedKeysFile;
+    target = "/root/.ssh/authorized_keys";
+  };
   # makeInitrdNG pre-creates: /run, /tmp, /var/empty, /var/run → ../run
   # We create /proc /sys /dev /etc /root in the init script via mkdir.
 }
