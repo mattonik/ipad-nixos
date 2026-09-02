@@ -22,9 +22,15 @@ buildLinux (args // {
     hash = "sha256-DkdJaK38vuMpFv0BqJ2Mz9EWjY0yVp52pcZkx5MZjr4=";
   };
 
-  # Disable strict config checking — we enable COMPILE_TEST which pulls in
-  # many optional configs that may conflict with cross-compilation
+  # Disable strict config checking for the intentionally small appliance
+  # configuration below.
   ignoreConfigErrors = true;
+
+  # This is an appliance kernel; the broad nixpkgs common config would enable
+  # thousands of unrelated modules. Keep only the architecture defaults and
+  # the target options below.
+  enableCommonConfig = false;
+  autoModules = false;
 
   structuredExtraConfig = with lib.kernel; {
     # --- Page size (Apple SoCs require 16KB) ---
@@ -33,8 +39,9 @@ buildLinux (args // {
     # --- Apple platform support ---
     # ARCH_APPLE is for M-series Macs; A-series iPads use generic ARM64
     ARCH_APPLE = yes;
-    # COMPILE_TEST unlocks drivers gated on ARCH_APPLE
-    COMPILE_TEST = yes;
+    # Keep the build focused on this target; Apple entries already depend on
+    # ARCH_APPLE, so COMPILE_TEST only enables unrelated drivers here.
+    COMPILE_TEST = lib.mkForce no;
 
     # Apple Interrupt Controller (same IP block A7 through M4)
     APPLE_AIC = yes;
@@ -111,6 +118,9 @@ buildLinux (args // {
     BATTERY_BQ27XXX_I2C = module;
 
     # --- Misc required infrastructure ---
+    # No Rust drivers are used on this target; avoid pulling the multi-GB
+    # Rust source tree into the kernel build.
+    RUST = lib.mkForce no;
     DEVTMPFS = yes;
     DEVTMPFS_MOUNT = yes;
     TMPFS = yes;
