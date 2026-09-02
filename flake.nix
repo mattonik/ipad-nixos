@@ -13,7 +13,16 @@
     let
       linuxBuildSystem = "x86_64-linux";
       pkgs = nixpkgs.legacyPackages.${linuxBuildSystem};
-      darwinPkgs = nixpkgs.legacyPackages.aarch64-darwin;
+      darwinPkgs = import nixpkgs {
+        system = "aarch64-darwin";
+        overlays = [
+          # libplist's ostep2 test currently crashes on this Darwin host;
+          # it is only a build-time check for the irecovery dependency.
+          (_final: prev: {
+            libplist = prev.libplist.overrideAttrs (_: { doCheck = false; });
+          })
+        ];
+      };
       darwinGaster = darwinPkgs.callPackage ./boot/gaster.nix {};
 
       # Cross-compilation: build on x86_64, target aarch64 (iPad ARM64)
