@@ -335,6 +335,19 @@ it ended this RAM-only Pongo session. Do **not** use PyUSB device reset as a
 Pongo recovery step; re-enter DFU and launch PongoOS through the established
 palera1n command instead.
 
+### Guarded launch attempt after reconnect — 2026-09-02
+
+The host independently confirmed DFU (`CPID 0x7001`, `PRODUCT iPad5,3`,
+`MODEL j81ap`) and attempted to launch the locally built
+`Pongo-t7001-diagnostic.bin`. The launch could not proceed: the `sudo` ticket
+created in a separate terminal was not available to the Codex process, and the
+macOS authorization fallback did not produce a USB device. Subsequent PyUSB
+checks found none of DFU (`05ac:1227`), Recovery (`05ac:1281`), or PongoOS
+(`05ac:4141`). No kernel, initrd, DTB, or `bootl` command was sent in this
+attempt. This is an execution/USB-state failure, not evidence against the
+diagnostic binary; the next run must start with one clean DFU launch and no
+competing palera1n waiters.
+
 The exact PongoOS source matching `boot/Pongo.bin` is revision
 `742d92a023d16c4cc9ebf9cb73b708bf92c52808`. Its Linux module states that it
 is only supported on iPhone 7/A10, warns that non-A10 behaviour is undefined,
