@@ -86,6 +86,9 @@ dev.ctrl_transfer(0x21, 4, 0, 0, 0)
 print("Booting...")
 try:
     dev.ctrl_transfer(0x21, 3, 0, 0, "bootl\n")
-except:
-    # if the device disconnects without acknowledging it usually means it succeeded
-    print("Success.")
+except usb.core.USBError:
+    # PongoOS intentionally tears down USB before the Linux jump.  This proves
+    # only that handoff began; inspect the device before calling the boot good.
+    print("PongoOS disconnected after bootl; handoff began, not a Linux boot confirmation.")
+else:
+    print("PongoOS accepted bootl without disconnecting; Linux did not start.")

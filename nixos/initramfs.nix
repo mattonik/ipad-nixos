@@ -53,6 +53,9 @@ let
     export PATH=/usr/local/bin:/bin:/sbin:/usr/bin:/usr/sbin
 
     # ---- pseudo-filesystems ------------------------------------------------
+    # cpio does not create empty mount points.  PID 1 must make these before
+    # the first mount or every early-boot service silently starts broken.
+    mkdir -p /proc /sys /dev /etc /root /tmp /run
     mount -t proc     proc     /proc
     mount -t sysfs    sysfs    /sys
     # devtmpfs is preferred (kernel auto-populates /dev); fall back to plain tmpfs
@@ -62,6 +65,7 @@ let
     mount -t tmpfs tmpfs /run
 
     mkdir -p /dev/pts /dev/shm
+    mkdir -p /sys/kernel/config
     mount -t devpts devpts /dev/pts
 
     # ---- mdev ---------------------------------------------------------------
@@ -207,13 +211,8 @@ RESOLV
       | grep Fingerprint || true
 
     # ---- authorized_keys -----------------------------------------------------
-    # The default initrd has no SSH login key.  Pass authorizedKeysFile to this
-    # derivation from a private wrapper, or add a key on the local console
-    # before starting dropbear.
-    #
-    # To bake a key in, add to `contents` in this file:
-    #   { source = ./authorized_keys; target = "/root/.ssh/authorized_keys"; }
-    # Then rebuild: nix build .#packages.x86_64-linux.initramfs -o result-initramfs
+    # Set IPAD_AUTHORIZED_KEYS to a public-key file and build with --impure to
+    # include it.  The default initrd intentionally has no login key.
 
     # ---- dropbear SSH daemon ------------------------------------------------
     # -s   disable password auth (key-only); protects against brute force
@@ -230,7 +229,6 @@ RESOLV
     sleep 1
     if kill -0 "$DROPBEAR_PID" 2>/dev/null; then
       echo "[ssh] dropbear running on :22 (key auth only)"
-      echo "[ssh] Add public key to /root/.ssh/authorized_keys"
       echo "[ssh] Connect: ssh root@192.168.7.2"
     else
       echo "[ssh] dropbear failed — see /var/log/dropbear.log"
@@ -249,7 +247,7 @@ RESOLV
     echo " Console: $(tty)"
     echo "========================================="
     echo " SSH: ssh root@192.168.7.2"
-    echo "      (add authorized_keys first)"
+    echo "      (with the key supplied at build time)"
     echo " Logs: /var/log/dropbear.log"
     echo "========================================="
     echo ""
@@ -381,6 +379,6 @@ makeInitrdNG {
     source = authorizedKeysFile;
     target = "/root/.ssh/authorized_keys";
   };
-  # makeInitrdNG pre-creates: /run, /tmp, /var/empty, /var/run → ../run
-  # We create /proc /sys /dev /etc /root in the init script via mkdir.
+  # makeInitrdNG pre-creates: /run, /tmp, /var/empty, /var/run → ../run.
+  # PID 1 creates every mount point before attempting the first mount.
 }

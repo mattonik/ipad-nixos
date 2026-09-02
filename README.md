@@ -4,11 +4,11 @@ Run Linux on old iPads (2011–2017) via the checkm8 bootrom exploit, turning e-
 
 ## What This Is
 
-A complete, reproducible build system that cross-compiles a Linux kernel and minimal NixOS userland for iPad hardware. The entire boot chain — from exploit to SSH shell — is automated.
+A reproducible build system that cross-compiles a Linux kernel and minimal NixOS userland for iPad hardware. PongoOS USB control and one RAM-only payload transfer are verified on the iPad Air 2, but Linux has not booted: stock PongoOS has no supported A8X handoff. See [the live project status](docs/project-status.md).
 
 **Primary target:** iPad Air 2 (A8X, 2014) — 3-core ARM64, 2GB RAM, 2048x1536 Retina display.
 
-**Supported devices:** All 27 ARM64 iPads with A7–A11 chips (2013–2017) are theoretically supported via checkm8. See [research/compatibility-matrix.md](research/compatibility-matrix.md) for the full list.
+**Research scope:** checkm8 covers ARM64 iPads with A7–A11 chips, but no device beyond the iPad Air 2 target has been tested. See [research/compatibility-matrix.md](research/compatibility-matrix.md) for the list.
 
 ## How It Works
 
@@ -19,7 +19,7 @@ checkm8 exploit → pongoOS → Linux 6.19 kernel → NixOS initramfs (in RAM)
 1. **checkm8** — permanent, unpatchable bootrom exploit ([CVE-2019-8900](https://nvd.nist.gov/vuln/detail/CVE-2019-8900)) for Apple A5–A11 SoCs
 2. **pongoOS** — pre-boot environment loaded via checkm8, provides USB protocol for uploading payloads
 3. **Linux kernel** — cross-compiled for aarch64 with 16KB pages and Apple-specific drivers (touch, SPI, USB, framebuffer)
-4. **NixOS initramfs** — minimal root filesystem running entirely from RAM with SSH access via USB Ethernet
+4. **NixOS initramfs** — minimal root filesystem running entirely from RAM; it is archive-verified but not yet reached on hardware
 
 The boot is **tethered** — the iPad must be connected to a host computer via USB and re-flashed on every power cycle (~30 seconds).
 
@@ -35,14 +35,15 @@ The boot is **tethered** — the iPad must be connected to a host computer via U
 
 ```bash
 # Clone
-git clone https://github.com/jacopone/ipad-nixos.git
+git clone https://github.com/mattonik/ipad-nixos.git
 cd ipad-nixos
 
 # Build kernel (~4-5 hours first time, cached after)
 nix build .#packages.x86_64-linux.kernel -o result-kernel
 
-# Build initramfs (~5 minutes)
-nix build .#packages.x86_64-linux.initramfs -o result-initramfs
+# Build initramfs with a local public SSH key (~5 minutes)
+IPAD_AUTHORIZED_KEYS="$PWD/keys/builder_ed25519.pub" \
+  nix build --impure .#packages.x86_64-linux.initramfs -o result-initramfs
 
 # Compress kernel for pongoOS
 xz --format=lzma -z -k -9 -c result-kernel/Image > boot/Image.lzma
@@ -53,24 +54,12 @@ xz --format=lzma -z -k -9 -c result-kernel/Image > boot/Image.lzma
   J82:result-kernel/dtbs/apple/t7001-j82.dtb
 ```
 
-### Boot
+### Boot status
 
-```bash
-# 1. Put iPad in DFU mode:
-#    Hold Home + Power → after 3s release Power → hold Home 10s more
-#    Screen stays BLACK (no Apple logo = success)
-#    Optional Linux check: lsusb | grep "05ac:1227"
-
-# 2. Flash and boot
-sudo ./boot/flash.sh
-
-# 3. On host machine, set up USB Ethernet
-sudo ip addr add 192.168.7.1/24 dev usb0
-sudo ip link set usb0 up
-
-# 4. SSH to iPad
-ssh root@192.168.7.2
-```
+Do not use `flash.sh` as a working-boot recipe yet. The first payload
+handoff returned to PongoOS before Linux ran, and the current J81 DTB has no
+USB device-controller node, so USB Ethernet and SSH cannot work. Follow the
+evidence-backed next step in [the live project status](docs/project-status.md).
 
 ## Project Structure
 
@@ -109,8 +98,8 @@ ipad-nixos/
 
 | Device | SoC | Board ID | DTB | Status |
 |--------|-----|----------|-----|--------|
-| iPad Air 2 (WiFi) | A8X (T7001) | J81 | `t7001-j81.dtb` | Build ready, awaiting hardware test |
-| iPad Air 2 (Cellular) | A8X (T7001) | J82 | `t7001-j82.dtb` | Build ready, awaiting hardware test |
+| iPad Air 2 (WiFi) | A8X (T7001) | J81 | `t7001-j81.dtb` | Payload transferred; PongoOS handoff port required |
+| iPad Air 2 (Cellular) | A8X (T7001) | J82 | `t7001-j82.dtb` | Untested |
 
 ### Expected Compatible (same boot chain, untested)
 

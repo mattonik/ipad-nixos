@@ -43,6 +43,15 @@
           # musl and busybox do not need a special page-size override here.
         };
       };
+
+      # Explicitly opt in to including a local *public* SSH key.  Keeping this
+      # environment-derived makes ordinary builds key-free and reproducible.
+      authorizedKeysFile =
+        let keyPath = builtins.getEnv "IPAD_AUTHORIZED_KEYS";
+        in if keyPath == "" then null else builtins.path {
+          path = builtins.toPath keyPath;
+          name = "ipad-authorized-keys";
+        };
     in
     {
       # Dev shell (x86_64 tools for RE, flashing, serial, etc.)
@@ -67,9 +76,13 @@
         kernel = pkgsCross.callPackage ./kernel {};
 
         # Minimal initramfs — entire root filesystem in RAM
-        # Build: nix build .#packages.x86_64-linux.initramfs
+        # Build with SSH access:
+        # IPAD_AUTHORIZED_KEYS=/absolute/path/key.pub nix build --impure \
+        #   .#packages.x86_64-linux.initramfs
         # Output: result/initrd  (symlink to result/initrd.zst)
-        initramfs = pkgsCrossMusl.callPackage ./nixos/initramfs.nix {};
+        initramfs = pkgsCrossMusl.callPackage ./nixos/initramfs.nix {
+          inherit authorizedKeysFile;
+        };
 
         gaster = pkgs.callPackage ./boot/gaster.nix {};
       };

@@ -20,3 +20,11 @@ firmware/
 *~
 .idea/
 .vscode/
+
+# Local credentials and virtual-machine state
+keys/
+*.qcow2
+*.img
+vzvm.json
+.DS_Store
+boot/__pycache__/
