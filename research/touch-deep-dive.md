@@ -3,6 +3,22 @@
 Exhaustive research on the Broadcom BCM5976 touch controller and all paths to
 Linux touch input on iPad Air 2. Research conducted February 2026.
 
+## Current implementation correction (2026-09-02)
+
+The investigation below contains useful Z2-family references, but several
+earlier conclusions were too strong. The project's actual Linux 6.19.3 source
+has `apple_z2`, yet its OF match table contains only `apple,j293-touchbar` and
+`apple,j493-touchbar`; it does not bind `apple,z2-multitouch` or an iPad
+compatible. The generated J81 DTB has no SPI-controller or touch peripheral
+node. Therefore enabling `CONFIG_TOUCHSCREEN_APPLE_Z2=y` does not enable touch
+on this iPad.
+
+Treat `apple_z2` as a protocol, firmware-loading and input-reporting reference
+only. A working BCM5976 path requires independently verified T7001 SPI, chip
+select, reset, attention IRQ, power, firmware and calibration data before an
+iPad-specific adaptation can be proposed. Do not implement that adaptation or
+commit Apple firmware/calibration material without explicit approval.
+
 ---
 
 ## 1. BCM5976 Hardware Overview
@@ -320,16 +336,17 @@ The driver is approximately 300-400 lines of clean kernel code. It handles:
 2. Touch reading: SPI transaction to read packet length, then full frame
 3. Touch reporting: Extract finger data from frame, report to input subsystem
 
-Device tree compatible string: "apple,z2-multitouch"
-Required properties: reset-gpios, interrupts, firmware-name
-Optional: apple,z2-cal-blob (calibration data)
+Current device-tree bindings are `apple,j293-touchbar` and
+`apple,j493-touchbar`, with `reset-gpios`, `interrupts` and `firmware-name`
+used by those Touch Bar designs. Their calibration property is not evidence of
+BCM5976 compatibility.
 
-This driver is directly portable to the iPad Air 2's BCM5976. The Z2 protocol
-is the same. The required changes:
-1. A8X SPI controller driver (different from Apple Silicon SPI)
-2. Device tree for A8X's SPI bus configuration and GPIO mapping
-3. Correct firmware file for the BCM5976
-4. Calibration data for the iPad Air 2's specific touch panel
+The driver is not directly portable to the iPad Air 2. The required evidence
+before considering an adaptation is:
+1. A verified T7001 SPI controller and transfer behaviour
+2. Device-tree mappings for the BCM5976 chip select, reset, attention IRQ and power
+3. A correct BCM5976 firmware file and its loading sequence
+4. Calibration data whose format has been demonstrated on this panel
 
 ### 4.4 openiBoot Z2 Multitouch Driver
 
@@ -611,16 +628,16 @@ Sources:
 
 ## 7. Paths to Working Touch on iPad Air 2
 
-### Path A: Port apple_z2 Driver (RECOMMENDED - Highest Probability of Success)
+### Path A: Adapt apple_z2 After Hardware Validation (preferred research path)
 
-The apple_z2 driver in Linux 6.15 implements the Z2 protocol for Apple Silicon
-Touch Bars. Since the BCM5976 uses the same Z2 protocol family, this driver can
-be ported to the iPad Air 2 with these steps:
+The apple_z2 driver implements Z2 for Apple Silicon Touch Bars. Its code is the
+best upstream reference, but its binding and BCM5976 behaviour have not been
+validated on this iPad. Consider an iPad-specific adaptation only after the
+following evidence is collected:
 
-1. **SPI controller driver**: The A8X SPI controller is Samsung-derived.
-   Either port Corellium's custom SPI driver from linux-sandcastle, or write
-   a platform driver for the A8X SPI controller. The mainline Samsung SPI
-   driver may work with modifications for interrupt-driven transfers.
+1. **SPI controller**: Identify the T7001 controller and prove a harmless
+   transfer. Do not assume an existing Apple or Samsung driver is compatible
+   before its register, clock, interrupt and DMA behaviour is verified.
 
 2. **Device tree**: Add the multitouch node under the SPI controller in the
    A8X device tree. Required properties:
@@ -639,12 +656,13 @@ be ported to the iPad Air 2 with these steps:
    contains per-unit calibration data. This can be read by pongoOS before
    Linux boots and passed via device tree property.
 
-5. **Testing and debugging**: Use the existing apple_z2 driver as-is, with
-   modifications only to the firmware loading path (the BCM5976 firmware
-   format may use older IMG3 instead of IMG4P) and any A8X-specific SPI
-   timing requirements.
+5. **Testing and debugging**: Add a dedicated BCM5976-compatible path, rather
+   than changing the Touch Bar bindings or assuming the upstream driver works
+   as-is. Verify raw transactions, firmware boot, calibration and `evtest`
+   separately.
 
-Estimated effort: Medium-High. The driver exists; the work is integration.
+Estimated effort: High. The protocol reference reduces risk, but the T7001
+controller and BCM5976-specific bring-up remain unproven.
 
 ### Path B: Adapt hx-touchd as Userspace Daemon
 

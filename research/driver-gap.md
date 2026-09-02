@@ -1,21 +1,30 @@
 # Driver Gap Analysis: iPad Air 2 (A8X) Hardware
 
 Per-subsystem analysis of iPad Air 2 hardware chips and their Linux driver status.
-Research conducted February 2026.
+Research conducted February 2026 and revalidated against the project's Linux
+6.19.3 build on 2026-09-02.
+
+> **Current implementation note:** the historical detail below is useful
+> protocol and hardware research, but must not be read as proof that a driver
+> can probe on J81. The generated J81 DTB has no touch/SPI peripheral,
+> Wi-Fi/SDIO, Bluetooth, or USB-controller node, and the initramfs has no
+> module tree. In particular, upstream `apple_z2` is a Touch Bar driver with
+> only `apple,j293-touchbar` and `apple,j493-touchbar` bindings; it is a
+> BCM5976 protocol reference, not a direct iPad Air 2 driver.
 
 ## Summary Matrix
 
 | Subsystem | Chip | Linux Driver | Status | Effort |
 |-----------|------|-------------|--------|--------|
-| Display | LG LP097QX2 (eDP) | simplefb / simpledrm | Working (basic) | Low |
-| Touch | Broadcom BCM5976 | apple_z2 (adapt) | Documented (Z2 protocol) | Medium-High |
-| WiFi | Broadcom BCM4354 (Murata module) | brcmfmac | Partial | Medium |
+| Display | LG LP097QX2 (eDP) | simplefb / simpledrm | Configured; unverified until Linux boots | Low |
+| Touch | Broadcom BCM5976 | apple_z2 (reference only) | Blocked: no T7001 SPI/DT/firmware/calibration | High |
+| WiFi | Broadcom BCM4354 (Murata module) | brcmfmac | Blocked: no SDIO host/DT/power/firmware/NVRAM | High |
 | GPU | PowerVR GXA6850 (Series 6XT) | pvr (Mesa) | Experimental | Very High |
 | Audio | Cirrus Logic 338S1213 | None known | None | High |
 | Battery/Power | Dialog 343S0675 PMIC + TI BQ27546 | None (proprietary) | None | High |
-| USB | Synopsys DWC2 OTG | dwc2 | Likely working | Low-Medium |
-| Bluetooth | Broadcom (in Murata module) | btbcm / hci_bcm | Partial | Medium |
-| Sensors | Unknown (likely InvenSense/Bosch) | Unknown | Unknown | Medium |
+| USB | Synopsys DWC2 OTG | dwc2 | Configured; no J81 controller/UDC node | Medium |
+| Bluetooth | Broadcom (in Murata module) | btbcm / hci_uart | Blocked: no UART/DT/power/firmware mapping | High |
+| Sensors | Unknown (likely InvenSense/Bosch) | Unknown | Unidentified; no peripheral nodes | Medium |
 | Storage/NAND | Apple proprietary FTL | None | None | Very High |
 
 ---
@@ -93,16 +102,16 @@ The BCM5976 is used across iPhone 5 through 6 Plus, iPad Air 1/2, iPad Mini 1-4,
 
 ### Linux Driver Status
 
-**Status: None (direct), but the protocol is now documented via the Z2 driver in Linux 6.15**
+**Status: no direct driver. `apple_z2` is a protocol reference, not a J81 binding.**
 
 No dedicated Linux driver exists for the BCM5976. However, the situation has improved
 dramatically since the initial research:
 
-- **apple_z2 kernel driver (Linux 6.15)**: Asahi Linux merged a driver for Apple's Z2
-  touch protocol. Z2 is described as "the primary protocol for the touchscreen on mobile
-  Apple devices." The finger data format in apple_z2 is structurally identical to the
-  BCM5974 (USB MacBook) and applespi (SPI MacBook) drivers, confirming a protocol family
-  spanning 2008-2024.
+- **apple_z2 kernel driver (Linux 6.15)**: Asahi Linux merged a driver for the Z2
+  protocol, but its current upstream match table is limited to the J293 and J493 Mac
+  Touch Bars. Its frame parsing, firmware-loading and calibration code are valuable
+  references; BCM5976 compatibility must be demonstrated on hardware before adding an
+  iPad binding.
 - **Project Sandcastle hx-touchd**: Corellium's userspace daemon for iPhone 7 uses Z2
   commands (0xE1-0xEE range) consistent with the apple_z2 driver's command set. The touch
   controller was described as "not very complex to interface with."
@@ -163,7 +172,7 @@ both WiFi and Bluetooth. The WiFi portion connects via SDIO, the Bluetooth porti
 
 ### Linux Driver Status
 
-**Status: Partial (driver exists, firmware is the blocker)**
+**Status: the chip driver exists, but platform exposure and firmware are both blockers.**
 
 The `brcmfmac` driver in the Linux kernel supports the BCM4354 chipset. The driver was
 introduced in kernel 2.6.39 and has been continuously maintained.
@@ -173,6 +182,11 @@ What exists:
 - Basic driver infrastructure for initialization, scanning, association
 
 What is missing:
+- **SDIO host and board description**: The current J81 DTB has no SDIO host or Murata
+  module node, so `brcmfmac` cannot discover the chip. Its clocks, pins, reset and power
+  sequence must be identified before firmware work can be tested.
+- **Initramfs module closure**: `brcmfmac` and `cfg80211` are kernel modules, while the
+  current initramfs intentionally has no `/lib/modules` tree.
 - **Firmware**: The BCM4354 requires proprietary firmware blobs to operate. The specific
   firmware variant for Apple's Murata module is not in the linux-firmware repository.
   Apple-specific firmware files must be extracted from iOS.

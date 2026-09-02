@@ -363,6 +363,65 @@ eliminates a board-name mismatch without changing the kernel.
 4. Retry one RAM-only payload only after the fork records a real jump. Capture
    the iPad display. Then, and only then, debug Linux early boot.
 
+## Driver readiness and approval gate (2026-09-02)
+
+This is an evidence-based planning record, not authorization to change a
+driver, device tree, PongoOS, or firmware. **Wait for explicit approval before
+implementing or fixing any item below.** Every subsystem is untested in Linux
+until the T7001 PongoOS handoff above produces a Linux log.
+
+The current 6.19.3 kernel configuration is useful infrastructure, but it is
+not a hardware-support claim. The generated `t7001-j81.dtb` contains the
+basic AIC, UART, watchdog, pinctrl, PMGR/I2C, simple framebuffer and GPIO-key
+nodes. It contains no USB controller, touch/SPI peripheral, Wi-Fi/SDIO, or
+Bluetooth peripheral node. The initramfs packages `kmod` programs but no
+`/lib/modules` tree, so configured modules cannot currently be loaded there.
+
+| Subsystem | Current state | Missing or broken prerequisite | Planned work after approval |
+| --- | --- | --- | --- |
+| PongoOS → Linux | **Broken; primary gate** | The matching PongoOS Linux module supports A10 only and uses an A10-specific entry address. The T7001 returns to PongoOS after `bootl`. | Instrument and port the handoff before debugging a Linux driver. |
+| Console / USB gadget | **Not described by J81 DTB** | DWC2 and USB gadget support are configured, but there is no T7001 USB controller/UDC node, clocks, PHY or interrupt wiring in the generated DTB. | Add only the verified controller description; use a serial or USB console before networking work. |
+| Display | **Unverified** | A simple framebuffer is described, but Linux has not reached it. Native display, backlight and acceleration support are absent. | Validate the inherited framebuffer after first boot; keep native DRM out of the near-term scope. |
+| Touchscreen (BCM5976) | **Blocked; priority 1** | No T7001 SPI-controller or touchscreen DT node, reset/IRQ/power mapping, firmware, or calibration data. Upstream `apple_z2` currently binds only two Mac Touch Bar compatibles, not an iPad. | Establish the Air 2 wiring and protocol first, then make an iPad-specific adaptation only if the evidence supports it. |
+| Wi-Fi (BCM4354) | **Blocked; priority 2** | `brcmfmac` includes BCM4354 and SDIO support, but J81 has no SDIO host/module node, power/reset mapping, board NVRAM or firmware. `brcmfmac`/`cfg80211` are modules outside the initramfs. | Identify and expose the SDIO host, then integrate the required local firmware/NVRAM and modules. |
+| Bluetooth (BCM4354 combo) | **Blocked** | `hci_uart`/`btbcm` infrastructure exists, but its UART, flow control, power sequencing, firmware and DT node are unknown; its modules are also absent from the initramfs. | Defer until Wi-Fi has identified the Murata module's power and board wiring. |
+| Audio | **No known T7001 stack** | Audio DMA, codec identity/register map, machine description and power routing are absent. | Defer. |
+| Battery / PMIC | **Partial generic support only** | The BQ27xxx driver exists, but no fuel-gauge DT node; the Apple/ Dialog PMIC and charging path lack a supported description. | Probe the standard fuel gauge only after I2C and power topology are mapped. |
+| Sensors | **Unknown** | Generic IIO drivers exist, but the sensor chips and their I2C/SPI/M8 path are unidentified and no nodes exist. | Inventory from an Apple device tree before selecting a driver. |
+| GPU | **No Apple A8X integration** | No supported PowerVR A8X DRM/platform backend. | Use framebuffer/software rendering only; defer acceleration. |
+| NAND / cameras / Touch ID | **Unsupported** | Apple storage FTL/encryption, camera ISP paths and Secure Enclave interfaces have no usable Linux path. | Out of scope for the RAM-only milestone. |
+
+### Priority bring-up plan
+
+1. **Restore an observable boot path.** Re-enter DFU, relaunch PongoOS with the
+   known command, and make the small instrumented T7001 PongoOS fork described
+   above. Do not retry a stock `bootl` upload or diagnose touch/Wi-Fi before a
+   Linux log exists.
+2. **Create a console before a network dependency.** Use the Pongo/Linux
+   display or UART output first. Port the USB controller/UDC description only
+   from verified T7001 register, clock, PHY and interrupt data; then test the
+   built-in gadget path.
+3. **Touch evidence phase.** From a user-supplied iPad Air 2 IPSW and Apple
+   device tree, record the actual SPI controller, chip select, reset, IRQ,
+   power sequence, firmware name and calibration source. Compare the observed
+   initialization and report frames with `apple_z2`; its protocol code is a
+   reference, not a drop-in BCM5976 binding. Do not commit Apple firmware or
+   per-device calibration material.
+4. **Wi-Fi evidence phase.** Identify the BCM4354 SDIO host, pins, reset and
+   power sequencing from the same board data. First prove that Linux enumerates
+   an SDIO function. Only then package the minimum module closure plus the
+   user-provided firmware, board NVRAM and regulatory data locally; do not add
+   proprietary blobs to Git.
+5. **Approval checkpoint.** Present the extracted hardware facts, proposed
+   DT changes and test image for review. Start touch or Wi-Fi implementation
+   only after the user explicitly approves it.
+
+Authoritative source checks: the [6.19.3 `apple_z2` match table](https://github.com/torvalds/linux/blob/v6.19.3/drivers/input/touchscreen/apple_z2.c)
+contains only `apple,j293-touchbar` and `apple,j493-touchbar`; the
+[brcmfmac chip table](https://github.com/torvalds/linux/blob/v6.19.3/drivers/net/wireless/broadcom/brcm80211/brcmfmac/chip.c)
+does include BCM4354. The current upstream [J81 device tree](https://github.com/torvalds/linux/blob/v6.19.3/arch/arm64/boot/dts/apple/t7001-j81.dts)
+is the reference for the intentionally minimal board description.
+
 ## Current state at a glance
 
 | Stage | Status |
