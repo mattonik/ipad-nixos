@@ -56,8 +56,9 @@ echo "    checkm8 exploit successful"
 echo ""
 echo "==> Step 2: Loading pongoOS..."
 irecovery -f "$PONGO_BIN"
+sleep 3
 irecovery -c go
-sleep 2
+sleep 3
 echo "    pongoOS loaded"
 
 echo ""
