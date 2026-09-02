@@ -60,6 +60,9 @@ Do not use `flash.sh` as a working-boot recipe yet. The first payload
 handoff returned to PongoOS before Linux ran, and the current J81 DTB has no
 USB device-controller node, so USB Ethernet and SSH cannot work. Follow the
 evidence-backed next step in [the live project status](docs/project-status.md).
+For the Air 2, build and run only the guarded `--diagnostic` PongoOS path
+documented there until a T7001 handoff is explicitly ported; it validates the
+payload without attempting `bootl`.
 
 ## Project Structure
 

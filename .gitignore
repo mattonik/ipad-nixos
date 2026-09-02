@@ -5,6 +5,7 @@ result-*
 # Compressed kernel and dtbpack (regenerated from build outputs)
 boot/Image.lzma
 boot/dtbpack
+boot/Pongo-t7001-diagnostic.bin
 
 # Extracted firmware (not redistributable, extract from own IPSW)
 firmware/

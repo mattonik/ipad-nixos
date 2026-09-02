@@ -1,0 +1,374 @@
+diff --git a/src/kernel/mm.c b/src/kernel/mm.c
+index 352e422..e2f3b3c 100644
+--- a/src/kernel/mm.c
++++ b/src/kernel/mm.c
+@@ -787,7 +787,7 @@ void alloc_init() {
+     uint64_t memory_size = gBootArgs->memSize;
+     ppages = memory_size >> 14;
+ 
+-    ttb_alloc = ttbpage_alloc;
++    ttb_alloc = (volatile uint64_t *(*)(void))ttbpage_alloc;
+     uint64_t early_heap = ttb_alloc_base - 0x800000000 + kCacheableView;
+ 
+     early_heap = (early_heap - 4 * ppages) & ~0x3fffULL;
+diff --git a/src/kernel/task.c b/src/kernel/task.c
+index c3f0f97..ac72202 100644
+--- a/src/kernel/task.c
++++ b/src/kernel/task.c
+@@ -26,6 +26,7 @@
+  */
+ #include <errno.h>
+ #include <reent.h>
++#include <stdarg.h>
+ #include <stdlib.h>
+ #include <pongo.h>
+ 
+diff --git a/src/modules/linux/linux.c b/src/modules/linux/linux.c
+index 6ae4d5b..9d164c5 100644
+--- a/src/modules/linux/linux.c
++++ b/src/modules/linux/linux.c
+@@ -38,6 +38,11 @@ bool ramdisk_initialized = false;
+ 
+ char gLinuxCmdLine[LINUX_CMDLINE_SIZE] = {0};
+ 
++/* Current production Image is 41 MiB; leave headroom while keeping the
++ * diagnostic allocator bounded. This must cover the uncompressed image, not
++ * the much smaller LZMA input. */
++#define LINUX_IMAGE_CAPACITY (64 * 1024 * 1024)
++
+ void linux_dtree_init(void)
+ {
+     // TODO: TONS of error handling
+@@ -187,44 +192,44 @@ void linux_dtree_late(void)
+     fdt_appendprop_string(fdt, node1, "compatible", "simple-framebuffer");
+ }
+ 
+-void linux_dtree_overlay(char *boot_args)
++bool linux_dtree_overlay(void *dtree, char *boot_args, void *initrd, uint32_t initrd_size)
+ {
+     char fdt_nodename[64];
+     int node = 0, node1 = 0;
+     siprintf(fdt_nodename, "/framebuffer@%lx", gBootArgs->Video.v_baseAddr);
+-    node1 = fdt_add_subnode(fdt, node, fdt_nodename);
+-    fdt_appendprop_addrrange(fdt, 0, node1, "reg", gBootArgs->Video.v_baseAddr, gBootArgs->Video.v_height * gBootArgs->Video.v_rowBytes);
+-    fdt_appendprop_cell(fdt, node1, "width", gBootArgs->Video.v_width);
+-    fdt_appendprop_cell(fdt, node1, "height", gBootArgs->Video.v_height);
+-    fdt_appendprop_cell(fdt, node1, "stride", gBootArgs->Video.v_rowBytes);
+-    fdt_appendprop_string(fdt, node1, "format", "a8b8g8r8");
+-    fdt_appendprop_string(fdt, node1, "status", "okay");
+-    fdt_appendprop_string(fdt, node1, "compatible", "simple-framebuffer");
+-
+-    node = fdt_path_offset(fdt, "/chosen");
++    node1 = fdt_add_subnode(dtree, node, fdt_nodename);
++    fdt_appendprop_addrrange(dtree, 0, node1, "reg", gBootArgs->Video.v_baseAddr, gBootArgs->Video.v_height * gBootArgs->Video.v_rowBytes);
++    fdt_appendprop_cell(dtree, node1, "width", gBootArgs->Video.v_width);
++    fdt_appendprop_cell(dtree, node1, "height", gBootArgs->Video.v_height);
++    fdt_appendprop_cell(dtree, node1, "stride", gBootArgs->Video.v_rowBytes);
++    fdt_appendprop_string(dtree, node1, "format", "a8b8g8r8");
++    fdt_appendprop_string(dtree, node1, "status", "okay");
++    fdt_appendprop_string(dtree, node1, "compatible", "simple-framebuffer");
++
++    node = fdt_path_offset(dtree, "/chosen");
+     if (node < 0)
+     {
+         iprintf("Failed to find /chosen");
+-        return;
++        return false;
+     }
+ 
+-    if (ramdisk != NULL)
++    if (initrd != NULL)
+     {
+-        void *rd_start = (void *)(vatophys_static(ramdisk));
+-        void *rd_end = (void *)((((uint64_t)rd_start) + ramdisk_size + 7ull) & -8ull);
++        void *rd_start = (void *)(vatophys_static(initrd));
++        void *rd_end = (void *)((((uint64_t)rd_start) + initrd_size + 7ull) & -8ull);
+ 
+-        int ret = fdt_setprop_u64(fdt, node, "linux,initrd-start", (uint64_t) rd_start);
++        int ret = fdt_setprop_u64(dtree, node, "linux,initrd-start", (uint64_t) rd_start);
+         if (ret < 0)
+         {
+             iprintf("Cannot update chosen node [linux,initrd-start]\n");
+-            return;
++            return false;
+         }
+ 
+-        ret = fdt_setprop_u64(fdt, node, "linux,initrd-end", (uint64_t) rd_end);
++        ret = fdt_setprop_u64(dtree, node, "linux,initrd-end", (uint64_t) rd_end);
+         if (ret < 0)
+         {
+             iprintf("Cannot update chosen node [linux,initrd-end]\n");
+-            return;
++            return false;
+         }
+ 
+         iprintf("initrd @ %p-%p\n", rd_start, rd_end);
+@@ -232,14 +237,15 @@ void linux_dtree_overlay(char *boot_args)
+ 
+     if (boot_args)
+     {
+-        if (fdt_delprop(fdt, node, "bootargs") < 0)
++        int ret = fdt_setprop_string(dtree, node, "bootargs", boot_args);
++        if (ret < 0)
+         {
+-            iprintf("Failed to delete bootargs");
+-            return;
++            iprintf("Cannot update chosen node [bootargs]\n");
++            return false;
+         }
+-
+-        fdt_appendprop_string(fdt, node, "bootargs", boot_args);
+     }
++
++    return true;
+ }
+ 
+ bool linux_can_boot()
+@@ -252,19 +258,19 @@ bool linux_can_boot()
+ void *gLinuxStage;
+ uint32_t gLinuxStageSize;
+ 
+-void fdt_select_dtree(void *fdt)
++bool fdt_select_dtree(const void *pack, void *selected)
+ {
+-    unsigned char *buf = fdt, *ebuf;
++    const unsigned char *buf = pack, *ebuf;
+     char *key;
+     unsigned len;
+ 
+     if (memcmp(buf, "Cows", 4)) // pack signature
+-        return;
++        return false;
+     buf += 4;
+ 
+     key = dt_get_prop("device-tree", "target-type", NULL);
+     if (!key)
+-        return;
++        return false;
+ 
+     while (buf[0])
+     {
+@@ -277,13 +283,119 @@ void fdt_select_dtree(void *fdt)
+         if (!strcmp(key, (char *)buf))
+         {
+             iprintf("Found device tree for %s (%d bytes).\n", key, len);
+-            memmove(fdt, ebuf, len);
+-            return;
++            memcpy(selected, ebuf, len);
++            return true;
+         }
+         buf = ebuf + len;
+     }
+ 
+     iprintf("Device tree for %s not found.\n", key);
++    return false;
++}
++
++static void *linux_prepare_fdt(void)
++{
++    void *selected = malloc(LINUX_DTREE_SIZE);
++    void *expanded = malloc(LINUX_DTREE_SIZE);
++
++    if (!selected || !expanded) {
++        puts("Cannot allocate Linux DTB work buffers.");
++        if (selected) free(selected);
++        if (expanded) free(expanded);
++        return NULL;
++    }
++    if (!fdt_select_dtree(fdt, selected) ||
++        fdt_open_into(selected, expanded, LINUX_DTREE_SIZE)) {
++        puts("Cannot prepare Linux DTB.");
++        free(selected);
++        free(expanded);
++        return NULL;
++    }
++    free(selected);
++    return expanded;
++}
++
++static bool linux_stage_kernel(void **stage, uint64_t *image_size)
++{
++    if (loader_xfer_recv_count == 0) {
++        puts("No Linux kernel was uploaded.");
++        return false;
++    }
++
++    *stage = alloc_contig(LINUX_IMAGE_CAPACITY + LINUX_DTREE_SIZE);
++    size_t output_size = LINUX_IMAGE_CAPACITY;
++    int result = unlzma_decompress(*stage, &output_size, loader_xfer_recv_data,
++                                   loader_xfer_recv_count);
++    if (result != SZ_OK) {
++        if (loader_xfer_recv_count < 24) {
++            iprintf("LZMA decode failed (%d) and payload is too short for an Image header.\n", result);
++            free_contig(*stage, LINUX_IMAGE_CAPACITY + LINUX_DTREE_SIZE);
++            return false;
++        }
++        *image_size = *(uint64_t *)(loader_xfer_recv_data + 16);
++        if (*image_size > LINUX_IMAGE_CAPACITY || *image_size > loader_xfer_recv_count) {
++            iprintf("LZMA decode failed (%d); raw Image size is invalid: %llu.\n", result, *image_size);
++            free_contig(*stage, LINUX_IMAGE_CAPACITY + LINUX_DTREE_SIZE);
++            return false;
++        }
++        memcpy(*stage, loader_xfer_recv_data, *image_size);
++    } else {
++        if (output_size < 24) {
++            puts("Decoded Linux Image is too short for its header.");
++            free_contig(*stage, LINUX_IMAGE_CAPACITY + LINUX_DTREE_SIZE);
++            return false;
++        }
++        *image_size = *(uint64_t *)(*stage + 16);
++        if (*image_size > output_size || *image_size > LINUX_IMAGE_CAPACITY) {
++            iprintf("Decoded Linux Image size is invalid: %llu.\n", *image_size);
++            free_contig(*stage, LINUX_IMAGE_CAPACITY + LINUX_DTREE_SIZE);
++            return false;
++        }
++    }
++    return true;
++}
++
++void linux_diagnostics(void)
++{
++    if (!fdt_initialized) {
++        puts("Upload a DTB pack and run fdt before linux_diag.");
++        return;
++    }
++
++    void *dtree = linux_prepare_fdt();
++    void *stage = NULL;
++    void *diag_ramdisk = NULL;
++    uint64_t image_size = 0;
++    if (!dtree || !linux_stage_kernel(&stage, &image_size)) {
++        if (dtree) free(dtree);
++        return;
++    }
++
++    if (ramdisk_size != 0) {
++        diag_ramdisk = alloc_contig(ramdisk_size);
++        memcpy(diag_ramdisk, ramdisk_buf, ramdisk_size);
++    }
++    if (!linux_dtree_overlay(dtree, gLinuxCmdLine, diag_ramdisk, ramdisk_size)) {
++        free(dtree);
++        free_contig(stage, LINUX_IMAGE_CAPACITY + LINUX_DTREE_SIZE);
++        if (diag_ramdisk) free_contig(diag_ramdisk, ramdisk_size);
++        return;
++    }
++
++    iprintf("[t7001] soc=%x phys=%p size=%llx iBoot-entry=%p\n",
++            socnum, gBootArgs->physBase, gBootArgs->memSize, gEntryPoint);
++    iprintf("[t7001] image=%llu stage=%p/%p fdt=%p (%d bytes)\n",
++            image_size, stage, (void *)vatophys_static(stage), dtree,
++            fdt_totalsize(dtree));
++    if (diag_ramdisk)
++        iprintf("[t7001] initrd=%p/%p (%u bytes)\n", diag_ramdisk,
++                (void *)vatophys_static(diag_ramdisk), ramdisk_size);
++    iprintf("[t7001] candidate-entry=%p; diagnostic only, no jump attempted.\n",
++            (void *)0x800080000ULL);
++
++    free(dtree);
++    free_contig(stage, LINUX_IMAGE_CAPACITY + LINUX_DTREE_SIZE);
++    if (diag_ramdisk) free_contig(diag_ramdisk, ramdisk_size);
+ }
+ 
+ void linux_prep_boot()
+@@ -315,15 +427,19 @@ void linux_prep_boot()
+     }
+     else
+     {
+-        fdt_select_dtree(fdt);
+-        if (fdt_open_into((void *)fdt, (void *)fdt, LINUX_DTREE_SIZE))
++        void *dtree = linux_prepare_fdt();
++        if (!dtree)
+         {
+-            iprintf("failed to apply overlay to fdt\n");
+             return;
+         }
+ 
+         iprintf("Kernel command line: %s\n", gLinuxCmdLine);
+-        linux_dtree_overlay(gLinuxCmdLine);
++        if (!linux_dtree_overlay(dtree, gLinuxCmdLine, ramdisk, ramdisk_size)) {
++            free(dtree);
++            return;
++        }
++        free(fdt);
++        fdt = dtree;
+     }
+ 
+ #define pixfmt0 (&disp[0x402c / 4])
+@@ -343,20 +459,9 @@ void linux_prep_boot()
+     puts("This is only supported on iPhone 7 for now and works to a lesser extent on other A10 devices. Behavior on non-A10 devices is undefined!!");
+ 
+     gEntryPoint = (void *)(0x800080000);
+-    uint64_t image_size = loader_xfer_recv_count;
+-    gLinuxStage = (void *)alloc_contig(image_size + LINUX_DTREE_SIZE);
+-    size_t dest_size = 0x10000000;
+-    int res = unlzma_decompress((uint8_t *)gLinuxStage, &dest_size, loader_xfer_recv_data, image_size);
+-    if (res != SZ_OK)
+-    {
+-        puts("Assuming decompressed kernel.");
+-        image_size = *(uint64_t *)(loader_xfer_recv_data + 16);
+-        memcpy(gLinuxStage, loader_xfer_recv_data, image_size);
+-    }
+-    else
+-    {
+-        image_size = *(uint64_t *)(gLinuxStage + 16);
+-    }
++    uint64_t image_size = 0;
++    if (!linux_stage_kernel(&gLinuxStage, &image_size))
++        return;
+     void *gLinuxDtre = (void *)((((uint64_t)gLinuxStage) + image_size + 7ull) & -8ull);
+     memcpy(gLinuxDtre, fdt, LINUX_DTREE_SIZE);
+     gLinuxStageSize = image_size + LINUX_DTREE_SIZE;
+diff --git a/src/shell/linux.c b/src/shell/linux.c
+index afa4207..9168e4a 100644
+--- a/src/shell/linux.c
++++ b/src/shell/linux.c
+@@ -37,12 +37,17 @@ extern volatile char gBootFlag;
+ extern void * fdt;
+ extern bool fdt_initialized;
+ extern char gLinuxCmdLine[LINUX_CMDLINE_SIZE];
++extern void linux_diagnostics();
+ 
+ void fdt_cmd() {
+     if (!loader_xfer_recv_count) {
+         iprintf("please upload a fdt before issuing this command\n");
+         return;
+     }
++    if (loader_xfer_recv_count > LINUX_DTREE_SIZE) {
++        iprintf("fdt pack is too large (%u > %u bytes)\n", loader_xfer_recv_count, LINUX_DTREE_SIZE);
++        return;
++    }
+     if (fdt_initialized) free(fdt);
+     fdt = malloc(LINUX_DTREE_SIZE);
+     if (!fdt) panic("couldn't reserve heap for fdt");
+@@ -58,11 +63,12 @@ void linux_cmdline_cmd(const char* cmd, char* args) {
+     }
+ 
+     size_t len = strlen(args);
+-    if (len > LINUX_CMDLINE_SIZE) {
+-        iprintf("Provided command line length is greater than LINUX_CMDLINE_SIZE (%lu > %lu)\n", len, (size_t) LINUX_CMDLINE_SIZE);
++    if (len >= LINUX_CMDLINE_SIZE) {
++        iprintf("Provided command line does not fit in LINUX_CMDLINE_SIZE (%lu >= %lu)\n", len, (size_t) LINUX_CMDLINE_SIZE);
+         return;
+     }
+ 
++    bzero(gLinuxCmdLine, LINUX_CMDLINE_SIZE);
+     memcpy(gLinuxCmdLine, args, len);
+ }
+ 
+@@ -78,6 +84,10 @@ void pongo_boot_linux() {
+         printf("linux boot not prepared\n");
+         return;
+     }
++    if (socnum == 0x7001) {
++        puts("T7001 Linux handoff is diagnostic-only; run linux_diag.");
++        return;
++    }
+     gBootFlag = BOOT_FLAG_LINUX;
+     task_yield();
+ }
+@@ -86,4 +96,5 @@ void linux_commands_register() {
+     command_register("bootl", "boots linux", pongo_boot_linux);
+     command_register("linux_cmdline", "update linux kernel command line", linux_cmdline_cmd);
+     command_register("fdt", "load linux fdt from usb", fdt_cmd);
++    command_register("linux_diag", "validate the T7001 Linux payload without booting", linux_diagnostics);
+ }

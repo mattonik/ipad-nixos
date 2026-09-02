@@ -21,6 +21,8 @@ parser.add_argument('-k', '--kernel', dest='kernel', help='path to kernel image'
 parser.add_argument('-d', '--dtbpack', dest='dtbpack', help='path to dtbpack')
 parser.add_argument('-r', '--initrd', dest='initrd', help='path to initial ramdisk')
 parser.add_argument('-c', '--cmdline', dest='cmdline', help='custom kernel command line')
+parser.add_argument('--diagnostic', action='store_true',
+                    help='run the guarded T7001 payload diagnostic instead of bootl')
 
 args = parser.parse_args()
 
@@ -83,12 +85,29 @@ print("Kernel loaded successfully.")
 
 dev.ctrl_transfer(0x21, 4, 0, 0, 0)
 
-print("Booting...")
-try:
-    dev.ctrl_transfer(0x21, 3, 0, 0, "bootl\n")
-except usb.core.USBError:
-    # PongoOS intentionally tears down USB before the Linux jump.  This proves
-    # only that handoff began; inspect the device before calling the boot good.
-    print("PongoOS disconnected after bootl; handoff began, not a Linux boot confirmation.")
+if args.diagnostic:
+    print("Running guarded T7001 diagnostic (no Linux jump)...")
+    try:
+        dev.ctrl_transfer(0x21, 4, 0xffff, 0, b"", timeout=5000)
+        dev.ctrl_transfer(0x21, 3, 0, 0, b"linux_diag\n", timeout=5000)
+        time.sleep(0.5)
+        output = bytes(dev.ctrl_transfer(0xa1, 1, 0, 0, 4096, timeout=5000))
+    except usb.core.USBError as error:
+        print(f"T7001 diagnostic failed: {error}")
+        exit(1)
+    text = output.rstrip(b"\0").decode("utf-8", "replace")
+    print(text)
+    if b"diagnostic only, no jump attempted" not in output:
+        print("Diagnostic did not prove that the no-jump guard ran.")
+        exit(1)
+    print("Payload ranges validated; PongoOS remains running.")
 else:
-    print("PongoOS accepted bootl without disconnecting; Linux did not start.")
+    print("Booting...")
+    try:
+        dev.ctrl_transfer(0x21, 3, 0, 0, "bootl\n")
+    except usb.core.USBError:
+        # PongoOS intentionally tears down USB before the Linux jump.  This proves
+        # only that handoff began; inspect the device before calling the boot good.
+        print("PongoOS disconnected after bootl; handoff began, not a Linux boot confirmation.")
+    else:
+        print("PongoOS accepted bootl without disconnecting; Linux did not start.")

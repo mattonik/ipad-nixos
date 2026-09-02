@@ -339,29 +339,86 @@ The exact PongoOS source matching `boot/Pongo.bin` is revision
 `742d92a023d16c4cc9ebf9cb73b708bf92c52808`. Its Linux module states that it
 is only supported on iPhone 7/A10, warns that non-A10 behaviour is undefined,
 and uses an A10-specific fixed kernel entry address (`0x800080000`). The iPad
-is T7001/A8X. This is the primary blocker, not an initramfs issue.
+is T7001/A8X. A T7001-specific exit/handoff port is still required, but the
+captured failure also exposed two earlier correctness defects below.
 
-There is one safe DTB preflight to do when the Pongo shell is responsive: its
-selector matches Apple `device-tree/target-type`, whereas the current pack
-contains only `J81`. Build a temporary pack with both `J81` and `J81AP` keys
-for the same `t7001-j81.dtb`, then record the Pongo selection message. That
-eliminates a board-name mismatch without changing the kernel.
+### Captured PongoOS failure and ruled-out work (2026-09-02)
+
+The supplied iPad screen capture records the first payload attempt directly:
+
+- PongoOS selected `J81` and printed `Found device tree for J81 (26581
+  bytes).` The target-type lookup therefore works; do **not** add a duplicate
+  `J81AP` pack entry as a speculative fix.
+- It printed the supplied command line and initrd range, then
+  `Failed to delete bootargs`. The generated J81 DTB has `/chosen` but no
+  pre-existing `bootargs`; upstream treats that normal condition as a failure
+  and then continues with a malformed overlay.
+- It reached `Assuming decompressed kernel`, followed by a synchronous
+  exception and double panic before Linux output. The kernel is a valid
+  42,404,352-byte Image, while the upstream code allocates its staging area
+  from the 10,812,698-byte compressed input but allows LZMA to write up to
+  256 MiB. This is a definite out-of-bounds write before any possible Linux
+  handoff.
+
+The iPad was no longer USB-enumerated after the double panic. Reconnecting a
+cable does not revive that RAM-only session: re-enter DFU and relaunch PongoOS
+for the next test. Do not send another stock `bootl` payload.
+
+### Guarded T7001 PongoOS diagnostic
+
+`boot/pongo-t7001.patch` is a small patch against exactly the pinned upstream
+revision. It is deliberately a **diagnostic**, not a Linux handoff port:
+
+- sizes the LZMA staging area for the uncompressed Image (bounded at 64 MiB),
+  validates the Image header, and refuses oversize payloads;
+- selects the DTB into a separate buffer, expands it out of place, and sets
+  `/chosen/bootargs` without requiring a prior property;
+- adds `linux_diag`, which applies the DTB/initrd overlay and prints the
+  actual virtual/physical ranges without jumping; and
+- rejects `bootl` on `socnum == 0x7001`, so the diagnostic binary cannot
+  accidentally attempt the known-invalid A10 transfer on this iPad.
+
+Build it from a fresh official checkout. The two small build fixes in the
+patch are only for Xcode 26's stricter diagnostics and do not change target
+behaviour:
+
+~~~bash
+git clone --recurse-submodules https://github.com/checkra1n/PongoOS.git /tmp/PongoOS-t7001
+git -C /tmp/PongoOS-t7001 checkout 742d92a023d16c4cc9ebf9cb73b708bf92c52808
+./boot/build-pongo-t7001-diagnostic.sh /tmp/PongoOS-t7001
+~~~
+
+After physically re-entering DFU, launch the generated ignored local binary:
+
+~~~bash
+sudo /tmp/palera1n-arm64 --pongo-shell \
+  --override-pongo "$PWD/boot/Pongo-t7001-diagnostic.bin" --debug-logging
+~~~
+
+Then run the usual uploader with `--diagnostic`:
+
+~~~bash
+nix develop '.#devShells.aarch64-darwin.default' --command python3 \
+  boot/load_linux.py --diagnostic \
+  -k boot/Image.lzma -d boot/dtbpack -r result-initramfs/initrd \
+  -c "console=tty0 loglevel=8 ignore_loglevel root=/dev/ram0"
+~~~
+
+The required success marker is `diagnostic only, no jump attempted.` together
+with the selected `J81`, kernel, DTB, and initrd ranges. The uploader exits
+non-zero unless it sees that marker. This test is RAM-only and leaves PongoOS
+running. It is the gate for studying T7001's real exception/cache/EL state;
+the printed `0x800080000` is only the upstream A10 candidate, **not** a T7001
+entry address to try.
 
 ### Next technical step
 
-1. Restore a responsive Pongo shell and capture its `dt` output or the DTB
-   selection message; record the exact `target-type`.
-2. Make a small, instrumented T7001 PongoOS fork from the pinned revision.
-   It must report the selected DTB, initrd range, kernel entry address, and
-   handoff result before USB teardown. Do not guess a replacement address or
-   upload an uninstrumented binary.
-3. Build that fork with a compatible PongoOS toolchain. The exact upstream
-   source currently does not build with this host's Xcode 26: the old source
-   trips stricter function-pointer checks and lacks the expected `va_start` /
-   `va_end` declarations. This is a host-toolchain compatibility issue, not a
-   reason to modify the iPad or retry the stock binary.
-4. Retry one RAM-only payload only after the fork records a real jump. Capture
-   the iPad display. Then, and only then, debug Linux early boot.
+1. Relaunch the guarded binary and capture one successful `linux_diag` output.
+2. Use those measured ranges plus T7001 boot/exception state to implement a
+   separately reviewed exit-to-Linux port. Keep the diagnostic `bootl` guard
+   until that port has an explicit tested transfer contract.
+3. Only after a visible Linux log, resume the console, touch, and Wi-Fi work
+   already recorded below. The current driver approval gate remains in force.
 
 ## Driver readiness and approval gate (2026-09-02)
 
@@ -437,8 +494,9 @@ is the reference for the intentionally minimal board description.
 | PongoOS upload | ✅ Complete |
 | PongoOS visible on iPad | ✅ Complete |
 | PongoOS USB interface `05ac:4141` | ✅ Verified with PyUSB control transfers |
-| Current RAM-only Pongo session | ⚠️ Ended by a timed-out host USB reset; relaunch required |
-| Linux payload upload | ✅ Transferred once; PongoOS re-enumerated after `bootl` |
+| Current RAM-only Pongo session | ⚠️ Ended by a PongoOS double panic; relaunch required |
+| Linux payload upload | ✅ Transferred once; exposed PongoOS pre-handoff defects |
+| Guarded T7001 diagnostic PongoOS | ✅ Builds from pinned source; hardware run awaits DFU relaunch |
 | Linux kernel boot | ❌ Not achieved |
 | Display/touch/Wi‑Fi/Bluetooth validation | ❌ Not started |
 | Usable tethered Linux tablet | ❌ Future milestone |
