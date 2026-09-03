@@ -144,35 +144,218 @@ keep chasing.
   and different exception-level/hypervisor model. Not pursued further — too large
   an architectural gap to usefully diff against for this specific handoff bug.
 
+## Round 1 outcome (implemented, tested, and it wasn't enough)
+
+Candidate 1 below (fixed entry point + route through `exit_to_el1_image()`) was
+implemented in full (see `docs/project-status.md` "Step 4") and run on hardware.
+The console confirmed the new code path executed correctly —
+`Booting Linux: 0x803000000(0x805960000)`, matching the fixed entry point and the
+expected `gBootArgs` (DTB) placement right after it — and PongoOS then fell through
+to the exact same `exit_to_el1_image()` mechanism proven to work for XNU boot on
+this device. **Same result as every previous attempt**: silent hang, USB drops,
+device left enumerated-but-unresponsive, no visible output of any kind (not even
+the usual reddish `pixfmt` flash this time).
+
+This is a genuinely informative negative result, not just another failure: it
+rules out the entire category of "our jump/handoff mechanism is wrong," since
+we're now using the literal same mechanism proven to work. Whatever's actually
+wrong survives even a byte-for-byte-matched, proven exit path. That pointed
+research at what happens *after* control reaches the kernel image, rather than at
+how control gets there — which led to Round 2.
+
+## Round 2: the kernel-side gap (reserved-memory / no-map)
+
+Re-examined `konradybcio/pongoOS`'s Linux DTB generation
+(`linux_dtree_init`/`linux_dtree_late` in `src/modules/linux/linux.c`) more
+closely than the first pass, and compared it against both this project's current
+PongoOS patch and mainline Linux's actual, upstreamed `t7001-air2.dtsi`
+(`torvalds/linux`, confirmed **Konrad Dybcio's own work was merged into mainline**
+— the file's copyright line reads `Konrad Dybcio <konradybcio@kernel.org>`).
+
+**Mainline's DTS explicitly defers memory description to the loader.** Fetched
+directly:
+
+```c
+memory@800000000 {
+	device_type = "memory";
+	reg = <0x8 0 0 0>; /* To be filled by loader */
+};
+
+reserved-memory {
+	#address-cells = <2>;
+	#size-cells = <2>;
+	ranges;
+
+	/* To be filled by loader */
+};
+```
+
+This is a real, present, empty node in the exact kernel this project builds and
+boots — not something that needs to be added to the DTS. It's a placeholder the
+bootloader (PongoOS, in this project's case) is expected to populate with actual
+values at boot time, before Linux ever sees the tree.
+
+**This project's PongoOS patch never fills it in, beyond the SEPFW addition from
+Round 1.** Checked `linux_dtree_init()` in the pinned PongoOS revision this
+project patches: it contains an entire `reserved-memory` population block that
+does exactly this kind of work — **but it's wrapped in a C block comment
+(`/* ... */`), entirely dead code**, present in stock/upstream PongoOS itself
+(not something introduced by this project's patch or by any T7001-specific
+change). No prior iteration of this project's patch enabled or replaced it.
+
+**Konrad's working PongoOS, by contrast, populates `/reserved-memory` for real,**
+and does so with two concrete, generic entries that need no per-device hardcoded
+addresses -- both computed from `boot_args` fields PongoOS already has on every
+boot, on every device:
+
+```c
+/* Reserve the framebuffer (so that Linux doesn't overwrite it) */
+siprintf(fdt_nodename, "/memory@%lx", gBootArgs->Video.v_baseAddr);
+node1 = fdt_add_subnode(fdt, node, fdt_nodename);
+fdt_appendprop_addrrange(fdt, 0, node1, "reg", gBootArgs->Video.v_baseAddr, fb_size);
+fdt_appendprop(fdt, node1, "no-map", "", 0);
+```
+
+```c
+if (gBootArgs->physBase > 0x800000000)
+{
+    /* Reserve TZ/low FW regions and such */
+    node1 = fdt_add_subnode(fdt, node, "memory@800000000");
+    fdt_appendprop_addrrange(fdt, 0, node1, "reg", 0x800000000, (gBootArgs->physBase - 0x800000000));
+    fdt_appendprop(fdt, node1, "no-map", "", 0);
+}
+```
+
+The second one is directly checkable against this project's own recorded
+`linux_diag` output: `[t7001] soc=7001 phys=0x800c00000 ...` — `physBase` on this
+exact unit is `0x800c00000`, i.e. **DRAM base plus ~12 MiB is firmware-reserved and
+currently completely unprotected** in every build this project has run on
+hardware so far. This project's own `linux_dtree_init()` shrinks the *advertised
+size* of the `/memory` node by a flat 32 MiB to avoid the very top of RAM, which
+has the same practical effect for that specific region (Linux never learns that
+memory exists, so it can't allocate into it) -- but nothing analogous protects the
+bottom ~12 MiB, and nothing protects the framebuffer at all.
+
+**Why this is a strong candidate, independent of everything ruled out already**:
+without these reservations, Linux's own generic memory allocator (page tables,
+slab, buddy allocator -- all initialized extremely early, before any driver probe,
+before any console/earlycon) is free to claim and overwrite firmware-reserved
+memory and the framebuffer's own backing store as ordinary free RAM. That would
+produce exactly the observed symptom class across all six builds so far: total
+silence, no console output (because whatever writes an early kernel message might
+itself be racing this corruption, or the write path depends on state that just got
+clobbered), no visible framebuffer change (because the framebuffer's own memory
+may be the thing that got reused), and a full hang shortly after entry -- all
+without needing any new hypothesis about the jump mechanism itself, which Round 1
+already showed is very likely not the problem.
+
+**What's not yet independently confirmed**: whether *only* these two reservations
+are needed, or whether the ADT's `memory-map` node has other regions beyond
+`SEPFW` (Konrad's DTSI separately hardcodes several more:
+`0x870100000`/`0x870180000`/three more in the `0x87f4xxxxx`-`0x87f6xxxxx` range) --
+those look like specific values captured from his own physical unit rather than
+something derivable from `boot_args` alone, so directly reusing his constants on
+a different unit is a real risk, not just a style choice. A more portable version
+of this fix would enumerate the ADT's `memory-map` node generically (PongoOS
+already has `dt_parse()`, a generic node/property walker, in
+`src/kernel/dtree.c`/`pongo.h`) and reserve *every* named region it finds, rather
+than hand-picking `SEPFW` alone as this project's patch currently does. That's a
+larger, not-yet-implemented piece of work, and the honest state is: it has not
+been tried, and it's unknown whether the two generic reservations above are
+sufficient on their own.
+
+### postmarketOS as an independent sanity check (not completed)
+
+Wanted to check whether postmarketOS's own current device page/build for
+`apple-ipad5,3` (or `apple-j81`/`apple-j82` -- search results were inconsistent
+about the exact codename) still describes a working boot today, as a check on
+whether this general technique is still reliable in 2026 independent of anything
+in this repository. The wiki page (`wiki.postmarketos.org`) is behind an Anubis
+anti-bot challenge that blocked every automated fetch attempted during this
+research. **This is worth checking manually in a real browser** -- it wasn't
+possible to complete from here, and it would be a genuinely useful data point
+either way (confirms the technique still works in general, or reveals it's
+degraded/bitrotted even for the reference implementation).
+
 ## Ranked candidates for the next attempt
 
-1. **Adopt the fixed entry point `0x803000000` and route T7001 through
-   `exit_to_el1_image()` like XNU, instead of a direct `jump_to_image()` call.**
-   This is the best-evidenced candidate: it's the exact mechanism a working
-   reference implementation uses, on the exact same chip, and it's a smaller,
-   simpler amount of custom code than the current patch (removes the custom
-   `linux_t7001` jump-target selection, the tramp buffer, and the diagnostic vs.
-   handoff split entirely). Testable incrementally and safely: the entry-point
-   constant and DTB `SEPFW` reservation can be added and inspected via
-   `linux_diag`-style read-only reporting before ever attempting a real jump.
-2. **Deprioritize the "missing `cache_clean()` before the jump" theory** recorded
-   in this project's own docs — the working reference doesn't do this either.
-   Don't spend a hardware cycle on it unless (1) is tried first and still fails.
-3. **UART/serial console** remains the right long-term answer if (1) doesn't
-   resolve things, per this project's own prior conclusion — but it's now a
-   secondary priority behind actually trying the proven reference approach, since
-   (1) doesn't require any new hardware and directly targets a documented, working
-   implementation rather than blind ARM64 internals guessing.
-4. Not recommended: continuing to iterate on the custom `jump_to_image`/tramp/
-   marker path from this project's own patch without first trying to match the
-   proven reference's approach — five hardware attempts down that path have
-   produced no new information beyond "it still hangs."
+1. **Implement the reserved-memory / no-map fix** (Round 2 above): add the two
+   generic, `boot_args`-derived reservations (low-FW region via `physBase`,
+   framebuffer via `Video.v_baseAddr`) to this project's `linux_dtree_init()` or
+   equivalent, matching Konrad's working PongoOS. This is now the best-evidenced
+   untried candidate -- concrete, small (a few dozen lines, no new assembly or
+   low-level primitives), and directly explains the exact symptom class observed
+   across all six builds so far, in a way the jump-mechanism theories (all now
+   ruled out or deprioritized) never fully did.
+2. If (1) still fails: consider the generic ADT `memory-map` enumeration
+   (reserving every named region, not just `SEPFW`) rather than hand-picking
+   which regions matter -- more robust, more work, not yet attempted.
+3. Check the postmarketOS wiki page manually (see above) as an independent
+   sanity check, ideally before or alongside (1) -- cheap, no hardware cycle
+   needed, and informative either way.
+4. UART/serial console (or JTAG/SWD via something like a Tamarin cable) remains
+   the correct fallback if (1) and (2) are both tried and still fail -- at that
+   point the remaining hypothesis space (DART/IOMMU setup, clock/power-domain
+   gating, exception-level assumptions, something not yet identified) genuinely
+   needs real execution visibility rather than more inference from a black box.
+5. Not recommended: continuing to guess at the jump/teardown mechanism itself --
+   Round 1 showed matching the proven mechanism exactly still wasn't sufficient,
+   so further iteration there has a demonstrated poor track record specifically
+   (independent of the general point that six hardware attempts without a
+   confirmed positive signal is already a lot of cost for the information
+   gained).
+
+## Project viability assessment
+
+Asked directly whether this project still makes sense to continue. Honest
+answer: **conditionally yes, but the condition is specific and close.**
+
+**What's actually been accomplished, and holds up under scrutiny:** the full
+build pipeline (kernel, DTB, initramfs, Nix cross-compilation) works and is
+reproducible. checkm8 exploitation, DFU handling, and PongoOS upload are all
+solid and repeatable. The project has correctly identified and fixed several real
+bugs along the way (an LZMA staging buffer overflow, an image-size guard bug, a
+missing null-pointer guard) independent of whether the core handoff ever
+succeeds -- this wasn't wasted motion. And the research in this document found a
+working reference implementation for the exact chip, which is a meaningfully
+stronger position than "nobody has done this" -- the question is now "what does
+their working combination have that ours doesn't," which is answerable, not
+"is this even possible," which would be a much harder place to be stuck.
+
+**What should genuinely inform a stop/continue decision:** six PongoOS builds,
+five run on hardware, have not yet produced a single confirmed sign of Linux
+executing on this device. Round 1 (matching the proven jump mechanism exactly)
+ruled out a large, plausible hypothesis space and still failed. Round 2 (this
+document) has a strong, concrete, well-evidenced candidate that hasn't been tried
+yet -- but "strong candidate" has been true before in this project's history
+(the tramp/SRAM-release fix looked similarly well-evidenced and turned out to be
+a no-op on this hardware). There is no guarantee this is the last gap, and
+without a UART or other real execution trace, every future attempt pays the same
+cost as every past one: a DFU cycle, a hardware round-trip, and a binary
+"nothing visible happened" result that's expensive to diagnose further.
+
+**Recommendation:** try candidate 1 above -- it's cheap to implement (no new
+low-level mechanism, just DTB content), well-evidenced, and directly explains
+what's been observed. If it produces a visible Linux boot log or panic, that's
+the actual milestone this project has been chasing, and everything downstream
+(driver work, this project's own approval-gated bring-up plan) becomes
+meaningful. If it *also* produces the identical silent hang with no new
+information, that's a reasonable point to treat this as genuinely blocked on
+tooling rather than on undiscovered software bugs, and to either invest in a
+UART/JTAG path (the `konradybcio` team's own account says they were blocked over
+a year on a comparably specific bug, with the same framebuffer-only constraint,
+before finding it -- that's a real cost, not a hypothetical one) or pause the
+project at a well-documented, resumable state rather than continuing to spend
+hardware cycles on inference alone.
 
 ## Sources
 
 - [konradybcio/pongoOS](https://github.com/konradybcio/pongoOS)
 - [konradybcio/linux-apple](https://github.com/konradybcio/linux-apple)
+- [torvalds/linux — arch/arm64/boot/dts/apple/t7001-air2.dtsi](https://github.com/torvalds/linux/blob/v6.19/arch/arm64/boot/dts/apple/t7001-air2.dtsi)
 - [Boot Mainline Linux On Apple A7, A8 And A8X Devices — Hackaday](https://hackaday.com/2022/06/12/boot-mainline-linux-on-apple-a7-a8-and-a8x-devices/)
 - [Now you can boot Linux on Apple devices with A7 through A11 series chips — Liliputing](https://liliputing.com/now-you-can-boot-linux-on-apple-devices-with-a7-and-a8-series-chips/)
 - [A11pwnX/Linux-iPhone-6s-X-howto](https://github.com/A11pwnX/Linux-iPhone-6s-X-howto)
 - [SoMainline/adt_collection](https://github.com/SoMainline/adt_collection)
+- postmarketOS wiki device page (`wiki.postmarketos.org`) -- blocked by an Anubis
+  anti-bot challenge during this research; check manually in a browser.

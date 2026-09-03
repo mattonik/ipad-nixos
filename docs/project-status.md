@@ -1250,26 +1250,89 @@ Built from a fresh pinned checkout: 254,032 bytes, SHA-256
 `boot/test_t7001_pongo_diagnostic.py` and `boot/test_load_linux_diagnostic.py`
 still pass unchanged (neither touches the removed marker machinery).
 `boot/test_t7001_boot_marker.py` was deleted (tested code that no longer
-exists). **Not yet run on hardware.**
+exists).
+
+### v7 hardware run — same mechanism as XNU boot, same silent hang (2026-09-03)
+
+Launched this build, confirmed `linux_diag` still reports the same staged
+addresses (its own local staging, unaffected by the `gEntryPoint` change), then
+sent `linux_t7001`. The console confirmed the new code path actually ran:
+
+```text
+Booting Linux: 0x803000000(0x805960000)
+Booting Linux...
+```
+
+`0x803000000` is exactly the new fixed entry point; `0x805960000` is
+`gEntryPoint + image_size`, the expected DTB placement. PongoOS then fell
+through to `exit_to_el1_image()` -- the literal mechanism proven to work for
+XNU/jailbreak boot on this device. Recorded on video for its full 15.5s
+duration: **no visible change of any kind**, not even the usual `pixfmt` flash.
+The device went to the same enumerated-but-unresponsive state as every prior
+real handoff attempt.
+
+This is a genuinely informative negative result: it rules out the entire
+category of "our jump/handoff mechanism is wrong," since this attempt used the
+literal same mechanism already proven to work for a different boot type on this
+exact device. That redirected research toward what happens *after* control
+reaches the kernel entry, rather than *how* control gets there.
+
+### Round 2 research: a concrete, unimplemented kernel-DTB gap (2026-09-03)
+
+Requested and completed a second, deeper research pass (full findings, sourcing,
+and a project viability assessment in
+[`research/t7001-handoff-options.md`](../research/t7001-handoff-options.md)).
+Summary of the strongest finding:
+
+Mainline Linux's actual `t7001-air2.dtsi` (Konrad Dybcio's own work was merged
+upstream -- confirmed by the `@kernel.org` copyright line) declares `/memory`
+and `/reserved-memory` as empty placeholders explicitly commented **"To be
+filled by loader."** This project's PongoOS patch never fills them in, beyond
+the single `SEPFW` reservation added in Step 4. The pinned upstream PongoOS
+revision this project patches has an entire `reserved-memory`-population code
+block in `linux_dtree_init()` -- **wrapped in a C block comment, dead code**,
+present before any T7001 work by anyone, never enabled by this project's patch
+or (as far as could be determined) anyone else's.
+
+Konrad's own *working* PongoOS fills this in for real, with two reservations
+computed generically from `boot_args` fields PongoOS already has on every boot
+(no per-device hardcoding needed): the framebuffer region
+(`gBootArgs->Video.v_baseAddr`, marked `no-map` "so that Linux doesn't
+overwrite it") and the low firmware/TZ region from DRAM base up to
+`gBootArgs->physBase`. That second one is directly checkable against this
+project's own `linux_diag` output -- `phys=0x800c00000` on this exact unit,
+meaning **DRAM base plus ~12 MiB is firmware-reserved and currently completely
+unprotected** in every build run on hardware so far. Neither gap has ever been
+addressed by this project's patch. Without these, Linux's own memory allocator
+(active before any driver, before any console) is free to treat that memory --
+including the framebuffer's own backing store -- as ordinary allocatable RAM,
+which would produce exactly the symptom seen across all six builds: total
+silence, no console output, no visible framebuffer change, full hang.
+
+This has **not been implemented or tested** -- it's the top candidate from the
+research, not yet acted on. Also unresolved: whether the ADT's `memory-map`
+node has other regions beyond `SEPFW` that matter (Konrad's DTSI hardcodes
+several more, but those look like per-unit captured values, not something
+safely reusable here without independent verification).
 
 ### Next technical step
 
-1. Launch this build and run `linux_diag` first -- it still reports the
-   staged addresses independently (its own local staging, not `gEntryPoint`),
-   so a passing `linux_diag` confirms upload/DTB/decompress still work before
-   testing the changed part.
-2. With the device watched (and ideally recorded) the whole time, send
-   `linux_t7001` (via `--t7001-handoff`) once. The success criterion this
-   time is qualitatively different from every prior attempt: a visible Linux
-   boot log or panic on the display, not a framebuffer color signal -- this
-   approach reuses the proven XNU exit path rather than staging an
-   observability stub of its own.
-3. If it still hangs with no output: re-read `research/t7001-handoff-options.md`
-   for what wasn't yet tried (their DTB overlay specifics, kernel config
-   differences, or their own commit history if a fuller clone surfaces more
-   detail), and only then fall back to UART/serial console or JTAG/SWD
-   (needs hardware not currently available).
-4. Only after a visible Linux log, resume the console, touch, and Wi-Fi work
+1. Implement the reserved-memory fix: add the framebuffer and low-FW/TZ
+   reservations to this project's DTB generation, computed generically from
+   `boot_args` (not hardcoded per-device constants) -- see
+   `research/t7001-handoff-options.md` for the exact reference code to port.
+2. If that's insufficient, consider generically enumerating the ADT's
+   `memory-map` node (PongoOS already has `dt_parse()`, a generic walker) and
+   reserving every named region, rather than hand-picking `SEPFW` alone.
+3. Check the postmarketOS wiki device page manually in a browser (automated
+   fetching was blocked by an anti-bot challenge during research) as an
+   independent, no-hardware-cycle sanity check that this general technique
+   still works today.
+4. If (1) and (2) are both tried and still produce a silent hang: this is the
+   point to treat the project as blocked on tooling, not on undiscovered
+   software bugs, and seriously invest in UART/serial console or JTAG/SWD
+   (needs hardware not currently available) rather than continuing to guess.
+5. Only after a visible Linux log, resume the console, touch, and Wi-Fi work
    already recorded below. The current driver approval gate remains in force.
 
 ## Driver readiness and approval gate (2026-09-02)
@@ -1349,7 +1412,7 @@ is the reference for the intentionally minimal board description.
 | Current RAM-only Pongo session | ✅ Active after verified handoff-candidate diagnostic; transient and RAM-only |
 | Linux payload upload | ✅ Transferred once; exposed PongoOS pre-handoff defects |
 | Guarded T7001 diagnostic PongoOS | ✅ Matched-toolchain Pongo, USB, aligned Image/DTB/initrd ranges, Linux register contract, and no-jump guard are proven on T7001 |
-| Linux kernel boot | ❌ Not achieved; 5 hardware handoff attempts, all silent hangs; color/timing/SRAM-release ruled out as causes; likely needs UART/hardware debug to progress |
+| Linux kernel boot | ❌ Not achieved; 6 hardware handoff attempts, all silent hangs; color/timing/SRAM-release/jump-mechanism all ruled out; strong untried candidate found (missing reserved-memory/no-map DTB entries) — see research/t7001-handoff-options.md |
 | Display/touch/Wi‑Fi/Bluetooth validation | ❌ Not started |
 | Usable tethered Linux tablet | ❌ Future milestone |
 
