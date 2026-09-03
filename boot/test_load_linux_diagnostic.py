@@ -8,6 +8,7 @@ import types
 from pathlib import Path
 
 commands = []
+diagnostic_reads = 0
 
 
 class Device:
@@ -15,9 +16,13 @@ class Device:
         pass
 
     def ctrl_transfer(self, request_type, request, value, index, data=0, **_kwargs):
+        global diagnostic_reads
         if request == 3:
             commands.append(data)
         if request_type == 0xa1 and request == 1:
+            diagnostic_reads += 1
+            if diagnostic_reads == 1:
+                return b"Found device tree for J81 (26581 bytes).\n"
             return b"[t7001] candidate-entry=0x800080000; diagnostic only, no jump attempted.\n\0"
         return b""
 

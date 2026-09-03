@@ -491,6 +491,25 @@ The live Pongo session still contains the earlier safe-but-rejecting image, so
 it must not be reused for a second diagnostic. Re-enter DFU, launch only this
 new image, reconnect the cable at the Pongo logo, then run `linux_diag` again.
 
+That corrected run succeeded. After the second Lightning reconnect, PyUSB
+confirmed PongoOS and `linux_diag`; the kernel, J81 DTB pack, and initramfs
+uploaded again. The first read returned only the early J81 selection because
+LZMA decompression was still in progress. A read-only follow-up returned:
+
+```text
+initrd @ 0x877294000-0x8774ac868
+[t7001] soc=7001 phys=0x800c00000 size=7c4de000 iBoot-entry=0x802b35490
+[t7001] image=43384832 stage=0x4774b4000/0x8774b4000 fdt=0xe002aa0a0 (262144 bytes)
+[t7001] initrd=0x477294000/0x877294000 (2197607 bytes)
+[t7001] candidate-entry=0x800080000; diagnostic only, no jump attempted.
+```
+
+This is the first verified T7001 Linux payload measurement. It proves the
+patched staging, DTB overlay, initramfs placement, and no-jump guard. It does
+not prove a Linux entry address, cache state, exception level, or a kernel
+boot. `boot/load_linux.py` now polls diagnostic output for up to 10 seconds,
+so the delayed success marker is captured in one safe invocation.
+
 The current hardware blocker was then isolated further: a fresh DFU run of
 the proven stock `boot/Pongo.bin` also reached `Checkmate!` but timed out
 waiting for download mode. Therefore this is not a Pongo image, kernel,
@@ -588,7 +607,8 @@ entry address to try.
 
 ### Next technical step
 
-1. Relaunch the guarded binary and capture one successful `linux_diag` output.
+1. Preserve the measured range contract above; do not send `bootl` to the
+   current or a future T7001 diagnostic image.
 2. Use those measured ranges plus T7001 boot/exception state to implement a
    separately reviewed exit-to-Linux port. Keep the diagnostic `bootl` guard
    until that port has an explicit tested transfer contract.
@@ -669,9 +689,9 @@ is the reference for the intentionally minimal board description.
 | PongoOS upload | ✅ Complete |
 | PongoOS visible on iPad | ✅ Complete |
 | PongoOS USB interface `05ac:4141` | ✅ Verified with PyUSB control transfers |
-| Current RAM-only Pongo session | ⚠️ No active session; DFU-to-download-mode USB reconnect is currently failing |
+| Current RAM-only Pongo session | ✅ Active at the latest no-jump diagnostic; transient and RAM-only |
 | Linux payload upload | ✅ Transferred once; exposed PongoOS pre-handoff defects |
-| Guarded T7001 diagnostic PongoOS | ⚠️ Matched-toolchain Pongo and USB are proven. The corrected no-jump image is built and awaits one fresh DFU `linux_diag` run |
+| Guarded T7001 diagnostic PongoOS | ✅ Matched-toolchain Pongo, USB, payload ranges, and no-jump guard are proven on T7001 |
 | Linux kernel boot | ❌ Not achieved |
 | Display/touch/Wi‑Fi/Bluetooth validation | ❌ Not started |
 | Usable tethered Linux tablet | ❌ Future milestone |

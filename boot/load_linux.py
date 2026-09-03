@@ -90,8 +90,13 @@ if args.diagnostic:
     try:
         dev.ctrl_transfer(0x21, 4, 0xffff, 0, b"", timeout=5000)
         dev.ctrl_transfer(0x21, 3, 0, 0, b"linux_diag\n", timeout=5000)
-        time.sleep(0.5)
-        output = bytes(dev.ctrl_transfer(0xa1, 1, 0, 0, 4096, timeout=5000))
+        deadline = time.monotonic() + 10
+        output = b""
+        while time.monotonic() < deadline:
+            time.sleep(0.25)
+            output += bytes(dev.ctrl_transfer(0xa1, 1, 0, 0, 4096, timeout=5000))
+            if b"diagnostic only, no jump attempted" in output:
+                break
     except usb.core.USBError as error:
         print(f"T7001 diagnostic failed: {error}")
         exit(1)
