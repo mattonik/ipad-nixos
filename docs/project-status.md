@@ -441,13 +441,21 @@ not evidence of a usable compiler and is not a reason to consume another DFU
 cycle.
 
 The only known-good reference is the checked-in stock Pongo image, built with
-Apple Clang 14.0.0 (`clang-1400.0.29.202`). That compiler is not installed on
-this host. Apple's official Command Line Tools for Xcode 14.2 download requires
-an authenticated Apple Developer session; the unauthenticated URL redirects
-to Apple ID sign-in. Obtain it only from Apple, extract or otherwise use it
-without replacing the active Xcode 21 toolchain, and set `PONGO_CC` to its
-`clang`. The diagnostic builder now rejects every other compiler before it
-can create a misleading image.
+Apple Clang 14.0.0 (`clang-1400.0.29.202`). Apple's official Command Line Tools
+for Xcode 14.2 download requires an authenticated Apple Developer session; the
+unauthenticated URL redirects to Apple ID sign-in. The official image downloaded
+on this host was 704,636,731 bytes with SHA-256
+`7ed7b1fb951461f911697d519ce27cb45932f256aa2a52a562619bb6bec1037f`.
+`hdiutil verify` succeeded and its `Command Line Tools.pkg` reports `signed
+Apple Software` through `pkgutil --check-signature`.
+
+`boot/extract-clt14.sh` verifies that image and extracts its executable payload
+without installing or replacing the active Xcode 21 toolchain. It validated the
+exact compiler and produced the guarded image from a fresh checkout: 254,040
+bytes, SHA-256
+`b345dc3cba9e6b99f5765f1858d42f4158d6d721afec153498745ac3c706b222`.
+The diagnostic builder now rejects every other compiler before it can create a
+misleading image.
 
 The current hardware blocker was then isolated further: a fresh DFU run of
 the proven stock `boot/Pongo.bin` also reached `Checkmate!` but timed out
@@ -507,11 +515,18 @@ Clang 11 is not valid either. The builder deliberately accepts only the exact
 Apple Clang version reported by the stock image.
 
 ~~~bash
+./boot/extract-clt14.sh \
+  "$HOME/Downloads/Command_Line_Tools_for_Xcode_14.2.dmg" /tmp/CLT14
 git clone --recurse-submodules https://github.com/checkra1n/PongoOS.git /tmp/PongoOS-t7001
 git -C /tmp/PongoOS-t7001 checkout 742d92a023d16c4cc9ebf9cb73b708bf92c52808
-PONGO_CC=/absolute/path/to/Apple-Clang-14.0.0/bin/clang \
+PONGO_CC=/tmp/CLT14/Library/Developer/CommandLineTools/usr/bin/clang \
   ./boot/build-pongo-t7001-diagnostic.sh /tmp/PongoOS-t7001
 ~~~
+
+The build script rejects checkouts with existing Pongo or Newlib output. That
+matters: a first exact-compiler build reused a previously generated Newlib
+archive and failed to link because it contained objects from active Xcode 21.
+The guard forces the compiler choice through both Pongo and Newlib.
 
 After physically re-entering DFU, launch the generated ignored local binary:
 
@@ -621,7 +636,7 @@ is the reference for the intentionally minimal board description.
 | PongoOS USB interface `05ac:4141` | ✅ Verified with PyUSB control transfers |
 | Current RAM-only Pongo session | ⚠️ No active session; DFU-to-download-mode USB reconnect is currently failing |
 | Linux payload upload | ✅ Transferred once; exposed PongoOS pre-handoff defects |
-| Guarded T7001 diagnostic PongoOS | ⚠️ Patch is source-checked; the Clang 11 image was non-bootable. Exact Apple Clang 14.0.0 is required before a safe hardware run |
+| Guarded T7001 diagnostic PongoOS | ⚠️ Exact Apple Clang 14.0.0 image built and uploader guard tested; device run awaits a fresh DFU USB connection |
 | Linux kernel boot | ❌ Not achieved |
 | Display/touch/Wi‑Fi/Bluetooth validation | ❌ Not started |
 | Usable tethered Linux tablet | ❌ Future milestone |

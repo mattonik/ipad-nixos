@@ -23,6 +23,12 @@ test "$(git -C "$source_dir" rev-parse HEAD)" = "$revision" || {
     exit 1
 }
 git -C "$source_dir" submodule update --init --recursive
+test ! -e "$source_dir/build/Pongo.bin" &&
+    test ! -e "$source_dir/newlib/build/Makefile" &&
+    test ! -e "$source_dir/newlib/aarch64-none-darwin/fixup/libc.a" || {
+    echo "PongoOS checkout contains generated build output; use a fresh checkout." >&2
+    exit 1
+}
 git -C "$source_dir" diff --quiet || {
     echo "PongoOS checkout must be clean; use a fresh checkout." >&2
     exit 1
