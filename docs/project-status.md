@@ -1203,25 +1203,72 @@ actual blocker. Their `linux_prep_boot()` also has the identical
 `pixfmt0`/color-matrix register poke this project already traced the
 reddish-flash artifact to, independently confirming that finding.
 
+### Step 4: adopt the proven reference approach — build verified, not device-tested (2026-09-03)
+
+Implemented the best-evidenced candidate from `research/t7001-handoff-options.md`:
+matched `konradybcio/pongoOS`'s approach instead of continuing to iterate on this
+project's own custom jump mechanism. Concretely, in `linux_prep_boot()`/
+`linux_boot()`/`entry.c`:
+
+- **Fixed entry point.** `gEntryPoint = (void *)0x803000000;` for `socnum == 0x7001`
+  (was: whatever `alloc_contig()` happened to return). This is the single biggest
+  suspect from the research -- a hand-picked, empirically-safe physical address
+  validated by a working implementation on this exact chip, not a heap allocation
+  with no particular relationship to firmware-reserved memory.
+- **No more custom jump.** `entry.c`'s `BOOT_FLAG_LINUX` case is now just
+  `linux_boot();` with no T7001 special-casing -- it falls through to the same
+  `exit_to_el1_image()` call used for XNU boot (and, previously, non-T7001 Linux),
+  the mechanism proven to work on this device every time it's jailbroken.
+  `linux_boot()` itself lost its `if (socnum == 0x7001) return;` early-out, so
+  T7001 now does the same `memcpy(gEntryPoint, gLinuxStage, gLinuxStageSize)`
+  every other chip does.
+- **SEPFW reservation added**, matching the reference: before staging the kernel,
+  reserve the ADT's `SEPFW` memory-map region in the Linux DTB via
+  `fdt_add_mem_rsv()`, if that region can be found. Soft-fails with a printed
+  warning rather than aborting boot if it can't (this project doesn't have the
+  device's ADT contents to verify the region exists under this exact name, but
+  the call is cheap and matches the reference implementation).
+- **Removed entirely**: the custom `jump_to_image`/tramp-buffer call, the
+  `gLinuxMarkerStage`/`gLinuxTrampStage`/`gLinuxPrepared` globals, the
+  `t7001_boot_marker.S` stub and its staging code, and the `t7001_color_test`/
+  `t7001_sram_check` diagnostic commands built to validate that now-abandoned
+  approach. `linux_diag`/`linux_diagnostics()` is kept (still a useful, unrelated,
+  no-jump upload/DTB sanity check). `linux_t7001` is kept as the explicit,
+  deliberately-named command for a real T7001 handoff attempt (still distinct
+  from `bootl`, which still refuses T7001 -- the safety boundary of "you must
+  explicitly ask for this" is preserved even though the underlying mechanism
+  changed).
+
+Net effect: the patch shrank from 684 lines to 449. This is a smaller, more
+conservative patch than what it replaces, precisely because it now does *less*
+custom work -- it relies on the same shared exit path every other boot type on
+this codebase already uses, instead of a bespoke one built and iterated on
+without ever getting confirmed evidence it worked.
+
+Built from a fresh pinned checkout: 254,032 bytes, SHA-256
+`400161ef9db5c7fa6e7a5a60f2d5044071688fd1bc9964c836f53d3262b51196`.
+`boot/test_t7001_pongo_diagnostic.py` and `boot/test_load_linux_diagnostic.py`
+still pass unchanged (neither touches the removed marker machinery).
+`boot/test_t7001_boot_marker.py` was deleted (tested code that no longer
+exists). **Not yet run on hardware.**
+
 ### Next technical step
 
-1. **Best-evidenced candidate**: adopt the fixed entry point `0x803000000`
-   and route T7001 boot through `exit_to_el1_image()` exactly like XNU boot,
-   removing the custom `jump_to_image`/tramp/marker-stub machinery this
-   project's patch currently uses. This is simpler than the current approach
-   (removes the diagnostic/handoff split and the custom jump target
-   selection entirely) and matches a proven working implementation on the
-   same chip, rather than guessing at ARM64 internals. See
-   `research/t7001-handoff-options.md` for the full comparison before
-   implementing.
-2. If (1) still fails: UART/serial console (or JTAG/SWD via something like
-   a Tamarin cable) remains the fallback -- needs hardware not currently
-   available.
-3. Absent new hardware and before (1) is tried, further attempts should
-   still be scoped narrowly and each explicitly state which single variable
-   they isolate, following the pattern of `t7001_color_test`/
-   `t7001_sram_check` (safe, no-jump, directly observable) rather than
-   another blind `--t7001-handoff` variant.
+1. Launch this build and run `linux_diag` first -- it still reports the
+   staged addresses independently (its own local staging, not `gEntryPoint`),
+   so a passing `linux_diag` confirms upload/DTB/decompress still work before
+   testing the changed part.
+2. With the device watched (and ideally recorded) the whole time, send
+   `linux_t7001` (via `--t7001-handoff`) once. The success criterion this
+   time is qualitatively different from every prior attempt: a visible Linux
+   boot log or panic on the display, not a framebuffer color signal -- this
+   approach reuses the proven XNU exit path rather than staging an
+   observability stub of its own.
+3. If it still hangs with no output: re-read `research/t7001-handoff-options.md`
+   for what wasn't yet tried (their DTB overlay specifics, kernel config
+   differences, or their own commit history if a fuller clone surfaces more
+   detail), and only then fall back to UART/serial console or JTAG/SWD
+   (needs hardware not currently available).
 4. Only after a visible Linux log, resume the console, touch, and Wi-Fi work
    already recorded below. The current driver approval gate remains in force.
 

@@ -112,7 +112,7 @@ if args.diagnostic:
         exit(1)
     print("Payload ranges validated; PongoOS remains running.")
 elif args.t7001_handoff:
-    print("Requesting guarded T7001 Linux handoff...")
+    print("Requesting T7001 Linux handoff...")
     try:
         dev.ctrl_transfer(0x21, 3, 0, 0, b"linux_t7001\n")
     except usb.core.USBError as error:
