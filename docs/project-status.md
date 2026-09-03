@@ -367,6 +367,17 @@ the Lightning cable at its `Checkmate!` / `Device should now reconnect in
 download mode` point; do not chain `gaster pwn` or the separate `irecovery`
 loader first on this Mac.
 
+### Stock PongoOS transport comparison — 2026-09-03
+
+The stock `boot/Pongo.bin` was then launched through one clean palera1n
+invocation from DFU. It reached PongoOS USB `05ac:4141`, and the harmless
+`help` command confirmed `pongoOS 2.6.1-742d92a0` running on Apple A8X/T7001.
+This proves the cable, exploit, download-mode transition, and Pongo USB
+transport are healthy. The preceding custom-image attempt is therefore not a
+valid binary regression test: it followed a separate `gaster pwn`/`irecovery`
+sequence before palera1n. The next custom test must repeat the successful
+single palera1n flow from fresh DFU, then run only `linux_diag`.
+
 The exact PongoOS source matching `boot/Pongo.bin` is revision
 `742d92a023d16c4cc9ebf9cb73b708bf92c52808`. Its Linux module states that it
 is only supported on iPhone 7/A10, warns that non-A10 behaviour is undefined,
