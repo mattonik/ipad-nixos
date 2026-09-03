@@ -510,7 +510,7 @@ not prove a Linux entry address, cache state, exception level, or a kernel
 boot. `boot/load_linux.py` now polls diagnostic output for up to 10 seconds,
 so the delayed success marker is captured in one safe invocation.
 
-### ARM64 handoff-candidate diagnostic — build verified, not yet device-tested (2026-09-03)
+### ARM64 handoff-candidate diagnostic — verified on T7001 (2026-09-03)
 
 The first measurement also showed why it was not a Linux handoff candidate:
 the Image stage at 0x8774b4000 was not 2 MiB aligned and the expanded DTB was
@@ -527,9 +527,20 @@ The production Image was checked as text_offset=0, file size 42,404,352 bytes,
 and layout size 43,384,832 bytes. The rebuilt guarded binary is 254,040 bytes
 with SHA-256 0dcd438bc1f944fc5c9e34ab75982a9a8835529010302292141357ee63d3a489.
 The diagnostic checks and uploader no-jump test pass, and the patch applies
-cleanly to PongoOS 742d92a. This is build verification only: the currently
-live PongoOS was launched with the preceding binary and cannot acquire this
-command without a new DFU launch.
+cleanly to PongoOS 742d92a. The new image was then launched on the iPad and
+the complete payload transaction succeeded:
+
+~~~text
+[t7001] soc=7001 phys=0x800c00000 size=7c4de000 iBoot-entry=0x802b35490
+[t7001] image=43384832 stage=0x477400000/0x877400000 text-offset=0 base=0x877400000
+[t7001] fdt=0x47c1f4000/0x87c1f4000 (262144 bytes), x0=0x87c1f4000 x1=x2=x3=0 EL1
+[t7001] initrd=0x477098000/0x877098000 (2197607 bytes)
+[t7001] candidate-entry=0x877400000; diagnostic only, no jump attempted.
+~~~
+
+This is the first verified T7001 handoff-candidate measurement. The image,
+DTB, initramfs, and register values are real device values; the command still
+does not disable the MMU, clean caches, quiesce DMA, or transfer control.
 
 The intended contract follows the upstream [AArch64 Linux boot
 protocol](https://docs.kernel.org/arch/arm64/booting.html): a DTB physical
@@ -720,9 +731,9 @@ is the reference for the intentionally minimal board description.
 | PongoOS upload | ✅ Complete |
 | PongoOS visible on iPad | ✅ Complete |
 | PongoOS USB interface `05ac:4141` | ✅ Verified with PyUSB control transfers |
-| Current RAM-only Pongo session | ✅ Active at latest check; it contains the preceding diagnostic binary and is transient/RAM-only |
+| Current RAM-only Pongo session | ✅ Active after verified handoff-candidate diagnostic; transient and RAM-only |
 | Linux payload upload | ✅ Transferred once; exposed PongoOS pre-handoff defects |
-| Guarded T7001 diagnostic PongoOS | ✅ Matched-toolchain Pongo, USB, payload ranges, and no-jump guard are proven on T7001 |
+| Guarded T7001 diagnostic PongoOS | ✅ Matched-toolchain Pongo, USB, aligned Image/DTB/initrd ranges, Linux register contract, and no-jump guard are proven on T7001 |
 | Linux kernel boot | ❌ Not achieved |
 | Display/touch/Wi‑Fi/Bluetooth validation | ❌ Not started |
 | Usable tethered Linux tablet | ❌ Future milestone |
