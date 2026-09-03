@@ -1063,6 +1063,86 @@ tests pass. **Not yet run on hardware.**
 4. Only after a visible Linux log, resume the console, touch, and Wi-Fi work
    already recorded below. The current driver approval gate remains in force.
 
+### v5 hardware run — colors confirmed correct; real handoff still fails (2026-09-03)
+
+`t7001_color_test` was launched and run over plain USB shell commands (no
+`load_linux.py`, no kernel/dtb/initrd upload). The observer confirmed
+clear black/green switches, then a leftover green rectangle at the top of
+the screen — exactly as expected, since `screen_clear_all()` deliberately
+restores everything except the banner region and our fill (correctly)
+covered the banner too. PongoOS answered `help` immediately afterward
+with no issues. This is an unambiguous positive result: the marker's
+exact `0xff000000`/`0xff00ff00` a8b8g8r8 color constants render as solid
+black and solid bright green on this hardware. That whole category of
+explanation is now closed off.
+
+`linux_diag` was re-run on the same live session (same measured
+addresses as every prior verified run), then `--t7001-handoff` was sent.
+No strobe was visible anywhere across a 12.9s recording -- only the
+pre-existing leftover green banner strip from the color test, static the
+whole time, and a brief red flash matching the already-explained
+`pixfmt`/color-matrix artifact. The device again went to the same
+"enumerated but unresponsive" state as the v2-v4 attempts. So: with
+validated colors and the tramp fix both in place, the real handoff still
+produces no confirmed evidence of reaching the marker.
+
+### t7001_sram_check: verifying the tramp fix actually changed anything (2026-09-03)
+
+The tramp fix (giving `jump_to_image` a real scratch page instead of `0`)
+only changes behavior if the live hardware's own runtime state calls for
+it: `jump_to_image.S` takes its SRAM-release path when tramp is nonzero
+*and* (`!has_el3` or (`has_el3` and `need_to_release_L3_SRAM == 0x41`)).
+That has never actually been checked on this device -- it's entirely
+possible the fix changed nothing at all, if the real answer is "no
+release needed here," which would mean the "raw" path was already
+correct and this device's actual blocker is still unidentified.
+
+Added `t7001_sram_check`, another plain, read-only shell command with no
+connection to the jump/teardown path -- it reads `id_aa64pfr0_el1` and
+the `need_to_release_L3_SRAM` byte directly (the exact two things
+`jump_to_image.S` itself checks) and prints them:
+
+```c
+void t7001_sram_check() {
+    uint64_t pfr0;
+    __asm__ volatile("mrs %0, id_aa64pfr0_el1" : "=r"(pfr0));
+    int has_el3 = (pfr0 & 0xf000) != 0;
+    uint8_t flag = need_to_release_L3_SRAM;
+    int would_release = !has_el3 || (has_el3 && flag == 0x41);
+    iprintf("id_aa64pfr0_el1=0x%llx has_el3=%d need_to_release_L3_SRAM=0x%02x would_release_via_tramp=%d\n",
+            pfr0, has_el3, flag, would_release);
+}
+```
+
+This is read over the same USB console channel as `help`, no photo
+needed. If `would_release_via_tramp=0`, the tramp fix from v4 was a
+no-op on this device and the real cause of the hang is still open. If it
+prints 1, the tramp fix did change the code path taken, and the hang is
+happening somewhere inside (or after) the actual SRAM-release trampoline
+itself -- a different, narrower place to look next.
+
+Built from a fresh pinned checkout: 254,032 bytes, SHA-256
+`389210235e7234fa33cc473a483ca912bab5fac4ff358d0dc627901a5394ea4d`. All
+tests pass. **Not yet run on hardware.**
+
+### Next technical step
+
+1. Launch this build and run `t7001_sram_check` over USB; read its
+   printed line directly (no photo needed).
+2. If `would_release_via_tramp=0`: the v4 tramp fix didn't change
+   anything on this device. Don't reason further from guesses about ARM64
+   cache/SRAM internals without more direct visibility -- this is the
+   point to seriously reconsider a UART/serial console (or another
+   hardware-debug path) rather than continuing to iterate blind on
+   PongoOS internals.
+3. If `would_release_via_tramp=1`: the fix is real and exercised, and the
+   hang is happening inside or after the actual SRAM-release trampoline
+   copy-and-execute sequence in `jump_to_image.S`'s tramp path -- narrow
+   the investigation there specifically, rather than at the marker or the
+   kernel Image.
+4. Only after a visible Linux log, resume the console, touch, and Wi-Fi work
+   already recorded below. The current driver approval gate remains in force.
+
 ## Driver readiness and approval gate (2026-09-02)
 
 This is an evidence-based planning record, not authorization to change a

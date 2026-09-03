@@ -573,7 +573,7 @@ index 6ae4d5b..e33f738 100644
      gTopOfKernelData = (uint64_t)gEntryPoint + gLinuxStageSize;
  }
 diff --git a/src/shell/linux.c b/src/shell/linux.c
-index afa4207..a823155 100644
+index afa4207..65b8122 100644
 --- a/src/shell/linux.c
 +++ b/src/shell/linux.c
 @@ -37,12 +37,17 @@ extern volatile char gBootFlag;
@@ -609,7 +609,7 @@ index afa4207..a823155 100644
      memcpy(gLinuxCmdLine, args, len);
  }
  
-@@ -78,12 +84,53 @@ void pongo_boot_linux() {
+@@ -78,12 +84,72 @@ void pongo_boot_linux() {
          printf("linux boot not prepared\n");
          return;
      }
@@ -617,10 +617,10 @@ index afa4207..a823155 100644
 +        puts("T7001 Linux handoff is diagnostic-only; run linux_diag.");
 +        return;
 +    }
-     gBootFlag = BOOT_FLAG_LINUX;
-     task_yield();
- }
- 
++    gBootFlag = BOOT_FLAG_LINUX;
++    task_yield();
++}
++
 +void pongo_boot_linux_t7001() {
 +    if (!linux_can_boot()) {
 +        puts("linux boot not prepared");
@@ -630,10 +630,10 @@ index afa4207..a823155 100644
 +        puts("linux_t7001 is only for T7001");
 +        return;
 +    }
-+    gBootFlag = BOOT_FLAG_LINUX;
-+    task_yield();
-+}
-+
+     gBootFlag = BOOT_FLAG_LINUX;
+     task_yield();
+ }
+ 
 +extern void screen_clear_all();
 +
 +void t7001_color_test() {
@@ -655,6 +655,24 @@ index afa4207..a823155 100644
 +    puts("t7001 color test done");
 +}
 +
++extern uint8_t need_to_release_L3_SRAM;
++
++void t7001_sram_check() {
++    // Safe, read-only: prints whether jump_to_image's tramp-based
++    // SRAM-release path would actually run given this device's live
++    // runtime state, without attempting any jump. id_aa64pfr0_el1 and
++    // need_to_release_L3_SRAM are exactly the two things jump_to_image.S
++    // itself checks to decide between the raw path and the tramp path
++    // when tramp is nonzero.
++    uint64_t pfr0;
++    __asm__ volatile("mrs %0, id_aa64pfr0_el1" : "=r"(pfr0));
++    int has_el3 = (pfr0 & 0xf000) != 0;
++    uint8_t flag = need_to_release_L3_SRAM;
++    int would_release = !has_el3 || (has_el3 && flag == 0x41);
++    iprintf("id_aa64pfr0_el1=0x%llx has_el3=%d need_to_release_L3_SRAM=0x%02x would_release_via_tramp=%d\n",
++            pfr0, has_el3, flag, would_release);
++}
++
  void linux_commands_register() {
      command_register("bootl", "boots linux", pongo_boot_linux);
      command_register("linux_cmdline", "update linux kernel command line", linux_cmdline_cmd);
@@ -662,4 +680,5 @@ index afa4207..a823155 100644
 +    command_register("linux_diag", "validate the T7001 Linux payload without booting", linux_diagnostics);
 +    command_register("linux_t7001", "handoff Linux on T7001", pongo_boot_linux_t7001);
 +    command_register("t7001_color_test", "safely strobes the T7001 marker's exact colors, no jump", t7001_color_test);
++    command_register("t7001_sram_check", "prints whether jump_to_image's SRAM release path would run, no jump", t7001_sram_check);
  }
