@@ -542,6 +542,28 @@ This is the first verified T7001 handoff-candidate measurement. The image,
 DTB, initramfs, and register values are real device values; the command still
 does not disable the MMU, clean caches, quiesce DMA, or transfer control.
 
+### Step 1: explicit T7001 transfer path — build verified, not device-tested (2026-09-03)
+
+The next small change preserves the prepared Image and DTB through PongoOS
+teardown. For T7001, linux_boot now skips the A10 copy to 0x800080000; after
+PongoOS has torn down USB/interrupts, cleaned caches, and disabled the MMU,
+the entry path calls the existing raw jump helper with the retained physical
+Image and DTB addresses. That helper sets x0 to the DTB and clears x1 through
+x3.
+
+This path is intentionally separate from bootl. The new linux_t7001 command
+is accepted only on socnum 0x7001, while bootl remains rejected on this chip.
+boot/load_linux.py exposes it only through the explicit --t7001-handoff flag.
+The rebuilt image is 254,040 bytes with SHA-256
+a5c67769e3bdbc48452e59d723dbbafd6ca58f090c72a3367be0f3dcba888149.
+The patch applies to the pinned PongoOS revision and builds with the verified
+Xcode 14.2 toolchain; host-side tests pass.
+
+No handoff was attempted in this step. The current iPad session contains the
+previous diagnostic image. The next hardware step is to launch this new
+binary, rerun linux_diag, and inspect its preserved physical addresses before
+choosing whether to invoke --t7001-handoff.
+
 The intended contract follows the upstream [AArch64 Linux boot
 protocol](https://docs.kernel.org/arch/arm64/booting.html): a DTB physical
 address in x0; zero in x1 through x3; an Image placed at its declared offset
@@ -550,6 +572,49 @@ interrupts, non-secure EL1/EL2 with MMU off, and the Image cleaned to the point
 of coherency. The diagnostic measures the address and register parts only.
 The exit/cache/exception transition is a separate, still unimplemented T7001
 port.
+
+### Step 2: first T7001 Linux handoff attempt — silent hang, no panic (2026-09-03)
+
+The Step 1 build/patch pairing was stale: `boot/Pongo-t7001-diagnostic.bin` on
+disk predated the prepared-state guard (`gLinuxPrepared`, added to
+`boot/pongo-t7001.patch` to stop a jump on failed preparation) that was the
+point of that change. Rebuilt from a fresh pinned checkout against the current
+patch: 254,032 bytes, SHA-256
+`d2c6d8a1229a64d8a83dcd867489cd01ee141c648639896fdcb81ed218fc953b`. This
+supersedes the `a5c67769...` build recorded above. `boot/test_t7001_pongo_diagnostic.py`
+and `boot/test_load_linux_diagnostic.py` both pass against it.
+
+Launched via the documented palera1n flow (fresh DFU, direct-to-Mac Lightning
+reconnect at the Pongo logo). A `linux_diag` re-check reproduced the same
+measured contract as the earlier verified diagnostic — Image staged at
+`0x877400000`, DTB at `0x87c1f4000` with `x0` set and `x1=x2=x3=0`, `EL1` —
+confirming the guarded build stages identically to the prior candidate.
+
+`--t7001-handoff` was then sent once. PongoOS accepted `linux_t7001`, printed
+its unconditional legacy `linux_prep_boot` banner (including the fixed
+`0x800080000` string, which is a leftover print and not the real T7001
+target), then `Booting Linux...`, and produced no further output. USB
+disconnected, consistent with PongoOS's pre-jump teardown. The iPad screen
+stayed on that frozen text and stopped responding to anything but a hard
+restart; the restart is safe and expected — this remains RAM-only and does
+not touch iPadOS storage.
+
+No panic or synchronous exception was printed this time, unlike the earlier
+stock-Pongo attempt against an A10 entry address. This does **not** confirm
+Linux executed: the J81 DTB has no verified UART, framebuffer-console, or
+USB-console path, so a successful jump into a live but silent kernel would
+currently look identical to a hang. It does rule out an immediate
+PongoOS-side fault at the jump site, and narrows the open question to
+whether control reached the kernel at all, and if so why there is no console
+output.
+
+The next diagnostic step is to get a signal that does not depend on the DTB
+having a working console before repeating this — for example an earlycon
+path proven independently, or a PongoOS-side heartbeat/marker written to a
+fixed physical address that can be read back after a forced restart. Do not
+repeat `--t7001-handoff` again without first adding that observability; a
+second blind attempt would not distinguish "booted silently" from "crashed
+silently" any better than this one did.
 
 The current hardware blocker was then isolated further: a fresh DFU run of
 the proven stock `boot/Pongo.bin` also reached `Checkmate!` but timed out
@@ -649,11 +714,11 @@ authorization to jump to Linux.
 
 ### Next technical step
 
-1. Preserve the measured range contract above; do not send `bootl` to the
-   current or a future T7001 diagnostic image.
-2. Use those measured ranges plus T7001 boot/exception state to implement a
-   separately reviewed exit-to-Linux port. Keep the diagnostic `bootl` guard
-   until that port has an explicit tested transfer contract.
+1. Add a console/observability signal that does not depend on the still-unverified
+   J81 DTB console path before sending another handoff — see Step 2 above.
+   Do not repeat `--t7001-handoff` blind a second time.
+2. Once that signal exists, retry the handoff and record whether the iPad
+   produces serial, framebuffer, or marker-readback output.
 3. Only after a visible Linux log, resume the console, touch, and Wi-Fi work
    already recorded below. The current driver approval gate remains in force.
 
@@ -734,7 +799,7 @@ is the reference for the intentionally minimal board description.
 | Current RAM-only Pongo session | ✅ Active after verified handoff-candidate diagnostic; transient and RAM-only |
 | Linux payload upload | ✅ Transferred once; exposed PongoOS pre-handoff defects |
 | Guarded T7001 diagnostic PongoOS | ✅ Matched-toolchain Pongo, USB, aligned Image/DTB/initrd ranges, Linux register contract, and no-jump guard are proven on T7001 |
-| Linux kernel boot | ❌ Not achieved |
+| Linux kernel boot | ❌ Not achieved; first `--t7001-handoff` sent, silent hang, no panic |
 | Display/touch/Wi‑Fi/Bluetooth validation | ❌ Not started |
 | Usable tethered Linux tablet | ❌ Future milestone |
 

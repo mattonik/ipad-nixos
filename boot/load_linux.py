@@ -23,8 +23,13 @@ parser.add_argument('-r', '--initrd', dest='initrd', help='path to initial ramdi
 parser.add_argument('-c', '--cmdline', dest='cmdline', help='custom kernel command line')
 parser.add_argument('--diagnostic', action='store_true',
                     help='run the guarded T7001 payload diagnostic instead of bootl')
+parser.add_argument('--t7001-handoff', action='store_true',
+                    help='request the explicit T7001 Linux handoff')
 
 args = parser.parse_args()
+
+if args.diagnostic and args.t7001_handoff:
+    parser.error('--diagnostic and --t7001-handoff are mutually exclusive')
 
 if args.kernel is None:
     print(f"error: No kernel specified! Run `{sys.argv[0]} --help` for usage.")
@@ -106,6 +111,14 @@ if args.diagnostic:
         print("Diagnostic did not prove that the no-jump guard ran.")
         exit(1)
     print("Payload ranges validated; PongoOS remains running.")
+elif args.t7001_handoff:
+    print("Requesting guarded T7001 Linux handoff...")
+    try:
+        dev.ctrl_transfer(0x21, 3, 0, 0, b"linux_t7001\n")
+    except usb.core.USBError as error:
+        print(f"T7001 handoff started; PongoOS disconnected: {error}")
+    else:
+        print("PongoOS accepted linux_t7001 without disconnecting; Linux did not start.")
 else:
     print("Booting...")
     try:

@@ -1,3 +1,33 @@
+diff --git a/src/kernel/entry.c b/src/kernel/entry.c
+index ebe074e..cc3cbbe 100644
+--- a/src/kernel/entry.c
++++ b/src/kernel/entry.c
+@@ -293,8 +293,12 @@ __attribute__((noinline)) void pongo_entry_cached()
+ */
+ extern void set_exception_stack_core0();
+ extern void lowlevel_set_identity(void);
++extern _Noreturn void jump_to_image(uint64_t image, uint64_t args, uint64_t tramp);
+ extern _Noreturn void jump_to_image_extended(uint64_t image, uint64_t args, uint64_t tramp, uint64_t original_image);
+ extern uint64_t gPongoSlide;
++extern void *gLinuxStage;
++extern void *gLinuxDtb;
++extern bool gLinuxPrepared;
+ 
+ _Noreturn void pongo_entry(uint64_t *kernel_args, void *entryp, void (*exit_to_el1_image)(void *boot_args, void *boot_entry_point, void *trampoline))
+ {
+@@ -327,6 +331,12 @@ _Noreturn void pongo_entry(uint64_t *kernel_args, void *entryp, void (*exit_to_e
+         if(gBootFlag == BOOT_FLAG_LINUX)
+         {
+             linux_boot();
++            if (socnum == 0x7001 && !gLinuxPrepared) {
++                screen_puts("T7001 Linux preparation failed");
++                while (1) {}
++            }
++            if (socnum == 0x7001)
++                jump_to_image((uint64_t)gLinuxStage, (uint64_t)gLinuxDtb, 0);
+         }
+         else
+         {
 diff --git a/src/kernel/mm.c b/src/kernel/mm.c
 index 352e422..e2f3b3c 100644
 --- a/src/kernel/mm.c
@@ -24,7 +54,7 @@ index c3f0f97..ac72202 100644
  #include <pongo.h>
  
 diff --git a/src/modules/linux/linux.c b/src/modules/linux/linux.c
-index 6ae4d5b..1a585ef 100644
+index 6ae4d5b..ab89ca7 100644
 --- a/src/modules/linux/linux.c
 +++ b/src/modules/linux/linux.c
 @@ -38,6 +38,13 @@ bool ramdisk_initialized = false;
@@ -126,11 +156,13 @@ index 6ae4d5b..1a585ef 100644
  }
  
  bool linux_can_boot()
-@@ -250,21 +258,22 @@ bool linux_can_boot()
+@@ -250,21 +258,24 @@ bool linux_can_boot()
  }
  
  void *gLinuxStage;
 +void *gLinuxStageAllocation;
++void *gLinuxDtb;
++bool gLinuxPrepared;
  uint32_t gLinuxStageSize;
  
 -void fdt_select_dtree(void *fdt)
@@ -153,7 +185,7 @@ index 6ae4d5b..1a585ef 100644
  
      while (buf[0])
      {
-@@ -277,13 +286,149 @@ void fdt_select_dtree(void *fdt)
+@@ -277,17 +288,154 @@ void fdt_select_dtree(void *fdt)
          if (!strcmp(key, (char *)buf))
          {
              iprintf("Found device tree for %s (%d bytes).\n", key, len);
@@ -305,7 +337,12 @@ index 6ae4d5b..1a585ef 100644
  }
  
  void linux_prep_boot()
-@@ -315,15 +460,19 @@ void linux_prep_boot()
+ {
++    gLinuxPrepared = false;
+     if (!ramdisk_initialized)
+     {
+         ramdisk_initialized = true;
+@@ -315,15 +463,19 @@ void linux_prep_boot()
      }
      else
      {
@@ -329,7 +366,7 @@ index 6ae4d5b..1a585ef 100644
      }
  
  #define pixfmt0 (&disp[0x402c / 4])
-@@ -343,20 +492,9 @@ void linux_prep_boot()
+@@ -343,31 +495,24 @@ void linux_prep_boot()
      puts("This is only supported on iPhone 7 for now and works to a lesser extent on other A10 devices. Behavior on non-A10 devices is undefined!!");
  
      gEntryPoint = (void *)(0x800080000);
@@ -347,14 +384,31 @@ index 6ae4d5b..1a585ef 100644
 -    {
 -        image_size = *(uint64_t *)(gLinuxStage + 16);
 -    }
+-    void *gLinuxDtre = (void *)((((uint64_t)gLinuxStage) + image_size + 7ull) & -8ull);
+-    memcpy(gLinuxDtre, fdt, LINUX_DTREE_SIZE);
 +    uint64_t image_size = 0;
 +    if (!linux_stage_kernel(&gLinuxStageAllocation, &gLinuxStage, &image_size))
 +        return;
-     void *gLinuxDtre = (void *)((((uint64_t)gLinuxStage) + image_size + 7ull) & -8ull);
-     memcpy(gLinuxDtre, fdt, LINUX_DTREE_SIZE);
++    gLinuxDtb = (void *)((((uint64_t)gLinuxStage) + image_size + 7ull) & -8ull);
++    memcpy(gLinuxDtb, fdt, LINUX_DTREE_SIZE);
      gLinuxStageSize = image_size + LINUX_DTREE_SIZE;
+ 
+     gBootArgs = (void *)((((uint64_t)gEntryPoint) + image_size + 7ull) & -8ull);
+     iprintf("Booting Linux: %p(%p)\n", gEntryPoint, gBootArgs);
+     gLinuxStage = (void *)(((uint64_t)gLinuxStage) - kCacheableView + 0x800000000);
++    gLinuxDtb = (void *)(((uint64_t)gLinuxDtb) - kCacheableView + 0x800000000);
++    gLinuxPrepared = true;
+ }
+ 
+ void linux_boot()
+ {
++    if (socnum == 0x7001)
++        return;
+     memcpy(gEntryPoint, gLinuxStage, gLinuxStageSize);
+     gTopOfKernelData = (uint64_t)gEntryPoint + gLinuxStageSize;
+ }
 diff --git a/src/shell/linux.c b/src/shell/linux.c
-index afa4207..9168e4a 100644
+index afa4207..d5cbc6f 100644
 --- a/src/shell/linux.c
 +++ b/src/shell/linux.c
 @@ -37,12 +37,17 @@ extern volatile char gBootFlag;
@@ -390,7 +444,7 @@ index afa4207..9168e4a 100644
      memcpy(gLinuxCmdLine, args, len);
  }
  
-@@ -78,6 +84,10 @@ void pongo_boot_linux() {
+@@ -78,6 +84,23 @@ void pongo_boot_linux() {
          printf("linux boot not prepared\n");
          return;
      }
@@ -398,12 +452,26 @@ index afa4207..9168e4a 100644
 +        puts("T7001 Linux handoff is diagnostic-only; run linux_diag.");
 +        return;
 +    }
++    gBootFlag = BOOT_FLAG_LINUX;
++    task_yield();
++}
++
++void pongo_boot_linux_t7001() {
++    if (!linux_can_boot()) {
++        puts("linux boot not prepared");
++        return;
++    }
++    if (socnum != 0x7001) {
++        puts("linux_t7001 is only for T7001");
++        return;
++    }
      gBootFlag = BOOT_FLAG_LINUX;
      task_yield();
  }
-@@ -86,4 +96,5 @@ void linux_commands_register() {
+@@ -86,4 +109,6 @@ void linux_commands_register() {
      command_register("bootl", "boots linux", pongo_boot_linux);
      command_register("linux_cmdline", "update linux kernel command line", linux_cmdline_cmd);
      command_register("fdt", "load linux fdt from usb", fdt_cmd);
 +    command_register("linux_diag", "validate the T7001 Linux payload without booting", linux_diagnostics);
++    command_register("linux_t7001", "handoff Linux on T7001", pongo_boot_linux_t7001);
  }

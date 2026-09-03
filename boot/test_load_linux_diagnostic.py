@@ -48,4 +48,6 @@ finally:
 
 assert b"linux_diag\n" in commands
 assert b"bootl\n" not in commands
+assert "--t7001-handoff" in Path(__file__).with_name("load_linux.py").read_text()
+assert "linux_t7001\\n" in Path(__file__).with_name("load_linux.py").read_text()
 print("diagnostic uploader test passed")
