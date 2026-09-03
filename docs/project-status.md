@@ -873,23 +873,117 @@ Built from a fresh pinned checkout with the same matched toolchain:
 254,032 bytes, SHA-256
 `48c2b288ba1aa4e24e56906686713c52b2d86122c21c4bde8790c748e2c75d60`.
 All tests pass, including `boot/test_t7001_boot_marker.py` updated for
-the strobe design. **Not yet run on hardware.**
+the strobe design.
+
+### v3 hardware run — negative, plus a new lead (2026-09-03)
+
+Launched this build, re-confirmed the same `linux_diag` measurement as
+every prior verified run, then sent `--t7001-handoff` once. This run was
+recorded on video for its full 12.4s duration and checked frame-by-frame
+at 4fps: the screen shows the normal PongoOS logo/console the entire
+time, with no black or green fill visible even once — a clean negative
+result for the strobe itself. The device again stopped responding to USB
+control transfers while remaining visible as a USB device to macOS,
+matching the v2 signature rather than the v1/Step 2 clean-disconnect
+signature.
+
+Separately, the observer reported a brief flash right after the command
+was sent, too fast to land on any 4fps-sampled frame. Asked directly, they
+described it as reddish and a fraction of a second — matching v1's and
+v2's reports almost exactly, despite v1, v2, and v3 being three
+unrelated marker designs (different size, color, and hold behavior each
+time). If any of the three markers had actually executed, the visual
+signature should have tracked the design change; it never did. The
+conclusion recorded here is that this reddish flash is **not** any
+version of this stub's output, and is most likely intrinsic to PongoOS's
+own teardown sequence on every `linux_t7001` attempt, independent of what
+code runs afterward. No version of the marker has produced confirmed
+evidence that execution reaches it.
+
+### The jump_to_image tramp=0 gap (2026-09-03)
+
+Given three marker designs in a row showed no confirmed sign of
+executing, the more promising lead turned out to be upstream of the
+marker entirely. `jump_to_image()` (`src/boot/jump_to_image.S`) takes an
+`image`, `args`, and `tramp` argument; when `tramp` is nonzero and the
+live hardware needs it (checked at runtime via `id_aa64pfr0_el1` and a
+`need_to_release_L3_SRAM` flag set during the checkm8 exploit's own
+bootloader patching, not hardcoded per chip), it releases L2/L3 cache
+that iBoot leaves locked down as SRAM before jumping. When `tramp` is
+zero, none of that runs — the function takes an unconditional "raw" path
+straight to the jump. Its own source comment on that path: *"If we were
+passed no tramp page, then oh well. You better not be booting any kernel
+here."*
+
+Every `jump_to_image` call this patch added (the diagnostic-only
+measurement path, and the real T7001 handoff through v3) passed `tramp=0`
+— exactly the case that comment warns against. The one call elsewhere in
+this codebase that actually boots a full OS on the non-RAW path,
+`exit_to_el1_image()` at the end of `pongo_entry()`, always passes a real
+computed trampoline address, never zero. If this device's SRAM is in fact
+locked at this point (plausible: the release mechanism is generic to the
+checkm8 exploit chain, not A10-specific), skipping it could leave cache
+state that makes any subsequent physical code — our marker, the kernel
+Image, or both — behave unpredictably, independent of what that code
+actually contains. This is a strong candidate for explaining why nothing
+tried so far, marker or otherwise, has produced a confirmed positive
+signal.
+
+### Marker v4: real tramp buffer, corrected + robust strobe (2026-09-03)
+
+Two fixes landed together. `linux_prep_boot()` now allocates and
+cache-cleans a second small physical scratch page and passes its physical
+address as `jump_to_image`'s `tramp` argument instead of `0`, so the
+SRAM-release path can actually run if the live hardware state calls for
+it — the existing runtime checks decide whether it's needed, this just
+stops forcibly skipping that decision.
+
+The strobe itself also gained a `repeat_count` field: each color phase
+now re-fills the whole screen 15 times (~50M busy-wait iterations apart)
+before switching, rather than filling once and delaying once. This makes
+the total hold time per color resistant to a wrong per-iteration cycle
+guess (relevant given v3's flash may have been real but far shorter than
+intended), and re-asserts the color repeatedly rather than once, in case
+anything else is periodically touching the framebuffer.
+
+Fixing this in the same pass caught a real bug worth recording: the
+`t7001_boot_marker.S` data section grew from 24 to 32 bytes to fit the
+new field, but the first draft of the C-side patch code still computed
+the data pointer as `marker_size - 24` and never set the new field at
+all — which would have left `repeat_count` as zero, underflowed to
+`0xFFFFFFFF` on the first decrement, and turned each color phase into
+roughly four billion re-fills (an effectively permanent hang on the first
+color, never reaching the second). Caught before building by re-reading
+the staged C code against the revised assembly layout rather than trusting
+the earlier edit; both are now fixed and covered by
+`boot/test_t7001_boot_marker.py`'s offset and ordering assertions.
+
+Built from a fresh pinned checkout: 254,032 bytes, SHA-256
+`0d89ff9b7384505ba23bc75df97de56aaf5cdc2e712a6030fef603f7ff147dc2`. All
+tests pass, including `boot/test_t7001_boot_marker.py` updated for the
+tramp buffer and repeat count. **Not yet run on hardware.**
 
 ### Next technical step
 
 1. Launch this build and confirm `linux_diag` still reports the same
-   staged addresses as before (the marker changes only the T7001
-   `linux_t7001` jump path, not `linux_diag`).
+   staged addresses as before (the marker/tramp changes affect only the
+   T7001 `linux_t7001` jump path, not `linux_diag`).
 2. With the device watched (and ideally recorded) the whole time, send
    `--t7001-handoff` once and record whether the black/green strobe
-   appears at all, and for how long.
-3. If the strobe is visible, then in a separate step add `cache_clean()`
-   for the Image/DTB staging in `linux_prep_boot()` (the gap noted in
-   Step 3) and build a variant that continues into the kernel jump after
-   a shorter, finite strobe — do not fix that blind alongside another
-   jump attempt; test it as its own, separately interpretable change. If
-   the strobe is not visible, treat the reddish blink itself as the next
-   thing to investigate, rather than iterating on the marker further.
+   appears, and separately whether the reddish flash still happens (it
+   should, on this theory, regardless of the strobe's outcome, since nothing
+   about the flash's cause was targeted directly).
+3. If the strobe is visible, this confirms the tramp fix mattered; then in
+   a separate step add `cache_clean()` for the Image/DTB staging in
+   `linux_prep_boot()` (the gap noted in Step 3) and build a variant that
+   continues into the kernel jump after a shorter, finite strobe — do not
+   fix that blind alongside another jump attempt; test it as its own,
+   separately interpretable change. If the strobe is still not visible,
+   the tramp fix wasn't sufficient on its own, and the reddish flash
+   becomes the more direct thing to investigate next (for example: does it
+   still occur with a stub that does nothing but spin immediately, no
+   framebuffer writes at all, to confirm it's unrelated to any of our code
+   rather than just this code).
 4. Only after a visible Linux log, resume the console, touch, and Wi-Fi work
    already recorded below. The current driver approval gate remains in force.
 

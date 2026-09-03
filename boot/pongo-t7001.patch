@@ -1,9 +1,9 @@
 diff --git a/src/boot/t7001_boot_marker.S b/src/boot/t7001_boot_marker.S
 new file mode 100644
-index 0000000..f54f779
+index 0000000..e5adbb4
 --- /dev/null
 +++ b/src/boot/t7001_boot_marker.S
-@@ -0,0 +1,86 @@
+@@ -0,0 +1,95 @@
 +/*
 + * t7001_boot_marker.S — pre-kernel-entry framebuffer checkpoint for the T7001
 + * Linux handoff diagnostic. Not part of upstream pongoOS.
@@ -14,34 +14,33 @@ index 0000000..f54f779
 + *   x30 = the physical address of this stub itself (already consumed by the
 + *         `ret` that got us here)
 + * None of those are load-bearing here: this build never continues to the
-+ * kernel, so x0 is not preserved. See history below for why.
++ * kernel.
 + *
-+ * v1 (2026-09-03) drew a small white band once, then continued to the
-+ * kernel. Reported result: an ~80px red/black band, bottom third of the
-+ * screen — wrong size, color, and location for what was coded, and observed
-+ * only via camera (inconclusive).
++ * v1 (2026-09-03): small one-shot white band, continued to kernel. Reported:
++ * an ~80px red/black band, wrong size/color/location — inconclusive.
 + *
-+ * v2 (2026-09-03) filled the whole screen black once, then spun forever
-+ * instead of continuing. Reported result: a brief red tint over the
-+ * existing console text, seen with the naked eye this time — but never a
-+ * black fill, in an 11.5s video that was checked frame-by-frame. Same
-+ * reddish signature as v1 despite a completely different size/color/hold
-+ * design, which is the tell: that blink almost certainly isn't this stub's
-+ * output at all, but something intrinsic to PongoOS's own teardown sequence
-+ * that happens on every T7001 jump attempt regardless of what code runs
-+ * afterward. A single write is also vulnerable to display double-buffering
-+ * (the write could land in a buffer that's never actually scanned out).
++ * v2 (2026-09-03): one-shot full-screen black fill, spun forever after.
++ * Reported: a brief red tint, never a black fill, across 11.5s of video
++ * checked frame-by-frame — inconclusive, and suspiciously the same
++ * red/brief signature as v1 despite a totally different design.
 + *
-+ * v3 (this version) replaces the one-shot fill with an infinite strobe:
-+ * fill solid black, hold, fill solid bright green, hold, repeat, forever.
-+ * Never continues onward. This addresses both open problems in the same
-+ * stub: a repeating write is far more likely to eventually hit the active
-+ * scanout buffer than a single write, and a blinking two-color pattern is
-+ * not confusable with a brief, one-off artifact like the reddish blink
-+ * seen twice already. If this strobe is visible, execution reached and is
-+ * still running in freshly staged physical code, full stop. If it is not
-+ * visible, the failure is at or before this stub, in jump_to_image's own
-+ * teardown/jump path.
++ * v3 (2026-09-03): infinite black/green strobe, ~0.3-1s per phase by a
++ * rough clock guess (500M busy-wait iterations). Reported: nothing at all
++ * across 12.4s of video sampled at 4fps -- until the observer separately
++ * reported "a very short flash right after the command was sent", too
++ * brief to land on any sampled frame. If that flash was this stub, the
++ * per-phase hold was far shorter than intended, i.e. the cycle-count guess
++ * was badly wrong (this core's actual clock/IPC at this boot stage is
++ * unknown), not that the stub failed to run.
++ *
++ * v4 (this version) stops rebuilding on a single guessed delay constant.
++ * Each color phase now re-fills the entire screen repeat_count times, with
++ * a delay between each re-fill, before switching color. This makes the
++ * total hold time per phase resistant to a bad per-iteration cycle guess
++ * (it scales with repeat_count regardless), and it re-asserts the color
++ * throughout the hold rather than writing it once -- so even if something
++ * else is periodically touching the framebuffer, our color keeps winning
++ * repeatedly rather than only once.
 + */
 +.text
 +.align 4
@@ -49,9 +48,11 @@ index 0000000..f54f779
 +_t7001_boot_marker:
 +    adr  x9, marker_data
 +    ldr  x10, [x9]            // x10 = framebuffer physical base (0 disables the strobe)
-+    cbz  x10, 3f
++    cbz  x10, 9f
 +    ldr  w15, [x9, 20]        // w15 = word count (kept for the whole run)
 +1:
++    ldr  w13, [x9, 24]        // w13 = repeat count for this phase
++7:
 +    ldr  w11, [x9, 8]         // w11 = color A
 +    mov  x2, x10
 +    mov  w3, w15
@@ -60,11 +61,15 @@ index 0000000..f54f779
 +    subs w3, w3, 1
 +    b.ne 0b
 +    dsb  sy
-+    ldr  w4, [x9, 16]         // w4 = delay iteration count
++    ldr  w4, [x9, 16]         // w4 = delay iteration count (per re-fill)
 +4:
 +    subs w4, w4, 1
 +    b.ne 4b
++    subs w13, w13, 1
++    b.ne 7b
 +
++    ldr  w13, [x9, 24]
++8:
 +    ldr  w11, [x9, 12]        // w11 = color B
 +    mov  x2, x10
 +    mov  w3, w15
@@ -77,24 +82,28 @@ index 0000000..f54f779
 +6:
 +    subs w4, w4, 1
 +    b.ne 6b
++    subs w13, w13, 1
++    b.ne 8b
 +    b    1b
-+3:
-+    b    3b                   // strobe disabled (fb base patched as 0): idle forever
++9:
++    b    9b                   // strobe disabled (fb base patched as 0): idle forever
 +
 +.align 3
 +marker_data:
 +    .quad 0   // +0:  framebuffer physical base address (patched; 0 disables the strobe)
 +    .word 0   // +8:  color A, 32bpp a8b8g8r8 (patched)
 +    .word 0   // +12: color B, 32bpp a8b8g8r8 (patched)
-+    .word 0   // +16: delay-loop iteration count per phase (patched)
++    .word 0   // +16: delay-loop iteration count per re-fill (patched)
 +    .word 0   // +20: word count -- framebuffer size in 32-bit words (patched)
++    .word 0   // +24: re-fill repeat count per color phase (patched)
++    .word 0   // +28: padding, unused
 +.global _t7001_boot_marker_end
 +_t7001_boot_marker_end:
 diff --git a/src/kernel/entry.c b/src/kernel/entry.c
-index ebe074e..abf8269 100644
+index ebe074e..83a1f9c 100644
 --- a/src/kernel/entry.c
 +++ b/src/kernel/entry.c
-@@ -293,8 +293,13 @@ __attribute__((noinline)) void pongo_entry_cached()
+@@ -293,8 +293,14 @@ __attribute__((noinline)) void pongo_entry_cached()
  */
  extern void set_exception_stack_core0();
  extern void lowlevel_set_identity(void);
@@ -104,11 +113,12 @@ index ebe074e..abf8269 100644
 +extern void *gLinuxStage;
 +extern void *gLinuxDtb;
 +extern void *gLinuxMarkerStage;
++extern void *gLinuxTrampStage;
 +extern bool gLinuxPrepared;
  
  _Noreturn void pongo_entry(uint64_t *kernel_args, void *entryp, void (*exit_to_el1_image)(void *boot_args, void *boot_entry_point, void *trampoline))
  {
-@@ -327,6 +332,12 @@ _Noreturn void pongo_entry(uint64_t *kernel_args, void *entryp, void (*exit_to_e
+@@ -327,6 +333,12 @@ _Noreturn void pongo_entry(uint64_t *kernel_args, void *entryp, void (*exit_to_e
          if(gBootFlag == BOOT_FLAG_LINUX)
          {
              linux_boot();
@@ -117,7 +127,7 @@ index ebe074e..abf8269 100644
 +                while (1) {}
 +            }
 +            if (socnum == 0x7001)
-+                jump_to_image((uint64_t)gLinuxMarkerStage, (uint64_t)gLinuxDtb, 0);
++                jump_to_image((uint64_t)gLinuxMarkerStage, (uint64_t)gLinuxDtb, (uint64_t)gLinuxTrampStage);
          }
          else
          {
@@ -147,7 +157,7 @@ index c3f0f97..ac72202 100644
  #include <pongo.h>
  
 diff --git a/src/modules/linux/linux.c b/src/modules/linux/linux.c
-index 6ae4d5b..bc9aec3 100644
+index 6ae4d5b..e33f738 100644
 --- a/src/modules/linux/linux.c
 +++ b/src/modules/linux/linux.c
 @@ -38,6 +38,13 @@ bool ramdisk_initialized = false;
@@ -249,7 +259,7 @@ index 6ae4d5b..bc9aec3 100644
  }
  
  bool linux_can_boot()
-@@ -250,21 +258,27 @@ bool linux_can_boot()
+@@ -250,21 +258,28 @@ bool linux_can_boot()
  }
  
  void *gLinuxStage;
@@ -258,6 +268,7 @@ index 6ae4d5b..bc9aec3 100644
 +bool gLinuxPrepared;
  uint32_t gLinuxStageSize;
 +void *gLinuxMarkerStage;
++void *gLinuxTrampStage;
 +extern const uint8_t t7001_boot_marker[];
 +extern const uint8_t t7001_boot_marker_end[];
  
@@ -281,7 +292,7 @@ index 6ae4d5b..bc9aec3 100644
  
      while (buf[0])
      {
-@@ -277,17 +291,154 @@ void fdt_select_dtree(void *fdt)
+@@ -277,17 +292,154 @@ void fdt_select_dtree(void *fdt)
          if (!strcmp(key, (char *)buf))
          {
              iprintf("Found device tree for %s (%d bytes).\n", key, len);
@@ -438,7 +449,7 @@ index 6ae4d5b..bc9aec3 100644
      if (!ramdisk_initialized)
      {
          ramdisk_initialized = true;
-@@ -315,15 +466,19 @@ void linux_prep_boot()
+@@ -315,15 +467,19 @@ void linux_prep_boot()
      }
      else
      {
@@ -462,7 +473,7 @@ index 6ae4d5b..bc9aec3 100644
      }
  
  #define pixfmt0 (&disp[0x402c / 4])
-@@ -343,31 +498,60 @@ void linux_prep_boot()
+@@ -343,31 +499,82 @@ void linux_prep_boot()
      puts("This is only supported on iPhone 7 for now and works to a lesser extent on other A10 devices. Behavior on non-A10 devices is undefined!!");
  
      gEntryPoint = (void *)(0x800080000);
@@ -509,24 +520,46 @@ index 6ae4d5b..bc9aec3 100644
 +        }
 +        memcpy(marker_alloc, t7001_boot_marker, marker_size);
 +
-+        // marker_data layout matches t7001_boot_marker.S exactly:
++        // marker_data layout matches t7001_boot_marker.S exactly (32
++        // bytes total: quad + 6 words, the last word unused padding):
 +        //   +0  quad  framebuffer physical base address
 +        //   +8  word  color A (opaque black)
 +        //   +12 word  color B (opaque bright green)
-+        //   +16 word  delay-loop iteration count per phase
++        //   +16 word  delay-loop iteration count per re-fill
 +        //   +20 word  word count (framebuffer size in 32-bit words)
-+        uint8_t *data = (uint8_t *)marker_alloc + (marker_size - 24);
++        //   +24 word  re-fill repeat count per color phase
++        uint8_t *data = (uint8_t *)marker_alloc + (marker_size - 32);
 +        uint64_t fb_words = (gBootArgs->Video.v_height * gBootArgs->Video.v_rowBytes) / 4;
 +        *(uint64_t *)(data + 0)  = gBootArgs->Video.v_baseAddr;
 +        *(uint32_t *)(data + 8)  = 0xff000000u; // opaque black (a8b8g8r8)
 +        *(uint32_t *)(data + 12) = 0xff00ff00u; // opaque bright green (a8b8g8r8)
-+        // ~0.3-1s per phase on a ~1.5 GHz core at a few cycles/iteration;
-+        // deliberately generous since the exact clock/IPC here is unknown.
-+        *(uint32_t *)(data + 16) = 500000000u;
++        // Each color phase re-fills the whole screen 15 times, ~50M busy
++        // iterations apart. Total hold time per color is resistant to a
++        // bad per-iteration cycle guess (it scales with the repeat count
++        // regardless), and re-asserting repeatedly instead of writing once
++        // defends against anything else periodically touching the
++        // framebuffer.
++        *(uint32_t *)(data + 16) = 50000000u;
 +        *(uint32_t *)(data + 20) = (uint32_t)fb_words;
++        *(uint32_t *)(data + 24) = 15u;
 +
 +        cache_clean(marker_alloc, marker_alloc_size);
 +        gLinuxMarkerStage = (void *)(((uint64_t)marker_alloc) - kCacheableView + 0x800000000);
++
++        // jump_to_image()'s tramp==0 "raw" path unconditionally skips its
++        // own SRAM-release trampoline, which its own code treats as
++        // mandatory (not optional) on chips without EL3. That release
++        // mechanism isn't A10-specific -- give it a real scratch physical
++        // page instead of 0 so it actually runs before we jump, rather
++        // than silently skipping a step three separate marker attempts
++        // may have been failing because of.
++        void *tramp_alloc = alloc_contig(0x4000);
++        if (!tramp_alloc) {
++            iprintf("T7001 tramp page allocation failed.\n");
++            return;
++        }
++        cache_clean(tramp_alloc, 0x4000);
++        gLinuxTrampStage = (void *)(((uint64_t)tramp_alloc) - kCacheableView + 0x800000000);
 +    }
 +
 +    gLinuxPrepared = true;
