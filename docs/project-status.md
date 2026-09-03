@@ -712,14 +712,69 @@ test is RAM-only and leaves PongoOS running. It is the gate for studying
 T7001's real exception/cache/EL state; the measured candidate entry is not an
 authorization to jump to Linux.
 
+### Step 3: pre-jump framebuffer marker checkpoint — build verified, not device-tested (2026-09-03)
+
+Step 2 left an open question that another blind `--t7001-handoff` cannot
+answer: whether the CPU ever executed a single instruction of freshly
+written physical code after PongoOS's teardown, independent of the J81
+DTB's unverified console/UART/USB path. `src/boot/t7001_boot_marker.S`
+adds a small position-independent stub for exactly that: it runs between
+`jump_to_image`'s teardown and the real kernel entry, writes a solid
+white 8-row band directly to the physical framebuffer
+(`gBootArgs->Video.v_baseAddr` — the same raw physical pointer
+`pongo_entry` itself assigns to `gFramebuffer` at this exact phase for
+every boot path, so this introduces no new hardware assumption), then
+branches to the real kernel entry address with `x0` (DTB) preserved and
+`x1=x2=x3=0` as the AArch64 boot protocol requires.
+
+`linux_prep_boot()` now stages this stub into its own small allocation,
+patches the framebuffer address, marker color, word count, and real
+kernel entry address into its data area, and `cache_clean()`s it —
+`gLinuxPrepared` is only set `true` after that clean succeeds. The T7001
+jump in `entry.c` now targets this marker stub (`gLinuxMarkerStage`)
+instead of jumping into the kernel Image directly.
+
+While tracing this, the marker's own cache-clean turned up a related gap:
+`linux_prep_boot()` copies the kernel Image and DTB into their staging
+buffers but never calls `cache_clean()` on either before the jump, unlike
+the framebuffer driver elsewhere in this codebase, which treats that
+clean as mandatory before the display controller can see written pixels.
+That is a plausible contributor to Step 2's silent hang on its own,
+independent of the console gap. It has deliberately **not** been fixed
+here — fixing it changes what a positive/negative marker result would
+mean, so it stays a separate, explicit next step (see below) rather than
+being bundled into this diagnostic.
+
+Interpreting the next hardware run: if the framebuffer band appears and
+the boot still hangs afterward, the teardown/jump mechanism is proven to
+reach and execute freshly staged physical code, which narrows the failure
+to the still-unclean Image/DTB or the kernel itself. If the band never
+appears, the failure is at or before the marker stub — in `jump_to_image`
+itself, or in how it was staged.
+
+Built from a fresh pinned checkout with the matched Xcode 14.2
+Clang/ld64-820.1 toolchain: 254,032 bytes, SHA-256
+`000f21df79bbb24b74ac57f1b9a697e035fe6081caf705fa88cda40c8c235c8f`.
+`boot/test_t7001_pongo_diagnostic.py`, `boot/test_load_linux_diagnostic.py`,
+and the new `boot/test_t7001_boot_marker.py` (structural checks: stub
+symbols exist, the asm/C data offsets agree, `gLinuxPrepared` is only set
+after the marker is staged and cleaned, and the jump targets the marker
+stub rather than the kernel directly) all pass. **Not yet run on
+hardware.**
+
 ### Next technical step
 
-1. Add a console/observability signal that does not depend on the still-unverified
-   J81 DTB console path before sending another handoff — see Step 2 above.
-   Do not repeat `--t7001-handoff` blind a second time.
-2. Once that signal exists, retry the handoff and record whether the iPad
-   produces serial, framebuffer, or marker-readback output.
-3. Only after a visible Linux log, resume the console, touch, and Wi-Fi work
+1. Launch this build and confirm `linux_diag` still reports the same
+   staged addresses as before (the marker changes only the T7001
+   `linux_t7001` jump path, not `linux_diag`).
+2. With the device watched the whole time, send `--t7001-handoff` once
+   and record whether the framebuffer band appears before or instead of
+   any hang, per the interpretation above.
+3. If the band appears and it still hangs, add `cache_clean()` for the
+   Image/DTB staging in `linux_prep_boot()` (the gap noted in Step 3)
+   before trying again — do not fix that blind alongside another jump
+   attempt; test it as its own, separately interpretable change.
+4. Only after a visible Linux log, resume the console, touch, and Wi-Fi work
    already recorded below. The current driver approval gate remains in force.
 
 ## Driver readiness and approval gate (2026-09-02)

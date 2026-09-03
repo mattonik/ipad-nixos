@@ -1,8 +1,68 @@
+diff --git a/src/boot/t7001_boot_marker.S b/src/boot/t7001_boot_marker.S
+new file mode 100644
+index 0000000..cd73472
+--- /dev/null
++++ b/src/boot/t7001_boot_marker.S
+@@ -0,0 +1,54 @@
++/*
++ * t7001_boot_marker.S — pre-kernel-entry framebuffer checkpoint for the T7001
++ * Linux handoff diagnostic. Not part of upstream pongoOS.
++ *
++ * jump_to_image()'s raw (tramp == 0) epilogue leaves, at entry to this stub:
++ *   x0 = args (the Linux DTB physical address) — MUST be preserved
++ *   x1 = x2 = x3 = 0 — MUST still be 0 when we hand off to the real kernel
++ *   x30 = the physical address of this stub itself (already consumed by the
++ *         `ret` that got us here; not otherwise needed)
++ *
++ * This stub writes a solid-color patch directly to the physical framebuffer
++ * (the same gBootArgs->Video.v_baseAddr pointer pongo_entry itself uses as a
++ * raw physical pointer for this exact post-lowlevel_set_identity phase, so
++ * this relies on nothing beyond what pongoOS already does for every boot
++ * path), then branches to the real kernel entry address. All addresses are
++ * patched into marker_data by linux_prep_boot() before this blob is copied
++ * into its staging buffer and cache-cleaned.
++ *
++ * If the framebuffer patch is visible on screen and the boot still hangs
++ * afterward, the teardown/jump mechanism itself is proven to reach and
++ * execute physical, freshly-written code; the failure is then narrowed to
++ * whatever follows (most likely the uncleaned Image/DTB cache lines, or the
++ * kernel itself). If the patch never appears, the failure is at or before
++ * this stub, i.e. in jump_to_image's own path or in the copy/patch below.
++ */
++.text
++.align 4
++.global _t7001_boot_marker
++_t7001_boot_marker:
++    adr  x9, marker_data
++    ldr  x10, [x9]            // x10 = framebuffer physical base (0 disables the marker)
++    cbz  x10, 1f
++    ldr  w11, [x9, 8]         // w11 = marker pixel value (32bpp)
++    ldr  w12, [x9, 12]        // w12 = word count (must be >= 1 when fb base is set)
++0:
++    str  w11, [x10], 4
++    subs w12, w12, 1
++    b.ne 0b
++    dsb  sy
++1:
++    ldr  x9, [x9, 16]         // x9 = real kernel entry physical address
++    mov  x1, 0
++    mov  x2, 0
++    mov  x3, 0
++    br   x9
++
++.align 3
++marker_data:
++    .quad 0   // +0:  framebuffer physical base address (patched)
++    .word 0   // +8:  marker pixel value (patched)
++    .word 0   // +12: word count (patched)
++    .quad 0   // +16: real kernel entry physical address (patched)
++.global _t7001_boot_marker_end
++_t7001_boot_marker_end:
 diff --git a/src/kernel/entry.c b/src/kernel/entry.c
-index ebe074e..cc3cbbe 100644
+index ebe074e..abf8269 100644
 --- a/src/kernel/entry.c
 +++ b/src/kernel/entry.c
-@@ -293,8 +293,12 @@ __attribute__((noinline)) void pongo_entry_cached()
+@@ -293,8 +293,13 @@ __attribute__((noinline)) void pongo_entry_cached()
  */
  extern void set_exception_stack_core0();
  extern void lowlevel_set_identity(void);
@@ -11,11 +71,12 @@ index ebe074e..cc3cbbe 100644
  extern uint64_t gPongoSlide;
 +extern void *gLinuxStage;
 +extern void *gLinuxDtb;
++extern void *gLinuxMarkerStage;
 +extern bool gLinuxPrepared;
  
  _Noreturn void pongo_entry(uint64_t *kernel_args, void *entryp, void (*exit_to_el1_image)(void *boot_args, void *boot_entry_point, void *trampoline))
  {
-@@ -327,6 +331,12 @@ _Noreturn void pongo_entry(uint64_t *kernel_args, void *entryp, void (*exit_to_e
+@@ -327,6 +332,12 @@ _Noreturn void pongo_entry(uint64_t *kernel_args, void *entryp, void (*exit_to_e
          if(gBootFlag == BOOT_FLAG_LINUX)
          {
              linux_boot();
@@ -24,7 +85,7 @@ index ebe074e..cc3cbbe 100644
 +                while (1) {}
 +            }
 +            if (socnum == 0x7001)
-+                jump_to_image((uint64_t)gLinuxStage, (uint64_t)gLinuxDtb, 0);
++                jump_to_image((uint64_t)gLinuxMarkerStage, (uint64_t)gLinuxDtb, 0);
          }
          else
          {
@@ -54,7 +115,7 @@ index c3f0f97..ac72202 100644
  #include <pongo.h>
  
 diff --git a/src/modules/linux/linux.c b/src/modules/linux/linux.c
-index 6ae4d5b..ab89ca7 100644
+index 6ae4d5b..490c75e 100644
 --- a/src/modules/linux/linux.c
 +++ b/src/modules/linux/linux.c
 @@ -38,6 +38,13 @@ bool ramdisk_initialized = false;
@@ -156,7 +217,7 @@ index 6ae4d5b..ab89ca7 100644
  }
  
  bool linux_can_boot()
-@@ -250,21 +258,24 @@ bool linux_can_boot()
+@@ -250,21 +258,27 @@ bool linux_can_boot()
  }
  
  void *gLinuxStage;
@@ -164,6 +225,9 @@ index 6ae4d5b..ab89ca7 100644
 +void *gLinuxDtb;
 +bool gLinuxPrepared;
  uint32_t gLinuxStageSize;
++void *gLinuxMarkerStage;
++extern const uint8_t t7001_boot_marker[];
++extern const uint8_t t7001_boot_marker_end[];
  
 -void fdt_select_dtree(void *fdt)
 +bool fdt_select_dtree(const void *pack, void *selected)
@@ -185,7 +249,7 @@ index 6ae4d5b..ab89ca7 100644
  
      while (buf[0])
      {
-@@ -277,17 +288,154 @@ void fdt_select_dtree(void *fdt)
+@@ -277,17 +291,154 @@ void fdt_select_dtree(void *fdt)
          if (!strcmp(key, (char *)buf))
          {
              iprintf("Found device tree for %s (%d bytes).\n", key, len);
@@ -342,7 +406,7 @@ index 6ae4d5b..ab89ca7 100644
      if (!ramdisk_initialized)
      {
          ramdisk_initialized = true;
-@@ -315,15 +463,19 @@ void linux_prep_boot()
+@@ -315,15 +466,19 @@ void linux_prep_boot()
      }
      else
      {
@@ -366,7 +430,7 @@ index 6ae4d5b..ab89ca7 100644
      }
  
  #define pixfmt0 (&disp[0x402c / 4])
-@@ -343,31 +495,24 @@ void linux_prep_boot()
+@@ -343,31 +498,54 @@ void linux_prep_boot()
      puts("This is only supported on iPhone 7 for now and works to a lesser extent on other A10 devices. Behavior on non-A10 devices is undefined!!");
  
      gEntryPoint = (void *)(0x800080000);
@@ -397,6 +461,36 @@ index 6ae4d5b..ab89ca7 100644
      iprintf("Booting Linux: %p(%p)\n", gEntryPoint, gBootArgs);
      gLinuxStage = (void *)(((uint64_t)gLinuxStage) - kCacheableView + 0x800000000);
 +    gLinuxDtb = (void *)(((uint64_t)gLinuxDtb) - kCacheableView + 0x800000000);
++
++    if (socnum == 0x7001) {
++        // Stage a small checkpoint stub between PongoOS's teardown and the
++        // real kernel entry: it paints a marker on the physical framebuffer,
++        // then branches to gLinuxStage. See t7001_boot_marker.S for why.
++        uint64_t marker_size = (uint64_t)(t7001_boot_marker_end - t7001_boot_marker);
++        uint64_t marker_alloc_size = (marker_size + 0x3fffull) & ~0x3fffull;
++        void *marker_alloc = alloc_contig(marker_alloc_size);
++        if (!marker_alloc) {
++            iprintf("T7001 marker stub allocation failed (%llu bytes).\n", marker_alloc_size);
++            return;
++        }
++        memcpy(marker_alloc, t7001_boot_marker, marker_size);
++
++        // marker_data layout matches t7001_boot_marker.S exactly:
++        //   +0  quad  framebuffer physical base address
++        //   +8  word  marker pixel value
++        //   +12 word  word count
++        //   +16 quad  real kernel entry physical address
++        uint8_t *data = (uint8_t *)marker_alloc + (marker_size - 24);
++        uint64_t fb_words = (gBootArgs->Video.v_rowBytes / 4) * 8; // an 8-row band
++        *(uint64_t *)(data + 0)  = gBootArgs->Video.v_baseAddr;
++        *(uint32_t *)(data + 8)  = 0xffffffffu;
++        *(uint32_t *)(data + 12) = (uint32_t)fb_words;
++        *(uint64_t *)(data + 16) = (uint64_t)gLinuxStage;
++
++        cache_clean(marker_alloc, marker_alloc_size);
++        gLinuxMarkerStage = (void *)(((uint64_t)marker_alloc) - kCacheableView + 0x800000000);
++    }
++
 +    gLinuxPrepared = true;
  }
  
