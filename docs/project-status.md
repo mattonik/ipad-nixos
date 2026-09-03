@@ -391,9 +391,8 @@ The checked-in stock image reports Clang 14. The host reports Apple Clang
 21.0.1, while the upstream CI for this revision builds with `clang-10`. A
 clean source checkout was built with only the two compatibility edits required
 by Clang 21 (`stdarg.h` in `task.c` and the `ttb_alloc` function-pointer cast
-in `mm.c`). That image was launched from fresh DFU through the same palera1n
-flow and did not re-enumerate PongoOS USB; the iPad returned to an absent/DFU
-state.
+in `mm.c`). That image reached palera1n's `Booting PongoOS...` stage but did
+not re-enumerate PongoOS USB; it must not be used for the T7001 diagnostic.
 
 Removing LTO from both the root and Newlib makefiles produced a second clean
 image (`254056` bytes, SHA-256
@@ -403,8 +402,20 @@ the exploit timed out waiting for download mode. This run is inconclusive as
 an image comparison because the device disappeared before the payload could
 be observed. The useful conclusion is that the repository's supported build
 toolchain is old Clang (CI uses clang-10), not the current Apple Clang 21.
-The next binary test should use a pinned old-Clang environment before any
-further Linux or driver work.
+Nix Clang 11.1.0 with the macOS linker successfully built the complete guarded
+diagnostic image (`254040` bytes, SHA-256
+`62be4d4bf2fe870b9b3f7054965fb6905c59d7848add991201e72de7b75b15f0`). Its
+size is close to the proven stock image (`254032` bytes). The checked-in
+builder now requires this compiler; its device test is pending restoration of
+the DFU-to-download-mode USB transition.
+
+The current hardware blocker was then isolated further: a fresh DFU run of
+the proven stock `boot/Pongo.bin` also reached `Checkmate!` but timed out
+waiting for download mode. Therefore this is not a Pongo image, kernel,
+initramfs, touch, or Wi-Fi failure. Palera1n documents this as an Apple
+Silicon USB-C limitation; use a USB-A Lightning cable through a USB-A hub (or
+another host) for the next test. Direct USB-C may require a precisely timed
+unplug/replug after checkm8 and is presently unreliable on this Mac.
 
 ### Captured PongoOS failure and ruled-out work (2026-09-02)
 
@@ -442,14 +453,15 @@ revision. It is deliberately a **diagnostic**, not a Linux handoff port:
 - rejects `bootl` on `socnum == 0x7001`, so the diagnostic binary cannot
   accidentally attempt the known-invalid A10 transfer on this iPad.
 
-Build it from a fresh official checkout. The two small build fixes in the
-patch are only for Xcode 26's stricter diagnostics and do not change target
-behaviour:
+Build it from a fresh official checkout. The two source compatibility fixes in
+the patch do not make Apple Clang 21 a valid Pongo compiler: the builder
+deliberately requires the verified Nix Clang 11 environment.
 
 ~~~bash
 git clone --recurse-submodules https://github.com/checkra1n/PongoOS.git /tmp/PongoOS-t7001
 git -C /tmp/PongoOS-t7001 checkout 742d92a023d16c4cc9ebf9cb73b708bf92c52808
-./boot/build-pongo-t7001-diagnostic.sh /tmp/PongoOS-t7001
+nix shell github:NixOS/nixpkgs/nixos-21.11#llvmPackages_11.clang --command \
+  ./boot/build-pongo-t7001-diagnostic.sh /tmp/PongoOS-t7001
 ~~~
 
 After physically re-entering DFU, launch the generated ignored local binary:
