@@ -573,7 +573,7 @@ index 6ae4d5b..e33f738 100644
      gTopOfKernelData = (uint64_t)gEntryPoint + gLinuxStageSize;
  }
 diff --git a/src/shell/linux.c b/src/shell/linux.c
-index afa4207..d5cbc6f 100644
+index afa4207..a823155 100644
 --- a/src/shell/linux.c
 +++ b/src/shell/linux.c
 @@ -37,12 +37,17 @@ extern volatile char gBootFlag;
@@ -609,7 +609,7 @@ index afa4207..d5cbc6f 100644
      memcpy(gLinuxCmdLine, args, len);
  }
  
-@@ -78,6 +84,23 @@ void pongo_boot_linux() {
+@@ -78,12 +84,53 @@ void pongo_boot_linux() {
          printf("linux boot not prepared\n");
          return;
      }
@@ -617,10 +617,10 @@ index afa4207..d5cbc6f 100644
 +        puts("T7001 Linux handoff is diagnostic-only; run linux_diag.");
 +        return;
 +    }
-+    gBootFlag = BOOT_FLAG_LINUX;
-+    task_yield();
-+}
-+
+     gBootFlag = BOOT_FLAG_LINUX;
+     task_yield();
+ }
+ 
 +void pongo_boot_linux_t7001() {
 +    if (!linux_can_boot()) {
 +        puts("linux boot not prepared");
@@ -630,13 +630,36 @@ index afa4207..d5cbc6f 100644
 +        puts("linux_t7001 is only for T7001");
 +        return;
 +    }
-     gBootFlag = BOOT_FLAG_LINUX;
-     task_yield();
- }
-@@ -86,4 +109,6 @@ void linux_commands_register() {
++    gBootFlag = BOOT_FLAG_LINUX;
++    task_yield();
++}
++
++extern void screen_clear_all();
++
++void t7001_color_test() {
++    // Safe, no-teardown sanity check for the T7001 marker's exact color
++    // constants: reuses pongoOS's own already-working screen_fill(), the
++    // same primitive fbclear/fbinvert use, so there is nothing here that
++    // can hang -- PongoOS stays fully alive and interactive throughout.
++    // If this doesn't look like solid black then solid bright green, the
++    // a8b8g8r8 color assumption in t7001_boot_marker.S is wrong; if it
++    // does, that assumption is not the reason the marker hasn't been seen
++    // during an actual handoff attempt.
++    for (int i = 0; i < 3; i++) {
++        screen_fill(0xff000000u); // opaque black, a8b8g8r8
++        sleep(1);
++        screen_fill(0xff00ff00u); // opaque bright green, a8b8g8r8
++        sleep(1);
++    }
++    screen_clear_all();
++    puts("t7001 color test done");
++}
++
+ void linux_commands_register() {
      command_register("bootl", "boots linux", pongo_boot_linux);
      command_register("linux_cmdline", "update linux kernel command line", linux_cmdline_cmd);
      command_register("fdt", "load linux fdt from usb", fdt_cmd);
 +    command_register("linux_diag", "validate the T7001 Linux payload without booting", linux_diagnostics);
 +    command_register("linux_t7001", "handoff Linux on T7001", pongo_boot_linux_t7001);
++    command_register("t7001_color_test", "safely strobes the T7001 marker's exact colors, no jump", t7001_color_test);
  }

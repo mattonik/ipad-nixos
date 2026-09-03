@@ -961,29 +961,105 @@ the earlier edit; both are now fixed and covered by
 Built from a fresh pinned checkout: 254,032 bytes, SHA-256
 `0d89ff9b7384505ba23bc75df97de56aaf5cdc2e712a6030fef603f7ff147dc2`. All
 tests pass, including `boot/test_t7001_boot_marker.py` updated for the
-tramp buffer and repeat count. **Not yet run on hardware.**
+tramp buffer and repeat count.
+
+### v4 hardware run — tramp fix inconclusive; reddish band explained (2026-09-03)
+
+Launched this build, re-confirmed the same `linux_diag` measurement, then
+sent `--t7001-handoff` once, recorded in slow motion (30fps). The strobe
+was never visible. The reddish artifact was, though, and this time
+clearly enough to place it: a pink/red band, full width, confined to the
+very bottom edge of the screen, lasting about two frames (~0.13s at
+15fps-sampled review) before vanishing back to normal console text — and
+the console kept printing more lines shortly after, so PongoOS was never
+actually stuck at that point.
+
+That band's position and behavior turned out to have a mundane
+explanation, unrelated to anything in this patch. `linux_prep_boot()`
+(unmodified code, present before this session's changes) directly pokes
+real display-controller hardware registers just before the "iPhone 7
+only" print:
+
+```c
+volatile uint32_t *disp = ((uint32_t *)(dt_get_u32_prop("disp0", "reg") + gIOBase));
+*pixfmt0 = (*pixfmt0 & 0xF00FFFFFu) | 0x05200000u;
+*colormatrix_bypass = 0;
+*colormatrix_mul_31 = 4095;
+*colormatrix_mul_32 = 4095;
+*colormatrix_mul_33 = 4095;
+```
+
+This reconfigures the display's pixel format and color-matrix pipeline
+while the console is still actively rendering through it — a textbook
+cause of a brief, fixed-color, fixed-timing visual glitch. It explains
+every observed property: why it's always reddish (a specific hardware
+transition, not our color choice), why it never depended on any marker
+design across v1-v4 (this code runs before our marker/tramp staging even
+starts), why it only ever happened during real `linux_t7001` attempts
+and never during `linux_diag`-only runs (`linux_diagnostics()` doesn't
+call this code path), and why PongoOS kept running afterward (it's
+cosmetic, not a fault). This band is not evidence for or against whether
+our marker executes, in either direction, and is not planned to be
+touched.
+
+The open question is unchanged: still no confirmed evidence execution
+reaches the marker after four hardware attempts.
+
+### t7001_color_test: an intentionally boring, safe sanity check (2026-09-03)
+
+Every attempt so far has conflated two untested things: whether the
+marker's framebuffer-writing logic is correct, and whether execution
+survives `jump_to_image`'s teardown. If either fails, the symptom looks
+identical (nothing visible, PongoOS unresponsive afterward), so failures
+in one can't be told apart from failures in the other.
+
+Added `t7001_color_test`, a plain PongoOS shell command with no
+connection to the boot-flag/teardown/jump path at all -- it cannot hang,
+because nothing about it is irreversible. It reuses `screen_fill()`
+(the exact primitive `fbclear`/`fbinvert` already use safely, via the
+already-working virtual framebuffer mapping) to fill the screen with the
+marker's exact colors three times, then restores the console with
+`screen_clear_all()`:
+
+```c
+void t7001_color_test() {
+    for (int i = 0; i < 3; i++) {
+        screen_fill(0xff000000u); // opaque black, a8b8g8r8
+        sleep(1);
+        screen_fill(0xff00ff00u); // opaque bright green, a8b8g8r8
+        sleep(1);
+    }
+    screen_clear_all();
+    puts("t7001 color test done");
+}
+```
+
+If this doesn't look like solid black then solid bright green, the
+a8b8g8r8 color-channel assumption baked into `t7001_boot_marker.S` is
+simply wrong, independent of anything about the jump/teardown mechanism.
+If it does look right, that assumption is eliminated as a variable, and
+whatever the next real handoff attempt shows is more clearly about
+`jump_to_image` and the teardown, not about color math.
+
+Built from a fresh pinned checkout: 254,032 bytes, SHA-256
+`ff27b812444842dffc9007927a6c106c8c7eaf92a1f2b32b8c633011e51d7e8d`. All
+tests pass. **Not yet run on hardware.**
 
 ### Next technical step
 
-1. Launch this build and confirm `linux_diag` still reports the same
-   staged addresses as before (the marker/tramp changes affect only the
-   T7001 `linux_t7001` jump path, not `linux_diag`).
-2. With the device watched (and ideally recorded) the whole time, send
-   `--t7001-handoff` once and record whether the black/green strobe
-   appears, and separately whether the reddish flash still happens (it
-   should, on this theory, regardless of the strobe's outcome, since nothing
-   about the flash's cause was targeted directly).
-3. If the strobe is visible, this confirms the tramp fix mattered; then in
-   a separate step add `cache_clean()` for the Image/DTB staging in
-   `linux_prep_boot()` (the gap noted in Step 3) and build a variant that
-   continues into the kernel jump after a shorter, finite strobe — do not
-   fix that blind alongside another jump attempt; test it as its own,
-   separately interpretable change. If the strobe is still not visible,
-   the tramp fix wasn't sufficient on its own, and the reddish flash
-   becomes the more direct thing to investigate next (for example: does it
-   still occur with a stub that does nothing but spin immediately, no
-   framebuffer writes at all, to confirm it's unrelated to any of our code
-   rather than just this code).
+1. Launch this build and run `t7001_color_test` over USB (a plain shell
+   command, not through `load_linux.py` -- no kernel/dtb/initrd upload
+   needed first). Confirm it shows solid black, then solid bright green,
+   three times, then restores the console -- and that PongoOS stays fully
+   responsive to further commands throughout and after.
+2. If the colors look wrong (wrong hue, or nothing changes), the
+   a8b8g8r8 assumption in `t7001_boot_marker.S` is the bug; fix that
+   before touching the jump path again.
+3. If the colors look right, run `linux_diag` to confirm the same staged
+   addresses as every prior verified run, then send `--t7001-handoff`
+   once with the device watched/recorded, per the v4 build above (tramp
+   fix + strobe). A confirmed-correct color test removes one whole
+   category of explanation for why the strobe hasn't been seen yet.
 4. Only after a visible Linux log, resume the console, touch, and Wi-Fi work
    already recorded below. The current driver approval gate remains in force.
 
