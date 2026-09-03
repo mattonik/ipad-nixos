@@ -759,8 +759,68 @@ Clang/ld64-820.1 toolchain: 254,032 bytes, SHA-256
 and the new `boot/test_t7001_boot_marker.py` (structural checks: stub
 symbols exist, the asm/C data offsets agree, `gLinuxPrepared` is only set
 after the marker is staged and cleaned, and the jump targets the marker
-stub rather than the kernel directly) all pass. **Not yet run on
-hardware.**
+stub rather than the kernel directly) all pass.
+
+### First marker run — inconclusive (2026-09-03)
+
+Launched this build, re-confirmed the same `linux_diag` measurement as
+the prior verified run (Image at `0x877400000`, DTB at `0x87c1f4000`,
+`x0` set, `EL1`), then sent `--t7001-handoff` once with the device
+watched throughout.
+
+The observer reported a brief blink: an approximately 80px-tall
+red/black band across the screen width, in the bottom third of the
+screen. That does not match what the stub was coded to draw — a solid
+white, 8-pixel-tall band at the top-left of the framebuffer (`v_baseAddr`
+onward), roughly 10x smaller and a different color and position. This is
+recorded as **inconclusive, not a confirmed marker sighting**: it may be
+an unrelated display artifact from the teardown/reconnect rather than
+evidence the stub executed. The screen returned to the same frozen
+PongoOS console text as the Step 2 hang, and the device stopped
+responding to anything but a hard restart, exactly as before.
+
+Two design gaps likely explain why this couldn't be read confidently
+even if it was the stub: the marker is tiny (8 physical rows) and
+transient (it draws once, then the code continues straight into the
+kernel jump, so any distinguishing display state it left behind is only
+as stable as whatever happens next). Both are being fixed before the
+next attempt — see below.
+
+### Marker v2: full-screen fill, spin-forever isolation (2026-09-03)
+
+Also worth noting for its own sake: the observer confirmed the default
+PongoOS screen is light/white, not dark, which independently explains
+why the first marker (solid white, `0xffffffff`) could have been
+invisible even if the stub ran correctly — it's the wrong lesson to draw
+from the ambiguous blink report alone, but it is a real bug in that
+version regardless.
+
+`t7001_boot_marker.S` and its staging in `linux_prep_boot()` were revised:
+
+- The fill now covers the entire framebuffer
+  (`gBootArgs->Video.v_height * gBootArgs->Video.v_rowBytes`), not an
+  8-row band.
+- The color is now opaque black, `0xff000000` in the DTB's declared
+  `a8b8g8r8` layout — chosen to read as black (or at minimum some
+  strongly saturated, obviously-not-background color if the channel
+  assumption is wrong) regardless of whether alpha is honored, and to
+  contrast with the confirmed-light default screen.
+- A new `continue_flag` field (`marker_data+24`) controls what happens
+  after the fill: zero spins forever in place; nonzero branches onward to
+  `gLinuxStage`, exactly like the first version always did. **This build
+  hardcodes it to zero.** The fill is now the entire, isolated test: does
+  execution reach and survive in freshly staged physical code, with a
+  stable, indefinitely-photographable end state that cannot be confused
+  with anything the kernel jump itself might do. Continuing into the
+  kernel jump is deliberately deferred to a later build, once a fill is
+  confirmed to actually hold.
+
+Built from a fresh pinned checkout with the same matched toolchain:
+254,032 bytes, SHA-256
+`32e24d58d0970dcd0476b00935e6ae43d0aa83014334c8e83283689e2ce83f23`.
+All three test scripts pass, including `boot/test_t7001_boot_marker.py`
+updated for the new offsets, color, and spin-forever default. **Not yet
+run on hardware.**
 
 ### Next technical step
 
@@ -768,12 +828,13 @@ hardware.**
    staged addresses as before (the marker changes only the T7001
    `linux_t7001` jump path, not `linux_diag`).
 2. With the device watched the whole time, send `--t7001-handoff` once
-   and record whether the framebuffer band appears before or instead of
-   any hang, per the interpretation above.
-3. If the band appears and it still hangs, add `cache_clean()` for the
-   Image/DTB staging in `linux_prep_boot()` (the gap noted in Step 3)
-   before trying again — do not fix that blind alongside another jump
-   attempt; test it as its own, separately interpretable change.
+   and record whether the full-screen black fill appears and holds.
+3. If the marker appears and holds, then in a separate step add
+   `cache_clean()` for the Image/DTB staging in `linux_prep_boot()` (the
+   gap noted above) before trying a continue-into-kernel variant (flip
+   `continue_flag` back to nonzero) — do not fix that blind alongside
+   another jump attempt; test it as its own, separately interpretable
+   change.
 4. Only after a visible Linux log, resume the console, touch, and Wi-Fi work
    already recorded below. The current driver approval gate remains in force.
 

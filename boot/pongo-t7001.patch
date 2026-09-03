@@ -1,9 +1,9 @@
 diff --git a/src/boot/t7001_boot_marker.S b/src/boot/t7001_boot_marker.S
 new file mode 100644
-index 0000000..cd73472
+index 0000000..9acd8a2
 --- /dev/null
 +++ b/src/boot/t7001_boot_marker.S
-@@ -0,0 +1,54 @@
+@@ -0,0 +1,64 @@
 +/*
 + * t7001_boot_marker.S — pre-kernel-entry framebuffer checkpoint for the T7001
 + * Linux handoff diagnostic. Not part of upstream pongoOS.
@@ -14,20 +14,24 @@ index 0000000..cd73472
 + *   x30 = the physical address of this stub itself (already consumed by the
 + *         `ret` that got us here; not otherwise needed)
 + *
-+ * This stub writes a solid-color patch directly to the physical framebuffer
-+ * (the same gBootArgs->Video.v_baseAddr pointer pongo_entry itself uses as a
-+ * raw physical pointer for this exact post-lowlevel_set_identity phase, so
-+ * this relies on nothing beyond what pongoOS already does for every boot
-+ * path), then branches to the real kernel entry address. All addresses are
-+ * patched into marker_data by linux_prep_boot() before this blob is copied
-+ * into its staging buffer and cache-cleaned.
++ * This stub fills the physical framebuffer with a solid color (the same
++ * gBootArgs->Video.v_baseAddr pointer pongo_entry itself uses as a raw
++ * physical pointer for this exact post-lowlevel_set_identity phase, so this
++ * relies on nothing beyond what pongoOS already does for every boot path).
++ * If continue_flag is zero it then spins forever, leaving that fill as a
++ * stable, photographable end state that cannot be confused with whatever
++ * happens next in the kernel jump. If continue_flag is nonzero it instead
++ * branches to the real kernel entry address, exactly as the first version
++ * of this stub always did. All fields are patched into marker_data by
++ * linux_prep_boot() before this blob is copied into its staging buffer and
++ * cache-cleaned.
 + *
-+ * If the framebuffer patch is visible on screen and the boot still hangs
-+ * afterward, the teardown/jump mechanism itself is proven to reach and
-+ * execute physical, freshly-written code; the failure is then narrowed to
-+ * whatever follows (most likely the uncleaned Image/DTB cache lines, or the
-+ * kernel itself). If the patch never appears, the failure is at or before
-+ * this stub, i.e. in jump_to_image's own path or in the copy/patch below.
++ * A prior run (2026-09-03) reported an ~80px red/black band in the bottom
++ * third of the screen, not the small top-left white band the first version
++ * of this stub actually drew — inconclusive, likely an unrelated display
++ * artifact from the teardown/reconnect rather than a real sighting. This
++ * version fills the whole screen with one color specifically so the next
++ * result is unambiguous either way.
 + */
 +.text
 +.align 4
@@ -44,11 +48,15 @@ index 0000000..cd73472
 +    b.ne 0b
 +    dsb  sy
 +1:
-+    ldr  x9, [x9, 16]         // x9 = real kernel entry physical address
++    ldr  w13, [x9, 24]        // w13 = continue flag: 0 = spin forever, nonzero = continue
++    cbz  w13, 2f
++    ldr  x14, [x9, 16]        // x14 = real kernel entry physical address
 +    mov  x1, 0
 +    mov  x2, 0
 +    mov  x3, 0
-+    br   x9
++    br   x14
++2:
++    b    2b                   // stable end state: nothing past here executes
 +
 +.align 3
 +marker_data:
@@ -56,6 +64,8 @@ index 0000000..cd73472
 +    .word 0   // +8:  marker pixel value (patched)
 +    .word 0   // +12: word count (patched)
 +    .quad 0   // +16: real kernel entry physical address (patched)
++    .word 0   // +24: continue flag: 0 = spin forever, nonzero = branch to +16 (patched)
++    .word 0   // +28: padding, unused
 +.global _t7001_boot_marker_end
 +_t7001_boot_marker_end:
 diff --git a/src/kernel/entry.c b/src/kernel/entry.c
@@ -115,7 +125,7 @@ index c3f0f97..ac72202 100644
  #include <pongo.h>
  
 diff --git a/src/modules/linux/linux.c b/src/modules/linux/linux.c
-index 6ae4d5b..490c75e 100644
+index 6ae4d5b..0f4b89e 100644
 --- a/src/modules/linux/linux.c
 +++ b/src/modules/linux/linux.c
 @@ -38,6 +38,13 @@ bool ramdisk_initialized = false;
@@ -430,7 +440,7 @@ index 6ae4d5b..490c75e 100644
      }
  
  #define pixfmt0 (&disp[0x402c / 4])
-@@ -343,31 +498,54 @@ void linux_prep_boot()
+@@ -343,31 +498,62 @@ void linux_prep_boot()
      puts("This is only supported on iPhone 7 for now and works to a lesser extent on other A10 devices. Behavior on non-A10 devices is undefined!!");
  
      gEntryPoint = (void *)(0x800080000);
@@ -464,8 +474,9 @@ index 6ae4d5b..490c75e 100644
 +
 +    if (socnum == 0x7001) {
 +        // Stage a small checkpoint stub between PongoOS's teardown and the
-+        // real kernel entry: it paints a marker on the physical framebuffer,
-+        // then branches to gLinuxStage. See t7001_boot_marker.S for why.
++        // real kernel entry: it fills the physical framebuffer, then either
++        // spins forever or branches to gLinuxStage depending on the
++        // continue flag below. See t7001_boot_marker.S for why.
 +        uint64_t marker_size = (uint64_t)(t7001_boot_marker_end - t7001_boot_marker);
 +        uint64_t marker_alloc_size = (marker_size + 0x3fffull) & ~0x3fffull;
 +        void *marker_alloc = alloc_contig(marker_alloc_size);
@@ -480,12 +491,19 @@ index 6ae4d5b..490c75e 100644
 +        //   +8  word  marker pixel value
 +        //   +12 word  word count
 +        //   +16 quad  real kernel entry physical address
-+        uint8_t *data = (uint8_t *)marker_alloc + (marker_size - 24);
-+        uint64_t fb_words = (gBootArgs->Video.v_rowBytes / 4) * 8; // an 8-row band
++        //   +24 word  continue flag (0 = spin forever, nonzero = continue)
++        uint8_t *data = (uint8_t *)marker_alloc + (marker_size - 32);
++        uint64_t fb_words = (gBootArgs->Video.v_height * gBootArgs->Video.v_rowBytes) / 4;
 +        *(uint64_t *)(data + 0)  = gBootArgs->Video.v_baseAddr;
-+        *(uint32_t *)(data + 8)  = 0xffffffffu;
++        *(uint32_t *)(data + 8)  = 0xff000000u; // opaque black (a8b8g8r8) against the default light screen
 +        *(uint32_t *)(data + 12) = (uint32_t)fb_words;
 +        *(uint64_t *)(data + 16) = (uint64_t)gLinuxStage;
++        // Spin forever after the fill for now: an isolated, stable,
++        // photographable test of whether execution reaches this stub at
++        // all, decoupled from whatever the kernel jump itself does. See
++        // docs/project-status.md for why, and for the plan to flip this
++        // once a fill is confirmed to hold.
++        *(uint32_t *)(data + 24) = 0;
 +
 +        cache_clean(marker_alloc, marker_alloc_size);
 +        gLinuxMarkerStage = (void *)(((uint64_t)marker_alloc) - kCacheableView + 0x800000000);
