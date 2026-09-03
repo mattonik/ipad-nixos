@@ -385,6 +385,27 @@ and uses an A10-specific fixed kernel entry address (`0x800080000`). The iPad
 is T7001/A8X. A T7001-specific exit/handoff port is still required, but the
 captured failure also exposed two earlier correctness defects below.
 
+### Modern-Clang build isolation — 2026-09-03
+
+The checked-in stock image reports Clang 14. The host reports Apple Clang
+21.0.1, while the upstream CI for this revision builds with `clang-10`. A
+clean source checkout was built with only the two compatibility edits required
+by Clang 21 (`stdarg.h` in `task.c` and the `ttb_alloc` function-pointer cast
+in `mm.c`). That image was launched from fresh DFU through the same palera1n
+flow and did not re-enumerate PongoOS USB; the iPad returned to an absent/DFU
+state.
+
+Removing LTO from both the root and Newlib makefiles produced a second clean
+image (`254056` bytes, SHA-256
+`8413d44901eeb591765b60e152ad4ea632827e8b71075f2bccb58884f897eb93`). It
+also completed the build but the launch attempt did not reach PongoOS USB;
+the exploit timed out waiting for download mode. This run is inconclusive as
+an image comparison because the device disappeared before the payload could
+be observed. The useful conclusion is that the repository's supported build
+toolchain is old Clang (CI uses clang-10), not the current Apple Clang 21.
+The next binary test should use a pinned old-Clang environment before any
+further Linux or driver work.
+
 ### Captured PongoOS failure and ruled-out work (2026-09-02)
 
 The supplied iPad screen capture records the first payload attempt directly:
