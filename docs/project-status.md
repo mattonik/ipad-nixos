@@ -385,6 +385,25 @@ and uses an A10-specific fixed kernel entry address (`0x800080000`). The iPad
 is T7001/A8X. A T7001-specific exit/handoff port is still required, but the
 captured failure also exposed two earlier correctness defects below.
 
+### Restored PongoOS USB after host timeout — 2026-09-03
+
+A later stock-Pongo run again reached `Checkmate!` and palera1n timed out
+waiting for download mode. The iPad nevertheless reached the Pongo logo. On
+that screen, unplugging and reconnecting the Lightning cable caused macOS to
+enumerate `05ac:4141`. A control-channel `help` query then returned:
+
+```text
+pongoOS 2.6.1-742d92a0
+Built with: Clang 14.0.0 (clang-1400.0.29.202)
+Running on: Apple A8X (T7001)
+```
+
+Consequently, a palera1n download-mode timeout alone does not prove that
+PongoOS failed to start on this host. If the Pongo logo appears, leave the
+iPad in that RAM-only session and replug the cable before abandoning the run.
+Do not upload a Linux payload to stock PongoOS; use the guarded diagnostic
+binary below after the next clean DFU relaunch.
+
 ### Modern-Clang build isolation — 2026-09-03
 
 The checked-in stock image reports Clang 14. The host reports Apple Clang
