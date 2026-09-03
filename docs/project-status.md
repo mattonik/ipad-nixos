@@ -510,6 +510,36 @@ not prove a Linux entry address, cache state, exception level, or a kernel
 boot. `boot/load_linux.py` now polls diagnostic output for up to 10 seconds,
 so the delayed success marker is captured in one safe invocation.
 
+### ARM64 handoff-candidate diagnostic — build verified, not yet device-tested (2026-09-03)
+
+The first measurement also showed why it was not a Linux handoff candidate:
+the Image stage at 0x8774b4000 was not 2 MiB aligned and the expanded DTB was
+heap-backed at 0xe002aa0a0, which has no single physical address.
+
+The current diagnostic fixes only those two staging defects. It reserves an
+extra 2 MiB, places the Image so stage_phys minus text_offset is 2 MiB aligned,
+and copies the final DTB into contiguous RAM. It then reports the physical DTB
+to use in x0, with x1=x2=x3=0, the current exception level, and the candidate
+Image address. It still frees those candidate buffers and prints the no-jump
+marker; it never changes the boot flag, disables the MMU, or exits PongoOS.
+
+The production Image was checked as text_offset=0, file size 42,404,352 bytes,
+and layout size 43,384,832 bytes. The rebuilt guarded binary is 254,040 bytes
+with SHA-256 0dcd438bc1f944fc5c9e34ab75982a9a8835529010302292141357ee63d3a489.
+The diagnostic checks and uploader no-jump test pass, and the patch applies
+cleanly to PongoOS 742d92a. This is build verification only: the currently
+live PongoOS was launched with the preceding binary and cannot acquire this
+command without a new DFU launch.
+
+The intended contract follows the upstream [AArch64 Linux boot
+protocol](https://docs.kernel.org/arch/arm64/booting.html): a DTB physical
+address in x0; zero in x1 through x3; an Image placed at its declared offset
+from a 2 MiB-aligned base; and, before any future exit, quiesced DMA, masked
+interrupts, non-secure EL1/EL2 with MMU off, and the Image cleaned to the point
+of coherency. The diagnostic measures the address and register parts only.
+The exit/cache/exception transition is a separate, still unimplemented T7001
+port.
+
 The current hardware blocker was then isolated further: a fresh DFU run of
 the proven stock `boot/Pongo.bin` also reached `Checkmate!` but timed out
 waiting for download mode. Therefore this is not a Pongo image, kernel,
@@ -558,7 +588,8 @@ revision. It is deliberately a **diagnostic**, not a Linux handoff port:
 - selects the DTB into a separate buffer, expands it out of place, and sets
   `/chosen/bootargs` without requiring a prior property;
 - adds `linux_diag`, which applies the DTB/initrd overlay and prints the
-  actual virtual/physical ranges without jumping; and
+  contiguous physical DTB and prints the Linux register contract without
+  jumping; and
 - rejects `bootl` on `socnum == 0x7001`, so the diagnostic binary cannot
   accidentally attempt the known-invalid A10 transfer on this iPad.
 
@@ -599,11 +630,11 @@ nix develop '.#devShells.aarch64-darwin.default' --command python3 \
 ~~~
 
 The required success marker is `diagnostic only, no jump attempted.` together
-with the selected `J81`, kernel, DTB, and initrd ranges. The uploader exits
-non-zero unless it sees that marker. This test is RAM-only and leaves PongoOS
-running. It is the gate for studying T7001's real exception/cache/EL state;
-the printed `0x800080000` is only the upstream A10 candidate, **not** a T7001
-entry address to try.
+with the selected `J81`, 2 MiB-aligned Image base, physical DTB, `x0`, and
+initrd ranges. The uploader exits non-zero unless it sees that marker. This
+test is RAM-only and leaves PongoOS running. It is the gate for studying
+T7001's real exception/cache/EL state; the measured candidate entry is not an
+authorization to jump to Linux.
 
 ### Next technical step
 
@@ -689,7 +720,7 @@ is the reference for the intentionally minimal board description.
 | PongoOS upload | ✅ Complete |
 | PongoOS visible on iPad | ✅ Complete |
 | PongoOS USB interface `05ac:4141` | ✅ Verified with PyUSB control transfers |
-| Current RAM-only Pongo session | ✅ Active at the latest no-jump diagnostic; transient and RAM-only |
+| Current RAM-only Pongo session | ✅ Active at latest check; it contains the preceding diagnostic binary and is transient/RAM-only |
 | Linux payload upload | ✅ Transferred once; exposed PongoOS pre-handoff defects |
 | Guarded T7001 diagnostic PongoOS | ✅ Matched-toolchain Pongo, USB, payload ranges, and no-jump guard are proven on T7001 |
 | Linux kernel boot | ❌ Not achieved |

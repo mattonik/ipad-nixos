@@ -24,10 +24,10 @@ index c3f0f97..ac72202 100644
  #include <pongo.h>
  
 diff --git a/src/modules/linux/linux.c b/src/modules/linux/linux.c
-index 6ae4d5b..9d164c5 100644
+index 6ae4d5b..1a585ef 100644
 --- a/src/modules/linux/linux.c
 +++ b/src/modules/linux/linux.c
-@@ -38,6 +38,11 @@ bool ramdisk_initialized = false;
+@@ -38,6 +38,13 @@ bool ramdisk_initialized = false;
  
  char gLinuxCmdLine[LINUX_CMDLINE_SIZE] = {0};
  
@@ -35,11 +35,13 @@ index 6ae4d5b..9d164c5 100644
 + * diagnostic allocator bounded. This must cover the uncompressed image, not
 + * the much smaller LZMA input. */
 +#define LINUX_IMAGE_CAPACITY (64 * 1024 * 1024)
++#define LINUX_IMAGE_ALIGNMENT (2 * 1024 * 1024)
++#define LINUX_STAGE_ALLOCATION (LINUX_IMAGE_CAPACITY + LINUX_DTREE_SIZE + LINUX_IMAGE_ALIGNMENT)
 +
  void linux_dtree_init(void)
  {
      // TODO: TONS of error handling
-@@ -187,44 +192,44 @@ void linux_dtree_late(void)
+@@ -187,44 +194,44 @@ void linux_dtree_late(void)
      fdt_appendprop_string(fdt, node1, "compatible", "simple-framebuffer");
  }
  
@@ -103,7 +105,7 @@ index 6ae4d5b..9d164c5 100644
          }
  
          iprintf("initrd @ %p-%p\n", rd_start, rd_end);
-@@ -232,14 +237,15 @@ void linux_dtree_overlay(char *boot_args)
+@@ -232,14 +239,15 @@ void linux_dtree_overlay(char *boot_args)
  
      if (boot_args)
      {
@@ -124,8 +126,11 @@ index 6ae4d5b..9d164c5 100644
  }
  
  bool linux_can_boot()
-@@ -252,19 +258,19 @@ bool linux_can_boot()
+@@ -250,21 +258,22 @@ bool linux_can_boot()
+ }
+ 
  void *gLinuxStage;
++void *gLinuxStageAllocation;
  uint32_t gLinuxStageSize;
  
 -void fdt_select_dtree(void *fdt)
@@ -148,7 +153,7 @@ index 6ae4d5b..9d164c5 100644
  
      while (buf[0])
      {
-@@ -277,13 +283,119 @@ void fdt_select_dtree(void *fdt)
+@@ -277,13 +286,149 @@ void fdt_select_dtree(void *fdt)
          if (!strcmp(key, (char *)buf))
          {
              iprintf("Found device tree for %s (%d bytes).\n", key, len);
@@ -186,40 +191,42 @@ index 6ae4d5b..9d164c5 100644
 +    return expanded;
 +}
 +
-+static bool linux_stage_kernel(void **stage, uint64_t *image_size)
++static bool linux_stage_kernel(void **allocation, void **stage, uint64_t *image_size)
 +{
 +    if (loader_xfer_recv_count == 0) {
 +        puts("No Linux kernel was uploaded.");
 +        return false;
 +    }
 +
-+    *stage = alloc_contig(LINUX_IMAGE_CAPACITY + LINUX_DTREE_SIZE);
++    *allocation = alloc_contig(LINUX_STAGE_ALLOCATION);
++    *stage = (void *)(((uint64_t)*allocation + LINUX_IMAGE_ALIGNMENT - 1) &
++                      ~(LINUX_IMAGE_ALIGNMENT - 1));
 +    size_t output_size = LINUX_IMAGE_CAPACITY;
 +    int result = unlzma_decompress(*stage, &output_size, loader_xfer_recv_data,
 +                                   loader_xfer_recv_count);
 +    if (result != SZ_OK) {
 +        if (loader_xfer_recv_count < 24) {
 +            iprintf("LZMA decode failed (%d) and payload is too short for an Image header.\n", result);
-+            free_contig(*stage, LINUX_IMAGE_CAPACITY + LINUX_DTREE_SIZE);
++            free_contig(*allocation, LINUX_STAGE_ALLOCATION);
 +            return false;
 +        }
 +        *image_size = *(uint64_t *)(loader_xfer_recv_data + 16);
 +        if (*image_size > LINUX_IMAGE_CAPACITY || *image_size > loader_xfer_recv_count) {
 +            iprintf("LZMA decode failed (%d); raw Image size is invalid: %llu.\n", result, *image_size);
-+            free_contig(*stage, LINUX_IMAGE_CAPACITY + LINUX_DTREE_SIZE);
++            free_contig(*allocation, LINUX_STAGE_ALLOCATION);
 +            return false;
 +        }
 +        memcpy(*stage, loader_xfer_recv_data, *image_size);
 +    } else {
 +        if (output_size < 24) {
 +            puts("Decoded Linux Image is too short for its header.");
-+            free_contig(*stage, LINUX_IMAGE_CAPACITY + LINUX_DTREE_SIZE);
++            free_contig(*allocation, LINUX_STAGE_ALLOCATION);
 +            return false;
 +        }
 +        *image_size = *(uint64_t *)(*stage + 16);
 +        if (*image_size < output_size || *image_size > LINUX_IMAGE_CAPACITY) {
 +            iprintf("Decoded Linux Image layout size is invalid: %llu.\n", *image_size);
-+            free_contig(*stage, LINUX_IMAGE_CAPACITY + LINUX_DTREE_SIZE);
++            free_contig(*allocation, LINUX_STAGE_ALLOCATION);
 +            return false;
 +        }
 +    }
@@ -234,10 +241,12 @@ index 6ae4d5b..9d164c5 100644
 +    }
 +
 +    void *dtree = linux_prepare_fdt();
++    void *stage_allocation = NULL;
 +    void *stage = NULL;
++    void *diag_dtree = NULL;
 +    void *diag_ramdisk = NULL;
 +    uint64_t image_size = 0;
-+    if (!dtree || !linux_stage_kernel(&stage, &image_size)) {
++    if (!dtree || !linux_stage_kernel(&stage_allocation, &stage, &image_size)) {
 +        if (dtree) free(dtree);
 +        return;
 +    }
@@ -248,29 +257,55 @@ index 6ae4d5b..9d164c5 100644
 +    }
 +    if (!linux_dtree_overlay(dtree, gLinuxCmdLine, diag_ramdisk, ramdisk_size)) {
 +        free(dtree);
-+        free_contig(stage, LINUX_IMAGE_CAPACITY + LINUX_DTREE_SIZE);
++        free_contig(stage_allocation, LINUX_STAGE_ALLOCATION);
++        if (diag_ramdisk) free_contig(diag_ramdisk, ramdisk_size);
++        return;
++    }
++
++    int dtree_size = fdt_totalsize(dtree);
++    if (dtree_size <= 0 || dtree_size > LINUX_DTREE_SIZE || dtree_size > 2 * 1024 * 1024) {
++        iprintf("Invalid Linux DTB size: %d.\n", dtree_size);
++        free(dtree);
++        free_contig(stage_allocation, LINUX_STAGE_ALLOCATION);
++        if (diag_ramdisk) free_contig(diag_ramdisk, ramdisk_size);
++        return;
++    }
++    diag_dtree = alloc_contig(dtree_size);
++    memcpy(diag_dtree, dtree, dtree_size);
++
++    uint64_t stage_phys = vatophys_static(stage);
++    uint64_t text_offset = *(uint64_t *)(stage + 8);
++    uint64_t image_base = stage_phys - text_offset;
++    if (image_base & (LINUX_IMAGE_ALIGNMENT - 1)) {
++        iprintf("Linux Image base %p is not 2 MiB aligned.\n", (void *)image_base);
++        free(dtree);
++        free_contig(stage_allocation, LINUX_STAGE_ALLOCATION);
++        free_contig(diag_dtree, dtree_size);
 +        if (diag_ramdisk) free_contig(diag_ramdisk, ramdisk_size);
 +        return;
 +    }
 +
 +    iprintf("[t7001] soc=%x phys=%p size=%llx iBoot-entry=%p\n",
 +            socnum, gBootArgs->physBase, gBootArgs->memSize, gEntryPoint);
-+    iprintf("[t7001] image=%llu stage=%p/%p fdt=%p (%d bytes)\n",
-+            image_size, stage, (void *)vatophys_static(stage), dtree,
-+            fdt_totalsize(dtree));
++    iprintf("[t7001] image=%llu stage=%p/%p text-offset=%llx base=%p\n",
++            image_size, stage, (void *)stage_phys, text_offset, (void *)image_base);
++    iprintf("[t7001] fdt=%p/%p (%d bytes), x0=%p x1=x2=x3=0 EL%d\n",
++            diag_dtree, (void *)vatophys_static(diag_dtree), dtree_size,
++            (void *)vatophys_static(diag_dtree), get_el());
 +    if (diag_ramdisk)
 +        iprintf("[t7001] initrd=%p/%p (%u bytes)\n", diag_ramdisk,
 +                (void *)vatophys_static(diag_ramdisk), ramdisk_size);
 +    iprintf("[t7001] candidate-entry=%p; diagnostic only, no jump attempted.\n",
-+            (void *)0x800080000ULL);
++            (void *)stage_phys);
 +
 +    free(dtree);
-+    free_contig(stage, LINUX_IMAGE_CAPACITY + LINUX_DTREE_SIZE);
++    free_contig(stage_allocation, LINUX_STAGE_ALLOCATION);
++    free_contig(diag_dtree, dtree_size);
 +    if (diag_ramdisk) free_contig(diag_ramdisk, ramdisk_size);
  }
  
  void linux_prep_boot()
-@@ -315,15 +427,19 @@ void linux_prep_boot()
+@@ -315,15 +460,19 @@ void linux_prep_boot()
      }
      else
      {
@@ -294,7 +329,7 @@ index 6ae4d5b..9d164c5 100644
      }
  
  #define pixfmt0 (&disp[0x402c / 4])
-@@ -343,20 +459,9 @@ void linux_prep_boot()
+@@ -343,20 +492,9 @@ void linux_prep_boot()
      puts("This is only supported on iPhone 7 for now and works to a lesser extent on other A10 devices. Behavior on non-A10 devices is undefined!!");
  
      gEntryPoint = (void *)(0x800080000);
@@ -313,7 +348,7 @@ index 6ae4d5b..9d164c5 100644
 -        image_size = *(uint64_t *)(gLinuxStage + 16);
 -    }
 +    uint64_t image_size = 0;
-+    if (!linux_stage_kernel(&gLinuxStage, &image_size))
++    if (!linux_stage_kernel(&gLinuxStageAllocation, &gLinuxStage, &image_size))
 +        return;
      void *gLinuxDtre = (void *)((((uint64_t)gLinuxStage) + image_size + 7ull) & -8ull);
      memcpy(gLinuxDtre, fdt, LINUX_DTREE_SIZE);
