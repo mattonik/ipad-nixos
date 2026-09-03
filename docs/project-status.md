@@ -1163,24 +1163,66 @@ identified. None of that is answerable by more framebuffer experiments;
 it needs either a real execution trace (UART/serial console, or
 JTAG/SWD via something like a Tamarin cable) or a much deeper, riskier
 round of blind ARM64/SoC-internals guessing with a poor track record so
-far. This is recorded as an explicit pause point, not a dead end: the
-next productive step most likely requires hardware this project doesn't
-currently have.
+far. This was recorded as an explicit pause point, not a dead end --
+and the research below found a better option than either.
+
+### Prior art found: a working reference implementation for this exact chip (2026-09-03)
+
+Requested and completed a research pass across other online projects rather
+than continuing to guess blind. Full findings and sourcing in
+[`research/t7001-handoff-options.md`](../research/t7001-handoff-options.md);
+summary here.
+
+**Konrad Dybcio and Markuss Broks booted mainline Linux on the iPad Air 2
+(T7001) in June 2022**, via their own PongoOS fork
+([konradybcio/pongoOS](https://github.com/konradybcio/pongoOS)) and kernel fork
+([konradybcio/linux-apple](https://github.com/konradybcio/linux-apple)). Their
+fork has a dedicated `src/drivers/plat/t7001.c` naming `"Apple A8X (T7001)"` --
+this is not a related project, it is a working implementation of the exact
+handoff this repo has been trying to build, on the exact chip. Their own
+account of the debugging journey (via Hackaday, their original writeup having
+since 404'd) describes being blocked for **over a year** by an MMU-enablement
+issue, debugging with only framebuffer access (the same constraint faced
+here), and the breakthrough being **"a single line difference"** from a
+known-working reference.
+
+Diffing their source against this repo's patch surfaced three concrete
+differences, most importantly: **their `gEntryPoint` is a fixed constant,
+`0x803000000`**, explicitly chosen and validated as a safe contiguous region
+across their whole device range (their own comment: "a really hacky
+guesstimate, but it works on all devices") -- not a dynamically computed
+`alloc_contig()` address the way this repo's patch does it. Second: **their
+Linux boot path has no custom `jump_to_image` call or tramp buffer at all** --
+`BOOT_FLAG_LINUX` just stages the kernel at that fixed address and falls
+through to the same `exit_to_el1_image()` used for XNU boot, the mechanism
+already proven to work on this device every time it's jailbroken. Third:
+their `linux_boot()` has no `cache_clean()` before the jump either, which
+**deprioritizes the "missing cache_clean" theory** from Step 3 above -- a
+working implementation doesn't need it, so it's unlikely to be this project's
+actual blocker. Their `linux_prep_boot()` also has the identical
+`pixfmt0`/color-matrix register poke this project already traced the
+reddish-flash artifact to, independently confirming that finding.
 
 ### Next technical step
 
-1. The most likely productive path is a UART/serial console or
-   equivalent low-level execution visibility -- see the pause point
-   above. This needs hardware (e.g. a Lightning-to-serial breakout /
-   Tamarin-style cable) not currently available; revisit when that's an
-   option.
-2. Absent new hardware, further attempts should be scoped narrowly and
-   each explicitly state which single variable they isolate, following
-   the pattern of `t7001_color_test`/`t7001_sram_check` (safe, no-jump,
-   directly observable) rather than another blind `--t7001-handoff`
-   variant -- the last four of those produced no new information beyond
-   confirming the hang.
-3. Only after a visible Linux log, resume the console, touch, and Wi-Fi work
+1. **Best-evidenced candidate**: adopt the fixed entry point `0x803000000`
+   and route T7001 boot through `exit_to_el1_image()` exactly like XNU boot,
+   removing the custom `jump_to_image`/tramp/marker-stub machinery this
+   project's patch currently uses. This is simpler than the current approach
+   (removes the diagnostic/handoff split and the custom jump target
+   selection entirely) and matches a proven working implementation on the
+   same chip, rather than guessing at ARM64 internals. See
+   `research/t7001-handoff-options.md` for the full comparison before
+   implementing.
+2. If (1) still fails: UART/serial console (or JTAG/SWD via something like
+   a Tamarin cable) remains the fallback -- needs hardware not currently
+   available.
+3. Absent new hardware and before (1) is tried, further attempts should
+   still be scoped narrowly and each explicitly state which single variable
+   they isolate, following the pattern of `t7001_color_test`/
+   `t7001_sram_check` (safe, no-jump, directly observable) rather than
+   another blind `--t7001-handoff` variant.
+4. Only after a visible Linux log, resume the console, touch, and Wi-Fi work
    already recorded below. The current driver approval gate remains in force.
 
 ## Driver readiness and approval gate (2026-09-02)
