@@ -348,6 +348,25 @@ attempt. This is an execution/USB-state failure, not evidence against the
 diagnostic binary; the next run must start with one clean DFU launch and no
 competing palera1n waiters.
 
+### Clean DFU relaunch attempt — 2026-09-03
+
+DFU was verified again for the target (`CPID 0x7001`, `iPad5,3`, `j81ap`).
+The following sequence was tried and did not reach PongoOS:
+
+1. `gaster pwn` succeeded as the logged-in user and reported `Now you can
+   boot untrusted images.`
+2. `irecovery -f boot/Pongo-t7001-diagnostic.bin` followed by `irecovery -c
+   go` produced no transition; the device remained in DFU.
+3. A subsequent standalone palera1n run reached `Checkmate!` but timed out
+   waiting for download mode. The iPad then disappeared from USB before any
+   PongoOS interface appeared.
+
+No kernel, initrd, DTB, `linux_diag`, or `bootl` command was sent. The lesson
+is to use one palera1n invocation from clean DFU and manually unplug/reconnect
+the Lightning cable at its `Checkmate!` / `Device should now reconnect in
+download mode` point; do not chain `gaster pwn` or the separate `irecovery`
+loader first on this Mac.
+
 The exact PongoOS source matching `boot/Pongo.bin` is revision
 `742d92a023d16c4cc9ebf9cb73b708bf92c52808`. Its Linux module states that it
 is only supported on iPhone 7/A10, warns that non-A10 behaviour is undefined,
