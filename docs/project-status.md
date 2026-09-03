@@ -454,8 +454,22 @@ without installing or replacing the active Xcode 21 toolchain. It validated the
 exact compiler and produced the guarded image from a fresh checkout: 254,040
 bytes, SHA-256
 `b345dc3cba9e6b99f5765f1858d42f4158d6d721afec153498745ac3c706b222`.
-The diagnostic builder now rejects every other compiler before it can create a
-misleading image.
+
+That first image did **not** display PongoOS. It used the exact Clang but the
+active Xcode 21 linker (`ld-1267`), so it was not a complete Xcode 14.2
+toolchain test. palera1n reached `Checkmate!` then its usual 20-second M1
+download-mode timeout; the iPad showed no Pongo logo and reconnecting the cable
+restarted iPadOS. No `linux_diag`, payload upload, or Linux jump occurred. The
+extracted image also provides `ld64-820.1` with LLVM 14 LTO support. The
+builder and extractor now require both exact components; rebuild from a fresh
+checkout before the next device launch. Do not retry the `b345dc3c...` image.
+
+A clean rebuild with that matched compiler/linker pair completed successfully:
+254,040 bytes, SHA-256
+`1f8021cd7605c950f807ba80a3409d169f0c2731fb179fa0da4d4d02bfe60f9e`.
+The Newlib configure and Pongo link commands both named the extracted tools.
+This is the only custom Pongo image approved for the next RAM-only
+`linux_diag` attempt; it has not yet run on the device.
 
 The current hardware blocker was then isolated further: a fresh DFU run of
 the proven stock `boot/Pongo.bin` also reached `Checkmate!` but timed out
@@ -520,6 +534,7 @@ Apple Clang version reported by the stock image.
 git clone --recurse-submodules https://github.com/checkra1n/PongoOS.git /tmp/PongoOS-t7001
 git -C /tmp/PongoOS-t7001 checkout 742d92a023d16c4cc9ebf9cb73b708bf92c52808
 PONGO_CC=/tmp/CLT14/Library/Developer/CommandLineTools/usr/bin/clang \
+PONGO_LD=/tmp/CLT14/Library/Developer/CommandLineTools/usr/bin/ld \
   ./boot/build-pongo-t7001-diagnostic.sh /tmp/PongoOS-t7001
 ~~~
 
@@ -636,7 +651,7 @@ is the reference for the intentionally minimal board description.
 | PongoOS USB interface `05ac:4141` | ✅ Verified with PyUSB control transfers |
 | Current RAM-only Pongo session | ⚠️ No active session; DFU-to-download-mode USB reconnect is currently failing |
 | Linux payload upload | ✅ Transferred once; exposed PongoOS pre-handoff defects |
-| Guarded T7001 diagnostic PongoOS | ⚠️ Exact Apple Clang 14.0.0 image built and uploader guard tested; device run awaits a fresh DFU USB connection |
+| Guarded T7001 diagnostic PongoOS | ⚠️ Matched Apple Clang 14.0.0/ld64-820.1 image built; safe no-jump device run awaits a fresh DFU USB connection |
 | Linux kernel boot | ❌ Not achieved |
 | Display/touch/Wi‑Fi/Bluetooth validation | ❌ Not started |
 | Usable tethered Linux tablet | ❌ Future milestone |

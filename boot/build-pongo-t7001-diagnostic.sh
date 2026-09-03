@@ -7,16 +7,20 @@ source_dir=${1:?"usage: $0 /path/to/clean/PongoOS-checkout"}
 revision=742d92a023d16c4cc9ebf9cb73b708bf92c52808
 output="$project_dir/boot/Pongo-t7001-diagnostic.bin"
 pongo_cc=${PONGO_CC:?Set PONGO_CC to Apple Clang 14.0.0 (clang-1400.0.29.202); see docs/project-status.md}
-pongo_ld=${PONGO_LD:-/usr/bin/ld}
+pongo_ld=${PONGO_LD:?Set PONGO_LD to the Xcode 14.2 ld; see docs/project-status.md}
 
-"$pongo_cc" --version | grep -Fq 'Apple clang version 14.0.0 (clang-1400.0.29.202)' || {
-    echo "PongoOS must be built with Apple Clang 14.0.0 (clang-1400.0.29.202); see docs/project-status.md" >&2
-    exit 1
-}
+case "$("$pongo_cc" --version)" in
+    *'Apple clang version 14.0.0 (clang-1400.0.29.202)'*) ;;
+    *) echo "PongoOS must be built with Apple Clang 14.0.0 (clang-1400.0.29.202); see docs/project-status.md" >&2; exit 1 ;;
+esac
 test -x "$pongo_ld" || {
     echo "PONGO_LD must name an executable Mach-O linker" >&2
     exit 1
 }
+case "$("$pongo_ld" -v 2>&1)" in
+    *'PROJECT:ld64-820.1'*) ;;
+    *) echo "PONGO_LD must be Xcode 14.2 ld64-820.1; see docs/project-status.md" >&2; exit 1 ;;
+esac
 
 test "$(git -C "$source_dir" rev-parse HEAD)" = "$revision" || {
     echo "PongoOS checkout must be exactly $revision" >&2

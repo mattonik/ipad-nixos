@@ -61,8 +61,14 @@ with open(sys.argv[1], "rb") as stream:
 PY
 
 compiler="$output/Library/Developer/CommandLineTools/usr/bin/clang"
-"$compiler" --version | grep -Fq "$expected" || {
-    echo "extracted compiler is not $expected" >&2
-    exit 1
-}
+case "$("$compiler" --version)" in
+    *"$expected"*) ;;
+    *) echo "extracted compiler is not $expected" >&2; exit 1 ;;
+esac
+linker="$output/Library/Developer/CommandLineTools/usr/bin/ld"
+case "$("$linker" -v 2>&1)" in
+    *'PROJECT:ld64-820.1'*) ;;
+    *) echo "extracted linker is not Xcode 14.2 ld64-820.1" >&2; exit 1 ;;
+esac
 printf 'PONGO_CC=%q\n' "$compiler"
+printf 'PONGO_LD=%q\n' "$linker"
