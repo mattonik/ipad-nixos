@@ -217,8 +217,8 @@ index 6ae4d5b..9d164c5 100644
 +            return false;
 +        }
 +        *image_size = *(uint64_t *)(*stage + 16);
-+        if (*image_size > output_size || *image_size > LINUX_IMAGE_CAPACITY) {
-+            iprintf("Decoded Linux Image size is invalid: %llu.\n", *image_size);
++        if (*image_size < output_size || *image_size > LINUX_IMAGE_CAPACITY) {
++            iprintf("Decoded Linux Image layout size is invalid: %llu.\n", *image_size);
 +            free_contig(*stage, LINUX_IMAGE_CAPACITY + LINUX_DTREE_SIZE);
 +            return false;
 +        }

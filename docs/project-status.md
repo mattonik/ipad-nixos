@@ -471,6 +471,26 @@ The Newlib configure and Pongo link commands both named the extracted tools.
 This is the only custom Pongo image approved for the next RAM-only
 `linux_diag` attempt; it has not yet run on the device.
 
+That run reached a Pongo logo after the documented Lightning reconnect, and
+`help` confirmed the custom `linux_diag` command over USB. The kernel, J81 DTB
+pack, and initramfs uploaded successfully. `linux_diag` selected J81, then
+reported `Decoded Linux Image size is invalid: 43384832.` PongoOS remained
+running and no `bootl` or Linux jump was sent.
+
+This uncovered a guard bug, not a malformed kernel: the 42,404,352-byte
+decompressed `Image` has an arm64 header layout size of 43,384,832 bytes. The
+extra 980,480 bytes are BSS layout space, so a valid header layout size must be
+at least the decompressed file size, not at most it. The guard now enforces
+`decompressed_size <= layout_size <= 64 MiB`; `boot/test_t7001_pongo_diagnostic.py`
+checks the real artifact and that bound. Rebuild the diagnostic after this
+patch before repeating `linux_diag`.
+
+The corrected matched-toolchain rebuild completed at 254,040 bytes, SHA-256
+`2b9405eec0fcfd6d7be5e3659f70b1bab5584fa959307da1ed2c6dc66eaf3574`.
+The live Pongo session still contains the earlier safe-but-rejecting image, so
+it must not be reused for a second diagnostic. Re-enter DFU, launch only this
+new image, reconnect the cable at the Pongo logo, then run `linux_diag` again.
+
 The current hardware blocker was then isolated further: a fresh DFU run of
 the proven stock `boot/Pongo.bin` also reached `Checkmate!` but timed out
 waiting for download mode. Therefore this is not a Pongo image, kernel,
@@ -651,7 +671,7 @@ is the reference for the intentionally minimal board description.
 | PongoOS USB interface `05ac:4141` | ✅ Verified with PyUSB control transfers |
 | Current RAM-only Pongo session | ⚠️ No active session; DFU-to-download-mode USB reconnect is currently failing |
 | Linux payload upload | ✅ Transferred once; exposed PongoOS pre-handoff defects |
-| Guarded T7001 diagnostic PongoOS | ⚠️ Matched Apple Clang 14.0.0/ld64-820.1 image built; safe no-jump device run awaits a fresh DFU USB connection |
+| Guarded T7001 diagnostic PongoOS | ⚠️ Matched-toolchain Pongo and USB are proven. The corrected no-jump image is built and awaits one fresh DFU `linux_diag` run |
 | Linux kernel boot | ❌ Not achieved |
 | Display/touch/Wi‑Fi/Bluetooth validation | ❌ Not started |
 | Usable tethered Linux tablet | ❌ Future milestone |
