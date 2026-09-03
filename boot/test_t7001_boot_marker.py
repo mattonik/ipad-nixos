@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
-"""Static checks for the T7001 pre-jump framebuffer marker stub.
+"""Static checks for the T7001 pre-jump framebuffer strobe stub.
 
-This cannot exercise the marker on real hardware (it draws to a physical
+This cannot exercise the strobe on real hardware (it draws to a physical
 framebuffer that only exists on the iPad), so it only checks the structural
 invariants that would otherwise be easy to break silently: the assembly
 stub's data offsets must match what linux_prep_boot() patches, the marker
-must be staged and cache-cleaned before gLinuxPrepared is set, the T7001
+must be staged and cache-cleaned before gLinuxPrepared is set, and the T7001
 jump must target the marker stub rather than jumping straight into the
-kernel, and the current build must default to the isolated spin-forever
-test rather than continuing into the kernel jump.
+kernel.
+
+v1 (a small one-shot white band) and v2 (a one-shot full-screen black fill)
+were both inconclusive on hardware -- see docs/project-status.md. v3
+replaces the one-shot fill with an infinite two-color strobe so a future
+run gives an unambiguous answer regardless of display double-buffering.
 """
 from pathlib import Path
 
@@ -20,39 +24,33 @@ assert "+.global _t7001_boot_marker\n" in patch
 assert "+.global _t7001_boot_marker_end\n" in patch
 assert "+_t7001_boot_marker_end:" in patch
 
-# Asm side: ldr offsets into marker_data (framebuffer addr, pixel, count,
-# entry, continue flag).
+# Asm side: ldr offsets into marker_data (fb addr, color A, color B, delay,
+# word count).
 assert "+    ldr  x10, [x9]" in patch
+assert "+    ldr  w15, [x9, 20]" in patch
 assert "+    ldr  w11, [x9, 8]" in patch
-assert "+    ldr  w12, [x9, 12]" in patch
-assert "+    ldr  w13, [x9, 24]" in patch
-assert "+    ldr  x14, [x9, 16]" in patch
+assert "+    ldr  w4, [x9, 16]" in patch
+assert "+    ldr  w11, [x9, 12]" in patch
 
-# Zero continue flag must spin forever rather than fall through to the
-# kernel branch -- this is the whole point of the isolated test.
-assert "+    cbz  w13, 2f" in patch
-assert "+2:\n" in patch
-assert "+    b    2b" in patch
+# It must be an infinite loop -- both color-A and color-B fill/delay
+# sequences must exist, and the loop must branch back to itself (b 1b),
+# never forward past that into any kernel-entry branch.
+assert "+1:\n" in patch
+assert "+    b    1b" in patch
+assert "+    br " not in patch, "the strobe stub must never branch onward to the kernel"
 
-# The stub must leave x1=x2=x3=0 for the real kernel entry (AArch64 boot
-# protocol) on the continue path.
-assert "+    mov  x1, 0\n" in patch
-assert "+    mov  x2, 0\n" in patch
-assert "+    mov  x3, 0\n" in patch
-
-# C side: the same offsets, in the same order, patched before the jump.
-# Fill color must not be white/transparent -- the default PongoOS screen is
-# light, so a white or fully-transparent fill would be invisible.
+# C side: the same offsets, colors chosen to survive an unknown a8b8g8r8
+# channel-order assumption (opaque black, opaque bright green), and a
+# generous delay so each phase is human-visible.
 assert "*(uint64_t *)(data + 0)  = gBootArgs->Video.v_baseAddr;" in patch
 assert "*(uint32_t *)(data + 8)  = 0xff000000u;" in patch
+assert "*(uint32_t *)(data + 12) = 0xff00ff00u;" in patch
+assert "*(uint32_t *)(data + 16) = 500000000u;" in patch
+assert "*(uint32_t *)(data + 20) = (uint32_t)fb_words;" in patch
 assert "0xffffffffu" not in patch
-assert "*(uint32_t *)(data + 12) = (uint32_t)fb_words;" in patch
-assert "*(uint64_t *)(data + 16) = (uint64_t)gLinuxStage;" in patch
-assert "*(uint32_t *)(data + 24) = 0;" in patch
 
 # The fill must cover the whole framebuffer (v_height * v_rowBytes), not a
-# small band -- a tiny patch was the likely reason the first run was
-# inconclusive.
+# small band.
 assert "uint64_t fb_words = (gBootArgs->Video.v_height * gBootArgs->Video.v_rowBytes) / 4;" in patch
 
 # The marker must be cache-cleaned, and gLinuxPrepared must only flip true

@@ -819,22 +819,77 @@ Built from a fresh pinned checkout with the same matched toolchain:
 254,032 bytes, SHA-256
 `32e24d58d0970dcd0476b00935e6ae43d0aa83014334c8e83283689e2ce83f23`.
 All three test scripts pass, including `boot/test_t7001_boot_marker.py`
-updated for the new offsets, color, and spin-forever default. **Not yet
-run on hardware.**
+updated for the new offsets, color, and spin-forever default.
+
+### v2 hardware run — inconclusive, likely unrelated artifact (2026-09-03)
+
+Launched this build, re-confirmed the same `linux_diag` measurement as
+every prior verified run, then sent `--t7001-handoff` once. The device
+was recorded on video (11.5s) for the entire attempt and checked
+frame-by-frame afterward: the screen shows the normal PongoOS
+logo/console the whole time. No black fill ever appears. One frame
+(around the 6.5s mark) shows a brief reddish tint over the still-intact
+logo, which the observer also saw directly (not a camera artifact). The
+device then stopped responding to USB control transfers, though it
+remained visible as a USB device to macOS rather than fully
+disconnecting — a different failure signature than the v1/Step 2 runs.
+
+This reddish blink is the same category of artifact v1 reported (there,
+an ~80px red/black band in the bottom third), despite v1 and v2 being completely
+different marker designs — different size, color, and hold behavior. If
+either marker had actually executed, the visual signature should have
+tracked the design change; it didn't. The parsimonious read is that this
+blink is **not** the marker's output at all, but something intrinsic to
+PongoOS's own teardown sequence that happens on every `linux_t7001`
+attempt regardless of what code runs afterward (a display clock/power
+transition, MMU/cache teardown side effect, etc.). Neither run has
+produced confirmed evidence that execution reaches the marker stub.
+
+### Marker v3: continuous two-color strobe (2026-09-03)
+
+Two possible explanations remain for why a correctly-executing marker
+still wouldn't produce visible output: the display could be
+double-buffered, so a single write can land in a buffer that's never
+actually scanned out; and a single write is inherently hard to
+distinguish from a one-off artifact like the reddish blink. v3 addresses
+both by replacing the one-shot fill with an infinite loop that fills the
+whole framebuffer solid black, holds (~0.3-1s busy-wait), fills it opaque
+bright green (`0xff00ff00`, chosen to survive an unknown a8b8g8r8
+channel-order assumption the same way opaque black does), holds, and
+repeats forever. It never continues to the kernel in this build — see
+`t7001_boot_marker.S` for the full v1/v2/v3 history recorded alongside
+the code. A repeating write is far more likely to eventually hit the
+active scanout buffer than a single one, and a blinking two-color pattern
+cannot be confused with a brief, one-off artifact the way a static fill
+could.
+
+If the strobe is visible at all, execution reached and is still running
+in freshly staged physical code — full stop, regardless of the reddish
+blink's cause. If it is not visible, the failure is at or before this
+stub, in `jump_to_image`'s own teardown/jump path, and the reddish blink
+becomes the more interesting thing to chase next.
+
+Built from a fresh pinned checkout with the same matched toolchain:
+254,032 bytes, SHA-256
+`48c2b288ba1aa4e24e56906686713c52b2d86122c21c4bde8790c748e2c75d60`.
+All tests pass, including `boot/test_t7001_boot_marker.py` updated for
+the strobe design. **Not yet run on hardware.**
 
 ### Next technical step
 
 1. Launch this build and confirm `linux_diag` still reports the same
    staged addresses as before (the marker changes only the T7001
    `linux_t7001` jump path, not `linux_diag`).
-2. With the device watched the whole time, send `--t7001-handoff` once
-   and record whether the full-screen black fill appears and holds.
-3. If the marker appears and holds, then in a separate step add
-   `cache_clean()` for the Image/DTB staging in `linux_prep_boot()` (the
-   gap noted above) before trying a continue-into-kernel variant (flip
-   `continue_flag` back to nonzero) — do not fix that blind alongside
-   another jump attempt; test it as its own, separately interpretable
-   change.
+2. With the device watched (and ideally recorded) the whole time, send
+   `--t7001-handoff` once and record whether the black/green strobe
+   appears at all, and for how long.
+3. If the strobe is visible, then in a separate step add `cache_clean()`
+   for the Image/DTB staging in `linux_prep_boot()` (the gap noted in
+   Step 3) and build a variant that continues into the kernel jump after
+   a shorter, finite strobe — do not fix that blind alongside another
+   jump attempt; test it as its own, separately interpretable change. If
+   the strobe is not visible, treat the reddish blink itself as the next
+   thing to investigate, rather than iterating on the marker further.
 4. Only after a visible Linux log, resume the console, touch, and Wi-Fi work
    already recorded below. The current driver approval gate remains in force.
 
