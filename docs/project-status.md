@@ -1125,22 +1125,62 @@ Built from a fresh pinned checkout: 254,032 bytes, SHA-256
 `389210235e7234fa33cc473a483ca912bab5fac4ff358d0dc627901a5394ea4d`. All
 tests pass. **Not yet run on hardware.**
 
+### v6 hardware run — tramp fix confirmed a no-op on this device (2026-09-03)
+
+`t7001_sram_check` printed, over the plain USB console, no photo needed:
+
+```text
+id_aa64pfr0_el1=0x1012 has_el3=1 need_to_release_L3_SRAM=0x69 would_release_via_tramp=0
+```
+
+This device has EL3, and its own exploit-stage bootloader patching set
+`need_to_release_L3_SRAM=0x69` -- the source's own comment defines that
+byte as `0x41 = yes, [anything else] = no`. So `jump_to_image` was
+already taking the "raw" (no SRAM release) path on this hardware before
+the v4 fix, and still is after it: the fix changed nothing behaviorally
+here. It may still be the technically correct call convention (matching
+how `exit_to_el1_image` is actually used elsewhere), but it is
+conclusively not the explanation for why the marker has never been
+observed to execute.
+
+### Where this leaves the project
+
+Six builds, five of them run on real hardware, have now ruled out: wrong
+marker size, wrong color, one-shot vs. held vs. strobed writes, timing
+too short, and the SRAM-release gap. Every attempt produces the same
+shape of result -- PongoOS accepts `linux_t7001`, prints its normal
+prep-boot messages, then goes silent and unresponsive with no visible
+sign our own code ever ran. The reddish flash turned out to be a real
+but unrelated, already-explained display-register side effect of
+`linux_prep_boot()` itself, not a clue about the jump.
+
+What's left is genuinely inside `jump_to_image`'s raw path, or in
+whatever the CPU's actual state is by the time it reaches our staged
+physical address -- cache coherency between the write and the fetch,
+exception-level/MMU state assumptions specific to T7001 that a
+generalized-for-A10 mechanism doesn't handle, or something not yet
+identified. None of that is answerable by more framebuffer experiments;
+it needs either a real execution trace (UART/serial console, or
+JTAG/SWD via something like a Tamarin cable) or a much deeper, riskier
+round of blind ARM64/SoC-internals guessing with a poor track record so
+far. This is recorded as an explicit pause point, not a dead end: the
+next productive step most likely requires hardware this project doesn't
+currently have.
+
 ### Next technical step
 
-1. Launch this build and run `t7001_sram_check` over USB; read its
-   printed line directly (no photo needed).
-2. If `would_release_via_tramp=0`: the v4 tramp fix didn't change
-   anything on this device. Don't reason further from guesses about ARM64
-   cache/SRAM internals without more direct visibility -- this is the
-   point to seriously reconsider a UART/serial console (or another
-   hardware-debug path) rather than continuing to iterate blind on
-   PongoOS internals.
-3. If `would_release_via_tramp=1`: the fix is real and exercised, and the
-   hang is happening inside or after the actual SRAM-release trampoline
-   copy-and-execute sequence in `jump_to_image.S`'s tramp path -- narrow
-   the investigation there specifically, rather than at the marker or the
-   kernel Image.
-4. Only after a visible Linux log, resume the console, touch, and Wi-Fi work
+1. The most likely productive path is a UART/serial console or
+   equivalent low-level execution visibility -- see the pause point
+   above. This needs hardware (e.g. a Lightning-to-serial breakout /
+   Tamarin-style cable) not currently available; revisit when that's an
+   option.
+2. Absent new hardware, further attempts should be scoped narrowly and
+   each explicitly state which single variable they isolate, following
+   the pattern of `t7001_color_test`/`t7001_sram_check` (safe, no-jump,
+   directly observable) rather than another blind `--t7001-handoff`
+   variant -- the last four of those produced no new information beyond
+   confirming the hang.
+3. Only after a visible Linux log, resume the console, touch, and Wi-Fi work
    already recorded below. The current driver approval gate remains in force.
 
 ## Driver readiness and approval gate (2026-09-02)
@@ -1220,7 +1260,7 @@ is the reference for the intentionally minimal board description.
 | Current RAM-only Pongo session | ✅ Active after verified handoff-candidate diagnostic; transient and RAM-only |
 | Linux payload upload | ✅ Transferred once; exposed PongoOS pre-handoff defects |
 | Guarded T7001 diagnostic PongoOS | ✅ Matched-toolchain Pongo, USB, aligned Image/DTB/initrd ranges, Linux register contract, and no-jump guard are proven on T7001 |
-| Linux kernel boot | ❌ Not achieved; first `--t7001-handoff` sent, silent hang, no panic |
+| Linux kernel boot | ❌ Not achieved; 5 hardware handoff attempts, all silent hangs; color/timing/SRAM-release ruled out as causes; likely needs UART/hardware debug to progress |
 | Display/touch/Wi‑Fi/Bluetooth validation | ❌ Not started |
 | Usable tethered Linux tablet | ❌ Future milestone |
 
