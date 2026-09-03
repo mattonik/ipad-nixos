@@ -6,11 +6,11 @@ project_dir=$(cd "$(dirname "$0")/.." && pwd)
 source_dir=${1:?"usage: $0 /path/to/clean/PongoOS-checkout"}
 revision=742d92a023d16c4cc9ebf9cb73b708bf92c52808
 output="$project_dir/boot/Pongo-t7001-diagnostic.bin"
-pongo_cc=${PONGO_CC:-clang}
+pongo_cc=${PONGO_CC:?Set PONGO_CC to Apple Clang 14.0.0 (clang-1400.0.29.202); see docs/project-status.md}
 pongo_ld=${PONGO_LD:-/usr/bin/ld}
 
-"$pongo_cc" --version | grep -q '^clang version 11\.' || {
-    echo "PongoOS must be built with Nix Clang 11; see docs/project-status.md" >&2
+"$pongo_cc" --version | grep -Fq 'Apple clang version 14.0.0 (clang-1400.0.29.202)' || {
+    echo "PongoOS must be built with Apple Clang 14.0.0 (clang-1400.0.29.202); see docs/project-status.md" >&2
     exit 1
 }
 test -x "$pongo_ld" || {

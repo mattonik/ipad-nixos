@@ -1,6 +1,6 @@
 # iPad Linux Project Status
 
-Status date: 2026-09-02  
+Status date: 2026-09-03
 Target: iPad Air 2 Wi‑Fi A1566, A8X/T7001, board J81/J81AP  
 Repository: [mattonik/ipad-nixos](https://github.com/mattonik/ipad-nixos)
 Upstream: [jacopone/ipad-nixos](https://github.com/jacopone/ipad-nixos)
@@ -404,10 +404,11 @@ iPad in that RAM-only session and replug the cable before abandoning the run.
 Do not upload a Linux payload to stock PongoOS; use the guarded diagnostic
 binary below after the next clean DFU relaunch.
 
-### Modern-Clang build isolation — 2026-09-03
+### PongoOS compiler isolation — 2026-09-03
 
-The checked-in stock image reports Clang 14. The host reports Apple Clang
-21.0.1, while the upstream CI for this revision builds with `clang-10`. A
+The checked-in stock image reports Apple Clang 14.0.0
+(`clang-1400.0.29.202`). The host reports Apple Clang 21.0.0, while the
+upstream CI for this revision builds with `clang-10`. A
 clean source checkout was built with only the two compatibility edits required
 by Clang 21 (`stdarg.h` in `task.c` and the `ttb_alloc` function-pointer cast
 in `mm.c`). That image reached palera1n's `Booting PongoOS...` stage but did
@@ -421,12 +422,32 @@ the exploit timed out waiting for download mode. This run is inconclusive as
 an image comparison because the device disappeared before the payload could
 be observed. The useful conclusion is that the repository's supported build
 toolchain is old Clang (CI uses clang-10), not the current Apple Clang 21.
-Nix Clang 11.1.0 with the macOS linker successfully built the complete guarded
-diagnostic image (`254040` bytes, SHA-256
-`62be4d4bf2fe870b9b3f7054965fb6905c59d7848add991201e72de7b75b15f0`). Its
-size is close to the proven stock image (`254032` bytes). The checked-in
-builder now requires this compiler; its device test is pending restoration of
-the DFU-to-download-mode USB transition.
+
+Nix Clang 11.1.0 with the macOS linker built a complete guarded diagnostic
+image (`254040` bytes, SHA-256
+`62be4d4bf2fe870b9b3f7054965fb6905c59d7848add991201e72de7b75b15f0`), but a
+fresh, unmodified baseline built with that same compiler (SHA-256
+`ee83f490dfdc58ae198066a1d257c6e0900979e6546f120790cdcc3cd5fc97db`) showed
+only a dark screen and then required DFU recovery. This rules out the patch as
+the cause and rules out Nix Clang 11 as a PongoOS compiler for this device.
+Immediately afterward, the host found no Apple USB device (`05ac:*`), so there
+was no live Pongo session to query or recover. Do not rebuild or launch that
+image again.
+
+Homebrew LLVM 14.0.6 can compile an unmodified baseline (SHA-256
+`35ff111ddb62722db00bfedf0a7adb85b1ea109d963828b4328917321558b275`), but it
+is upstream LLVM rather than Apple's Clang and has not been launched. It is
+not evidence of a usable compiler and is not a reason to consume another DFU
+cycle.
+
+The only known-good reference is the checked-in stock Pongo image, built with
+Apple Clang 14.0.0 (`clang-1400.0.29.202`). That compiler is not installed on
+this host. Apple's official Command Line Tools for Xcode 14.2 download requires
+an authenticated Apple Developer session; the unauthenticated URL redirects
+to Apple ID sign-in. Obtain it only from Apple, extract or otherwise use it
+without replacing the active Xcode 21 toolchain, and set `PONGO_CC` to its
+`clang`. The diagnostic builder now rejects every other compiler before it
+can create a misleading image.
 
 The current hardware blocker was then isolated further: a fresh DFU run of
 the proven stock `boot/Pongo.bin` also reached `Checkmate!` but timed out
@@ -480,14 +501,15 @@ revision. It is deliberately a **diagnostic**, not a Linux handoff port:
 - rejects `bootl` on `socnum == 0x7001`, so the diagnostic binary cannot
   accidentally attempt the known-invalid A10 transfer on this iPad.
 
-Build it from a fresh official checkout. The two source compatibility fixes in
-the patch do not make Apple Clang 21 a valid Pongo compiler: the builder
-deliberately requires the verified Nix Clang 11 environment.
+Build it from a fresh official checkout. The compatibility edits in the patch
+do not make Apple Clang 21 valid, and the dark-screen baseline proves Nix
+Clang 11 is not valid either. The builder deliberately accepts only the exact
+Apple Clang version reported by the stock image.
 
 ~~~bash
 git clone --recurse-submodules https://github.com/checkra1n/PongoOS.git /tmp/PongoOS-t7001
 git -C /tmp/PongoOS-t7001 checkout 742d92a023d16c4cc9ebf9cb73b708bf92c52808
-nix shell github:NixOS/nixpkgs/nixos-21.11#llvmPackages_11.clang --command \
+PONGO_CC=/absolute/path/to/Apple-Clang-14.0.0/bin/clang \
   ./boot/build-pongo-t7001-diagnostic.sh /tmp/PongoOS-t7001
 ~~~
 
@@ -599,7 +621,7 @@ is the reference for the intentionally minimal board description.
 | PongoOS USB interface `05ac:4141` | ✅ Verified with PyUSB control transfers |
 | Current RAM-only Pongo session | ⚠️ No active session; DFU-to-download-mode USB reconnect is currently failing |
 | Linux payload upload | ✅ Transferred once; exposed PongoOS pre-handoff defects |
-| Guarded T7001 diagnostic PongoOS | ✅ Builds reproducibly with pinned Clang 11; hardware run blocked by USB reconnect |
+| Guarded T7001 diagnostic PongoOS | ⚠️ Patch is source-checked; the Clang 11 image was non-bootable. Exact Apple Clang 14.0.0 is required before a safe hardware run |
 | Linux kernel boot | ❌ Not achieved |
 | Display/touch/Wi‑Fi/Bluetooth validation | ❌ Not started |
 | Usable tethered Linux tablet | ❌ Future milestone |
