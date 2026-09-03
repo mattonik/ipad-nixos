@@ -417,6 +417,14 @@ Silicon USB-C limitation; use a USB-A Lightning cable through a USB-A hub (or
 another host) for the next test. Direct USB-C may require a precisely timed
 unplug/replug after checkm8 and is presently unreliable on this Mac.
 
+The bundled palera1n was v2.0.2. The current official arm64 macOS release,
+v2.4, was downloaded and verified (SHA-256
+`950c357b6ae5df36128f6e42a3c6d371e55aeb69a5afcde276f096276210d0c9`). It was
+started with the stock Pongo image, but the host saw no DFU device, so no
+exploit or image comparison occurred. Do not keep restarting the iPad while
+macOS reports no USB device; first restore USB enumeration or move the DFU
+session to another host.
+
 ### Captured PongoOS failure and ruled-out work (2026-09-02)
 
 The supplied iPad screen capture records the first payload attempt directly:
