@@ -5,10 +5,16 @@ Target: iPad Air 2 Wi‑Fi A1566, A8X/T7001, board J81/J81AP
 Repository: [mattonik/ipad-nixos](https://github.com/mattonik/ipad-nixos)
 Upstream: [jacopone/ipad-nixos](https://github.com/jacopone/ipad-nixos)
 
-**Resuming after a break? Start at "Playbook: next hardware session" near the
-end of this file** (search for that heading) -- it has the exact launch
-command, what to do for either outcome, and doesn't require reading the full
-history above it.
+**Resuming after a break? Start at "UART/JTAG procurement and setup plan"**
+(search for that heading) -- as of 2026-09-04, that's the actual next step,
+not another PongoOS-side hardware round. Seven distinct software-only
+hypotheses have been tried and ruled out by real hardware results (see
+"Step 7" below and `research/t7001-handoff-options.md`); further iteration
+without independent execution visibility isn't a good use of another
+hardware cycle. "Playbook: next hardware session" (also near the end of
+this file) is still accurate for *how* to launch and interpret a PongoOS
+round, but there isn't a well-evidenced new thing to try with it until the
+cable exists.
 
 ## Mission
 
@@ -1898,6 +1904,89 @@ different device, hundreds of dollars); a UART or JTAG *accessory* for the
 Air 2 already in hand is a different, much smaller category of purchase
 (often well under $50) -- worth the user's own judgment call on whether
 that distinction changes anything, not assumed either way here.
+
+## UART/JTAG procurement and setup plan (2026-09-04)
+
+The user confirmed they want to proceed with this. This is a purchasing/
+build plan, not a purchase made on their behalf -- they place any orders
+themselves.
+
+Also researched, since the user separately clarified they already own an
+iPad with an A12X chip: that doesn't change this recommendation. Owning the
+hardware removes the *cost* barrier the A12X/A12Z path was originally
+framed around, but not the *technical* one -- there is still no working
+bootrom/SecureROM exploit for A12X/A12Z at all (checked fresh, not just
+recalled from earlier research; see the "Third update" in
+`research/t7001-handoff-options.md`'s Round 6). Building one from scratch
+would be a fundamentally different, much larger, and far less certain
+project than anything done here. The T7001/Air 2 path remains the
+better-evidenced one to continue.
+
+### What to get
+
+The well-documented, checkm8-generation-specific tool for this is the
+**Tamarin Cable** (Thomas Roth / "stacksmashing", first shown at DEF CON
+30) -- a DIY build, not a pre-made purchasable product, and cheaper and
+more accessible than the alternative commercial options ("Bonobo"/"Kanzi"
+cables, described by the community as expensive and hard to actually
+obtain).
+
+Parts (all should ship to Slovakia from standard EU-serving distributors --
+Mouser, DigiKey, Farnell/element14 -- or a closer Slovak/Czech electronics
+reseller for faster/cheaper shipping; exact vendor not researched further,
+left to the user):
+
+1. **A Raspberry Pi Pico** (the original RP2040 board). The firmware's own
+   build instructions pin a specific Pico-SDK commit
+   (`4fe995d0ec984833a7ea9c33bac5c67a53c04178`) and warn that newer SDK
+   versions have USB incompatibilities -- stick with the original Pico,
+   not Pico 2 or Pico W, unless the firmware repo's instructions have
+   since been updated to say otherwise (worth re-checking the repo before
+   ordering, since this project's own research pass could be stale by the
+   time of purchase).
+2. **A spare Lightning cable** to cut open and solder into -- any cheap
+   generic one, it gets sacrificed. Not the iPad's own primary cable.
+3. **A soldering iron and a multimeter.** The project's own docs warn that
+   Lightning cable wire colors aren't standardized across manufacturers --
+   verify with the multimeter against the documented pinout before
+   soldering, don't assume color-to-signal mapping.
+4. **Firmware**: free and open-source,
+   [stacksmashing/tamarin-firmware](https://github.com/stacksmashing/tamarin-firmware)
+   on GitHub. Provides both a UART serial console and a full JTAG/SWD probe
+   (the JTAG/SWD side needs a matching OpenOCD fork, linked from the same
+   repo).
+
+Rough total cost: parts alone are on the order of EUR 10-15; shipping from
+EU distributors on top of that. Requires basic soldering skill.
+
+### One open question, not yet resolved
+
+The firmware repo's own README states: "To enable JTAG on production
+iPhones they need to be demoted. For checkm8 vulnerable iPhones this can be
+done using `ipwndfu`." This "demotion" step has **not** been verified
+against this project's own checkm8/PongoOS flow -- it may already be
+implied by how this project gets the device into PongoOS in the first
+place, or it may be an extra step needed specifically for JTAG (UART alone
+may not need it; not yet confirmed either way). Check this before assuming
+JTAG will "just work" once the cable is built -- UART is the simpler,
+lower-risk capability to bring up first regardless, and is enough on its
+own to see what the CPU prints (or doesn't) during the handoff, which is
+the actual open question this project has now narrowed the problem down to.
+
+### Once the cable exists
+
+The plan is straightforward given everything already in this document:
+build/flash the Tamarin firmware, wire it to the sacrificed Lightning
+cable per the repo's pinout (verified against the real cable with a
+multimeter), connect to the iPad Air 2 alongside the existing checkm8/
+PongoOS USB connection (Lightning carries both), and capture UART output
+during the exact same `linux_t7001` handoff sequence this project has run
+many times already (see "Playbook: next hardware session" for that
+sequence) -- this time reading the CPU's own serial output through
+`lowlevel_set_identity()`/`lowlevel_cleanup()`/`exit_to_el1_image()` and
+the marker/kernel jump, instead of inferring from PongoOS's state before
+and after. That's the first genuinely new class of information this
+investigation will have had access to since it began.
 
 ## Driver readiness and approval gate (2026-09-02)
 
