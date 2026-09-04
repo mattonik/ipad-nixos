@@ -348,11 +348,128 @@ before finding it -- that's a real cost, not a hypothetical one) or pause the
 project at a well-documented, resumable state rather than continuing to spend
 hardware cycles on inference alone.
 
+## Round 3: pre-hardware code review, cross-checked against Asahi Linux/m1n1
+
+Requested before running the Step 5 (reserved-memory) build on hardware: a
+review of the current patch for dead code, correctness, and alignment with
+current Linux kernel / Apple-Linux community practice -- specifically checking
+whether Asahi Linux (which supports newer Apple Silicon, M-series, and is a
+far more mature and actively-maintained project than the 2022 konradybcio
+fork) does anything materially different that this project should learn from.
+
+### Dead code and scope-creep found (none blocking)
+
+- **`linux_dtree_init()`/`linux_dtree_late()` are unreachable in this
+  project's real flow, and diverge from the fixed path.** `linux_prep_boot()`
+  branches on `fdt_initialized`; it's only false if no DTB pack was ever
+  uploaded via the `fdt` command. `load_linux.py` always uploads one before
+  `linux_diag`/`linux_t7001`, so the real path is always
+  `linux_prepare_fdt()` → `linux_dtree_overlay()` -- confirmed directly before
+  writing the Step 5 fix (see that section above). `linux_dtree_init()`
+  remains present, unmodified, from-scratch, and **none of Step 4's fixed
+  entry point, Step 5's reserved-memory reservations, or the SEPFW addition
+  apply to it.** Not a bug in the sense of affecting any attempt made so far
+  (this path has never been exercised), but a real footgun: if anyone ever
+  runs `linux_t7001` without first running `fdt`, they silently get a
+  completely different, unfixed, T7001-unaware code path with no warning.
+  Not changed in this pass to keep Step 5 scoped to one variable; worth
+  either removing this dead path or making it error out explicitly if
+  `linux_t7001` is used without an uploaded DTB pack.
+- **`gLinuxDtb` and `gLinuxStageAllocation` are global-scope variables used
+  only locally within `linux_prep_boot()`** now that Step 4 removed the
+  marker/tramp code that used to reference them from `entry.c`. Not a
+  correctness bug, just wider scope than currently needed -- a leftover from
+  the abandoned custom-jump approach. Harmless to leave; candidate for a
+  future cleanup pass, not this one.
+- **`gLinuxStageAllocation` is never freed if `linux_prep_boot()` runs more
+  than once in the same live PongoOS session** (e.g. `linux_t7001` retried
+  after a failed attempt that didn't fully hang). A real leak, but low
+  priority: every hardware attempt so far has been a single call per fresh
+  PongoOS launch (the device hangs or is manually relaunched between
+  attempts), so this has not affected any result to date.
+
+### Verified, not changed: the leading-slash node name
+
+`linux_dtree_overlay()`'s new framebuffer reservation builds its node name as
+`"/memory@%lx"` (leading slash) and adds it as a child of the
+already-non-root `/reserved-memory` node. Checked libfdt's actual
+`fdt_add_subnode_namelen()` implementation directly (`src/modules/linux/libfdt/fdt_rw.c`):
+it `memcpy()`s the name argument verbatim into the node header with **no
+character validation at all** -- a leading (or embedded) `/` is not rejected,
+producing a technically malformed node name per the Devicetree Specification
+(node names may not contain `/`). This looked like a plausible bug worth
+fixing, but re-checking Konrad's exact working source shows **his framebuffer
+reservation has the identical leading slash** (`siprintf(fdt_nodename,
+"/memory@%lx", ...)` immediately followed by `fdt_add_subnode(fdt, node,
+fdt_nodename)` where `node` is `/reserved-memory`, not root) -- while his low
+firmware region reservation, and this project's copy of it, correctly omits
+it. Linux's early reserved-memory scan (`drivers/of/of_reserved_mem.c`) walks
+children of `/reserved-memory` structurally and reads their `reg`/`no-map`
+properties directly off the flattened tree -- it does not do path-based
+lookups by name, so a malformed literal name is very unlikely to break the
+actual protection this fix exists to provide. Left as-is, matching the proven
+reference bug-for-bug, rather than "fixed" into an untested variant.
+
+### Cross-checked against Asahi Linux / m1n1
+
+`AsahiLinux/m1n1` (the bootloader Asahi uses to hand off from Apple's boot
+chain to Linux on M-series Macs -- a mature, actively-maintained, far more
+complex project than anything else checked in this research) does the
+**same class of ADT-to-`/reserved-memory` conversion** as this project's Step
+5 fix and Konrad's PongoOS, via a generic helper,
+`dt_get_or_add_reserved_mem(name, compatible, nomap, paddr, size)`
+(`src/kboot.c`): find-or-create a subnode under `/reserved-memory`, set
+`reg`, optionally set `no-map`. This independently confirms the *architecture*
+of this project's fix is sound and matches current community practice, not
+an ad-hoc guess -- the same fundamental problem (loader must tell Linux what
+firmware-owned memory to leave alone) exists across every Apple-SoC Linux
+port, T7001 included.
+
+One genuinely useful nuance found: m1n1 does **not** mark every reservation
+`no-map`. Its SEP firmware reservation is added with `nomap=false` --
+reserved from general allocation, but still part of Linux's normal linear
+map (needed because SEP communication may require the kernel to actually
+read/map that memory, unlike a region that must never be touched by Linux at
+all). Checked this project's own SEPFW handling in light of that: it already
+uses `fdt_add_mem_rsv()` -- the older FDT memory-reservation-map mechanism,
+which is `memblock_reserve()`d but, like `nomap=false`, does **not** exclude
+the region from Linux's linear map. **This project's existing SEPFW treatment
+already matches both mature reference implementations' choice for that
+specific region**, independent confirmation it wasn't a gap. The framebuffer
+and low-FW regions, by contrast, are marked `no-map` in both this project's
+fix and Konrad's reference, which also matches the standard upstream
+`simple-framebuffer` binding convention (Documentation/devicetree/bindings/display/simple-framebuffer.yaml
+recommends the backing memory be a no-map reserved region) -- not
+ad-hoc, this is the documented, expected pattern for exactly this driver.
+
+**Not pursued further, and why:** m1n1's reservation helper additionally
+generates a `phandle` and expects consumers to link back via a
+`memory-region = <&phandle>` property, used heavily for M-series' DART
+IOMMU/DCP display-coprocessor memory ownership. T7001's display path has no
+such coprocessor or IOMMU-mediated ownership model (PongoOS pokes the display
+controller's `pixfmt`/color-matrix registers directly, and the DTB's
+framebuffer node is a plain `reg`-based `simple-framebuffer`, not something
+that resolves memory via `memory-region` lookup) -- the phandle/link
+machinery solves a problem that doesn't exist for this chip's simpler display
+path. Not adding it is a considered omission, not a gap.
+
+### Net assessment
+
+No blocking bug found. The dead-code and scope-creep notes above are real but
+don't affect this or any prior attempt's outcome, and are left unaddressed to
+keep this hardware round scoped to the one change already built and
+documented (Step 5). The cross-check against Asahi/m1n1 increased confidence
+in the fix rather than surfacing a missing piece -- the two-region reservation
+already implemented matches the architecture of the most mature reference
+available, including its choice of which regions get `no-map` versus plain
+`memblock_reserve()`. Ready to test.
+
 ## Sources
 
 - [konradybcio/pongoOS](https://github.com/konradybcio/pongoOS)
 - [konradybcio/linux-apple](https://github.com/konradybcio/linux-apple)
 - [torvalds/linux — arch/arm64/boot/dts/apple/t7001-air2.dtsi](https://github.com/torvalds/linux/blob/v6.19/arch/arm64/boot/dts/apple/t7001-air2.dtsi)
+- [AsahiLinux/m1n1 — src/kboot.c](https://github.com/AsahiLinux/m1n1/blob/main/src/kboot.c)
 - [Boot Mainline Linux On Apple A7, A8 And A8X Devices — Hackaday](https://hackaday.com/2022/06/12/boot-mainline-linux-on-apple-a7-a8-and-a8x-devices/)
 - [Now you can boot Linux on Apple devices with A7 through A11 series chips — Liliputing](https://liliputing.com/now-you-can-boot-linux-on-apple-devices-with-a7-and-a8-series-chips/)
 - [A11pwnX/Linux-iPhone-6s-X-howto](https://github.com/A11pwnX/Linux-iPhone-6s-X-howto)

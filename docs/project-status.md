@@ -1380,7 +1380,46 @@ Built from a fresh pinned checkout: 254,032 bytes, SHA-256
 existing tests pass unchanged. Added `boot/test_t7001_reserved_memory.py`
 (structural checks: looks up the real DTB's existing node rather than
 creating one, both reservations computed from `boot_args` not hardcoded,
-both marked `no-map`). **Not yet run on hardware.**
+both marked `no-map`).
+
+### Pre-hardware code review, cross-checked against Asahi Linux/m1n1 (2026-09-04)
+
+Requested before running this build on hardware: a review for dead code and
+correctness, plus a check against `AsahiLinux/m1n1` (supports newer Apple
+Silicon, far more mature than the 2022 konradybcio fork) for anything done
+materially differently. Full writeup in
+[`research/t7001-handoff-options.md`](../research/t7001-handoff-options.md)
+("Round 3"); summary:
+
+**No blocking bug found.** Three non-blocking notes: `linux_dtree_init()`/
+`linux_dtree_late()` are confirmed unreachable in this project's real flow
+(verified while writing Step 5) and diverge from every fix applied so
+far -- a real footgun if `linux_t7001` is ever run without first uploading a
+DTB pack via `fdt`, but not something that has affected any attempt to date;
+`gLinuxDtb`/`gLinuxStageAllocation` are wider-scope globals than needed now
+that Step 4 removed their other callers; `gLinuxStageAllocation` leaks if
+`linux_prep_boot()` runs more than once per session (hasn't happened in any
+attempt so far). None changed, to keep this hardware round scoped to the
+Step 5 fix alone.
+
+One thing that looked like a bug and wasn't: the framebuffer reservation's
+node name has a leading slash added to a non-root parent, which libfdt's
+`fdt_add_subnode` (checked directly) doesn't validate or strip. Konrad's
+proven-working reference has the exact same leading slash in the exact same
+place -- left as-is, matching it bug-for-bug, since Linux's reserved-memory
+scan works structurally (parent-child + `reg`/`no-map`), not by name.
+
+**Asahi/m1n1 cross-check increased confidence rather than finding a gap.**
+`m1n1` does the same class of ADT-to-`/reserved-memory` conversion via a
+generic helper -- confirms this project's fix matches current, mature
+community practice, not an ad-hoc guess. It also revealed a nuance this
+project's *existing* (Step 4) SEPFW handling already gets right without
+anyone realizing it: m1n1 deliberately does *not* mark its SEP reservation
+`no-map` (SEP communication needs it in Linux's normal linear map), and this
+project's `fdt_add_mem_rsv()`-based SEPFW reservation has the same effect for
+the same reason, independent of Step 5. The framebuffer/low-FW `no-map`
+choice also matches the documented upstream `simple-framebuffer` binding
+convention. Ready to test.
 
 ### Next technical step
 
