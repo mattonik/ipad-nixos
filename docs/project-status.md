@@ -1,9 +1,14 @@
 # iPad Linux Project Status
 
-Status date: 2026-09-03
+Status date: 2026-09-04
 Target: iPad Air 2 Wi‑Fi A1566, A8X/T7001, board J81/J81AP  
 Repository: [mattonik/ipad-nixos](https://github.com/mattonik/ipad-nixos)
 Upstream: [jacopone/ipad-nixos](https://github.com/jacopone/ipad-nixos)
+
+**Resuming after a break? Start at "Playbook: next hardware session" near the
+end of this file** (search for that heading) -- it has the exact launch
+command, what to do for either outcome, and doesn't require reading the full
+history above it.
 
 ## Mission
 
@@ -1421,23 +1426,123 @@ the same reason, independent of Step 5. The framebuffer/low-FW `no-map`
 choice also matches the documented upstream `simple-framebuffer` binding
 convention. Ready to test.
 
-### Next technical step
+## Playbook: next hardware session
 
-1. Launch this build and run `linux_diag` first to confirm upload/DTB/decompress
-   still work (unaffected by this change -- `linux_diagnostics()` builds its own
-   separate DTB and doesn't call `linux_dtree_overlay()`).
-2. With the device watched (and ideally recorded) the whole time, send
-   `linux_t7001`. Same success criterion as Step 4: a visible Linux boot log or
-   panic on the display.
-3. If it still hangs with no output: this is the point noted in the Round 2
-   viability assessment (`research/t7001-handoff-options.md`) to treat as
-   genuinely blocked on tooling rather than more inference -- consider
-   generically enumerating the ADT's `memory-map` node (PongoOS already has
-   `dt_parse()`, a generic walker) for regions beyond `SEPFW` first since it's
-   still no-hardware-cost, then UART/serial console or JTAG/SWD (needs
-   hardware not currently available).
-4. Only after a visible Linux log, resume the console, touch, and Wi-Fi work
-   already recorded below. The current driver approval gate remains in force.
+Written 2026-09-04, before a break with the Step 5 build built, reviewed, and
+ready but not yet run on hardware. Self-contained -- shouldn't require reading
+the rest of this file to act on.
+
+### Setup
+
+Binary ready to flash: `boot/Pongo-t7001-diagnostic.bin`, SHA-256
+`07cde808723eb1c1761fb847200b53803a0da953e1579fb0ae546d12affff0cf` (Step 5:
+framebuffer + low-firmware `no-map` DTB reservations; passed a full code
+review in Round 3, cross-checked against Asahi Linux/m1n1). Confirm the file
+on disk still matches that hash before flashing (`shasum -a 256
+boot/Pongo-t7001-diagnostic.bin`) -- if it doesn't, something rebuilt it;
+check `git log -- boot/pongo-t7001.patch` for what changed.
+
+```bash
+sudo /tmp/palera1n-arm64 --pongo-shell --override-pongo "/Users/martinp/Work/Sandbox/ipadlinux/ipad-nixos/boot/Pongo-t7001-diagnostic.bin" --debug-logging
+```
+
+Two replugs, direct into the Mac (no hub/dock): once right after `Checkmate!`
+/"reconnect in download mode", once more when the PongoOS logo actually
+appears on screen. Confirm enumeration (`idVendor=0x05ac, idProduct=0x4141`)
+and a `help` response before doing anything else -- see any prior "Launch
+this build" step above for the exact PyUSB snippets.
+
+Then:
+1. `linux_diag` via `load_linux.py --diagnostic ...` first, as a sanity check
+   -- unaffected by the Step 5 change, should reproduce the same measured
+   addresses recorded in every prior verified run.
+2. With the device watched **and recorded on video** the whole time, send
+   `linux_t7001` via `load_linux.py --t7001-handoff ...`.
+
+### If you see anything that isn't the exact PongoOS logo screen
+
+Boot log lines, a kernel panic, garbled text, a color change that holds, a
+crash dump -- anything at all. Treat this as the actual milestone:
+
+1. **Stop and capture first.** Photo and video everything immediately, before
+   the device potentially locks up or the moment passes. Do not send another
+   command until it's documented.
+2. Read how far it got, since the response differs by case:
+   - **Boots to a shell/login prompt or keeps producing kernel log lines** --
+     console works. This is the "first technical success" the project's own
+     Mission section has been chasing. Record it as its own dated section
+     here with the full transcript/photos, and update the "Current state at a
+     glance" table.
+   - **A kernel panic with a backtrace** -- also a real win, not a failure:
+     it proves the CPU executed real kernel code after the handoff, further
+     than any of the six prior attempts got. Transcribe or photograph the
+     *entire* panic text, including the register dump and call trace if
+     shown -- that tells you exactly what to fix next (a missing driver, a
+     bad memory access, etc.), which is a completely different and much
+     easier kind of debugging than "silent hang, no information" has been.
+   - **A few log lines then it stops** -- note the exact last line printed;
+     that names the next subsystem to investigate.
+3. Once any of the above is confirmed, this project's own **"Driver readiness
+   and approval gate"** section (below) applies as written: it requires
+   explicit user approval before implementing or fixing any specific driver
+   (touch, Wi-Fi, etc.), even though the primary PongoOS→Linux gate that
+   section was written behind has now been cleared. Don't start driver work
+   without that approval just because boot succeeded.
+4. Worth fixing now that iteration is real again: the `/chosen/framebuffer`
+   placement mismatch noted in Step 5 (needed for a working framebuffer
+   console), and the `linux_dtree_init()` dead-path footgun noted in Round 3
+   (make `linux_t7001` refuse to run without an uploaded DTB pack, or remove
+   the dead from-scratch path entirely).
+
+### If it still hangs silently, identical to every attempt so far
+
+Ranked by cost, cheapest and most-evidenced first. Treat each as its own
+single-variable test, same discipline as every step so far -- don't bundle
+more than one at a time, or a positive result won't tell you which change
+mattered.
+
+1. **Generically enumerate the ADT's `memory-map` node**, not just the three
+   regions (`SEPFW`, framebuffer, low-FW) reserved so far. PongoOS already has
+   a generic node/property walker, `dt_parse()` (`src/kernel/dtree.c`,
+   declared in `pongo.h`) -- use it to iterate every property under
+   `memory-map` and reserve each one (via `fdt_add_mem_rsv` or a
+   `/reserved-memory` `no-map` subnode, matching the pattern already in
+   `linux_dtree_overlay()`), rather than hand-picking names. This directly
+   tests whether Konrad's several extra hardcoded regions
+   (`0x870100000`/`0x870180000`/three more in `research/t7001-handoff-options.md`)
+   matter too, without reusing his possibly-per-unit constants directly. Not
+   yet built.
+2. **Fix the `/chosen/framebuffer` placement bug** alongside (1) -- low
+   priority for a silent-hang specifically (a misplaced node should mean "no
+   display driver probes," not "total silence"), but cheap to remove as a
+   variable while already in this code.
+3. **Check the postmarketOS wiki device page manually** in a real browser --
+   automated fetching was blocked by an anti-bot challenge throughout this
+   research (`wiki.postmarketos.org`, device likely `apple-ipad5,3` /
+   `apple-j81`). Free, no hardware cost, and independently informative either
+   way: confirms whether this general technique still works today on *any*
+   implementation, not just this one.
+4. **A kernel-embedded marker** -- a new idea, not yet designed in detail or
+   built. If (1)-(3) don't resolve it, the next diagnostically useful step
+   is combining the now-proven exit path with real observability: inject a
+   tiny stub directly at the fixed entry point (`0x803000000`) that writes a
+   marker to the framebuffer, then falls through to the real kernel Image's
+   own first instruction -- unlike the abandoned Step 1-3 marker, this runs
+   through the actual `exit_to_el1_image()` path in the exact position Linux
+   itself would occupy, rather than a separate custom jump. Needs care to not
+   corrupt the Image's own header (`text_offset` and size fields live at
+   fixed offsets from the Image start) -- prepend a few instructions and
+   branch forward past them, don't overwrite anything the AArch64 boot
+   protocol or the kernel's own early code depends on.
+5. **UART/serial console, or JTAG/SWD** (e.g. a Tamarin-style cable) -- needs
+   hardware not currently available. The fallback once (1)-(4) are tried and
+   still produce no new information; see the Round 2 viability assessment in
+   `research/t7001-handoff-options.md` for the reasoning on when to treat
+   this as genuinely blocked on tooling rather than more inference.
+
+Only after a visible Linux log, resume the console, touch, and Wi-Fi work
+recorded below. The current driver approval gate remains in force regardless
+of which branch above applies.
 
 ## Driver readiness and approval gate (2026-09-02)
 
