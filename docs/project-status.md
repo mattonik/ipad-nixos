@@ -1315,24 +1315,89 @@ node has other regions beyond `SEPFW` that matter (Konrad's DTSI hardcodes
 several more, but those look like per-unit captured values, not something
 safely reusable here without independent verification).
 
+### Step 5: reserved-memory / no-map fix implemented — build verified, not device-tested (2026-09-04)
+
+Implemented the top candidate from Round 2 research. It goes in
+`linux_dtree_overlay()`, not the dead `linux_dtree_init()` -- checked first and
+confirmed `linux_dtree_init()` never actually runs in this project's real boot
+flow: `fdt_initialized` is only false if no DTB pack was uploaded, and
+`load_linux.py` always uploads one before `linux_diag`/`linux_t7001`, so the
+real path is always `linux_prepare_fdt()` → `linux_dtree_overlay()` operating on
+the actual kernel-built DTB (which has the real, empty `/reserved-memory` node
+from mainline). Adding the reservations to the from-scratch dead function would
+have built and tested cleanly while fixing nothing.
+
+Added, after the existing `/chosen` bootargs/initrd handling in
+`linux_dtree_overlay()`:
+
+```c
+node = fdt_path_offset(dtree, "/reserved-memory");
+if (node < 0)
+{
+    iprintf("Failed to find /reserved-memory; the Linux DTB may let the kernel overwrite firmware-reserved memory and the framebuffer.\n");
+}
+else
+{
+    siprintf(fdt_nodename, "/memory@%lx", gBootArgs->Video.v_baseAddr);
+    node1 = fdt_add_subnode(dtree, node, fdt_nodename);
+    fdt_appendprop_addrrange(dtree, 0, node1, "reg", gBootArgs->Video.v_baseAddr,
+                              gBootArgs->Video.v_height * gBootArgs->Video.v_rowBytes);
+    fdt_appendprop(dtree, node1, "no-map", "", 0);
+
+    if (gBootArgs->physBase > 0x800000000)
+    {
+        node1 = fdt_add_subnode(dtree, node, "memory@800000000");
+        fdt_appendprop_addrrange(dtree, 0, node1, "reg", 0x800000000,
+                                  gBootArgs->physBase - 0x800000000);
+        fdt_appendprop(dtree, node1, "no-map", "", 0);
+    }
+}
+```
+
+(error handling on the `fdt_add_subnode` calls elided above for brevity; the
+actual patch checks each one). Both reservations are computed from `boot_args`
+fields PongoOS already has on every boot -- no per-device hardcoded addresses,
+unlike the several extra regions Konrad's own DTSI hardcodes that this project
+still hasn't independently verified. This runs unconditionally for every chip
+PongoOS boots Linux on, not just T7001 -- it's a general correctness fix
+matching mainline's own "to be filled by loader" contract, not a T7001-specific
+workaround.
+
+Also noted, not yet fixed (separate, lower-priority, correctness-only bug):
+this function creates a top-level `/framebuffer@<addr>` node, but mainline's
+actual DTS has the framebuffer placeholder *inside* `/chosen`
+(`chosen/framebuffer@0`, `status = "disabled"`, `reg` and format "to be filled
+by loader"). This project's code never finds/fills that real placeholder --
+it adds a differently-placed node instead. Unlikely to explain the current
+silent-hang symptom (a misplaced framebuffer node should mean "no display
+driver probes," not "kernel never produces any output at all," including
+console/earlycon), so left alone for this change to stay narrowly scoped to
+one variable. Worth fixing before framebuffer console output is expected to
+work, once boot itself succeeds.
+
+Built from a fresh pinned checkout: 254,032 bytes, SHA-256
+`07cde808723eb1c1761fb847200b53803a0da953e1579fb0ae546d12affff0cf`. All
+existing tests pass unchanged. Added `boot/test_t7001_reserved_memory.py`
+(structural checks: looks up the real DTB's existing node rather than
+creating one, both reservations computed from `boot_args` not hardcoded,
+both marked `no-map`). **Not yet run on hardware.**
+
 ### Next technical step
 
-1. Implement the reserved-memory fix: add the framebuffer and low-FW/TZ
-   reservations to this project's DTB generation, computed generically from
-   `boot_args` (not hardcoded per-device constants) -- see
-   `research/t7001-handoff-options.md` for the exact reference code to port.
-2. If that's insufficient, consider generically enumerating the ADT's
-   `memory-map` node (PongoOS already has `dt_parse()`, a generic walker) and
-   reserving every named region, rather than hand-picking `SEPFW` alone.
-3. Check the postmarketOS wiki device page manually in a browser (automated
-   fetching was blocked by an anti-bot challenge during research) as an
-   independent, no-hardware-cycle sanity check that this general technique
-   still works today.
-4. If (1) and (2) are both tried and still produce a silent hang: this is the
-   point to treat the project as blocked on tooling, not on undiscovered
-   software bugs, and seriously invest in UART/serial console or JTAG/SWD
-   (needs hardware not currently available) rather than continuing to guess.
-5. Only after a visible Linux log, resume the console, touch, and Wi-Fi work
+1. Launch this build and run `linux_diag` first to confirm upload/DTB/decompress
+   still work (unaffected by this change -- `linux_diagnostics()` builds its own
+   separate DTB and doesn't call `linux_dtree_overlay()`).
+2. With the device watched (and ideally recorded) the whole time, send
+   `linux_t7001`. Same success criterion as Step 4: a visible Linux boot log or
+   panic on the display.
+3. If it still hangs with no output: this is the point noted in the Round 2
+   viability assessment (`research/t7001-handoff-options.md`) to treat as
+   genuinely blocked on tooling rather than more inference -- consider
+   generically enumerating the ADT's `memory-map` node (PongoOS already has
+   `dt_parse()`, a generic walker) for regions beyond `SEPFW` first since it's
+   still no-hardware-cost, then UART/serial console or JTAG/SWD (needs
+   hardware not currently available).
+4. Only after a visible Linux log, resume the console, touch, and Wi-Fi work
    already recorded below. The current driver approval gate remains in force.
 
 ## Driver readiness and approval gate (2026-09-02)

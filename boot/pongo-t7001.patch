@@ -24,7 +24,7 @@ index c3f0f97..ac72202 100644
  #include <pongo.h>
  
 diff --git a/src/modules/linux/linux.c b/src/modules/linux/linux.c
-index 6ae4d5b..62cb0c3 100644
+index 6ae4d5b..8f37c9f 100644
 --- a/src/modules/linux/linux.c
 +++ b/src/modules/linux/linux.c
 @@ -38,6 +38,13 @@ bool ramdisk_initialized = false;
@@ -105,7 +105,7 @@ index 6ae4d5b..62cb0c3 100644
          }
  
          iprintf("initrd @ %p-%p\n", rd_start, rd_end);
-@@ -232,14 +239,15 @@ void linux_dtree_overlay(char *boot_args)
+@@ -232,14 +239,66 @@ void linux_dtree_overlay(char *boot_args)
  
      if (boot_args)
      {
@@ -118,15 +118,65 @@ index 6ae4d5b..62cb0c3 100644
 +            iprintf("Cannot update chosen node [bootargs]\n");
 +            return false;
          }
--
++    }
+ 
 -        fdt_appendprop_string(fdt, node, "bootargs", boot_args);
++    // Mainline's Apple device trees declare /reserved-memory empty,
++    // explicitly commented "To be filled by loader" -- this project's
++    // patch never did, beyond a single SEPFW reservation added earlier.
++    // Without these, Linux's own memory allocator (active before any
++    // driver or console) is free to treat firmware-reserved memory and
++    // the framebuffer's own backing store as ordinary allocatable RAM.
++    // Both reservations are computed from boot_args fields PongoOS
++    // already has on every boot, not per-device hardcoded constants --
++    // matches github.com/konradybcio/pongoOS, a working reference for
++    // this exact chip. See docs/project-status.md and
++    // research/t7001-handoff-options.md for why this was suspected.
++    node = fdt_path_offset(dtree, "/reserved-memory");
++    if (node < 0)
++    {
++        iprintf("Failed to find /reserved-memory; the Linux DTB may let the kernel overwrite firmware-reserved memory and the framebuffer.\n");
      }
++    else
++    {
++        // Reserve the framebuffer so Linux's own allocator can't reuse
++        // it as ordinary RAM before any driver claims it.
++        siprintf(fdt_nodename, "/memory@%lx", gBootArgs->Video.v_baseAddr);
++        node1 = fdt_add_subnode(dtree, node, fdt_nodename);
++        if (node1 < 0)
++        {
++            iprintf("Failed to reserve framebuffer region\n");
++        }
++        else
++        {
++            fdt_appendprop_addrrange(dtree, 0, node1, "reg", gBootArgs->Video.v_baseAddr,
++                                      gBootArgs->Video.v_height * gBootArgs->Video.v_rowBytes);
++            fdt_appendprop(dtree, node1, "no-map", "", 0);
++        }
++
++        // Reserve the low firmware/TZ region between DRAM base and the
++        // first physically usable address iBoot itself reports.
++        if (gBootArgs->physBase > 0x800000000)
++        {
++            node1 = fdt_add_subnode(dtree, node, "memory@800000000");
++            if (node1 < 0)
++            {
++                iprintf("Failed to reserve low firmware region\n");
++            }
++            else
++            {
++                fdt_appendprop_addrrange(dtree, 0, node1, "reg", 0x800000000,
++                                          gBootArgs->physBase - 0x800000000);
++                fdt_appendprop(dtree, node1, "no-map", "", 0);
++            }
++        }
++    }
 +
 +    return true;
  }
  
  bool linux_can_boot()
-@@ -250,21 +258,23 @@ bool linux_can_boot()
+@@ -250,21 +309,23 @@ bool linux_can_boot()
  }
  
  void *gLinuxStage;
@@ -154,7 +204,7 @@ index 6ae4d5b..62cb0c3 100644
  
      while (buf[0])
      {
-@@ -277,13 +287,149 @@ void fdt_select_dtree(void *fdt)
+@@ -277,13 +338,149 @@ void fdt_select_dtree(void *fdt)
          if (!strcmp(key, (char *)buf))
          {
              iprintf("Found device tree for %s (%d bytes).\n", key, len);
@@ -306,7 +356,7 @@ index 6ae4d5b..62cb0c3 100644
  }
  
  void linux_prep_boot()
-@@ -315,15 +461,19 @@ void linux_prep_boot()
+@@ -315,15 +512,19 @@ void linux_prep_boot()
      }
      else
      {
@@ -330,7 +380,7 @@ index 6ae4d5b..62cb0c3 100644
      }
  
  #define pixfmt0 (&disp[0x402c / 4])
-@@ -343,22 +493,33 @@ void linux_prep_boot()
+@@ -343,22 +544,33 @@ void linux_prep_boot()
      puts("This is only supported on iPhone 7 for now and works to a lesser extent on other A10 devices. Behavior on non-A10 devices is undefined!!");
  
      gEntryPoint = (void *)(0x800080000);
