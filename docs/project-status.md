@@ -1459,6 +1459,32 @@ Then:
 2. With the device watched **and recorded on video** the whole time, send
    `linux_t7001` via `load_linux.py --t7001-handoff ...`.
 
+### Step 5 hardware result (2026-09-04): tried, same silent hang
+
+Run for real. `linux_diag` reproduced the same measured contract as every
+prior verified run. `linux_t7001` was sent, recorded on video (10.8s,
+120fps) and confirmed via a full-resolution photo: the console reached the
+identical point as the Step 4 run --
+`Booting Linux: 0x803000000(0x805960000)` then `Booting Linux...` -- then
+went silent. No boot log, no panic, no visible framebuffer change of any
+kind, not even the usual `pixfmt` reddish flash and even that fell in the
+same place as prior runs when it was noticed. Device left enumerated but
+unresponsive, same as every real handoff attempt so far.
+
+(A first read of a low-resolution extracted video frame briefly looked like
+it stopped *before* those two lines -- a fresh high-resolution photo the
+user sent right after corrected this. Worth remembering for next time:
+don't conclude a *shorter* console transcript than a prior run from a
+downscaled/compressed frame alone; get a full-resolution capture before
+drawing that conclusion, since it changes the diagnosis materially.)
+
+**This is the "if it still hangs" case** -- the reserved-memory fix, while
+well-evidenced and cross-checked against two working reference
+implementations (Round 3), was not sufficient on its own. Jump to
+"If it still hangs silently" below for the ranked next steps; candidate 1
+there (generic ADT `memory-map` enumeration) is the next thing to try,
+not yet built.
+
 ### If you see anything that isn't the exact PongoOS logo screen
 
 Boot log lines, a kernel panic, garbled text, a color change that holds, a
@@ -1621,7 +1647,7 @@ is the reference for the intentionally minimal board description.
 | Current RAM-only Pongo session | ✅ Active after verified handoff-candidate diagnostic; transient and RAM-only |
 | Linux payload upload | ✅ Transferred once; exposed PongoOS pre-handoff defects |
 | Guarded T7001 diagnostic PongoOS | ✅ Matched-toolchain Pongo, USB, aligned Image/DTB/initrd ranges, Linux register contract, and no-jump guard are proven on T7001 |
-| Linux kernel boot | ❌ Not achieved; 6 hardware handoff attempts, all silent hangs; color/timing/SRAM-release/jump-mechanism all ruled out; strong untried candidate found (missing reserved-memory/no-map DTB entries) — see research/t7001-handoff-options.md |
+| Linux kernel boot | ❌ Not achieved; 7 hardware handoff attempts, all silent hangs; color/timing/SRAM-release/jump-mechanism/reserved-memory all tried and ruled out or insufficient alone; next candidate is generic ADT memory-map enumeration — see research/t7001-handoff-options.md and the Playbook section |
 | Display/touch/Wi‑Fi/Bluetooth validation | ❌ Not started |
 | Usable tethered Linux tablet | ❌ Future milestone |
 
