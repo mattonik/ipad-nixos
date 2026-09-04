@@ -574,6 +574,88 @@ investigation):
 Build details, exact diffs, and the new structural tests are in
 `docs/project-status.md`, Step 6.
 
+## Round 5: Step 6 hardware result, and confirmation from the real device's own ADT
+
+Step 6 was run for real (`docs/project-status.md` has the full transcript). All
+three fixes confirmed running correctly: `linux_diag` and the real `linux_t7001`
+attempt both printed `Reserved 20 additional ADT memory-map region(s).` (the
+generic reservation found and walked the real `memory-map` node with no
+errors, implicitly validating the memory-size fix too, since both live in the
+same code path), and `Booting Linux: 0x810200000(0x812b60000)` confirmed the
+new entry point and DTB placement were computed exactly as designed.
+
+**The entry marker showed nothing.** Checked across a full 20.1s, 4K/60fps
+recording at 10fps sampling (201 frames): no sign of the marker's near-full-screen
+black fill at any point. This is a clean negative, not an ambiguous one --
+the fill is large enough that any successful write should have appeared in
+multiple consecutive samples. The device's post-attempt USB state also
+differed from every prior run (not enumerated at all, vs. the consistent
+"enumerated but unresponsive" signature through Steps 4-5) -- inconclusive on
+its own (could reflect something different happening on-device, or unrelated
+USB flakiness this project has repeatedly documented), the device was reset
+before it could be investigated further.
+
+**Then, while the device was back up for the next test**, captured the real
+device's own ADT directly (`dt` command, drained via a loop over the same
+control-transfer read PongoOS's own `scripts/fetch_stdout.py` uses -- its
+output is a ring buffer, so a single read isn't enough for large output; this
+project's capture pulled 317,946 bytes in ~3,500 reads, matching the size
+range of the reference dumps in `adt_collection`). Confirmed genuine via the
+`regulatory-model-number` field: `A1566`, exactly this project's documented
+target hardware. Not committed to the repository (contains a serial number;
+the `adt_collection` project's own README asks contributors to censor
+serials/MACs/IMEIs before sharing).
+
+This device's real `memory-map` tops out at **58.4 MiB** from DRAM base --
+close to the ~50 MiB seen on the J82 sibling in Round 4, confirming that
+estimate was a reasonable proxy. Step 6's entry point (`0x810000000`, 256 MiB
+in) has a **197.6 MiB margin** on the actual unit, not just an inferred one.
+**This conclusively rules out entry-point overlap as an explanation for
+Step 6's continued hang** -- it was already comfortably safe.
+
+### Where this leaves the investigation
+
+Six architecturally distinct approaches have now been tried, each addressing a
+different, independently well-evidenced hypothesis, and each producing the
+identical class of result -- no confirmed evidence of execution past PongoOS's
+teardown:
+
+1. Custom `jump_to_image` + hand-staged tramp buffer (Steps 1-3)
+2. The proven XNU exit mechanism, `exit_to_el1_image()` (Step 4)
+3. Reserved-memory / `no-map` DTB entries (Step 5)
+4. Fixed the zero-sized `/memory` node, moved the entry point to a
+   now-*confirmed*-safe address on the real device, generic ADT reservation,
+   and an entry marker built to run through the proven exit path (Step 6)
+
+Step 6 was the strongest-evidenced round of this entire investigation --
+multiple independent confirmations that every piece staged and computed
+correctly, including one (the real device's own ADT) that isn't inference from
+a sibling unit. The marker still produced nothing. That's a materially
+different situation from Steps 1-5, where each negative result could be
+explained by "that specific fix wasn't the (or the only) problem." Here,
+the things checked (entry point safety, memory description, DTB reservations,
+the exit mechanism) have now been verified correct through multiple
+independent means, and the most direct diagnostic tool built for exactly this
+question -- "did the CPU ever execute anything after the teardown" -- still
+came back empty.
+
+**Revised assessment**: the earlier Round 2 viability assessment's condition
+for treating this as blocked on tooling rather than more inference has now
+been met. Continuing to iterate on PongoOS-side or DTB-side changes without
+real execution visibility (UART/serial console, or JTAG/SWD via something like
+a Tamarin cable) has a demonstrated pattern across six rounds of producing
+well-reasoned fixes that run correctly and still yield zero information about
+what happens next. That doesn't mean no further software-only step could
+possibly help -- (a) the marker's own physical-framebuffer-write mechanism
+could itself be flawed in a way distinct from every hypothesis tested so far,
+or (b) something in `jump_to_image`'s cache/barrier sequence could behave
+differently for a ~41 MiB payload than it did for the earlier abandoned
+markers, which were far smaller -- but these are increasingly narrow,
+increasingly speculative categories, each worth less expected information per
+hardware cycle than the ones already tried. The honest recommendation at this
+point is UART/JTAG investment, or pausing here at a well-documented, resumable
+state, over continuing to guess.
+
 ## Sources
 
 - [konradybcio/pongoOS](https://github.com/konradybcio/pongoOS)

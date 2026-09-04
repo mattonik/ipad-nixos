@@ -1526,6 +1526,57 @@ Then:
    rate** the whole time, send `linux_t7001` via `load_linux.py
    --t7001-handoff ...`.
 
+### Step 6 hardware result (2026-09-04): all three fixes ran correctly, still silent
+
+Run for real, same session. `linux_diag` printed a new line not seen before --
+`Reserved 20 additional ADT memory-map region(s).` -- confirming the generic
+ADT enumeration found and walked the real `memory-map` node on this exact
+device with no errors; since `linux_diagnostics()` shares `linux_dtree_overlay()`
+with the real boot path, this implicitly validated the memory-size fix too (no
+"Failed to find /memory@800000000" was printed). A follow-up photo confirmed
+the same output byte-for-byte before the real attempt.
+
+`linux_t7001` was sent. The console showed the same "Reserved 20 additional
+ADT memory-map region(s)." line again during the real prep, then
+`Booting Linux: 0x810200000(0x812b60000)` then `Booting Linux...` --
+confirming `gEntryPoint(0x810000000) + gLinuxKernelOffset(0x200000) =
+0x810200000` was used exactly as designed, and the DTB placement was computed
+correctly. Recorded on video for the full 20.1s duration at 4K/60fps -- checked
+at 10fps sampling across the entire recording (201 frames): **no sign of the
+entry marker at any point.** The marker fills nearly the entire screen solid
+black; a fill that actually landed on the physical display should have been
+visible in at least one 100ms-spaced sample across 20 seconds. This is a clean
+negative result, not an inconclusive one like the earlier reddish-flash sightings.
+
+The user reported the same reddish flash seen in earlier rounds (the
+already-explained `pixfmt`/color-matrix artifact, unrelated to any of this
+patch's logic) -- consistent with prior runs, not new information.
+
+The device's post-attempt state was different from every prior run: not
+"enumerated but unresponsive" (the consistent signature through Steps 4-5),
+but **not enumerated on USB at all**. Whether this reflects something
+different happening on-device (a harder crash/reset) or is unrelated USB-level
+flakiness (this project's own docs record repeated instances of that
+independent of any code change) could not be determined -- the device was
+reset before that could be checked further. Recorded as an observation, not a
+confirmed new finding.
+
+**Assessment**: all three Step 6 fixes are now confirmed to run correctly and
+produce the expected addresses (memory-size fix, entry point, generic ADT
+reservation) -- yet the outcome is unchanged from every attempt back through
+Step 1. The entry marker, specifically designed to answer "did execution ever
+reach the kernel's entry point," produced no signal, matching the same
+non-result as the original Step 1-3 markers despite running through an
+entirely different (and proven-for-XNU) exit path this time. Six
+architecturally distinct approaches -- custom jump+tramp (Steps 1-3), the
+proven XNU exit mechanism (Step 4), reserved-memory (Step 5), and
+memory-size+entry-point+generic-reservation+marker (Step 6) -- have now all
+produced the identical class of result: no confirmed evidence code executes
+at any point after PongoOS's teardown begins. See the updated viability
+assessment in `research/t7001-handoff-options.md` for what this suggests
+about whether further software-only iteration is still the best use of
+hardware cycles.
+
 ### Reading the result this time
 
 Unlike every prior attempt, there are now three distinct outcomes to
@@ -1587,35 +1638,47 @@ crash dump -- anything at all. Treat this as the actual milestone:
 
 ### If it still hangs silently, identical to every attempt so far
 
-Ranked by cost, cheapest and most-evidenced first. Treat each as its own
-single-variable test where practical -- don't bundle more than necessary, or a
-positive result won't tell you which change mattered.
+**Update, same day**: this is what actually happened. Step 6 was run for real
+and produced this exact outcome -- see "Step 6 hardware result" above. While
+the device was still up afterward, item 3 below (capture the real J81 unit's
+own ADT, not a sibling's) was also completed: it confirmed the entry point has
+a 197.6 MiB margin on the actual device, ruling out entry-point overlap as an
+explanation. Full writeup: `research/t7001-handoff-options.md`, "Round 5."
 
-1. **Check the postmarketOS wiki device page manually** in a real browser --
+**Revised recommendation**: six architecturally distinct approaches have now
+been tried (custom jump+tramp, the proven XNU exit mechanism, reserved-memory,
+and Step 6's memory-size+entry-point+generic-reservation+marker), each
+independently well-evidenced, each producing zero confirmed sign of execution
+past PongoOS's teardown -- including the marker, built specifically to answer
+that question directly, verified via the real device's own data rather than
+inference. The condition the original Round 2 viability assessment set for
+treating this as blocked on tooling rather than more inference has been met.
+Remaining ideas below are recorded for completeness, but are lower-value,
+more-speculative uses of another hardware cycle than what's already been
+tried:
+
+1. **UART/serial console, or JTAG/SWD** (e.g. a Tamarin-style cable) -- needs
+   hardware not currently available. Now the primary recommendation, not the
+   fallback -- see the revised viability assessment in
+   `research/t7001-handoff-options.md`, "Round 5."
+2. **Check the postmarketOS wiki device page manually** in a real browser --
    automated fetching was blocked by an anti-bot challenge throughout this
    research (`wiki.postmarketos.org`, device likely `apple-ipad5,3` /
-   `apple-j81`). Free, no hardware cost, and independently informative either
-   way: confirms whether this general technique still works today on *any*
-   implementation, not just this one.
-2. **Fix the `/chosen/framebuffer` placement bug** noted in Step 5 -- this
-   function creates a top-level `/framebuffer@<addr>` node, but mainline's DTS
-   has the real placeholder inside `/chosen` (`chosen/framebuffer0`). Low
-   priority for a silent hang specifically (should mean "no display driver
-   probes," not "total silence"), but cheap and removes a variable.
-3. **Revisit whether other ADT-derived assumptions hold for the real J81
-   unit**, not just the J82 dump used for Round 4's margin calculation -- if
-   possible, capture this project's own device's `dt` output (same method
-   `adt_collection`'s README documents: `linux_diag`-adjacent PongoOS session,
-   `dt` command, capture output) rather than relying on a sibling device's
-   data.
-4. **UART/serial console, or JTAG/SWD** (e.g. a Tamarin-style cable) -- needs
-   hardware not currently available. With three real logic fixes now tried
-   (jump mechanism in Step 4, reserved-memory in Step 5, memory-size/entry
-   point/generic-reservation in Step 6) and still no confirmed sign of
-   execution reaching the kernel, this is the point to seriously weigh
-   whether continuing without real execution visibility is still the best
-   use of further hardware cycles -- see the viability assessment in
-   `research/t7001-handoff-options.md`.
+   `apple-j81`). Free, no hardware cost either way -- confirms whether this
+   general technique still works today on *any* implementation, not just this
+   one, though it wouldn't diagnose this project's own remaining gap directly.
+3. **Fix the `/chosen/framebuffer` placement bug** noted in Step 5 -- cheap,
+   but low priority for a silent hang specifically (should mean "no display
+   driver probes," not "total silence").
+4. Two narrower, more speculative software-only ideas, each addressing a
+   different part of the marker mechanism itself rather than a new hypothesis
+   about the boot process: the marker's physical-framebuffer-write could be
+   flawed in a way distinct from everything tested so far, or
+   `jump_to_image`'s cache/barrier sequence could behave differently for the
+   ~41 MiB real kernel payload than it did for the much smaller Steps 1-3
+   markers. Worth less expected information per hardware cycle than anything
+   already tried; see `research/t7001-handoff-options.md` Round 5 for the
+   reasoning.
 
 Only after a visible Linux log, resume the console, touch, and Wi-Fi work
 recorded below. The current driver approval gate remains in force regardless
@@ -1698,7 +1761,7 @@ is the reference for the intentionally minimal board description.
 | Current RAM-only Pongo session | ✅ Active after verified handoff-candidate diagnostic; transient and RAM-only |
 | Linux payload upload | ✅ Transferred once; exposed PongoOS pre-handoff defects |
 | Guarded T7001 diagnostic PongoOS | ✅ Matched-toolchain Pongo, USB, aligned Image/DTB/initrd ranges, Linux register contract, and no-jump guard are proven on T7001 |
-| Linux kernel boot | ❌ Not achieved; 7 hardware handoff attempts so far, all silent hangs; found likely headline bug (Linux DTB's /memory node was zero-sized on every attempt) plus a too-close entry point, both fixed in Step 6 alongside generic ADT reservation and a new entry marker — not yet run on hardware, see the Playbook section |
+| Linux kernel boot | ❌ Not achieved; 8 hardware handoff attempts, all silent hangs; Step 6 (memory-size fix, confirmed-safe entry point, generic ADT reservation, entry marker) ran correctly by every independent check including the real device's own ADT, marker still showed nothing — now recommending UART/JTAG over further software guessing, see research/t7001-handoff-options.md Round 5 |
 | Display/touch/Wi‑Fi/Bluetooth validation | ❌ Not started |
 | Usable tethered Linux tablet | ❌ Future milestone |
 
