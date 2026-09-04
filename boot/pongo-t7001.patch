@@ -1,3 +1,76 @@
+diff --git a/src/boot/t7001_entry_marker.S b/src/boot/t7001_entry_marker.S
+new file mode 100644
+index 0000000..b6cf45a
+--- /dev/null
++++ b/src/boot/t7001_entry_marker.S
+@@ -0,0 +1,67 @@
++/*
++ * t7001_entry_marker.S — observability stub placed at the real T7001 Linux
++ * entry point, ahead of the actual kernel Image. Not part of upstream
++ * pongoOS.
++ *
++ * Unlike the abandoned Step 1-3 marker (a separate custom jump_to_image
++ * call bypassing the real exit path), this stub runs *through* the same,
++ * already-proven exit_to_el1_image() mechanism used for XNU boot on this
++ * device, in the exact physical position the kernel itself occupies.
++ * gEntryPoint stays the PongoOS jump target (unchanged since Step 4); the
++ * real kernel Image is placed T7001_MARKER_RESERVE bytes after it
++ * (linux.c), and this stub fills that gap.
++ *
++ * jump_to_image()'s epilogue (via stage3_exit_to_el1_image, itself invoked
++ * through the shared exit_to_el1_image() call) leaves, at entry here:
++ *   x0 = the Linux DTB physical address — MUST be preserved unchanged
++ *   x1 = x2 = x3 = 0 — MUST remain 0 for the real kernel entry
++ *   x30 = this stub's own physical address — already consumed by the
++ *         `ret` that got us here, unused from here on
++ *
++ * Paints a marker directly on the physical framebuffer (the same raw
++ * physical pointer pongo_entry itself assigns to gFramebuffer at this
++ * exact phase, for every boot path — the mechanism xnu's own `xfb`/-v
++ * verbose boot output relies on, and separately confirmed safe by
++ * t7001_color_test), holds briefly, then branches to the real kernel
++ * entry with x0/x1/x2/x3 intact.
++ *
++ * If this is ever seen on screen, execution reached this exact point
++ * with the boot-protocol registers intact — full stop, regardless of
++ * what happens afterward. Whatever happens next is inside the real
++ * kernel's own earliest code, not this exit/jump mechanism (which
++ * Step 4 already showed matches the one proven to work for XNU boot).
++ * If it is never seen, the failure is at or before this point, which
++ * would be new information no prior attempt has produced.
++ */
++.text
++.align 4
++.global _t7001_entry_marker
++_t7001_entry_marker:
++    adr  x9, marker_data
++    ldr  x10, [x9]            // x10 = framebuffer physical base (0 disables the marker)
++    cbz  x10, 1f
++    ldr  w11, [x9, 8]         // w11 = marker pixel value
++    ldr  w12, [x9, 12]        // w12 = word count (framebuffer size in 32-bit words)
++0:
++    str  w11, [x10], 4
++    subs w12, w12, 1
++    b.ne 0b
++    dsb  sy
++    ldr  w13, [x9, 20]        // w13 = delay iteration count, so a fast camera has a chance to catch it
++2:
++    subs w13, w13, 1
++    b.ne 2b
++1:
++    ldr  x9, [x9, 16]         // x9 = real kernel entry physical address
++    br   x9
++
++.align 3
++marker_data:
++    .quad 0   // +0:  framebuffer physical base address (patched; 0 disables the marker)
++    .word 0   // +8:  marker pixel value, 32bpp a8b8g8r8 (patched)
++    .word 0   // +12: word count (patched)
++    .quad 0   // +16: real kernel entry physical address (patched)
++    .word 0   // +20: delay iteration count (patched)
++    .word 0   // +24: padding, unused
++.global _t7001_entry_marker_end
++_t7001_entry_marker_end:
 diff --git a/src/kernel/mm.c b/src/kernel/mm.c
 index 352e422..e2f3b3c 100644
 --- a/src/kernel/mm.c
@@ -24,7 +97,7 @@ index c3f0f97..ac72202 100644
  #include <pongo.h>
  
 diff --git a/src/modules/linux/linux.c b/src/modules/linux/linux.c
-index 6ae4d5b..8f37c9f 100644
+index 6ae4d5b..e01efcc 100644
 --- a/src/modules/linux/linux.c
 +++ b/src/modules/linux/linux.c
 @@ -38,6 +38,13 @@ bool ramdisk_initialized = false;
@@ -41,16 +114,59 @@ index 6ae4d5b..8f37c9f 100644
  void linux_dtree_init(void)
  {
      // TODO: TONS of error handling
-@@ -187,44 +194,44 @@ void linux_dtree_late(void)
+@@ -187,44 +194,114 @@ void linux_dtree_late(void)
      fdt_appendprop_string(fdt, node1, "compatible", "simple-framebuffer");
  }
  
 -void linux_dtree_overlay(char *boot_args)
++void *gLinuxMarkerStage;
++uint32_t gLinuxMarkerStageSize;
++uint64_t gLinuxKernelOffset;
++extern const uint8_t t7001_entry_marker[];
++extern const uint8_t t7001_entry_marker_end[];
++
++// Reserves every named region under the ADT's "memory-map" node in the
++// Linux DTB, rather than hand-picking SEPFW alone. "SEPFW" keeps its
++// existing treatment (fdt_add_mem_rsv, not no-map -- matches
++// AsahiLinux/m1n1's deliberate choice for the same region, see
++// docs/project-status.md Round 3) so it is skipped here to avoid a
++// conflicting double reservation; every other named region is marked
++// no-map, the conservative default for firmware memory whose purpose
++// isn't independently known. See research/t7001-handoff-options.md.
++typedef struct {
++    void *dtree;
++    int resv_node;
++    int count;
++} reserve_memmap_cb_t;
++
++static int reserve_memmap_region_cb(void *a, dt_node_t *node, int depth, const char *key, void *val, uint32_t len)
++{
++    reserve_memmap_cb_t *arg = a;
++    if (len != 16 || !strcmp(key, "name") || !strcmp(key, "SEPFW"))
++        return 0;
++    uint64_t *region = val;
++    uint64_t addr = region[0];
++    uint64_t size = region[1];
++    if (size == 0)
++        return 0;
++    char fdt_nodename[64];
++    siprintf(fdt_nodename, "memory@%llx-%s", addr, key);
++    int node1 = fdt_add_subnode(arg->dtree, arg->resv_node, fdt_nodename);
++    if (node1 < 0) {
++        iprintf("Failed to reserve ADT memory-map region %s\n", key);
++        return 0;
++    }
++    fdt_appendprop_addrrange(arg->dtree, 0, node1, "reg", addr, size);
++    fdt_appendprop(arg->dtree, node1, "no-map", "", 0);
++    arg->count++;
++    return 0;
++}
++
 +bool linux_dtree_overlay(void *dtree, char *boot_args, void *initrd, uint32_t initrd_size)
  {
      char fdt_nodename[64];
      int node = 0, node1 = 0;
-     siprintf(fdt_nodename, "/framebuffer@%lx", gBootArgs->Video.v_baseAddr);
+-    siprintf(fdt_nodename, "/framebuffer@%lx", gBootArgs->Video.v_baseAddr);
 -    node1 = fdt_add_subnode(fdt, node, fdt_nodename);
 -    fdt_appendprop_addrrange(fdt, 0, node1, "reg", gBootArgs->Video.v_baseAddr, gBootArgs->Video.v_height * gBootArgs->Video.v_rowBytes);
 -    fdt_appendprop_cell(fdt, node1, "width", gBootArgs->Video.v_width);
@@ -59,8 +175,35 @@ index 6ae4d5b..8f37c9f 100644
 -    fdt_appendprop_string(fdt, node1, "format", "a8b8g8r8");
 -    fdt_appendprop_string(fdt, node1, "status", "okay");
 -    fdt_appendprop_string(fdt, node1, "compatible", "simple-framebuffer");
--
+ 
 -    node = fdt_path_offset(fdt, "/chosen");
++    // Mainline's Apple device trees ship /memory's "reg" as literally
++    // zero-sized -- <0x8 0 0 0>, address=0x800000000, size=0 -- with a
++    // "To be filled by loader" comment. Nothing in this codebase's real
++    // boot path (linux_dtree_init(), the only place that used to set
++    // this, is dead code -- see docs/project-status.md Round 3) has ever
++    // filled it in. A kernel told it has zero bytes of RAM fails in its
++    // own memblock/mm init before any console could possibly work,
++    // which matches the silent-hang symptom of every attempt so far
++    // independent of everything else tried. Fix it generically from
++    // boot_args, which PongoOS already has on every boot -- not a
++    // hardcoded value. Mirrors the same conservative top-of-RAM margin
++    // the dead linux_dtree_init() code used to apply (shrink by 32 MiB,
++    // 2 MiB-align), since specific top-of-RAM firmware behavior on this
++    // SoC family isn't independently confirmed.
++    node = fdt_path_offset(dtree, "/memory@800000000");
++    if (node < 0)
++    {
++        iprintf("Failed to find /memory@800000000; the Linux DTB may declare zero usable RAM.\n");
++    }
++    else
++    {
++        uint64_t mem_size = (gBootArgs->memSize - 0x02000000ull) & ~0x1FFFFFull;
++        fdt_delprop(dtree, node, "reg"); // clear the zero-sized placeholder first
++        fdt_appendprop_addrrange(dtree, 0, node, "reg", 0x800000000, mem_size);
++    }
++
++    siprintf(fdt_nodename, "/framebuffer@%lx", gBootArgs->Video.v_baseAddr);
 +    node1 = fdt_add_subnode(dtree, node, fdt_nodename);
 +    fdt_appendprop_addrrange(dtree, 0, node1, "reg", gBootArgs->Video.v_baseAddr, gBootArgs->Video.v_height * gBootArgs->Video.v_rowBytes);
 +    fdt_appendprop_cell(dtree, node1, "width", gBootArgs->Video.v_width);
@@ -105,7 +248,7 @@ index 6ae4d5b..8f37c9f 100644
          }
  
          iprintf("initrd @ %p-%p\n", rd_start, rd_end);
-@@ -232,14 +239,66 @@ void linux_dtree_overlay(char *boot_args)
+@@ -232,14 +309,86 @@ void linux_dtree_overlay(char *boot_args)
  
      if (boot_args)
      {
@@ -117,10 +260,9 @@ index 6ae4d5b..8f37c9f 100644
 -            return;
 +            iprintf("Cannot update chosen node [bootargs]\n");
 +            return false;
-         }
++        }
 +    }
- 
--        fdt_appendprop_string(fdt, node, "bootargs", boot_args);
++
 +    // Mainline's Apple device trees declare /reserved-memory empty,
 +    // explicitly commented "To be filled by loader" -- this project's
 +    // patch never did, beyond a single SEPFW reservation added earlier.
@@ -136,7 +278,7 @@ index 6ae4d5b..8f37c9f 100644
 +    if (node < 0)
 +    {
 +        iprintf("Failed to find /reserved-memory; the Linux DTB may let the kernel overwrite firmware-reserved memory and the framebuffer.\n");
-     }
++    }
 +    else
 +    {
 +        // Reserve the framebuffer so Linux's own allocator can't reuse
@@ -169,21 +311,42 @@ index 6ae4d5b..8f37c9f 100644
 +                                          gBootArgs->physBase - 0x800000000);
 +                fdt_appendprop(dtree, node1, "no-map", "", 0);
 +            }
+         }
+ 
+-        fdt_appendprop_string(fdt, node, "bootargs", boot_args);
++        // Generically reserve every other named region under the ADT's
++        // memory-map node (SEPFW excluded -- see reserve_memmap_region_cb),
++        // rather than hand-picking which ones matter. The Step 5 fix
++        // (framebuffer + low-FW above) was insufficient alone on hardware;
++        // this tests whether other firmware-owned regions the ADT already
++        // names, but this patch never reserved, are also needed. Matches
++        // AsahiLinux/m1n1's approach of converting every ADT memory-map
++        // entry rather than a curated subset.
++        dt_node_t *memory_map = dt_find(gDeviceTree, "memory-map");
++        if (memory_map)
++        {
++            reserve_memmap_cb_t arg = { dtree, node, 0 };
++            dt_parse(memory_map, -1, NULL, NULL, NULL, &reserve_memmap_region_cb, &arg);
++            iprintf("Reserved %d additional ADT memory-map region(s).\n", arg.count);
 +        }
-+    }
++        else
++        {
++            iprintf("Failed to find memory-map in device tree; cannot generically reserve ADT regions.\n");
++        }
+     }
 +
 +    return true;
  }
  
  bool linux_can_boot()
-@@ -250,21 +309,23 @@ bool linux_can_boot()
+@@ -250,21 +399,22 @@ bool linux_can_boot()
  }
  
  void *gLinuxStage;
 +void *gLinuxStageAllocation;
 +void *gLinuxDtb;
  uint32_t gLinuxStageSize;
- 
+-
 -void fdt_select_dtree(void *fdt)
 +bool fdt_select_dtree(const void *pack, void *selected)
  {
@@ -204,7 +367,7 @@ index 6ae4d5b..8f37c9f 100644
  
      while (buf[0])
      {
-@@ -277,13 +338,149 @@ void fdt_select_dtree(void *fdt)
+@@ -277,13 +427,149 @@ void fdt_select_dtree(void *fdt)
          if (!strcmp(key, (char *)buf))
          {
              iprintf("Found device tree for %s (%d bytes).\n", key, len);
@@ -356,7 +519,7 @@ index 6ae4d5b..8f37c9f 100644
  }
  
  void linux_prep_boot()
-@@ -315,15 +512,19 @@ void linux_prep_boot()
+@@ -315,15 +601,19 @@ void linux_prep_boot()
      }
      else
      {
@@ -380,7 +543,7 @@ index 6ae4d5b..8f37c9f 100644
      }
  
  #define pixfmt0 (&disp[0x402c / 4])
-@@ -343,22 +544,33 @@ void linux_prep_boot()
+@@ -343,31 +633,88 @@ void linux_prep_boot()
      puts("This is only supported on iPhone 7 for now and works to a lesser extent on other A10 devices. Behavior on non-A10 devices is undefined!!");
  
      gEntryPoint = (void *)(0x800080000);
@@ -398,16 +561,35 @@ index 6ae4d5b..8f37c9f 100644
 -    {
 -        image_size = *(uint64_t *)(gLinuxStage + 16);
 +    if (socnum == 0x7001) {
-+        // Fixed, empirically-chosen entry point, not wherever
-+        // alloc_contig() happens to place the staging buffer. Matches
-+        // github.com/konradybcio/pongoOS, a working T7001 Linux boot
-+        // implementation on this exact chip: 0x803000000 is validated
-+        // safe/contiguous across their whole A7-A11 range. This replaced
-+        // an earlier approach here (a custom jump_to_image call with a
-+        // hand-staged marker/tramp buffer) that ran on hardware five
-+        // times without ever confirming execution reached it -- see
++        // Fixed entry point, not wherever alloc_contig() happens to
++        // place the staging buffer. This replaced an earlier approach
++        // here (a custom jump_to_image call with a hand-staged
++        // marker/tramp buffer) that ran on hardware five times without
++        // ever confirming execution reached it -- see
 +        // docs/project-status.md for that history.
-+        gEntryPoint = (void *)0x803000000;
++        //
++        // konradybcio/pongoOS (a working T7001 Linux boot implementation
++        // on this exact chip) uses 0x803000000. Real captured ADTs from
++        // github.com/SoMainline/adt_collection show why that specific
++        // value is riskier than it looks: on a J82 (T7001 cellular
++        // sibling of this device's J81) dump, iBoot's own memory-map
++        // (BootArgs/DeviceTree, not something this patch controls) ends
++        // at offset ~50 MiB from DRAM base -- and other A8-family units
++        // in the same collection (different SoC, same generation) show
++        // this ending as high as ~96 MiB. 0x803000000 is only 48 MiB
++        // in, i.e. it and the kernel placed after it can land inside
++        // memory iBoot itself was still using moments before handoff.
++        // 0x810000000 (256 MiB in) clears every observed case with
++        // over 2.5x margin, while leaving ~1.75 GiB above it on this
++        // 2 GiB device -- comfortably enough for the ~41 MiB kernel and
++        // everything staged after it. See
++        // research/t7001-handoff-options.md for the real ADT data.
++        gEntryPoint = (void *)0x810000000;
++        // Room for the entry marker stub below; the real kernel Image
++        // moves this far past gEntryPoint. 2 MiB keeps the kernel's own
++        // base 2 MiB-aligned, since gEntryPoint already is (required by
++        // the AArch64 boot protocol for text-offset=0 images).
++        gLinuxKernelOffset = 0x200000;
 +
 +        dt_node_t *memory_map = dt_find(gDeviceTree, "memory-map");
 +        uint64_t *sepfw = memory_map ? dt_prop(memory_map, "SEPFW", NULL) : NULL;
@@ -416,6 +598,30 @@ index 6ae4d5b..8f37c9f 100644
 +                iprintf("Failed to reserve SEPFW region in Linux DTB.\n");
 +        } else {
 +            iprintf("Failed to find SEPFW region in device tree.\n");
++        }
++
++        // Stage the entry marker (t7001_entry_marker.S). Must happen here,
++        // before gBootArgs is repurposed below to mean "the Linux DTB's
++        // final physical address" for the shared exit_to_el1_image() call
++        // -- gBootArgs->Video is only valid before that reassignment.
++        gLinuxMarkerStage = NULL;
++        uint64_t marker_size = (uint64_t)(t7001_entry_marker_end - t7001_entry_marker);
++        uint64_t marker_alloc_size = (marker_size + 0x3fffull) & ~0x3fffull;
++        void *marker_alloc = alloc_contig(marker_alloc_size);
++        if (!marker_alloc) {
++            iprintf("T7001 entry marker allocation failed (%llu bytes).\n", marker_alloc_size);
++        } else {
++            memcpy(marker_alloc, t7001_entry_marker, marker_size);
++            uint8_t *data = (uint8_t *)marker_alloc + (marker_size - 32);
++            uint64_t fb_words = (gBootArgs->Video.v_height * gBootArgs->Video.v_rowBytes) / 4;
++            *(uint64_t *)(data + 0)  = gBootArgs->Video.v_baseAddr;
++            *(uint32_t *)(data + 8)  = 0xff000000u; // opaque black, a8b8g8r8 -- validated by t7001_color_test
++            *(uint32_t *)(data + 12) = (uint32_t)fb_words;
++            *(uint64_t *)(data + 16) = (uint64_t)gEntryPoint + gLinuxKernelOffset;
++            *(uint32_t *)(data + 20) = 30000000u; // brief hold, so a fast camera can catch it
++            cache_clean(marker_alloc, marker_alloc_size);
++            gLinuxMarkerStage = (void *)(((uint64_t)marker_alloc) - kCacheableView + 0x800000000);
++            gLinuxMarkerStageSize = marker_size;
 +        }
      }
 -    void *gLinuxDtre = (void *)((((uint64_t)gLinuxStage) + image_size + 7ull) & -8ull);
@@ -428,7 +634,23 @@ index 6ae4d5b..8f37c9f 100644
 +    memcpy(gLinuxDtb, fdt, LINUX_DTREE_SIZE);
      gLinuxStageSize = image_size + LINUX_DTREE_SIZE;
  
-     gBootArgs = (void *)((((uint64_t)gEntryPoint) + image_size + 7ull) & -8ull);
+-    gBootArgs = (void *)((((uint64_t)gEntryPoint) + image_size + 7ull) & -8ull);
+-    iprintf("Booting Linux: %p(%p)\n", gEntryPoint, gBootArgs);
++    gBootArgs = (void *)((((uint64_t)gEntryPoint + gLinuxKernelOffset) + image_size + 7ull) & -8ull);
++    iprintf("Booting Linux: %p(%p)\n", (void *)((uint64_t)gEntryPoint + gLinuxKernelOffset), gBootArgs);
+     gLinuxStage = (void *)(((uint64_t)gLinuxStage) - kCacheableView + 0x800000000);
+ }
+ 
+ void linux_boot()
+ {
+-    memcpy(gEntryPoint, gLinuxStage, gLinuxStageSize);
+-    gTopOfKernelData = (uint64_t)gEntryPoint + gLinuxStageSize;
++    if (socnum == 0x7001 && gLinuxMarkerStage) {
++        memcpy(gEntryPoint, gLinuxMarkerStage, gLinuxMarkerStageSize);
++    }
++    memcpy((void *)((uint64_t)gEntryPoint + gLinuxKernelOffset), gLinuxStage, gLinuxStageSize);
++    gTopOfKernelData = (uint64_t)gEntryPoint + gLinuxKernelOffset + gLinuxStageSize;
+ }
 diff --git a/src/shell/linux.c b/src/shell/linux.c
 index afa4207..01803c8 100644
 --- a/src/shell/linux.c

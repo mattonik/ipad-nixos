@@ -1426,20 +1426,86 @@ the same reason, independent of Step 5. The framebuffer/low-FW `no-map`
 choice also matches the documented upstream `simple-framebuffer` binding
 convention. Ready to test.
 
+## Step 6: memory-size fix, safer entry point, generic ADT reservation, entry marker (2026-09-04)
+
+Prompted by a request to review the codebase for dead/missed logic and pull in
+more debug data before another hardware round. Full research writeup (the real
+captured-ADT data, exact reasoning) in
+[`research/t7001-handoff-options.md`](../research/t7001-handoff-options.md)
+("Round 4"); this section covers what changed in the patch.
+
+**The likely headline bug**: mainline's `t7001-air2.dtsi` ships `/memory`'s
+`reg` as literally zero-sized (`<0x8 0 0 0>`, "To be filled by loader"), and
+nothing in this project's real boot path ever filled it in -- the only code
+that used to (`linux_dtree_init()`) is the same dead function identified in
+Round 3, never reachable because `load_linux.py` always uploads a real DTB
+pack first. **Every hardware attempt across Steps 1-5 has been sending Linux a
+device tree describing zero bytes of RAM.** A kernel told that fails in its own
+`memblock`/`mm` init before any driver or console -- matching the total-silence
+symptom of every attempt so far, independent of the jump mechanism or
+reserved-memory work already tried. Fixed in `linux_dtree_overlay()`: the
+zero-sized placeholder is deleted and replaced with the real size, computed
+from `gBootArgs->memSize` (same top-of-RAM margin the dead code used to apply),
+unconditionally (not T7001-gated -- this bug affects any chip through this
+patch).
+
+**Also fixed**: the entry point. Real captured ADTs
+(`SoMainline/adt_collection`, a J82 -- the cellular sibling of this project's
+J81 target, same T7001 SoC/board) show iBoot's own memory-map (`BootArgs`,
+`DeviceTree`, not something this patch controls) ending only ~2 MiB above
+`0x803000000`, this project's entry point since Step 4 -- and the kernel,
+placed 2 MiB after that for Step 6's marker, was landing *inside* that
+region's bounds. Other A8-family dumps in the same collection show this ending
+as high as ~96 MiB from DRAM base. Moved to `0x810000000` (256 MiB in),
+comfortably past every observed case.
+
+**Generic ADT `memory-map` reservation**, superseding the "not yet built"
+Round 2/3 candidate: every named region under `memory-map` is now reserved
+`no-map` (except `SEPFW`, which keeps its Step 4 `fdt_add_mem_rsv` treatment --
+matches `AsahiLinux/m1n1`'s deliberate choice for that specific region), via
+PongoOS's own generic ADT walker (`dt_parse()`) rather than hand-picked
+addresses.
+
+**An entry-point marker** (`src/boot/t7001_entry_marker.S`) -- observability,
+architecturally different from the abandoned Step 1-3 marker: placed *at* the
+real fixed entry point, runs *through* the already-proven `exit_to_el1_image()`
+path (Step 4) rather than a separate custom jump call, in the exact physical
+position the kernel occupies. Preserves `x0` (the DTB pointer) and `x1`-`x3`,
+paints a brief marker on the physical framebuffer, then branches to the real
+kernel Image (now placed 2 MiB after the entry point to make room). If this is
+ever seen, execution reached this exact point with the boot protocol intact --
+regardless of what happens next, which is new information no prior silent hang
+has produced.
+
+Three changes bundled deliberately in one round (the memory-size and
+entry-point fixes are real logic changes, not just instrumentation) --
+justified because both are independently well-evidenced (the zero-sized memory
+node in particular looks about as close to "obviously necessary" as anything
+found in this investigation) and another full hardware round-trip is costly
+enough that testing them one at a time wasn't worth it here. If this round
+succeeds, exactly which fix mattered won't be known without further isolation
+-- acceptable, since reaching a boot at all is the actual goal.
+
+Built from a fresh pinned checkout: 270,416 bytes, SHA-256
+`46008348f660f6da1fa698b39c734678e5ada5e14fb241f68eb0bbeeb4ef4aca`. All
+existing tests pass unchanged; added `boot/test_t7001_memory_size.py` and
+`boot/test_t7001_entry_marker.py` (structural checks: placeholder deleted
+before real size is set, boot_args-derived not hardcoded, SEPFW excluded from
+the generic no-map pass, the marker stub never writes `x0`, kernel placement
+doesn't overlap the marker's reserved space). **Not yet run on hardware.**
+
 ## Playbook: next hardware session
 
-Written 2026-09-04, before a break with the Step 5 build built, reviewed, and
-ready but not yet run on hardware. Self-contained -- shouldn't require reading
+Rewritten 2026-09-04 for Step 6. Self-contained -- shouldn't require reading
 the rest of this file to act on.
 
 ### Setup
 
 Binary ready to flash: `boot/Pongo-t7001-diagnostic.bin`, SHA-256
-`07cde808723eb1c1761fb847200b53803a0da953e1579fb0ae546d12affff0cf` (Step 5:
-framebuffer + low-firmware `no-map` DTB reservations; passed a full code
-review in Round 3, cross-checked against Asahi Linux/m1n1). Confirm the file
-on disk still matches that hash before flashing (`shasum -a 256
-boot/Pongo-t7001-diagnostic.bin`) -- if it doesn't, something rebuilt it;
+`46008348f660f6da1fa698b39c734678e5ada5e14fb241f68eb0bbeeb4ef4aca` (Step 6:
+memory-size fix, safer entry point, generic ADT reservation, entry marker).
+Confirm the file on disk still matches that hash before flashing (`shasum -a
+256 boot/Pongo-t7001-diagnostic.bin`) -- if it doesn't, something rebuilt it;
 check `git log -- boot/pongo-t7001.patch` for what changed.
 
 ```bash
@@ -1449,41 +1515,38 @@ sudo /tmp/palera1n-arm64 --pongo-shell --override-pongo "/Users/martinp/Work/San
 Two replugs, direct into the Mac (no hub/dock): once right after `Checkmate!`
 /"reconnect in download mode", once more when the PongoOS logo actually
 appears on screen. Confirm enumeration (`idVendor=0x05ac, idProduct=0x4141`)
-and a `help` response before doing anything else -- see any prior "Launch
-this build" step above for the exact PyUSB snippets.
+and a `help` response before doing anything else.
 
 Then:
 1. `linux_diag` via `load_linux.py --diagnostic ...` first, as a sanity check
-   -- unaffected by the Step 5 change, should reproduce the same measured
-   addresses recorded in every prior verified run.
-2. With the device watched **and recorded on video** the whole time, send
-   `linux_t7001` via `load_linux.py --t7001-handoff ...`.
+   -- it builds its own separate DTB and doesn't call `linux_dtree_overlay()`,
+   so it's unaffected by any of Step 6's changes; should reproduce the same
+   measured addresses recorded in every prior verified run.
+2. With the device watched **and recorded on video, ideally at a high frame
+   rate** the whole time, send `linux_t7001` via `load_linux.py
+   --t7001-handoff ...`.
 
-### Step 5 hardware result (2026-09-04): tried, same silent hang
+### Reading the result this time
 
-Run for real. `linux_diag` reproduced the same measured contract as every
-prior verified run. `linux_t7001` was sent, recorded on video (10.8s,
-120fps) and confirmed via a full-resolution photo: the console reached the
-identical point as the Step 4 run --
-`Booting Linux: 0x803000000(0x805960000)` then `Booting Linux...` -- then
-went silent. No boot log, no panic, no visible framebuffer change of any
-kind, not even the usual `pixfmt` reddish flash and even that fell in the
-same place as prior runs when it was noticed. Device left enumerated but
-unresponsive, same as every real handoff attempt so far.
+Unlike every prior attempt, there are now three distinct outcomes to
+distinguish, not two:
 
-(A first read of a low-resolution extracted video frame briefly looked like
-it stopped *before* those two lines -- a fresh high-resolution photo the
-user sent right after corrected this. Worth remembering for next time:
-don't conclude a *shorter* console transcript than a prior run from a
-downscaled/compressed frame alone; get a full-resolution capture before
-drawing that conclusion, since it changes the diagnosis materially.)
-
-**This is the "if it still hangs" case** -- the reserved-memory fix, while
-well-evidenced and cross-checked against two working reference
-implementations (Round 3), was not sufficient on its own. Jump to
-"If it still hangs silently" below for the ranked next steps; candidate 1
-there (generic ADT `memory-map` enumeration) is the next thing to try,
-not yet built.
+- **A real Linux boot log or panic** -- see "If you see anything that isn't
+  the exact PongoOS logo screen" below. The actual milestone.
+- **The entry marker appears** (a brief mark on the framebuffer, then either
+  it holds if the kernel never overwrites it, or the screen changes again
+  right after) **but no Linux output follows** -- this is new, valuable
+  information no prior attempt has produced: it means execution reached the
+  real kernel entry point with `x0`/`x1`-`x3` intact, so the remaining
+  problem is inside the kernel's own earliest code (or still something in the
+  DTB it's handed), not the handoff mechanism or entry point. Capture exactly
+  what the marker looked like and how long it held; update this section with
+  that result and treat it as a new, narrower debugging target.
+- **Total silence, identical to every attempt so far** -- see "If it still
+  hangs silently" below. Given three real fixes landed this round including
+  the likely-headline zero-memory bug, this outcome would itself be
+  significant: it suggests the remaining problem is upstream of even reaching
+  the marker, in something none of Steps 4-6 have touched.
 
 ### If you see anything that isn't the exact PongoOS logo screen
 
@@ -1500,14 +1563,16 @@ crash dump -- anything at all. Treat this as the actual milestone:
      here with the full transcript/photos, and update the "Current state at a
      glance" table.
    - **A kernel panic with a backtrace** -- also a real win, not a failure:
-     it proves the CPU executed real kernel code after the handoff, further
-     than any of the six prior attempts got. Transcribe or photograph the
-     *entire* panic text, including the register dump and call trace if
-     shown -- that tells you exactly what to fix next (a missing driver, a
-     bad memory access, etc.), which is a completely different and much
-     easier kind of debugging than "silent hang, no information" has been.
+     it proves the CPU executed real kernel code after the handoff. Transcribe
+     or photograph the *entire* panic text, including the register dump and
+     call trace if shown -- that tells you exactly what to fix next (a
+     missing driver, a bad memory access, etc.), which is a completely
+     different and much easier kind of debugging than "silent hang, no
+     information" has been.
    - **A few log lines then it stops** -- note the exact last line printed;
      that names the next subsystem to investigate.
+   - **The entry marker but nothing further** -- see "Reading the result this
+     time" above.
 3. Once any of the above is confirmed, this project's own **"Driver readiness
    and approval gate"** section (below) applies as written: it requires
    explicit user approval before implementing or fixing any specific driver
@@ -1523,48 +1588,34 @@ crash dump -- anything at all. Treat this as the actual milestone:
 ### If it still hangs silently, identical to every attempt so far
 
 Ranked by cost, cheapest and most-evidenced first. Treat each as its own
-single-variable test, same discipline as every step so far -- don't bundle
-more than one at a time, or a positive result won't tell you which change
-mattered.
+single-variable test where practical -- don't bundle more than necessary, or a
+positive result won't tell you which change mattered.
 
-1. **Generically enumerate the ADT's `memory-map` node**, not just the three
-   regions (`SEPFW`, framebuffer, low-FW) reserved so far. PongoOS already has
-   a generic node/property walker, `dt_parse()` (`src/kernel/dtree.c`,
-   declared in `pongo.h`) -- use it to iterate every property under
-   `memory-map` and reserve each one (via `fdt_add_mem_rsv` or a
-   `/reserved-memory` `no-map` subnode, matching the pattern already in
-   `linux_dtree_overlay()`), rather than hand-picking names. This directly
-   tests whether Konrad's several extra hardcoded regions
-   (`0x870100000`/`0x870180000`/three more in `research/t7001-handoff-options.md`)
-   matter too, without reusing his possibly-per-unit constants directly. Not
-   yet built.
-2. **Fix the `/chosen/framebuffer` placement bug** alongside (1) -- low
-   priority for a silent-hang specifically (a misplaced node should mean "no
-   display driver probes," not "total silence"), but cheap to remove as a
-   variable while already in this code.
-3. **Check the postmarketOS wiki device page manually** in a real browser --
+1. **Check the postmarketOS wiki device page manually** in a real browser --
    automated fetching was blocked by an anti-bot challenge throughout this
    research (`wiki.postmarketos.org`, device likely `apple-ipad5,3` /
    `apple-j81`). Free, no hardware cost, and independently informative either
    way: confirms whether this general technique still works today on *any*
    implementation, not just this one.
-4. **A kernel-embedded marker** -- a new idea, not yet designed in detail or
-   built. If (1)-(3) don't resolve it, the next diagnostically useful step
-   is combining the now-proven exit path with real observability: inject a
-   tiny stub directly at the fixed entry point (`0x803000000`) that writes a
-   marker to the framebuffer, then falls through to the real kernel Image's
-   own first instruction -- unlike the abandoned Step 1-3 marker, this runs
-   through the actual `exit_to_el1_image()` path in the exact position Linux
-   itself would occupy, rather than a separate custom jump. Needs care to not
-   corrupt the Image's own header (`text_offset` and size fields live at
-   fixed offsets from the Image start) -- prepend a few instructions and
-   branch forward past them, don't overwrite anything the AArch64 boot
-   protocol or the kernel's own early code depends on.
-5. **UART/serial console, or JTAG/SWD** (e.g. a Tamarin-style cable) -- needs
-   hardware not currently available. The fallback once (1)-(4) are tried and
-   still produce no new information; see the Round 2 viability assessment in
-   `research/t7001-handoff-options.md` for the reasoning on when to treat
-   this as genuinely blocked on tooling rather than more inference.
+2. **Fix the `/chosen/framebuffer` placement bug** noted in Step 5 -- this
+   function creates a top-level `/framebuffer@<addr>` node, but mainline's DTS
+   has the real placeholder inside `/chosen` (`chosen/framebuffer0`). Low
+   priority for a silent hang specifically (should mean "no display driver
+   probes," not "total silence"), but cheap and removes a variable.
+3. **Revisit whether other ADT-derived assumptions hold for the real J81
+   unit**, not just the J82 dump used for Round 4's margin calculation -- if
+   possible, capture this project's own device's `dt` output (same method
+   `adt_collection`'s README documents: `linux_diag`-adjacent PongoOS session,
+   `dt` command, capture output) rather than relying on a sibling device's
+   data.
+4. **UART/serial console, or JTAG/SWD** (e.g. a Tamarin-style cable) -- needs
+   hardware not currently available. With three real logic fixes now tried
+   (jump mechanism in Step 4, reserved-memory in Step 5, memory-size/entry
+   point/generic-reservation in Step 6) and still no confirmed sign of
+   execution reaching the kernel, this is the point to seriously weigh
+   whether continuing without real execution visibility is still the best
+   use of further hardware cycles -- see the viability assessment in
+   `research/t7001-handoff-options.md`.
 
 Only after a visible Linux log, resume the console, touch, and Wi-Fi work
 recorded below. The current driver approval gate remains in force regardless
@@ -1647,7 +1698,7 @@ is the reference for the intentionally minimal board description.
 | Current RAM-only Pongo session | ✅ Active after verified handoff-candidate diagnostic; transient and RAM-only |
 | Linux payload upload | ✅ Transferred once; exposed PongoOS pre-handoff defects |
 | Guarded T7001 diagnostic PongoOS | ✅ Matched-toolchain Pongo, USB, aligned Image/DTB/initrd ranges, Linux register contract, and no-jump guard are proven on T7001 |
-| Linux kernel boot | ❌ Not achieved; 7 hardware handoff attempts, all silent hangs; color/timing/SRAM-release/jump-mechanism/reserved-memory all tried and ruled out or insufficient alone; next candidate is generic ADT memory-map enumeration — see research/t7001-handoff-options.md and the Playbook section |
+| Linux kernel boot | ❌ Not achieved; 7 hardware handoff attempts so far, all silent hangs; found likely headline bug (Linux DTB's /memory node was zero-sized on every attempt) plus a too-close entry point, both fixed in Step 6 alongside generic ADT reservation and a new entry marker — not yet run on hardware, see the Playbook section |
 | Display/touch/Wi‑Fi/Bluetooth validation | ❌ Not started |
 | Usable tethered Linux tablet | ❌ Future milestone |
 

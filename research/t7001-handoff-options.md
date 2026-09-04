@@ -464,6 +464,116 @@ already implemented matches the architecture of the most mature reference
 available, including its choice of which regions get `no-map` versus plain
 `memblock_reserve()`. Ready to test.
 
+## Round 4: real captured ADTs, a likely-fatal zero-sized /memory node, and a much safer entry point
+
+Ran after the Step 5 (reserved-memory) hardware test still hung. User pointed at
+[`SoMainline/adt_collection`](https://github.com/SoMainline/adt_collection) (real
+device ADT dumps) and [`SoMainline/linux-apple-resources`](https://github.com/SoMainline/linux-apple-resources).
+Both were genuinely useful, and led to what may be the single most consequential
+finding of this whole investigation.
+
+### The `/memory` node ships with size zero, and nothing ever fixed it
+
+Mainline's `t7001-air2.dtsi` (fetched directly, see Round 2) declares:
+
+```c
+memory@800000000 {
+	device_type = "memory";
+	reg = <0x8 0 0 0>; /* To be filled by loader */
+};
+```
+
+`reg = <0x8 0 0 0>` with `#address-cells = 2, #size-cells = 2` decodes to base
+`0x800000000`, **size zero**. This project's real boot path (`linux_prepare_fdt()`
+→ `linux_dtree_overlay()`) never touched this node -- the only code that used to
+set a real size, in `linux_dtree_init()`'s dead-code from-scratch tree builder
+(`(gBootArgs->memSize - 0x02000000) & ~0x1FFFFFF`, confirmed unreachable in
+Round 3), never ran, because this project's actual flow always uploads a real
+DTB pack first. **Every hardware attempt across Steps 1-5 has been sending
+Linux a device tree that describes zero bytes of usable RAM.** A kernel told
+this fails in its own `memblock`/`mm` initialization before any driver, before
+any console -- exactly matching the total-silence symptom of every single
+attempt so far, independent of the jump mechanism (Step 4), the reserved-memory
+work (Step 5), or anything else tried. This is now fixed (see below) and is the
+strongest single candidate this investigation has produced for what's actually
+been preventing a boot.
+
+### Real ADTs show the chosen entry point was riskier than it looked
+
+`SoMainline/adt_collection`'s files turned out to be PongoOS's own `dt` command
+text output (captured via `scripts/issue_cmd.py dt` + `scripts/fetch_stdout.py`
+per the repo's README), not raw binary ADTs -- readable directly. `a8/J82.adt`
+is a real capture from a **J82**, the cellular sibling of this project's J81
+target (same T7001 SoC, same board generation). Its `memory-map` node:
+
+| region | addr | size |
+|---|---|---|
+| SEPFW | `0x802be4000` | 6 MiB |
+| BootArgs | `0x8031e4000` | 4 KiB |
+| DeviceTree | `0x8031e5000` | ~1.8 MiB, ending `0x8032021ec` |
+| (17 more regions, mostly `Kernel-__*` XNU sections) | | |
+
+Total across all 19 regions: ~35 MiB -- trivial against a 2 GiB device, so size
+was never the concern. *Position* was: **`0x8032021ec` is only ~2 MiB above
+`0x803000000`**, this project's entry point since Step 4. The kernel Image was
+being placed at `gEntryPoint + 0x200000` (Step 6's marker offset) =
+`0x803200000` -- which falls *inside* the `DeviceTree` region's own bounds
+(`0x8031e5000`-`0x8032021ec`). Checking the same field across every other A8-family
+dump in the collection (different exact SoC, same generation) showed the
+highest region ending anywhere from ~50 MiB to **~96 MiB** from DRAM base
+(`n56`/`n61`, likely iPhone 6/6 Plus, T7000). `0x803000000` is only 48 MiB in --
+below the *low* end of that range, let alone the high end.
+
+Whether this specific overlap is what caused any given hang couldn't be
+confirmed (iBoot's own code isn't still running by the time PongoOS reaches
+this point, so the *software* dependency risk is unclear -- but placing a ~41 MiB
+kernel copy this close to memory iBoot was using moments before handoff, with
+no independent verification for the actual J81 unit, is not a risk worth
+carrying when a cheap, well-margined alternative exists). `konradybcio`'s own
+comment on `0x803000000` -- *"a really hacky guesstimate... doesn't really
+matter as long as it works"* -- reads differently in light of this real data:
+it may have worked for the specific kernel builds and units they tested against
+(smaller `Kernel-__PRELINK_*` sections push these regions lower), without being
+safe in general. This project's kernel build's own real region sizes were never
+compared against this margin before Step 4.
+
+**Fix**: moved to `0x810000000` (256 MiB from DRAM base) -- over 2.5x past the
+worst case observed (96 MiB) across every A8-family dump available, while still
+leaving ~1.75 GiB above it on a 2 GiB device.
+
+### Implemented, alongside the entry marker (Step 6)
+
+Three changes landed together this round -- one pure instrumentation addition,
+two real logic fixes bundled deliberately (both independently well-evidenced,
+and going back to hardware is costly enough that testing them separately would
+have meant burning a cycle on a fix -- the zero-sized memory node -- that looks
+about as close to "obviously necessary" as anything found in this whole
+investigation):
+
+1. **The `/memory` node size fix** (above) -- the best-evidenced single change.
+2. **The entry point margin fix** (above).
+3. **Generic ADT `memory-map` enumeration**, superseding the Round 2/3 "not yet
+   built" candidate: every named region under `memory-map` is now reserved as
+   `no-map` in the Linux DTB (except `SEPFW`, which keeps its existing
+   `fdt_add_mem_rsv` treatment from Step 4/5 -- matches `AsahiLinux/m1n1`'s
+   deliberate choice not to mark SEP `no-map`, per Round 3). Uses PongoOS's
+   own generic ADT walker, `dt_parse()`, rather than hand-picked addresses.
+4. **An entry-point marker** (`src/boot/t7001_entry_marker.S`), reviving
+   observability but architecturally different from the abandoned Step 1-3
+   marker: instead of a separate `jump_to_image` call, this stub is placed
+   *at* the real, fixed entry point and runs *through* the already-proven
+   `exit_to_el1_image()` path (Step 4), in the exact physical position the
+   kernel itself occupies. It preserves `x0` (the DTB pointer) and
+   `x1`-`x3`, paints a brief marker on the physical framebuffer, then branches
+   to the real kernel Image (placed 2 MiB after the entry point to make room).
+   If this is ever seen, execution reached this exact point with the boot
+   protocol intact, regardless of what happens next -- unlike every prior
+   silent hang, this doesn't require guessing whether the kernel was ever
+   reached at all.
+
+Build details, exact diffs, and the new structural tests are in
+`docs/project-status.md`, Step 6.
+
 ## Sources
 
 - [konradybcio/pongoOS](https://github.com/konradybcio/pongoOS)
@@ -473,6 +583,8 @@ available, including its choice of which regions get `no-map` versus plain
 - [Boot Mainline Linux On Apple A7, A8 And A8X Devices — Hackaday](https://hackaday.com/2022/06/12/boot-mainline-linux-on-apple-a7-a8-and-a8x-devices/)
 - [Now you can boot Linux on Apple devices with A7 through A11 series chips — Liliputing](https://liliputing.com/now-you-can-boot-linux-on-apple-devices-with-a7-and-a8-series-chips/)
 - [A11pwnX/Linux-iPhone-6s-X-howto](https://github.com/A11pwnX/Linux-iPhone-6s-X-howto)
-- [SoMainline/adt_collection](https://github.com/SoMainline/adt_collection)
+- [SoMainline/adt_collection](https://github.com/SoMainline/adt_collection) -- a8/J82.adt
+  specifically, real T7001-family memory-map data used in Round 4
+- [SoMainline/linux-apple-resources — HOWTO.md](https://github.com/SoMainline/linux-apple-resources/blob/master/HOWTO.md)
 - postmarketOS wiki device page (`wiki.postmarketos.org`) -- blocked by an Anubis
   anti-bot challenge during this research; check manually in a browser.
