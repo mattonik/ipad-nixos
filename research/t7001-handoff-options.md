@@ -721,12 +721,24 @@ repurposed to mean something else by that point in the function -- see
 root-cause trace). Fixed in v11 by moving the allocation back ahead of that
 repurposing; verified via the usual two independent clean-room builds
 (identical SHA-256) and the full test suite, with a new regression check
-added specifically for this ordering. v11 has not yet been run on hardware,
-so the watchdog hypothesis itself remains exactly as untested as before this
-round -- the one substantive finding is that a handoff attempt can now
-produce a readable on-screen panic instead of total silence, which at least
-confirms the device's display and PongoOS's own print path work correctly
-under real handoff conditions.
+added specifically for this ordering.
+
+**Second update, same day**: v11 was then run for real. No panic this time
+-- the fix worked. The marker's debug line confirmed it staged correctly,
+with a verified-correct destination, source, and copy length. **The marker
+still never appeared on screen**, watched live and on video. Because the
+marker now runs *before* the kernel-copy loop it used to be entangled with,
+this result is unambiguous in a way none of Steps 1-6 were: the marker's own
+first instructions never executed, so **the watchdog-during-copy hypothesis
+this round set out to test is now ruled out**, not just untested. The
+problem is upstream of even the marker's first instruction. Full transcript
+in `docs/project-status.md`'s "v11 hardware result" under Step 7.
+
+Seven architecturally distinct hypotheses have now been tested and ruled out
+by real hardware results. The Round 5 recommendation -- UART/JTAG -- is no
+longer just the best remaining option; per this investigation's own
+research, it is the only one left that isn't already flagged as more
+speculative and lower-value than everything already tried.
 
 ## Sources
 

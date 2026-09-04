@@ -1817,10 +1817,8 @@ repurposing line, so this exact class of bug fails the test suite before
 reaching hardware next time. Rebuilt and re-verified via the usual two
 independent clean-room clone+builds: byte-identical 270,416-byte binary,
 SHA-256 `fad104a957a81ae0d70e1b0d41de0defde511d0b4bc09bf4e3e30d4cb4a57087`.
-All five `boot/test_*.py` pass. **This fixed build has not yet been run on
-hardware** -- the watchdog-during-copy hypothesis Step 7 was actually meant
-to test remains untested; the v10 hardware round only found and fixed an
-unrelated bug in the harness itself.
+All five `boot/test_*.py` pass. This build was then run for real -- see "v11
+hardware result" immediately below.
 
 One genuinely new, positive fact this round did establish, independent of
 the bug above: **this is the first time in eight hardware attempts that a
@@ -1834,6 +1832,72 @@ which remains exactly as unknown as before. But it does confirm the
 device's display and PongoOS's own panic/print path both still work
 correctly under real handoff conditions, for whatever that's worth going
 forward.
+
+### v11 hardware result (2026-09-04): the watchdog hypothesis itself is now ruled out
+
+Run for real, same day, immediately after the v10 fix above. `linux_diag`
+reproduced the known-good output again. `linux_t7001` this time produced
+**no panic** -- the allocation-ordering fix worked as intended -- and, for
+the first time, printed the new marker debug line before the final jump
+sequence:
+
+```
+[t7001] marker: fb=0x87404e000 dest=0x810200000 src=0x873200000 words=10911744
+Booting Linux: 0x810200000(0x812b60000)
+Booting Linux...
+```
+
+Every value checks out: `dest` (`0x810200000`) matches
+`gEntryPoint(0x810000000) + gLinuxKernelOffset(0x200000)` exactly;
+`words=10911744` times 4 is 43,646,976 bytes, exactly `image_size (43,384,832)
++ LINUX_DTREE_SIZE (262,144)`; `Booting Linux: 0x810200000(0x812b60000)`
+matches the same computed addresses seen in the Step 6 run. The marker was
+staged correctly, with a correct source, destination, and length.
+
+**The marker still never appeared.** Watched live and recorded on video; the
+user confirmed no black-screen flash at any point. Console output stopped
+dead at `Booting Linux...`, matching every prior silent hang.
+
+One new, distinct data point this round: the device's post-attempt USB state
+was **enumerated but unresponsive** -- `usb.core.find()` still finds it and
+a standard `set_configuration()` control transfer succeeds, but reading
+PongoOS's own stdout ring buffer (the vendor-specific control transfer
+`load_linux.py` and the ADT-capture script both use) times out with no
+response. This is the same signature Steps 4-5 showed, not Step 6's harder
+"disappears from the bus entirely" -- interesting, but not something this
+investigation has enough independent samples to draw a firm conclusion from;
+noted for completeness in case a future round's pattern makes it meaningful.
+
+**This is the result our own pre-registered interpretation criteria (see the
+"Step 7" section above) already assigned meaning to.** Because the marker
+now runs *before* the kernel-copy loop it used to be entangled with, its
+continued total absence is no longer explainable by "the copy killed
+execution before the marker could be seen" -- the marker's own first
+instructions (load `marker_data`, write the framebuffer fill, `dsb sy`)
+would have had to execute for the copy to ever begin at all. **The
+watchdog-during-copy hypothesis Step 7 set out to test is therefore ruled
+out.** The problem is upstream of even the marker's first instruction --
+inside `lowlevel_set_identity()`/`lowlevel_cleanup()` or
+`exit_to_el1_image()` itself, none of which Step 7 touched, and none of
+which any prior step has touched either.
+
+**Revised state**: seven architecturally distinct hypotheses have now been
+tested (custom jump+tramp, the proven XNU exit mechanism, reserved-memory,
+memory-size+entry-point+generic-reservation+marker, and now
+copy-reordering), each independently well-evidenced, each ruled out by a
+real hardware result rather than by inference. No further software-only
+idea from this investigation's own research is left to try that isn't
+already flagged as more speculative and lower-value than everything already
+exhausted (see `research/t7001-handoff-options.md` Round 5's own list of
+those, unchanged). The Round 5 recommendation -- UART/serial console, or
+JTAG/SWD via something like a Tamarin cable -- stands as the only
+remaining path to further narrow this down. Worth noting explicitly since
+the user has declined new hardware in this investigation: that constraint
+was raised specifically about A12X/A12Z-class hardware (a different chip, a
+different device, hundreds of dollars); a UART or JTAG *accessory* for the
+Air 2 already in hand is a different, much smaller category of purchase
+(often well under $50) -- worth the user's own judgment call on whether
+that distinction changes anything, not assumed either way here.
 
 ## Driver readiness and approval gate (2026-09-02)
 
@@ -1912,7 +1976,7 @@ is the reference for the intentionally minimal board description.
 | Current RAM-only Pongo session | ✅ Active after verified handoff-candidate diagnostic; transient and RAM-only |
 | Linux payload upload | ✅ Transferred once; exposed PongoOS pre-handoff defects |
 | Guarded T7001 diagnostic PongoOS | ✅ Matched-toolchain Pongo, USB, aligned Image/DTB/initrd ranges, Linux register contract, and no-jump guard are proven on T7001 |
-| Linux kernel boot | ❌ Not achieved; 9 hardware handoff attempts (8 silent hangs, 1 PongoOS-internal panic from a bug in this patch's own v10 reordering, fixed in v11); Step 6 ran correctly by every independent check including the real device's own ADT, marker still showed nothing; Step 7/v11 (kernel copy moved into the marker itself, testing a watchdog-during-copy hypothesis, user explicitly ruled out new hardware) built and verified, not yet run on hardware — UART/JTAG remains the recommendation if this doesn't change the result, see research/t7001-handoff-options.md Round 5 |
+| Linux kernel boot | ❌ Not achieved; 10 hardware handoff attempts (9 silent/marker-less hangs, 1 PongoOS-internal panic from a bug in this patch's own v10 reordering, fixed in v11); seven architecturally distinct hypotheses now ruled out by real hardware results, most recently v11's copy-reordering marker (correctly staged with verified addresses, still never appeared) — the watchdog-during-copy hypothesis is now ruled out specifically; UART/JTAG is the only remaining recommendation, see research/t7001-handoff-options.md Round 5 |
 | Display/touch/Wi‑Fi/Bluetooth validation | ❌ Not started |
 | Usable tethered Linux tablet | ❌ Future milestone |
 
