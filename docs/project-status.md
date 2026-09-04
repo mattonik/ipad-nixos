@@ -1496,17 +1496,20 @@ doesn't overlap the marker's reserved space). **Not yet run on hardware.**
 
 ## Playbook: next hardware session
 
-Rewritten 2026-09-04 for Step 6. Self-contained -- shouldn't require reading
+Updated 2026-09-04 for Step 7. Self-contained -- shouldn't require reading
 the rest of this file to act on.
 
 ### Setup
 
 Binary ready to flash: `boot/Pongo-t7001-diagnostic.bin`, SHA-256
-`46008348f660f6da1fa698b39c734678e5ada5e14fb241f68eb0bbeeb4ef4aca` (Step 6:
-memory-size fix, safer entry point, generic ADT reservation, entry marker).
-Confirm the file on disk still matches that hash before flashing (`shasum -a
-256 boot/Pongo-t7001-diagnostic.bin`) -- if it doesn't, something rebuilt it;
-check `git log -- boot/pongo-t7001.patch` for what changed.
+`5f85a4721aa1f61b324776a11c7dad03885f00ac87f2e40b4e302328a6bdb3ff` (Step 7:
+kernel+DTB copy moved from `linux_boot()` into the entry marker stub itself,
+run after the marker paints the screen -- testing whether a watchdog reset
+during that copy, in the low-level post-teardown context, has been the cause
+of every silent hang so far; see "Step 7" section above for the full
+reasoning). Confirm the file on disk still matches that hash before flashing
+(`shasum -a 256 boot/Pongo-t7001-diagnostic.bin`) -- if it doesn't, something
+rebuilt it; check `git log -- boot/pongo-t7001.patch` for what changed.
 
 ```bash
 sudo /tmp/palera1n-arm64 --pongo-shell --override-pongo "/Users/martinp/Work/Sandbox/ipadlinux/ipad-nixos/boot/Pongo-t7001-diagnostic.bin" --debug-logging
@@ -1684,6 +1687,83 @@ Only after a visible Linux log, resume the console, touch, and Wi-Fi work
 recorded below. The current driver approval gate remains in force regardless
 of which branch above applies.
 
+## Step 7: kernel copy moved into the marker itself — a watchdog hypothesis (2026-09-04)
+
+Prompted by: after Step 6's clean negative (see above), the user asked whether
+A12X/A12Z + Omarchy would be a more mature path (researched and answered no --
+no working bootrom exploit exists for A12X/A12Z at all, and Asahi/Omarchy have
+zero iPad support of any kind, so this remains the more mature option despite
+its own six failed attempts), then explicitly ruled out buying any new
+hardware ("Not gonna invest in any new hardware") and approved one more
+software-only idea before recommending UART/JTAG as the next step in earnest.
+
+**The hypothesis**: every hardware attempt so far (Steps 1-6) has hung
+somewhere between PongoOS's teardown and the first sign of kernel execution,
+with zero observable signal in between -- including Step 6's marker, built
+specifically to produce a signal at the earliest possible point, which stayed
+completely dark. `src/kernel/entry.c`'s `pongo_entry()` shows the exact
+sequence: `lowlevel_set_identity()` and `lowlevel_cleanup()` run first (the
+teardown that has always separated "PongoOS still visibly alive" from "total
+silence" in every prior round), *then* `linux_boot()` runs -- which, through
+every version up to and including Step 6, performs the entire ~41 MiB
+kernel+DTB `memcpy` right there, in that low-level, post-teardown context,
+*before* the CPU ever jumps anywhere. If that context runs with interrupts
+disabled and possibly with caching disabled or degraded (uncached DRAM
+`memcpy` at that size can be dramatically slower than it looks), a hardware
+watchdog reset during the copy itself -- not the jump, not the kernel, not
+the DTB -- would produce exactly the symptom every round has shown: PongoOS's
+own last-known-good state disappears, and nothing from the kernel or the
+Step 6 marker ever appears, because neither one is ever reached.
+
+**The fix tested**: restructured so the copy no longer blocks reachability
+from being observed at all. `src/boot/t7001_entry_marker.S` now paints the
+framebuffer and holds *first* -- exactly as in Step 6, proving reachability
+on its own, independent of anything after -- and only then performs the
+kernel+DTB copy itself, using a small in-stub word-copy loop, followed by the
+same `dsb sy` / `ic iallu` / `dsb sy` / `isb` barrier sequence
+`jump_to_image.S` itself uses before jumping into freshly-written code, before
+finally branching to the real kernel entry. `linux_boot()` (`src/modules/
+linux/linux.c`) no longer performs the big copy for T7001 at all -- it only
+stages the (small, fixed-size) marker to `gEntryPoint`, unchanged from
+before. `linux_prep_boot()` now stages the marker *after* the kernel+DTB
+blob (`gLinuxStage`/`gLinuxStageSize`) is fully known, rather than before (Step
+6 staged it too early to know the real copy's source/length), and explicitly
+`cache_clean()`s that blob while it is still a cacheable VA mapping -- belt
+and suspenders, since the marker's own copy loop now reads it back via
+physical addressing considerably later than the old in-line `memcpy` did.
+
+**What a result means this time**: for the first time, "the marker appears"
+and "the kernel+DTB copy completes" are no longer coupled, which sharpens
+what a hardware round can now show:
+- **Marker appears, then nothing else** (no Linux log, no crash, no
+  re-enumeration) -- consistent with the watchdog-during-copy hypothesis:
+  reachability is now proven, and the process still dies somewhere in or
+  right after the in-stub copy. This would be genuinely new information no
+  prior round has produced, and would point squarely at the copy or the
+  jump immediately following it.
+- **Marker never appears, identical to Step 6** -- this would rule the
+  hypothesis out (the copy no longer runs before the marker, yet the result
+  is unchanged), meaning the problem is upstream of even the marker's own
+  first instruction, e.g. inside `lowlevel_set_identity()`/`lowlevel_cleanup()`
+  or `exit_to_el1_image()` itself. At that point every software-only idea
+  this project has been able to formulate without an independent hardware
+  trace (UART/JTAG) has been exhausted -- see the Round 5 recommendation in
+  `research/t7001-handoff-options.md`, which stands unchanged as the next
+  step regardless.
+- **A real Linux log or panic** -- the actual milestone; same handling as
+  described under "If you see anything that isn't the exact PongoOS logo
+  screen" above.
+
+Built from a fresh pinned checkout and independently verified with a second,
+completely separate clean-room clone+build: both produced the byte-identical
+270,416-byte binary, SHA-256
+`5f85a4721aa1f61b324776a11c7dad03885f00ac87f2e40b4e302328a6bdb3ff`. All five
+`boot/test_*.py` pass, including a rewritten `test_t7001_entry_marker.py`
+(now also checks the marker is staged only after the kernel blob is known,
+the blob is `cache_clean()`'d before the translation to physical addressing,
+the in-stub copy loop and icache-invalidate sequence exist, and `linux_boot()`
+no longer copies the kernel directly for T7001). **Not yet run on hardware.**
+
 ## Driver readiness and approval gate (2026-09-02)
 
 This is an evidence-based planning record, not authorization to change a
@@ -1761,7 +1841,7 @@ is the reference for the intentionally minimal board description.
 | Current RAM-only Pongo session | ✅ Active after verified handoff-candidate diagnostic; transient and RAM-only |
 | Linux payload upload | ✅ Transferred once; exposed PongoOS pre-handoff defects |
 | Guarded T7001 diagnostic PongoOS | ✅ Matched-toolchain Pongo, USB, aligned Image/DTB/initrd ranges, Linux register contract, and no-jump guard are proven on T7001 |
-| Linux kernel boot | ❌ Not achieved; 8 hardware handoff attempts, all silent hangs; Step 6 (memory-size fix, confirmed-safe entry point, generic ADT reservation, entry marker) ran correctly by every independent check including the real device's own ADT, marker still showed nothing — now recommending UART/JTAG over further software guessing, see research/t7001-handoff-options.md Round 5 |
+| Linux kernel boot | ❌ Not achieved; 8 hardware handoff attempts, all silent hangs; Step 6 (memory-size fix, confirmed-safe entry point, generic ADT reservation, entry marker) ran correctly by every independent check including the real device's own ADT, marker still showed nothing; Step 7 (kernel copy moved into the marker itself, testing a watchdog-during-copy hypothesis, user explicitly ruled out new hardware) built and verified, not yet run on hardware — UART/JTAG remains the recommendation if this doesn't change the result, see research/t7001-handoff-options.md Round 5 |
 | Display/touch/Wi‑Fi/Bluetooth validation | ❌ Not started |
 | Usable tethered Linux tablet | ❌ Future milestone |
 

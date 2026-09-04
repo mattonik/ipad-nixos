@@ -656,6 +656,61 @@ hardware cycle than the ones already tried. The honest recommendation at this
 point is UART/JTAG investment, or pausing here at a well-documented, resumable
 state, over continuing to guess.
 
+## Round 6: A12X/A12Z + Omarchy re-examined, and one more software-only test
+
+After Round 5's recommendation, the user asked whether pivoting to A12X/A12Z
+hardware (the iPad Pro's chip family) plus Omarchy (a distribution built on
+Asahi/Arch ARM) would be a more mature path than continuing with T7001,
+having "hoped the landscape is in a better shape" since this project's
+original research phase.
+
+**It is not, and by a wide margin.** Two independent gaps, not one:
+
+1. **No usable bootrom exploit for A12X/A12Z exists.** checkm8 (this
+   project's own exploit, A7-A11 only) does not cover them. The one
+   candidate found in this research pass, **usbliter8** (a June 2026
+   SecureROM exploit covering A12/A13), is documented against phone-family
+   chips (A12/A13) and has not been built or demonstrated against A12X/A12Z
+   specifically -- i.e. the very first step this project completed in 2024
+   (an unpatchable bootrom exploit for the target chip) does not yet exist
+   for that alternative at all.
+2. **Asahi Linux and Omarchy have zero iPad support.** Both are Mac-only,
+   targeting M-series (Apple Silicon Mac) hardware specifically -- their own
+   project scope has never included any iPad, iPhone, or A-series-in-an-iPad
+   target. Omarchy is a distribution *built on top of* Asahi/Arch ARM; it
+   inherits that same Mac-only hardware scope, not an independent one.
+
+So the A12X/A12Z + Omarchy path would require starting over from a strictly
+earlier point than where this project already stands: no exploit, no
+pre-boot environment, no device tree, no driver work, nothing -- versus the
+T7001 path's six already-tried, well-evidenced approaches and a boot chain
+that has been demonstrated to run *correctly* right up to (at least) the
+teardown/handoff boundary. Continuing with T7001, or pausing it for UART/JTAG
+tooling, remains the more mature option of the two.
+
+**Given that**, and given the user's explicit "not gonna invest in any new
+hardware" constraint (ruling out UART/JTAG for now too), one more
+software-only idea was approved: see `docs/project-status.md`'s "Step 7"
+section for the implementation. Summary of the hypothesis and why it's
+distinct from everything in Rounds 1-5: `src/kernel/entry.c`'s `pongo_entry()`
+shows that `linux_boot()` -- which, through Step 6, performed the entire
+~41 MiB kernel+DTB copy in a single `memcpy` -- runs *after*
+`lowlevel_set_identity()`/`lowlevel_cleanup()` (the teardown that has
+separated "PongoOS visibly alive" from "total silence" in every round so
+far) and *before* `exit_to_el1_image()` ever jumps anywhere. Every prior
+round's marker or diagnostic ran either before that teardown or was
+contingent on surviving that same in-line copy first -- none of them could
+distinguish "the copy itself is fatal" from "everything after the copy is
+fatal." Step 7 removes that confound by moving the copy to run *inside* the
+marker stub, *after* it has already painted the screen: reachability and the
+copy's own outcome become independently observable for the first time.
+
+This is explicitly a lower-confidence, more speculative test than Steps 4-6
+(none of which have panned out either) -- recorded here in that spirit, not
+as a strong new lead. If it produces the same clean silence as Step 6, the
+Round 5 recommendation (UART/JTAG, or pausing here) stands unchanged and
+should be treated as the next real step rather than searching for a Round 7.
+
 ## Sources
 
 - [konradybcio/pongoOS](https://github.com/konradybcio/pongoOS)

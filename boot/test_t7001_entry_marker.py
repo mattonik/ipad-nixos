@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
-"""Static checks for Step 6: the entry-point safety margin, the generic ADT
-memory-map reservation, and the entry marker stub.
+"""Static checks for Step 7 (v10): moving the ~41 MiB kernel+DTB copy out of
+linux_boot()'s low-level, post-teardown context and into the entry marker
+stub itself, run *after* the marker has already painted the screen.
 
 This cannot exercise any of these on real hardware (they depend on live
 device state and a physical framebuffer), so it only checks structural
-invariants: the entry point has real margin above what real captured ADTs
-show, the generic reservation skips SEPFW (which keeps its existing
-treatment) and marks everything else no-map, x0 is never touched by the
-marker stub (must reach the real kernel with the DTB pointer intact), and
-the kernel is placed after -- not overlapping -- the marker's own space.
+invariants: the marker is staged after the kernel+DTB blob is known (not
+before, as in Step 6), the staged blob is cache_clean()'d before being
+handed to the marker as its physical copy source, linux_boot() no longer
+performs the big copy itself for T7001, and the marker stub still never
+touches x0, still ends with a br, and now also invalidates the icache
+after writing the copied kernel (since it just wrote fresh executable
+code) before jumping into it.
 """
 from pathlib import Path
 
@@ -60,11 +63,73 @@ for line in instruction_lines:
 # just observe (unlike the v1-v3 diagnostic-only markers).
 assert "+    br   x9" in patch
 
+# --- v10: the marker now performs the kernel+DTB copy itself, after it
+# has already painted the framebuffer and held -- so a watchdog reset
+# during that copy can no longer prevent the marker from ever being seen,
+# unlike Step 6 where the copy happened earlier, in linux_boot(), before
+# any jump at all. ------------------------------------------------------
+assert "kernel_dest" in asm_body or "kernel destination" in asm_body
+assert "kernel_src" in asm_body or "kernel source" in asm_body
+# A real word-copy loop: load from the source register, store to the dest
+# register, both post-incremented by 4 (32-bit words).
+assert "ldr  w18, [x15], 4" in patch
+assert "str  w18, [x16], 4" in patch
+# Freshly-written code needs an icache invalidate + full barrier sequence
+# before it's safe to branch into -- mirrors jump_to_image.S's own
+# sequence before its jump.
+assert "ic   iallu" in patch
+assert "dsb  sy" in patch
+assert "isb" in patch
+
+# --- marker_data layout: 40 bytes now (was 32 in Step 6), with the two
+# new kernel_src/kernel_copy_words fields appended after kernel_dest. ----
+assert "marker_size - 40" in patch
+assert "marker_size - 32" not in patch
+
+# --- linux_prep_boot(): the marker must be staged *after* gLinuxStage/
+# gLinuxStageSize are known (Step 6 staged it earlier, before the kernel
+# was even decompressed, so it could only ever paint the screen -- it had
+# no way to know the copy's source/length yet). ---------------------------
+prep_start = patch.index("void linux_prep_boot()")
+prep_body = patch[prep_start:patch.index("void linux_boot()", prep_start)]
+stage_kernel_pos = prep_body.index("linux_stage_kernel(&gLinuxStageAllocation")
+marker_alloc_pos = prep_body.index("alloc_contig(marker_alloc_size)")
+assert marker_alloc_pos > stage_kernel_pos, (
+    "marker must be staged after the kernel+DTB blob is staged, so it can "
+    "capture the real copy source/length"
+)
+
+# The staged blob is explicitly flushed to physical memory before the
+# marker (which reads it back via physical addressing, much later) is
+# handed its address -- must happen while gLinuxStage is still the
+# cacheable VA, i.e. before its translation to physical addressing.
+cache_clean_pos = prep_body.index("cache_clean(gLinuxStage, gLinuxStageSize)")
+translate_pos = prep_body.index("- kCacheableView + 0x800000000")
+assert cache_clean_pos < translate_pos, (
+    "gLinuxStage must be cache_clean()'d while still a cacheable VA, "
+    "before its translation to a physical address"
+)
+assert cache_clean_pos < marker_alloc_pos
+
+# --- linux_boot(): T7001 no longer copies the kernel here -- only the
+# marker. The big memcpy((void*)((uint64_t)gEntryPoint + ...), gLinuxStage,
+# gLinuxStageSize) that Step 6 ran unconditionally must now be reachable
+# only on the non-T7001 (A10) path. --------------------------------------
+boot_start = patch.index("void linux_boot()")
+boot_body = patch[boot_start:]
+boot_body = boot_body[:boot_body.index("\n+}\n+}\n") + len("\n+}\n+}\n")] if "\n+}\n+}\n" in boot_body else boot_body[:2000]
+assert "if (socnum == 0x7001) {" in boot_body
+assert "return;" in boot_body
+# The T7001 branch, up to its own return, must not contain the big-blob
+# memcpy -- only the marker copy. (gLinuxStageSize alone, used only for
+# the gTopOfKernelData bookkeeping, is fine -- it's gLinuxStage, the
+# buffer itself, that must not appear as a copy source here.)
+t7001_branch = boot_body[boot_body.index("if (socnum == 0x7001) {"):boot_body.index("return;")]
+assert "gLinuxStage," not in t7001_branch and ", gLinuxStage)" not in t7001_branch
+assert "memcpy(gEntryPoint, gLinuxMarkerStage, gLinuxMarkerStageSize);" in t7001_branch
+
 # --- Kernel placement doesn't overlap the marker's reserved space --------
 assert "gLinuxKernelOffset = 0x200000;" in patch
 assert "(uint64_t)gEntryPoint + gLinuxKernelOffset" in patch
-# The marker is written to gEntryPoint directly (not offset), and its own
-# allocation is rounded up to a 16 KiB page -- far under the 2 MiB gap.
-assert "memcpy(gEntryPoint, gLinuxMarkerStage, gLinuxMarkerStageSize);" in patch
 
-print("t7001 entry marker / generic reservation / entry point checks passed")
+print("t7001 entry marker / generic reservation / entry point / v10 kernel-copy-in-marker checks passed")

@@ -1,21 +1,31 @@
 diff --git a/src/boot/t7001_entry_marker.S b/src/boot/t7001_entry_marker.S
 new file mode 100644
-index 0000000..b6cf45a
+index 0000000..561b7d2
 --- /dev/null
 +++ b/src/boot/t7001_entry_marker.S
-@@ -0,0 +1,67 @@
+@@ -0,0 +1,85 @@
 +/*
 + * t7001_entry_marker.S — observability stub placed at the real T7001 Linux
 + * entry point, ahead of the actual kernel Image. Not part of upstream
 + * pongoOS.
 + *
-+ * Unlike the abandoned Step 1-3 marker (a separate custom jump_to_image
-+ * call bypassing the real exit path), this stub runs *through* the same,
-+ * already-proven exit_to_el1_image() mechanism used for XNU boot on this
-+ * device, in the exact physical position the kernel itself occupies.
-+ * gEntryPoint stays the PongoOS jump target (unchanged since Step 4); the
-+ * real kernel Image is placed T7001_MARKER_RESERVE bytes after it
-+ * (linux.c), and this stub fills that gap.
++ * v1 (2026-09-04, Step 6): painted the framebuffer, held briefly, then
++ * branched into the kernel Image that linux_boot() had already copied to
++ * its destination *before* this stub ever ran. Confirmed staged correctly
++ * (no allocation/staging errors, correct addresses printed), but never
++ * observed on screen across a 20s/60fps recording -- a clean negative,
++ * unlike every ambiguous earlier sighting.
++ *
++ * v2 (this version) tests a specific hypothesis for that silence: the
++ * ~41 MiB kernel copy that used to happen in linux_boot(), in the
++ * low-level post-teardown context (interrupts disabled, possibly
++ * uncached), before any jump at all -- if that copy is far slower than it
++ * looks (uncached DRAM access can be far slower than cached), it could
++ * trip a hardware watchdog reset before execution ever reaches this stub
++ * or the kernel. This version paints the marker and holds *first* --
++ * proving reachability on its own, independent of anything after -- then
++ * does the big kernel copy itself, *after* jumping here, so a watchdog
++ * during that copy can no longer prevent the marker from ever being seen.
 + *
 + * jump_to_image()'s epilogue (via stage3_exit_to_el1_image, itself invoked
 + * through the shared exit_to_el1_image() call) leaves, at entry here:
@@ -23,52 +33,60 @@ index 0000000..b6cf45a
 + *   x1 = x2 = x3 = 0 — MUST remain 0 for the real kernel entry
 + *   x30 = this stub's own physical address — already consumed by the
 + *         `ret` that got us here, unused from here on
-+ *
-+ * Paints a marker directly on the physical framebuffer (the same raw
-+ * physical pointer pongo_entry itself assigns to gFramebuffer at this
-+ * exact phase, for every boot path — the mechanism xnu's own `xfb`/-v
-+ * verbose boot output relies on, and separately confirmed safe by
-+ * t7001_color_test), holds briefly, then branches to the real kernel
-+ * entry with x0/x1/x2/x3 intact.
-+ *
-+ * If this is ever seen on screen, execution reached this exact point
-+ * with the boot-protocol registers intact — full stop, regardless of
-+ * what happens afterward. Whatever happens next is inside the real
-+ * kernel's own earliest code, not this exit/jump mechanism (which
-+ * Step 4 already showed matches the one proven to work for XNU boot).
-+ * If it is never seen, the failure is at or before this point, which
-+ * would be new information no prior attempt has produced.
 + */
 +.text
 +.align 4
 +.global _t7001_entry_marker
 +_t7001_entry_marker:
-+    adr  x9, marker_data
-+    ldr  x10, [x9]            // x10 = framebuffer physical base (0 disables the marker)
++    adr  x14, marker_data
++    // --- paint the framebuffer: proves reachability on its own ---
++    ldr  x10, [x14]            // x10 = framebuffer physical base (0 disables the marker)
 +    cbz  x10, 1f
-+    ldr  w11, [x9, 8]         // w11 = marker pixel value
-+    ldr  w12, [x9, 12]        // w12 = word count (framebuffer size in 32-bit words)
++    ldr  w11, [x14, 8]         // w11 = marker pixel value
++    ldr  w12, [x14, 12]        // w12 = word count (framebuffer size in 32-bit words)
 +0:
 +    str  w11, [x10], 4
 +    subs w12, w12, 1
 +    b.ne 0b
 +    dsb  sy
-+    ldr  w13, [x9, 20]        // w13 = delay iteration count, so a fast camera has a chance to catch it
++1:
++    // --- hold briefly, so a camera has a chance to catch it ---
++    ldr  w13, [x14, 36]        // w13 = delay iteration count
 +2:
 +    subs w13, w13, 1
 +    b.ne 2b
-+1:
-+    ldr  x9, [x9, 16]         // x9 = real kernel entry physical address
++    // --- now do the real kernel's copy, after the marker already ran ---
++    ldr  x16, [x14, 16]        // x16 = kernel destination physical address
++    ldr  x15, [x14, 24]        // x15 = kernel source physical address (gLinuxStage)
++    ldr  w17, [x14, 32]        // w17 = kernel copy length, in 32-bit words
++    cbz  w17, 4f
++3:
++    ldr  w18, [x15], 4
++    str  w18, [x16], 4
++    subs w17, w17, 1
++    b.ne 3b
++4:
++    // Freshly-written instructions: the icache may not see them yet.
++    // Mirrors jump_to_image.S's own barrier sequence before its jump.
++    dsb  sy
++    ic   iallu
++    dsb  sy
++    isb
++    ldr  x9, [x14, 16]         // x9 = kernel destination == the real kernel entry
++    mov  x1, 0
++    mov  x2, 0
++    mov  x3, 0
 +    br   x9
 +
 +.align 3
 +marker_data:
 +    .quad 0   // +0:  framebuffer physical base address (patched; 0 disables the marker)
 +    .word 0   // +8:  marker pixel value, 32bpp a8b8g8r8 (patched)
-+    .word 0   // +12: word count (patched)
-+    .quad 0   // +16: real kernel entry physical address (patched)
-+    .word 0   // +20: delay iteration count (patched)
-+    .word 0   // +24: padding, unused
++    .word 0   // +12: word count for the framebuffer fill (patched)
++    .quad 0   // +16: kernel destination physical address == jump target (patched)
++    .quad 0   // +24: kernel source physical address, i.e. gLinuxStage (patched)
++    .word 0   // +32: kernel copy length in 32-bit words (patched)
++    .word 0   // +36: delay iteration count (patched)
 +.global _t7001_entry_marker_end
 +_t7001_entry_marker_end:
 diff --git a/src/kernel/mm.c b/src/kernel/mm.c
@@ -97,7 +115,7 @@ index c3f0f97..ac72202 100644
  #include <pongo.h>
  
 diff --git a/src/modules/linux/linux.c b/src/modules/linux/linux.c
-index 6ae4d5b..e01efcc 100644
+index 6ae4d5b..988c6a9 100644
 --- a/src/modules/linux/linux.c
 +++ b/src/modules/linux/linux.c
 @@ -38,6 +38,13 @@ bool ramdisk_initialized = false;
@@ -260,9 +278,10 @@ index 6ae4d5b..e01efcc 100644
 -            return;
 +            iprintf("Cannot update chosen node [bootargs]\n");
 +            return false;
-+        }
+         }
 +    }
-+
+ 
+-        fdt_appendprop_string(fdt, node, "bootargs", boot_args);
 +    // Mainline's Apple device trees declare /reserved-memory empty,
 +    // explicitly commented "To be filled by loader" -- this project's
 +    // patch never did, beyond a single SEPFW reservation added earlier.
@@ -278,7 +297,7 @@ index 6ae4d5b..e01efcc 100644
 +    if (node < 0)
 +    {
 +        iprintf("Failed to find /reserved-memory; the Linux DTB may let the kernel overwrite firmware-reserved memory and the framebuffer.\n");
-+    }
+     }
 +    else
 +    {
 +        // Reserve the framebuffer so Linux's own allocator can't reuse
@@ -311,9 +330,8 @@ index 6ae4d5b..e01efcc 100644
 +                                          gBootArgs->physBase - 0x800000000);
 +                fdt_appendprop(dtree, node1, "no-map", "", 0);
 +            }
-         }
- 
--        fdt_appendprop_string(fdt, node, "bootargs", boot_args);
++        }
++
 +        // Generically reserve every other named region under the ADT's
 +        // memory-map node (SEPFW excluded -- see reserve_memmap_region_cb),
 +        // rather than hand-picking which ones matter. The Step 5 fix
@@ -333,7 +351,7 @@ index 6ae4d5b..e01efcc 100644
 +        {
 +            iprintf("Failed to find memory-map in device tree; cannot generically reserve ADT regions.\n");
 +        }
-     }
++    }
 +
 +    return true;
  }
@@ -367,7 +385,7 @@ index 6ae4d5b..e01efcc 100644
  
      while (buf[0])
      {
-@@ -277,13 +427,149 @@ void fdt_select_dtree(void *fdt)
+@@ -277,17 +427,159 @@ void fdt_select_dtree(void *fdt)
          if (!strcmp(key, (char *)buf))
          {
              iprintf("Found device tree for %s (%d bytes).\n", key, len);
@@ -519,7 +537,17 @@ index 6ae4d5b..e01efcc 100644
  }
  
  void linux_prep_boot()
-@@ -315,15 +601,19 @@ void linux_prep_boot()
+ {
++    // Only meaningful when socnum == 0x7001; captured early (see below)
++    // because gBootArgs->Video stops being valid partway through this
++    // function, but the marker that needs them isn't staged until the end.
++    uint64_t marker_fb_base = 0;
++    uint64_t marker_fb_words = 0;
++
+     if (!ramdisk_initialized)
+     {
+         ramdisk_initialized = true;
+@@ -315,15 +607,19 @@ void linux_prep_boot()
      }
      else
      {
@@ -543,7 +571,7 @@ index 6ae4d5b..e01efcc 100644
      }
  
  #define pixfmt0 (&disp[0x402c / 4])
-@@ -343,31 +633,88 @@ void linux_prep_boot()
+@@ -343,31 +639,139 @@ void linux_prep_boot()
      puts("This is only supported on iPhone 7 for now and works to a lesser extent on other A10 devices. Behavior on non-A10 devices is undefined!!");
  
      gEntryPoint = (void *)(0x800080000);
@@ -600,29 +628,13 @@ index 6ae4d5b..e01efcc 100644
 +            iprintf("Failed to find SEPFW region in device tree.\n");
 +        }
 +
-+        // Stage the entry marker (t7001_entry_marker.S). Must happen here,
-+        // before gBootArgs is repurposed below to mean "the Linux DTB's
-+        // final physical address" for the shared exit_to_el1_image() call
-+        // -- gBootArgs->Video is only valid before that reassignment.
-+        gLinuxMarkerStage = NULL;
-+        uint64_t marker_size = (uint64_t)(t7001_entry_marker_end - t7001_entry_marker);
-+        uint64_t marker_alloc_size = (marker_size + 0x3fffull) & ~0x3fffull;
-+        void *marker_alloc = alloc_contig(marker_alloc_size);
-+        if (!marker_alloc) {
-+            iprintf("T7001 entry marker allocation failed (%llu bytes).\n", marker_alloc_size);
-+        } else {
-+            memcpy(marker_alloc, t7001_entry_marker, marker_size);
-+            uint8_t *data = (uint8_t *)marker_alloc + (marker_size - 32);
-+            uint64_t fb_words = (gBootArgs->Video.v_height * gBootArgs->Video.v_rowBytes) / 4;
-+            *(uint64_t *)(data + 0)  = gBootArgs->Video.v_baseAddr;
-+            *(uint32_t *)(data + 8)  = 0xff000000u; // opaque black, a8b8g8r8 -- validated by t7001_color_test
-+            *(uint32_t *)(data + 12) = (uint32_t)fb_words;
-+            *(uint64_t *)(data + 16) = (uint64_t)gEntryPoint + gLinuxKernelOffset;
-+            *(uint32_t *)(data + 20) = 30000000u; // brief hold, so a fast camera can catch it
-+            cache_clean(marker_alloc, marker_alloc_size);
-+            gLinuxMarkerStage = (void *)(((uint64_t)marker_alloc) - kCacheableView + 0x800000000);
-+            gLinuxMarkerStageSize = marker_size;
-+        }
++        // gBootArgs->Video is only valid before it's repurposed below to
++        // mean "the Linux DTB's final physical address" for the shared
++        // exit_to_el1_image() call -- capture what the marker needs now,
++        // into locals, even though the marker itself isn't staged until
++        // the end of this function (see the comment down there for why).
++        marker_fb_base = gBootArgs->Video.v_baseAddr;
++        marker_fb_words = (gBootArgs->Video.v_height * gBootArgs->Video.v_rowBytes) / 4;
      }
 -    void *gLinuxDtre = (void *)((((uint64_t)gLinuxStage) + image_size + 7ull) & -8ull);
 -    memcpy(gLinuxDtre, fdt, LINUX_DTREE_SIZE);
@@ -638,6 +650,56 @@ index 6ae4d5b..e01efcc 100644
 -    iprintf("Booting Linux: %p(%p)\n", gEntryPoint, gBootArgs);
 +    gBootArgs = (void *)((((uint64_t)gEntryPoint + gLinuxKernelOffset) + image_size + 7ull) & -8ull);
 +    iprintf("Booting Linux: %p(%p)\n", (void *)((uint64_t)gEntryPoint + gLinuxKernelOffset), gBootArgs);
++
++    if (socnum == 0x7001) {
++        // v10 (docs/project-status.md Step 7): the marker stub is staged
++        // last, once the kernel+DTB blob (gLinuxStage/gLinuxStageSize) is
++        // fully known, because it now performs that ~41 MiB copy itself
++        // -- see t7001_entry_marker.S for the full rationale. Flush it to
++        // physical memory explicitly while gLinuxStage is still the
++        // cacheable VA mapping it was written through: the marker's own
++        // copy loop reads it back via physical/post-teardown addressing
++        // much later than the old in-line memcpy did, so a stale cache
++        // line can no longer confound this test the way it could have
++        // gone unnoticed before (the old code relied entirely on
++        // lowlevel_cleanup()'s own teardown to make this visible).
++        cache_clean(gLinuxStage, gLinuxStageSize);
++
++        gLinuxMarkerStage = NULL;
++        uint64_t marker_size = (uint64_t)(t7001_entry_marker_end - t7001_entry_marker);
++        uint64_t marker_alloc_size = (marker_size + 0x3fffull) & ~0x3fffull;
++        void *marker_alloc = alloc_contig(marker_alloc_size);
++        if (!marker_alloc) {
++            iprintf("T7001 entry marker allocation failed (%llu bytes).\n", marker_alloc_size);
++        } else {
++            memcpy(marker_alloc, t7001_entry_marker, marker_size);
++            uint8_t *data = (uint8_t *)marker_alloc + (marker_size - 40);
++            uint64_t kernel_dest = (uint64_t)gEntryPoint + gLinuxKernelOffset;
++            // Physical address, computed directly rather than read back
++            // from the gLinuxStage global -- that global is still the
++            // cacheable VA at this point in the function (translated to
++            // physical only after this block, see below) and the marker
++            // stub's copy loop runs in a physically-addressed context.
++            uint64_t kernel_src = (uint64_t)gLinuxStage - kCacheableView + 0x800000000ull;
++            uint64_t kernel_copy_words = (gLinuxStageSize + 3ull) / 4ull;
++            *(uint64_t *)(data + 0)  = marker_fb_base;
++            *(uint32_t *)(data + 8)  = 0xff000000u; // opaque black, a8b8g8r8 -- validated by t7001_color_test
++            *(uint32_t *)(data + 12) = (uint32_t)marker_fb_words;
++            *(uint64_t *)(data + 16) = kernel_dest;
++            *(uint64_t *)(data + 24) = kernel_src;
++            *(uint32_t *)(data + 32) = (uint32_t)kernel_copy_words;
++            *(uint32_t *)(data + 36) = 30000000u; // brief hold, so a fast camera can catch it
++            cache_clean(marker_alloc, marker_alloc_size);
++            gLinuxMarkerStage = (void *)(((uint64_t)marker_alloc) - kCacheableView + 0x800000000);
++            gLinuxMarkerStageSize = marker_size;
++            iprintf("[t7001] marker: fb=%p dest=%p src=%p words=%llu\n",
++                    (void *)marker_fb_base, (void *)kernel_dest, (void *)kernel_src, kernel_copy_words);
++        }
++    }
++
++    // kernel_src above must be captured before this translation to
++    // physical/post-teardown addressing -- everything past this point
++    // treats gLinuxStage as a physical address, not a cacheable VA.
      gLinuxStage = (void *)(((uint64_t)gLinuxStage) - kCacheableView + 0x800000000);
  }
  
@@ -645,8 +707,25 @@ index 6ae4d5b..e01efcc 100644
  {
 -    memcpy(gEntryPoint, gLinuxStage, gLinuxStageSize);
 -    gTopOfKernelData = (uint64_t)gEntryPoint + gLinuxStageSize;
-+    if (socnum == 0x7001 && gLinuxMarkerStage) {
-+        memcpy(gEntryPoint, gLinuxMarkerStage, gLinuxMarkerStageSize);
++    if (socnum == 0x7001) {
++        // v10 (docs/project-status.md Step 7): for T7001, only the tiny
++        // entry marker is copied here. It performs the large kernel+DTB
++        // copy itself, after painting the screen -- see
++        // t7001_entry_marker.S for the full rationale. This function
++        // (linux_boot()) runs from pongo_entry() in the low-level,
++        // post-teardown context reached via lowlevel_set_identity()/
++        // lowlevel_cleanup() -- the same context every silent hang so
++        // far has occurred in -- so the ~41 MiB copy that used to happen
++        // right here, in that context, before any jump at all, was never
++        // ruled out as a cause (e.g. a watchdog reset during a slow
++        // uncached copy). Moving it to run *after* the jump means the
++        // marker's visibility is no longer contingent on that copy's
++        // outcome.
++        if (gLinuxMarkerStage) {
++            memcpy(gEntryPoint, gLinuxMarkerStage, gLinuxMarkerStageSize);
++        }
++        gTopOfKernelData = (uint64_t)gEntryPoint + gLinuxKernelOffset + gLinuxStageSize;
++        return;
 +    }
 +    memcpy((void *)((uint64_t)gEntryPoint + gLinuxKernelOffset), gLinuxStage, gLinuxStageSize);
 +    gTopOfKernelData = (uint64_t)gEntryPoint + gLinuxKernelOffset + gLinuxStageSize;
