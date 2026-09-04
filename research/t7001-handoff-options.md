@@ -740,6 +740,29 @@ longer just the best remaining option; per this investigation's own
 research, it is the only one left that isn't already flagged as more
 speculative and lower-value than everything already tried.
 
+**Third update, same day**: the user clarified they already own an A12X
+iPad -- no purchase needed for that path, unlike the framing this section's
+original A12X/A12Z research assumed. Re-checked the exploit landscape fresh
+(rather than relying on the earlier research pass) to see if anything has
+moved since. It hasn't: `usbliter8`'s own repository states A12X/A12Z
+support is "theoretically possible... but not implemented yet," with no
+listed timeline or active work, three months after its June 2026 release.
+The `ipadlinux.org` community site (a dedicated tracker for exactly this
+space) confirms no working Linux path exists for any A12X/A12Z device.
+
+Owning the hardware removes the *cost* barrier the original A12X framing was
+built around, but not the *technical* one: there is still no way to get any
+code execution on an A12X/A12Z device at all, let alone boot a kernel.
+Building that from scratch -- finding or adapting a working SecureROM
+exploit for a chip variant nobody has yet demonstrated it on -- is a
+fundamentally different, much larger, and far less certain undertaking than
+anything in this project so far, which has always had the benefit of a
+*proven* exploit (checkm8) and a *proven* reference Linux implementation
+(konradybcio's 2022 work, later merged into mainline) for the T7001/Air 2
+target. The A12X path currently has neither. This doesn't change the
+recommendation above: if continuing at all, the Air 2/T7001 path with a
+UART/JTAG accessory remains the far better-evidenced bet.
+
 ## Sources
 
 - [konradybcio/pongoOS](https://github.com/konradybcio/pongoOS)
@@ -754,3 +777,13 @@ speculative and lower-value than everything already tried.
 - [SoMainline/linux-apple-resources — HOWTO.md](https://github.com/SoMainline/linux-apple-resources/blob/master/HOWTO.md)
 - postmarketOS wiki device page (`wiki.postmarketos.org`) -- blocked by an Anubis
   anti-bot challenge during this research; check manually in a browser.
+- [ahmadkamal09999-tech/usbliter8](https://github.com/ahmadkamal09999-tech/usbliter8) --
+  the A12/A13 SecureROM exploit itself; states A12X/A12Z support as
+  "theoretically possible... but not implemented yet," checked fresh in the
+  third update above
+- [usbliter8 coverage — The Hacker News](https://thehackernews.com/2026/06/unpatchable-usbliter8-exploit-breaks.html),
+  [Security Affairs](https://securityaffairs.com/193965/hacking/usbliter8-brings-unpatchable-bootrom-exploit-to-apple-a12-and-a13-devices.html),
+  [The Register](https://www.theregister.com/security/2026/06/19/researchers-drop-checkm8-style-bootrom-exploit-for-a12-and-a13-iphones/5259028)
+- [ipadlinux.org](https://ipadlinux.org/) -- community tracker for Linux-on-iPad
+  efforts across all chip generations; confirms no working path exists for
+  A12X/A12Z as of this check
