@@ -1496,20 +1496,24 @@ doesn't overlap the marker's reserved space). **Not yet run on hardware.**
 
 ## Playbook: next hardware session
 
-Updated 2026-09-04 for Step 7. Self-contained -- shouldn't require reading
-the rest of this file to act on.
+Updated 2026-09-04 after the v10 hardware round (see "v10 hardware result"
+under Step 7 below). Self-contained -- shouldn't require reading the rest of
+this file to act on.
 
 ### Setup
 
 Binary ready to flash: `boot/Pongo-t7001-diagnostic.bin`, SHA-256
-`5f85a4721aa1f61b324776a11c7dad03885f00ac87f2e40b4e302328a6bdb3ff` (Step 7:
-kernel+DTB copy moved from `linux_boot()` into the entry marker stub itself,
-run after the marker paints the screen -- testing whether a watchdog reset
-during that copy, in the low-level post-teardown context, has been the cause
-of every silent hang so far; see "Step 7" section above for the full
-reasoning). Confirm the file on disk still matches that hash before flashing
-(`shasum -a 256 boot/Pongo-t7001-diagnostic.bin`) -- if it doesn't, something
-rebuilt it; check `git log -- boot/pongo-t7001.patch` for what changed.
+`fad104a957a81ae0d70e1b0d41de0defde511d0b4bc09bf4e3e30d4cb4a57087` (Step 7,
+v11: kernel+DTB copy moved from `linux_boot()` into the entry marker stub
+itself, run after the marker paints the screen -- testing whether a watchdog
+reset during that copy, in the low-level post-teardown context, has been the
+cause of every silent hang so far. v10, the first build of this idea,
+crashed on hardware with a PongoOS-internal panic caused by a bug in this
+patch's own reordering, unrelated to that hypothesis -- fixed in v11; see
+"Step 7" and "v10 hardware result" below for the full story). Confirm the
+file on disk still matches that hash before flashing (`shasum -a 256
+boot/Pongo-t7001-diagnostic.bin`) -- if it doesn't, something rebuilt it;
+check `git log -- boot/pongo-t7001.patch` for what changed.
 
 ```bash
 sudo /tmp/palera1n-arm64 --pongo-shell --override-pongo "/Users/martinp/Work/Sandbox/ipadlinux/ipad-nixos/boot/Pongo-t7001-diagnostic.bin" --debug-logging
@@ -1762,7 +1766,74 @@ completely separate clean-room clone+build: both produced the byte-identical
 (now also checks the marker is staged only after the kernel blob is known,
 the blob is `cache_clean()`'d before the translation to physical addressing,
 the in-stub copy loop and icache-invalidate sequence exist, and `linux_boot()`
-no longer copies the kernel directly for T7001). **Not yet run on hardware.**
+no longer copies the kernel directly for T7001).
+
+### v10 hardware result: a PongoOS-internal panic, caused by a bug in this patch (2026-09-04)
+
+Run for real, same day. `linux_diag` reproduced the exact known-good output
+from every prior verified run (`Reserved 20 additional ADT memory-map
+region(s).`, same addresses) -- the sanity check passed. `linux_t7001` was
+then sent and, for the first time in this entire investigation, **PongoOS
+did not go silent -- it printed a panic**:
+
+```
+This is only supported on iPhone 7 for now and works to a lesser extent on other A10 devices.
+
+panic: OOB phys_reference: 0x07c230000
+crashed task: kernel
+```
+
+(Photographed from the device; `phys-reference` above is `phys_reference`,
+PongoOS's own internal reference-counting allocator function -- the hyphen
+is a rendering artifact, not a real function name.)
+
+This was **not** evidence about the watchdog hypothesis Step 7 set out to
+test -- it was a real bug in this round's own restructuring, caught before
+the device ever got far enough to test that hypothesis at all. Root cause,
+found by reading `src/kernel/mm.c` from the pinned PongoOS checkout:
+`alloc_contig()` (called for the marker's own allocation) goes through
+`alloc_phys()` and `phys_reference()`, both of which dereference
+`gBootArgs->physBase` on every single call -- not a value cached once. This
+patch's existing code (present since before Step 6, not something this round
+introduced) repurposes the *global* `gBootArgs` variable partway through
+`linux_prep_boot()` to hold the future Linux DTB physical address, for the
+shared `exit_to_el1_image()` call. The v10 restructuring moved the marker's
+`alloc_contig()` call to run *after* that repurposing (it needed
+`gLinuxStage`/`gLinuxStageSize`, only known post-kernel-staging, and the
+repurposing line sits in between) -- so that allocator call was reading
+`->physBase` through a pointer that no longer pointed at a real `boot_args`
+struct, corrupting the physical-page bookkeeping used by every other
+allocation from that point on, including likely the kernel's own final
+placement.
+
+**Fixed**: reordered so the entire marker-staging block (the flush plus the
+allocation) runs *before* the `gBootArgs` repurposing line, not after --
+nothing in that block actually needs the repurposed value (`kernel_dest`,
+`kernel_src`, and `kernel_copy_words` are all computed independently of
+`gBootArgs`), so this was a pure reordering with no other logic change.
+Added a regression check to `boot/test_t7001_entry_marker.py` asserting the
+marker's `alloc_contig()` call textually precedes the `gBootArgs =`
+repurposing line, so this exact class of bug fails the test suite before
+reaching hardware next time. Rebuilt and re-verified via the usual two
+independent clean-room clone+builds: byte-identical 270,416-byte binary,
+SHA-256 `fad104a957a81ae0d70e1b0d41de0defde511d0b4bc09bf4e3e30d4cb4a57087`.
+All five `boot/test_*.py` pass. **This fixed build has not yet been run on
+hardware** -- the watchdog-during-copy hypothesis Step 7 was actually meant
+to test remains untested; the v10 hardware round only found and fixed an
+unrelated bug in the harness itself.
+
+One genuinely new, positive fact this round did establish, independent of
+the bug above: **this is the first time in eight hardware attempts that a
+handoff produced an on-screen panic with readable diagnostic text instead of
+total silence.** It happened before `lowlevel_set_identity()`/
+`lowlevel_cleanup()` teardown even begins (`linux_prep_boot()` runs earlier,
+"invoked in sched task with MMU on" per its own comment, entirely separate
+from `linux_boot()` and the post-teardown jump sequence) -- so it doesn't
+bear on whether PongoOS can produce visible output *after* that teardown,
+which remains exactly as unknown as before. But it does confirm the
+device's display and PongoOS's own panic/print path both still work
+correctly under real handoff conditions, for whatever that's worth going
+forward.
 
 ## Driver readiness and approval gate (2026-09-02)
 
@@ -1841,7 +1912,7 @@ is the reference for the intentionally minimal board description.
 | Current RAM-only Pongo session | ✅ Active after verified handoff-candidate diagnostic; transient and RAM-only |
 | Linux payload upload | ✅ Transferred once; exposed PongoOS pre-handoff defects |
 | Guarded T7001 diagnostic PongoOS | ✅ Matched-toolchain Pongo, USB, aligned Image/DTB/initrd ranges, Linux register contract, and no-jump guard are proven on T7001 |
-| Linux kernel boot | ❌ Not achieved; 8 hardware handoff attempts, all silent hangs; Step 6 (memory-size fix, confirmed-safe entry point, generic ADT reservation, entry marker) ran correctly by every independent check including the real device's own ADT, marker still showed nothing; Step 7 (kernel copy moved into the marker itself, testing a watchdog-during-copy hypothesis, user explicitly ruled out new hardware) built and verified, not yet run on hardware — UART/JTAG remains the recommendation if this doesn't change the result, see research/t7001-handoff-options.md Round 5 |
+| Linux kernel boot | ❌ Not achieved; 9 hardware handoff attempts (8 silent hangs, 1 PongoOS-internal panic from a bug in this patch's own v10 reordering, fixed in v11); Step 6 ran correctly by every independent check including the real device's own ADT, marker still showed nothing; Step 7/v11 (kernel copy moved into the marker itself, testing a watchdog-during-copy hypothesis, user explicitly ruled out new hardware) built and verified, not yet run on hardware — UART/JTAG remains the recommendation if this doesn't change the result, see research/t7001-handoff-options.md Round 5 |
 | Display/touch/Wi‑Fi/Bluetooth validation | ❌ Not started |
 | Usable tethered Linux tablet | ❌ Future milestone |
 

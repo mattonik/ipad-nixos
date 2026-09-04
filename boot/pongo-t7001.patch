@@ -115,7 +115,7 @@ index c3f0f97..ac72202 100644
  #include <pongo.h>
  
 diff --git a/src/modules/linux/linux.c b/src/modules/linux/linux.c
-index 6ae4d5b..988c6a9 100644
+index 6ae4d5b..457ca09 100644
 --- a/src/modules/linux/linux.c
 +++ b/src/modules/linux/linux.c
 @@ -38,6 +38,13 @@ bool ramdisk_initialized = false;
@@ -571,7 +571,7 @@ index 6ae4d5b..988c6a9 100644
      }
  
  #define pixfmt0 (&disp[0x402c / 4])
-@@ -343,31 +639,139 @@ void linux_prep_boot()
+@@ -343,31 +639,153 @@ void linux_prep_boot()
      puts("This is only supported on iPhone 7 for now and works to a lesser extent on other A10 devices. Behavior on non-A10 devices is undefined!!");
  
      gEntryPoint = (void *)(0x800080000);
@@ -648,21 +648,32 @@ index 6ae4d5b..988c6a9 100644
  
 -    gBootArgs = (void *)((((uint64_t)gEntryPoint) + image_size + 7ull) & -8ull);
 -    iprintf("Booting Linux: %p(%p)\n", gEntryPoint, gBootArgs);
-+    gBootArgs = (void *)((((uint64_t)gEntryPoint + gLinuxKernelOffset) + image_size + 7ull) & -8ull);
-+    iprintf("Booting Linux: %p(%p)\n", (void *)((uint64_t)gEntryPoint + gLinuxKernelOffset), gBootArgs);
-+
 +    if (socnum == 0x7001) {
-+        // v10 (docs/project-status.md Step 7): the marker stub is staged
++        // v11 (docs/project-status.md Step 7): the marker stub is staged
 +        // last, once the kernel+DTB blob (gLinuxStage/gLinuxStageSize) is
 +        // fully known, because it now performs that ~41 MiB copy itself
-+        // -- see t7001_entry_marker.S for the full rationale. Flush it to
-+        // physical memory explicitly while gLinuxStage is still the
-+        // cacheable VA mapping it was written through: the marker's own
-+        // copy loop reads it back via physical/post-teardown addressing
-+        // much later than the old in-line memcpy did, so a stale cache
-+        // line can no longer confound this test the way it could have
-+        // gone unnoticed before (the old code relied entirely on
-+        // lowlevel_cleanup()'s own teardown to make this visible).
++        // -- see t7001_entry_marker.S for the full rationale. But this
++        // MUST still run before gBootArgs is repurposed just below to
++        // mean "the Linux DTB's final physical address" -- alloc_contig()
++        // (via alloc_phys()/phys_reference() in src/kernel/mm.c) reads
++        // gBootArgs->physBase on every call, and once gBootArgs no longer
++        // points at the real boot_args struct, that read is garbage. (An
++        // earlier version of this patch got this ordering backwards: the
++        // marker's own alloc_contig() call, moved here from its Step 6
++        // position without also moving it ahead of the reassignment,
++        // corrupted the physical page bookkeeping and produced a
++        // PongoOS-internal "OOB phys_reference" panic before any jump was
++        // ever attempted -- a bug in this patch, not new evidence about
++        // the watchdog hypothesis this step is actually testing.)
++        //
++        // Flush the kernel+DTB blob to physical memory explicitly while
++        // gLinuxStage is still the cacheable VA mapping it was written
++        // through: the marker's own copy loop reads it back via
++        // physical/post-teardown addressing much later than the old
++        // in-line memcpy did, so a stale cache line can no longer
++        // confound this test the way it could have gone unnoticed before
++        // (the old code relied entirely on lowlevel_cleanup()'s own
++        // teardown to make this visible).
 +        cache_clean(gLinuxStage, gLinuxStageSize);
 +
 +        gLinuxMarkerStage = NULL;
@@ -696,6 +707,9 @@ index 6ae4d5b..988c6a9 100644
 +                    (void *)marker_fb_base, (void *)kernel_dest, (void *)kernel_src, kernel_copy_words);
 +        }
 +    }
++
++    gBootArgs = (void *)((((uint64_t)gEntryPoint + gLinuxKernelOffset) + image_size + 7ull) & -8ull);
++    iprintf("Booting Linux: %p(%p)\n", (void *)((uint64_t)gEntryPoint + gLinuxKernelOffset), gBootArgs);
 +
 +    // kernel_src above must be captured before this translation to
 +    // physical/post-teardown addressing -- everything past this point

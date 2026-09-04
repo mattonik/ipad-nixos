@@ -711,6 +711,23 @@ as a strong new lead. If it produces the same clean silence as Step 6, the
 Round 5 recommendation (UART/JTAG, or pausing here) stands unchanged and
 should be treated as the next real step rather than searching for a Round 7.
 
+**Update, same day**: the first build of this idea (v10) was run on
+hardware and did not test the hypothesis at all -- it hit a PongoOS-internal
+panic (`OOB phys_reference`) caused by a genuine bug in this round's own
+code reordering (the marker's allocation ended up reading a global,
+`gBootArgs`, through a pointer this patch's existing code had already
+repurposed to mean something else by that point in the function -- see
+`docs/project-status.md`'s "v10 hardware result" under Step 7 for the full
+root-cause trace). Fixed in v11 by moving the allocation back ahead of that
+repurposing; verified via the usual two independent clean-room builds
+(identical SHA-256) and the full test suite, with a new regression check
+added specifically for this ordering. v11 has not yet been run on hardware,
+so the watchdog hypothesis itself remains exactly as untested as before this
+round -- the one substantive finding is that a handoff attempt can now
+produce a readable on-screen panic instead of total silence, which at least
+confirms the device's display and PongoOS's own print path work correctly
+under real handoff conditions.
+
 ## Sources
 
 - [konradybcio/pongoOS](https://github.com/konradybcio/pongoOS)

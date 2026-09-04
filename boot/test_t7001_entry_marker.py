@@ -111,6 +111,25 @@ assert cache_clean_pos < translate_pos, (
 )
 assert cache_clean_pos < marker_alloc_pos
 
+# --- Regression guard (v11): the marker's alloc_contig() call must happen
+# strictly *before* gBootArgs is repurposed to mean "the Linux DTB's final
+# physical address". alloc_contig() -> alloc_phys() -> phys_reference()
+# (src/kernel/mm.c) dereferences gBootArgs->physBase on every call; a v10
+# build got this ordering backwards (marker staged after the repurposing)
+# and PongoOS's own "OOB phys_reference" panic fired before any jump was
+# ever attempted, from garbage read through the repurposed pointer -- a
+# bug in the patch itself, not evidence about the watchdog hypothesis
+# Step 7 is actually testing. See docs/project-status.md Step 7 for the
+# hardware result that caught this. -----------------------------------
+gbootargs_repurpose_pos = prep_body.index(
+    "gBootArgs = (void *)((((uint64_t)gEntryPoint + gLinuxKernelOffset)"
+)
+assert marker_alloc_pos < gbootargs_repurpose_pos, (
+    "the marker's alloc_contig() call must run before gBootArgs is "
+    "repurposed -- alloc_contig() reads gBootArgs->physBase internally"
+)
+assert cache_clean_pos < gbootargs_repurpose_pos
+
 # --- linux_boot(): T7001 no longer copies the kernel here -- only the
 # marker. The big memcpy((void*)((uint64_t)gEntryPoint + ...), gLinuxStage,
 # gLinuxStageSize) that Step 6 ran unconditionally must now be reachable
