@@ -18,7 +18,7 @@ checkm8 exploit → pongoOS → Linux 6.19 kernel → NixOS initramfs (in RAM)
 
 1. **checkm8** — permanent, unpatchable bootrom exploit ([CVE-2019-8900](https://nvd.nist.gov/vuln/detail/CVE-2019-8900)) for Apple A5–A11 SoCs
 2. **pongoOS** — pre-boot environment loaded via checkm8, provides USB protocol for uploading payloads
-3. **Linux kernel** — cross-compiled for aarch64 with 16KB pages and Apple-specific drivers (touch, SPI, USB, framebuffer)
+3. **Linux kernel** — cross-compiled for aarch64 with 4 KiB pages on A7–A8X and Apple-specific drivers (touch, SPI, USB, framebuffer)
 4. **NixOS initramfs** — minimal root filesystem running entirely from RAM; it is archive-verified but not yet reached on hardware
 
 The boot is **tethered** — the iPad must be connected to a host computer via USB and re-flashed on every power cycle (~30 seconds).
@@ -64,13 +64,26 @@ For the Air 2, build and run only the guarded `--diagnostic` PongoOS path
 documented there until a T7001 handoff is explicitly ported; it validates the
 payload without attempting `bootl`.
 
+The next software-only experiment is the complete, pinned June 2022 stack that
+previously booted T7001, not another change to the modern diagnostic fork:
+
+```bash
+nix build .#packages.x86_64-linux.historical-payload \
+  -o result-historical-payload -L
+```
+
+See [the historical control runbook](docs/software-only-control.md). It keeps
+the known PongoOS, Linux and initramfs revisions together so later changes can
+be introduced one at a time.
+
 ## Project Structure
 
 ```
 ipad-nixos/
 ├── flake.nix              # Nix flake — kernel + initramfs build targets
 ├── kernel/
-│   └── default.nix        # Linux 6.19.3 config (16KB pages, Apple drivers)
+│   ├── default.nix        # Linux 6.19.3 config (4 KiB pages, Apple drivers)
+│   └── historical.nix     # Pinned June 2022 T7001 control kernel
 ├── nixos/
 │   ├── initramfs.nix      # Minimal RAM-only rootfs (BusyBox + dropbear SSH)
 │   └── initramfs-approaches.nix  # Documented alternative approaches
@@ -119,7 +132,7 @@ Linux 6.19.3 with key options for Apple hardware:
 
 | Feature | Config | Purpose |
 |---------|--------|---------|
-| 16KB pages | `ARM64_16K_PAGES` | Required by Apple SoCs |
+| 4 KiB pages | `ARM64_4K_PAGES` | Required by the documented A7–A8X bring-up |
 | Apple drivers | `COMPILE_TEST` | Unlocks drivers gated on `ARCH_APPLE` |
 | Touch | `TOUCHSCREEN_APPLE_Z2` | BCM5976 via Z2 protocol over SPI |
 | SPI | `SPI_APPLE` | Apple SPI controller (same A7–M4) |

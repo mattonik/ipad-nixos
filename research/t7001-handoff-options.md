@@ -6,6 +6,14 @@ failed to produce a confirmed Linux boot on the iPad Air 2 (A8X/T7001). See
 log; this document covers what was found by looking outside this repository, and
 ranks concrete next steps by how directly they're evidenced.
 
+> **2026-09-06 correction:** Rounds 1–7 ruled out changes to the modern patched
+> stack, not the complete 2022 stack. The historical PongoOS branch contains
+> low-level state changes across twelve files that were never tested together,
+> and the project kernel also used the wrong page size (16 KiB instead of 4 KiB
+> for A7–A8X). One software-only control is therefore reopened; see
+> [`docs/software-only-control.md`](../docs/software-only-control.md). If that
+> exact control also fails, the UART/JTAG-or-pause conclusion stands.
+
 ## The problem, in one paragraph
 
 Every real `linux_t7001` handoff attempt (5 hardware runs) produces the identical
@@ -139,10 +147,20 @@ keep chasing.
   groundwork for the Dybcio/Broks A7/A8/A8X work, but targets a different,
   already-supported chip (T8010/A10, the chip PongoOS's stock Linux module already
   targets) — not directly applicable to the T7001-specific gap here.
-- **Asahi Linux / m1n1**: a different SoC family entirely (M-series Apple Silicon
-  Macs, not A-series mobile SoCs) with a different bootloader (m1n1, not PongoOS)
-  and different exception-level/hypervisor model. Not pursued further — too large
-  an architectural gap to usefully diff against for this specific handoff bug.
+- **Asahi Linux / m1n1** (upstream `AsahiLinux/m1n1`): M-series Apple Silicon
+  Macs specifically, a different exception-level/hypervisor model than this
+  A-series mobile SoC. Cross-checked for DTB/reservation logic only (Round 3);
+  not pursued as a boot-chain replacement at the time.
+  >
+  > **2026-09-06 correction:** upstream m1n1 being Mac-only does not mean
+  > *m1n1* is Mac-only — `HoolockLinux` maintains a genuine A7-A11/T2 iDevice
+  > fork (branch `idevice`), with real T7001/A8X SoC identification in its
+  > source, loaded via a real, dedicated `bootm` command that exists on
+  > `checkra1n/PongoOS`'s `iOS15` branch (a direct descendant of this
+  > project's own pinned base revision). See Round 8 below and
+  > `docs/software-only-control.md` for the verified details and the
+  > working build. This was missed here because the original check only
+  > looked at upstream `AsahiLinux/m1n1`, not its iDevice-specific forks.
 
 ## Round 1 outcome (implemented, tested, and it wasn't enough)
 
@@ -763,6 +781,76 @@ target. The A12X path currently has neither. This doesn't change the
 recommendation above: if continuing at all, the Air 2/T7001 path with a
 UART/JTAG accessory remains the far better-evidenced bet.
 
+## Round 7: complete historical stack as a control (2026-09-06)
+
+The earlier analysis correctly identified `konradybcio`'s tree as the
+load-bearing reference, but the implementation strategy was incomplete: it
+transplanted selected differences into current PongoOS. Inspecting commit
+`1790c29` and its surrounding tree shows that the working state also includes
+`fix_a7()` at the final cleanup boundary, executable RAM/Pongo mappings, and
+different MMU, early-heap, stage-3 and entry code. Those interacting changes
+were never exercised as a unit by this project.
+
+The matching kernel side was also not a valid control. The SoMainline HOWTO
+explicitly specifies 4 KiB pages for A7–A8X, while our current package selected
+16 KiB. This cannot explain why the pre-kernel marker failed, but it could stop
+the kernel immediately after a successful jump and therefore invalidates any
+future kernel-level comparison.
+
+The minimum useful next test is now pinned and reproducible:
+
+- PongoOS `a7` at `a3b1f652f691ff35ad1cd7840f3dfe11afdd82c9`;
+- linux-apple `apple/v5.19-rc1` at
+  `a907b05f09bfea50511ea0e82dc14f70d999ba37`;
+- the published debug initramfs from linux-apple-resources at
+  `30780ec0fecdab849bb812e1dde52b87e614f45b`.
+
+See the control runbook for the exact build and launch sequence. If this boots,
+modernize one layer per hardware run. If it does not -- see Round 8
+immediately below for one further evidence-backed experiment before this
+investigation should pause pending the hardware-debug constraint changing.
+
+## Round 8: PongoOS's own `bootm` -> m1n1, an independent bootloader stage (2026-09-06)
+
+Every hypothesis tried through Round 7, including the historical-stack
+control above, shares one thing: they all jump from PongoOS directly to
+Linux. A materially different idea was proposed and is worth taking
+seriously, verified fact-by-fact against primary sources rather than
+accepted on summary alone (an earlier pass through this same idea wrongly
+dismissed it after checking only upstream `AsahiLinux/m1n1`, which genuinely
+is Mac-only -- the miss was not checking for iDevice-specific forks of it):
+
+- `checkra1n/PongoOS`'s **`iOS15`** branch adds a real, dedicated `bootm`
+  command (`command_register("bootm", "boots m1n1", pongo_boot_m1n1)`,
+  `e1313a7 Add m1n1 boot support`, `bb492b0 Load m1n1 at top of kernel
+  data`). This project's own pinned base revision
+  (`742d92a023d16c4cc9ebf9cb73b708bf92c52808`) is a direct git ancestor of
+  `iOS15` -- confirmed with `git merge-base --is-ancestor`.
+- **HoolockLinux** maintains a genuine Linux-on-A7-A11/T2-iDevice project,
+  including a fork of `AsahiLinux/m1n1` with real T7001/A8X SoC
+  identification (`#define T7001 0x7001`, `MIDR_PART_T7001_TYPHOON`) on a
+  branch named `idevice`.
+- `HoolockLinux/docs`'s prebuilt `binaries/Pongo.bin` was confirmed, via its
+  own embedded version string (`pongoOS 2.6.3-bb492b00`), to be built from
+  exactly the `iOS15` commit that adds m1n1 support -- not a stale or
+  unrelated build.
+
+This is a new experiment, not a control -- nobody has confirmed m1n1 boots
+Linux on this exact device; HoolockLinux's own project status describes the
+port as pre-general-use. But it exercises an independently-engineered
+bootloader stage instead of another variant of the `bootl`-style direct jump
+that has failed seven ways already, so a result here -- success, or a
+*different* failure signature than total silence -- would be new
+information regardless of outcome.
+
+Built and verified end-to-end: `nix build .#packages.x86_64-linux.m1n1-control`
+succeeds and produces `Pongo.bin`, `m1n1.bin`, and the concatenated
+`m1n1-linux.bin` payload. Two real bugs were found and fixed while getting
+there (a DNS-unreachable fetch running on the offline builder instead of the
+Mac; a missing "discard previous upload" step in `boot/load_m1n1.py`) -- see
+`docs/software-only-control.md`'s "Attempts and failures" for both. Not yet
+run on hardware.
+
 ## Sources
 
 - [konradybcio/pongoOS](https://github.com/konradybcio/pongoOS)
@@ -787,3 +875,10 @@ UART/JTAG accessory remains the far better-evidenced bet.
 - [ipadlinux.org](https://ipadlinux.org/) -- community tracker for Linux-on-iPad
   efforts across all chip generations; confirms no working path exists for
   A12X/A12Z as of this check
+- [checkra1n/PongoOS `iOS15` branch](https://github.com/checkra1n/PongoOS/tree/iOS15) --
+  adds the real `bootm`/m1n1 support identified in Round 8
+- [HoolockLinux/docs](https://github.com/HoolockLinux/docs), specifically
+  `tutorials/SETUP_pongoOS.md` -- the primary source for the `bootm` boot
+  sequence
+- [HoolockLinux/m1n1](https://github.com/HoolockLinux/m1n1), branch `idevice` --
+  the T7001/A8X-aware m1n1 fork used in Round 8

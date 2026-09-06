@@ -4,7 +4,10 @@
 
 **Goal:** Boot NixOS on iPad Air 2 via checkm8 → pongoOS → Linux, achieving serial console and framebuffer display output.
 
-**Architecture:** Cross-compile a 16KB-page aarch64 Linux kernel with A8X device tree from the NixOS host. Generate a minimal NixOS initramfs. Script the boot sequence using gaster/Achilles + pongoOS + load_linux.py. The entire system runs from RAM (initramfs).
+**Architecture:** Cross-compile a 4 KiB-page aarch64 Linux kernel with A8X device tree from the NixOS host. Generate a minimal NixOS initramfs. Script the boot sequence using gaster/Achilles + pongoOS + load_linux.py. The entire system runs from RAM (initramfs).
+
+> **Correction (2026-09-06):** the original plan incorrectly specified 16 KiB
+> pages. The canonical A7–A8X HOWTO requires 4 KiB; 16 KiB applies to A9 and newer.
 
 **Tech Stack:** Nix flake (cross-compilation), Linux kernel 6.13+ (A8X device tree support), pongoOS, gaster/Achilles (checkm8 exploit), Python (load_linux.py)
 
@@ -21,7 +24,7 @@ Understand current structure (devShell only, x86_64-linux).
 
 **Step 2: Add cross-compilation outputs**
 
-Add `packages.x86_64-linux.kernel` that cross-compiles an aarch64 Linux kernel with 16KB pages. Add `packages.x86_64-linux.initramfs` placeholder.
+Add `packages.x86_64-linux.kernel` that cross-compiles an aarch64 Linux kernel with 4 KiB pages. Add `packages.x86_64-linux.initramfs` placeholder.
 
 ```nix
 # In flake outputs, add:
@@ -51,13 +54,14 @@ git commit -m "feat: add aarch64 cross-compilation target to flake"
 
 **Step 1: Research existing kernel configs**
 
-Check HoolockLinux/docs and linux-apple-resources for the `config_16k` reference config targeting Apple A-series SoCs.
+Check the linux-apple-resources `example.config` and HOWTO; use its 4 KiB
+selection for A7–A8X rather than the unrelated 16 KiB setting for newer SoCs.
 
 **Step 2: Create kernel/config-ipad-air2**
 
 Minimal kernel config for iPad Air 2. Must include:
 - `CONFIG_ARM64=y`
-- `CONFIG_ARM64_PAGE_SHIFT=14` (16KB pages)
+- `CONFIG_ARM64_4K_PAGES=y` (4 KiB pages for A7–A8X)
 - `CONFIG_ARCH_APPLE=y`
 - `CONFIG_APPLE_AIC=y`
 - `CONFIG_FB_SIMPLE=y` or `CONFIG_DRM_SIMPLEDRM=y`
@@ -73,7 +77,7 @@ Minimal kernel config for iPad Air 2. Must include:
 Nix derivation that:
 - Uses Linux 6.13+ (or latest stable with A8X device tree patches)
 - Applies the iPad Air 2 kernel config
-- Cross-compiles for aarch64 with 16KB pages
+- Cross-compiles for aarch64 with 4 KiB pages
 - Outputs: `Image` (raw kernel binary) and DTBs; `Image.lzma` is generated separately for pongoOS
 
 **Step 4: Test build**
@@ -88,7 +92,7 @@ Verify it produces `Image` and the `apple/t7001-j81.dtb` / `apple/t7001-j82.dtb`
 
 ```bash
 git add kernel/
-git commit -m "feat: add iPad Air 2 kernel package with 16KB page config"
+git commit -m "feat: add iPad Air 2 kernel package with 4 KiB page config"
 ```
 
 ---
@@ -228,7 +232,7 @@ Check if the iPad display shows Linux boot messages or a login prompt.
 **Step 6: Debug and iterate**
 
 If boot fails, check serial output for panic messages. Common issues:
-- Wrong page size (must be 16KB)
+- Wrong page size (must be 4 KiB on A7–A8X)
 - Missing AIC driver
 - Device tree mismatch
 - initramfs mount failure

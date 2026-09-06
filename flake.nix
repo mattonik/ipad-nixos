@@ -7,6 +7,27 @@
       url = "github:cachix/devenv";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    linuxApple519 = {
+      url = "github:konradybcio/linux-apple/a907b05f09bfea50511ea0e82dc14f70d999ba37";
+      flake = false;
+    };
+    linuxAppleResources = {
+      url = "github:SoMainline/linux-apple-resources/30780ec0fecdab849bb812e1dde52b87e614f45b";
+      flake = false;
+    };
+    hoolockDocs = {
+      url = "github:HoolockLinux/docs/23ebe1fbc375599221553a7e1815e5de182a6b42";
+      flake = false;
+    };
+    # Fetched as a proper flake input (resolved on the Mac, which has real
+    # internet access) rather than via pkgs.fetchzip inside the package body
+    # -- that fetch used to run on the offline cross-compilation builder,
+    # which cannot resolve nightly.link/tarballs.nixos.org. Same class of fix
+    # already applied to linuxApple519/linuxAppleResources above.
+    hoolockM1n1 = {
+      url = "https://nightly.link/hoolocklinux/m1n1/actions/runs/33380676898/m1n1.zip";
+      flake = false;
+    };
   };
 
   outputs = { self, nixpkgs, devenv, ... }@inputs:
@@ -39,7 +60,7 @@
         localSystem.system = linuxBuildSystem;
         crossSystem = {
           config = "aarch64-unknown-linux-musl";
-          # 16KB page size is a kernel concern, not a userspace concern.
+          # The 4 KiB page size is a kernel concern, not a userspace concern.
           # musl and busybox do not need a special page-size override here.
         };
       };
@@ -70,10 +91,54 @@
         ];
       };
 
-      # Cross-compiled packages for iPad (aarch64, 16KB pages)
-      packages.${linuxBuildSystem} = {
+      # Cross-compiled packages for iPad (aarch64, 4 KiB pages on A7-A8X)
+      packages.${linuxBuildSystem} =
+        let
+          historicalKernel = pkgsCross.callPackage ./kernel/historical.nix {
+            source = inputs.linuxApple519;
+            historicalConfig = "${inputs.linuxAppleResources}/example.config";
+          };
+        in {
         # Linux kernel for iPad Air 2 (A8X)
         kernel = pkgsCross.callPackage ./kernel {};
+
+        # Exact kernel branch used by the June 2022 T7001 proof. Keep this as
+        # a control; do not add current-tree fixes until it has booted as-is.
+        historical-kernel = historicalKernel;
+
+        # Kernel, the published multi-device DTB pack, and debug initramfs in
+        # the exact file layout consumed by the historical PongoOS loader.
+        historical-payload = pkgs.runCommand "ipad-air2-linux-2022-control" {
+          nativeBuildInputs = [ pkgs.xz pkgs.xxd ];
+        } ''
+          mkdir -p "$out"
+          xz --format=lzma -c ${historicalKernel}/Image > "$out/Image.lzma"
+          mkdir -p work/arch/arm64/boot/dts
+          ln -s ${historicalKernel}/dtbs/apple work/arch/arm64/boot/dts/apple
+          (cd work && bash ${inputs.linuxAppleResources}/dtbpack.sh)
+          mv work/dtbpack "$out/dtbpack"
+          cp ${inputs.linuxAppleResources}/debug_initrd.img "$out/initrd"
+        '';
+
+        # Current software-only route: PongoOS bootm -> iDevice m1n1 -> the
+        # pinned historical kernel. m1n1 itself can be sent first as a visible
+        # handoff diagnostic without involving Linux.
+        m1n1-control = pkgs.runCommand "ipad-air2-m1n1-control" {
+          nativeBuildInputs = [ pkgs.gzip ];
+        } ''
+          mkdir -p "$out"
+          cp ${inputs.hoolockDocs}/binaries/Pongo.bin "$out/Pongo.bin"
+          cp ${inputs.hoolockM1n1}/m1n1.bin "$out/m1n1.bin"
+          gzip -n -c ${historicalKernel}/Image > "$out/Image.gz"
+          cp ${historicalKernel}/dtbs/apple/t7001-j81.dtb "$out/t7001-j81.dtb"
+          cp ${inputs.linuxAppleResources}/debug_initrd.img "$out/initramfs.gz"
+          printf '%s' 'chosen.bootargs=console=tty0 loglevel=8 ignore_loglevel rdinit=/init' \
+            > "$out/bootargs"
+          cat "$out/m1n1.bin" "$out/bootargs" "$out/t7001-j81.dtb" \
+            "$out/Image.gz" "$out/initramfs.gz" > "$out/m1n1-linux.bin"
+          sha256sum "$out/Pongo.bin" "$out/m1n1.bin" "$out/m1n1-linux.bin" \
+            > "$out/SHA256SUMS"
+        '';
 
         # Minimal initramfs — entire root filesystem in RAM
         # Build with SSH access:

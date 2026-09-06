@@ -1,20 +1,27 @@
 # iPad Linux Project Status
 
-Status date: 2026-09-04
+Status date: 2026-09-06
 Target: iPad Air 2 Wi‑Fi A1566, A8X/T7001, board J81/J81AP  
 Repository: [mattonik/ipad-nixos](https://github.com/mattonik/ipad-nixos)
 Upstream: [jacopone/ipad-nixos](https://github.com/jacopone/ipad-nixos)
 
-**Resuming after a break? Start at "UART/JTAG procurement and setup plan"**
-(search for that heading) -- as of 2026-09-04, that's the actual next step,
-not another PongoOS-side hardware round. Seven distinct software-only
-hypotheses have been tried and ruled out by real hardware results (see
-"Step 7" below and `research/t7001-handoff-options.md`); further iteration
-without independent execution visibility isn't a good use of another
-hardware cycle. "Playbook: next hardware session" (also near the end of
-this file) is still accurate for *how* to launch and interpret a PongoOS
-round, but there isn't a well-evidenced new thing to try with it until the
-cable exists.
+**Resuming after a break? Start at**
+[`docs/software-only-control.md`](software-only-control.md). A 2026-09-06
+audit found two things worth a hardware round before pursuing UART/JTAG: the
+complete 2022 T7001 stack was never tested together (only selected diffs
+were transplanted into the modern PongoOS fork), and this project's Linux
+configuration incorrectly used 16 KiB rather than the documented 4 KiB page
+size for A7–A8X. Both are fixed and built. A second, independent idea was
+also found and verified real: PongoOS's own `bootm` command (on its `iOS15`
+branch, a direct descendant of this project's pinned base) can load an
+iDevice fork of m1n1 (HoolockLinux) as its own bootloader stage before
+Linux -- architecturally different from every direct-jump variant tried so
+far. Both experiments are built and ready; see the doc for exact commands.
+The seven failed hypotheses below remain valid evidence about the modern
+patched stack specifically, not about either of these. UART/JTAG (a Tamarin
+Cable build, see "UART/JTAG procurement and setup plan" below) is still the
+plan once the user has built one -- these two experiments don't replace it,
+they're just cheaper to try first.
 
 ## Mission
 
@@ -80,7 +87,7 @@ USB Ethernet, console and SSH
   A8X.
 - **PongoOS:** pre-boot environment that should expose a USB protocol for
   uploading the Linux payload.
-- **Linux:** custom aarch64 kernel with Apple-specific support and 16 KB pages.
+- **Linux:** custom aarch64 kernel with Apple-specific support and 4 KiB pages.
 - **initramfs:** minimal statically linked musl/NixOS userspace with BusyBox,
   kmod and Dropbear SSH.
 
@@ -1905,7 +1912,58 @@ Air 2 already in hand is a different, much smaller category of purchase
 (often well under $50) -- worth the user's own judgment call on whether
 that distinction changes anything, not assumed either way here.
 
-## UART/JTAG procurement and setup plan (2026-09-04)
+## Reopened software-only control, plus an independent bootloader-stage route (2026-09-06)
+
+The previous UART/JTAG recommendation was based on seven failed handoff
+hypotheses in the modern PongoOS tree -- all of them variants of jumping from
+PongoOS straight to Linux. A source-level audit found two things worth
+trying before spending a hardware round on UART/JTAG.
+
+**1. A control we had not actually run**: the complete `konradybcio/pongoOS`
+`a7` branch together with its matching `linux-apple` `apple/v5.19-rc1` kernel
+and published debug initramfs. This is materially different from another
+blind patch -- the historical `messy but works` PongoOS change touched twelve
+files (mappings, MMU/heap setup, stage 3, entry assembly, CPU fixes, the
+final handoff); this project had only ever copied selected deltas into a
+modern tree, never run the full interacting set together. The same audit
+corrected a separate kernel error: SoMainline's HOWTO requires 4 KiB pages
+for A7–A8X, while our kernel selected 16 KiB.
+
+The historical PongoOS source builds cleanly at pinned revision
+`a3b1f652f691ff35ad1cd7840f3dfe11afdd82c9` with Apple CLT 14.2 (708,704
+bytes) -- but **not byte-reproducibly**: two independent clean-room rebuilds
+from the same commit and toolchain produced two different SHA-256 hashes,
+neither matching a third an earlier pass had recorded. Almost certainly
+`-flto` nondeterminism in the 2022 Makefile itself (this project's own
+patched-PongoOS builds *are* reproducible). Verify this one by source
+revision + successful build + correct size, not a fixed output hash.
+
+**2. An architecturally different route, found and independently verified
+fact-by-fact**: `checkra1n/PongoOS`'s `iOS15` branch (a direct git ancestor of
+this project's pinned base) adds a genuine `bootm` command that loads
+[m1n1](https://github.com/AsahiLinux/m1n1) -- and HoolockLinux maintains a
+real T7001/A8X-aware fork of it (confirmed via its own source:
+`#define T7001 0x7001`, `MIDR_PART_T7001_TYPHOON`), loaded as an independent
+bootloader stage before Linux rather than another direct-jump variant. Built
+and verified end-to-end (`nix build .#packages.x86_64-linux.m1n1-control`);
+not yet run on hardware. See
+[`docs/software-only-control.md`](software-only-control.md)'s "second,
+architecturally different route" section and
+`research/t7001-handoff-options.md` Round 8 for the full verification
+detail and primary sources.
+
+Both are built and ready for the next hardware round; full build, launch,
+success criteria, and decision gates for each are in
+[`docs/software-only-control.md`](software-only-control.md).
+
+If both fail with the same silence, pause the project at the handoff
+boundary. Custom UART/JTAG remains the way to gain new execution visibility
+at that point -- the user has approved building a Tamarin Cable for this
+(see "UART/JTAG procurement and setup plan" below) but doesn't have the
+parts yet, so these two software-only experiments are worth trying first
+since they cost nothing and are already built.
+
+## UART/JTAG procurement and setup plan (2026-09-04; not yet built, try the software-only experiments above first)
 
 The user confirmed they want to proceed with this. This is a purchasing/
 build plan, not a purchase made on their behalf -- they place any orders
@@ -2004,7 +2062,7 @@ Bluetooth peripheral node. The initramfs packages `kmod` programs but no
 
 | Subsystem | Current state | Missing or broken prerequisite | Planned work after approval |
 | --- | --- | --- | --- |
-| PongoOS → Linux | **Broken; primary gate** | The matching PongoOS Linux module supports A10 only and uses an A10-specific entry address. The T7001 returns to PongoOS after `bootl`. | Instrument and port the handoff before debugging a Linux driver. |
+| PongoOS → Linux | **Broken; primary gate** | The modern patched stack has failed ten handoff runs; the complete historical T7001 stack has not yet been run as a control. | Run the pinned historical control before any more handoff changes. |
 | Console / USB gadget | **Not described by J81 DTB** | DWC2 and USB gadget support are configured, but there is no T7001 USB controller/UDC node, clocks, PHY or interrupt wiring in the generated DTB. | Add only the verified controller description; use a serial or USB console before networking work. |
 | Display | **Unverified** | A simple framebuffer is described, but Linux has not reached it. Native display, backlight and acceleration support are absent. | Validate the inherited framebuffer after first boot; keep native DRM out of the near-term scope. |
 | Touchscreen (BCM5976) | **Blocked; priority 1** | No T7001 SPI-controller or touchscreen DT node, reset/IRQ/power mapping, firmware, or calibration data. Upstream `apple_z2` currently binds only two Mac Touch Bar compatibles, not an iPad. | Establish the Air 2 wiring and protocol first, then make an iPad-specific adaptation only if the evidence supports it. |
@@ -2018,9 +2076,9 @@ Bluetooth peripheral node. The initramfs packages `kmod` programs but no
 
 ### Priority bring-up plan
 
-1. **Restore an observable boot path.** Re-enter DFU, relaunch PongoOS with the
-   known command, and make the small instrumented T7001 PongoOS fork described
-   above. Do not retry a stock `bootl` upload or diagnose touch/Wi-Fi before a
+1. **Run the complete historical control.** Build and launch the pinned
+   PongoOS, Linux 5.19-rc1 and published debug initramfs exactly as documented
+   in `docs/software-only-control.md`. Do not diagnose touch/Wi-Fi before a
    Linux log exists.
 2. **Create a console before a network dependency.** Use the Pongo/Linux
    display or UART output first. Port the USB controller/UDC description only
@@ -2062,10 +2120,10 @@ is the reference for the intentionally minimal board description.
 | PongoOS upload | ✅ Complete |
 | PongoOS visible on iPad | ✅ Complete |
 | PongoOS USB interface `05ac:4141` | ✅ Verified with PyUSB control transfers |
-| Current RAM-only Pongo session | ✅ Active after verified handoff-candidate diagnostic; transient and RAM-only |
+| Current RAM-only Pongo session | Not assumed active; sessions are transient and no iPad USB interface was visible during the 2026-09-06 artifact build |
 | Linux payload upload | ✅ Transferred once; exposed PongoOS pre-handoff defects |
 | Guarded T7001 diagnostic PongoOS | ✅ Matched-toolchain Pongo, USB, aligned Image/DTB/initrd ranges, Linux register contract, and no-jump guard are proven on T7001 |
-| Linux kernel boot | ❌ Not achieved; 10 hardware handoff attempts (9 silent/marker-less hangs, 1 PongoOS-internal panic from a bug in this patch's own v10 reordering, fixed in v11); seven architecturally distinct hypotheses now ruled out by real hardware results, most recently v11's copy-reordering marker (correctly staged with verified addresses, still never appeared) — the watchdog-during-copy hypothesis is now ruled out specifically; UART/JTAG is the only remaining recommendation, see research/t7001-handoff-options.md Round 5 |
+| Linux kernel boot | ❌ Not achieved; 10 modern-stack (direct-jump) handoff attempts failed. Two next software-only hardware tests are built and verified: the exact June 2022 PongoOS + Linux 5.19-rc1 + debug-initrd stack as a control, and PongoOS's own `bootm` loading an iDevice m1n1 fork as an independent bootloader stage. Neither run on hardware yet. |
 | Display/touch/Wi‑Fi/Bluetooth validation | ❌ Not started |
 | Usable tethered Linux tablet | ❌ Future milestone |
 
@@ -2081,8 +2139,12 @@ is the reference for the intentionally minimal board description.
 
 - [`flake.nix`](../flake.nix): build systems, cross-compilation and dev shells.
 - [`kernel/default.nix`](../kernel/default.nix): Apple kernel configuration.
+- [`kernel/historical.nix`](../kernel/historical.nix): pinned June 2022 control kernel.
+- [`software-only-control.md`](software-only-control.md): exact software-only control runbook and decision gate.
 - [`nixos/initramfs.nix`](../nixos/initramfs.nix): RAM-only userspace.
 - [`boot/flash.sh`](../boot/flash.sh): boot orchestration.
 - [`boot/load_linux.py`](../boot/load_linux.py): PongoOS USB uploader.
+- [`boot/load_m1n1.py`](../boot/load_m1n1.py): uploads an m1n1(+Linux) payload
+  and requests PongoOS's `bootm` handoff.
 - [`boot/mkdtbpack.sh`](../boot/mkdtbpack.sh): DTB pack creation.
 - [`research/`](../research/): hardware and driver research.

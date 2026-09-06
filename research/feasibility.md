@@ -133,12 +133,13 @@ M4 (touch) is the gate for standalone use without an external keyboard.
 NixOS supports aarch64 cross-compilation. The flake can target `aarch64-linux` from an
 `x86_64-linux` host. Key considerations:
 
-- 16KB page size: the kernel must be compiled with `CONFIG_ARM64_PAGE_SHIFT=14`. Standard
-  NixOS aarch64 builds use 4KB pages. A custom kernel package is required.
+- 4 KiB page size: the canonical A7–A8X bring-up requires
+  `CONFIG_ARM64_4K_PAGES=y`; 16 KiB is for A9 and newer in that guide. The
+  kernel still needs a custom package for the Apple platform and device-tree work.
 - initramfs generation: NixOS can generate a complete system image as an initramfs using
   `config.system.build.initialRamdisk` or a custom derivation.
-- Binary cache: Hydra builds standard aarch64-linux packages, but 16KB page binaries may
-  need local compilation for some packages.
+- Binary cache: standard 4 KiB aarch64-linux userspace is compatible with the
+  target page size; Apple-specific kernel and image artifacts still build locally.
 
 ### System Image Strategy
 

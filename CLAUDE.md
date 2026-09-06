@@ -4,6 +4,25 @@
 
 Boot NixOS on old iPads (2011-2017, A5–A11 chips) via checkm8 bootrom exploit, turning e-waste into usable Linux machines.
 
+## Current next step (2026-09-06)
+
+Two software-only experiments are built, verified, and ready for a hardware
+round -- see `docs/software-only-control.md` for both:
+
+1. The complete pinned June 2022 T7001 stack, run as a control (reproduces
+   `konradybcio`'s historical PongoOS + kernel + initramfs together, rather
+   than transplanting selected diffs into the modern fork).
+2. PongoOS's own `bootm` command loading an iDevice fork of m1n1
+   (HoolockLinux), then Linux -- an independently-engineered bootloader
+   stage, architecturally different from every `bootl`-direct-jump variant
+   tried so far (all of which failed across ten hardware handoffs).
+
+Do not resume blind changes to the modern PongoOS fork's direct-jump path;
+that specific mechanism has been tried seven ways and ruled out each time.
+A7–A8X Linux uses 4 KiB pages; older 16 KiB claims in historical logs are
+superseded. Touch and Wi-Fi work still requires explicit user approval after
+Linux boots.
+
 ## Target Hardware
 
 - **Primary target**: iPad Air 2 (A8X, 2014) — 3-core ARM64, 2GB RAM, PowerVR GXA6850 GPU

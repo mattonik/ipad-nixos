@@ -159,6 +159,70 @@
         "type": "github"
       }
     },
+    "hoolockDocs": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1788509897,
+        "narHash": "sha256-umCqL2nBaiWKZx5XBsUEGI4CxYk8qx2rYo+DGsXINNk=",
+        "owner": "HoolockLinux",
+        "repo": "docs",
+        "rev": "23ebe1fbc375599221553a7e1815e5de182a6b42",
+        "type": "github"
+      },
+      "original": {
+        "owner": "HoolockLinux",
+        "repo": "docs",
+        "rev": "23ebe1fbc375599221553a7e1815e5de182a6b42",
+        "type": "github"
+      }
+    },
+    "hoolockM1n1": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1788163478,
+        "narHash": "sha256-pefl+2RIuEihhzHyb1xfhTAkfByr1JjKpuVPrgsy+x4=",
+        "type": "tarball",
+        "url": "https://nightly.link/hoolocklinux/m1n1/actions/runs/33380676898/m1n1.zip"
+      },
+      "original": {
+        "type": "tarball",
+        "url": "https://nightly.link/hoolocklinux/m1n1/actions/runs/33380676898/m1n1.zip"
+      }
+    },
+    "linuxApple519": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1655530720,
+        "narHash": "sha256-Dt+1yUm3ixkRYoffKaTY8uOhz8vtszTYaSPYANQ1sdg=",
+        "owner": "konradybcio",
+        "repo": "linux-apple",
+        "rev": "a907b05f09bfea50511ea0e82dc14f70d999ba37",
+        "type": "github"
+      },
+      "original": {
+        "owner": "konradybcio",
+        "repo": "linux-apple",
+        "rev": "a907b05f09bfea50511ea0e82dc14f70d999ba37",
+        "type": "github"
+      }
+    },
+    "linuxAppleResources": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1664973772,
+        "narHash": "sha256-Q+pk7wftKAKuprmP+Z7URxBv7mBGD9MigK08eVWRQ6w=",
+        "owner": "SoMainline",
+        "repo": "linux-apple-resources",
+        "rev": "30780ec0fecdab849bb812e1dde52b87e614f45b",
+        "type": "github"
+      },
+      "original": {
+        "owner": "SoMainline",
+        "repo": "linux-apple-resources",
+        "rev": "30780ec0fecdab849bb812e1dde52b87e614f45b",
+        "type": "github"
+      }
+    },
     "nix": {
       "inputs": {
         "flake-compat": [
@@ -245,6 +309,10 @@
     "root": {
       "inputs": {
         "devenv": "devenv",
+        "hoolockDocs": "hoolockDocs",
+        "hoolockM1n1": "hoolockM1n1",
+        "linuxApple519": "linuxApple519",
+        "linuxAppleResources": "linuxAppleResources",
         "nixpkgs": "nixpkgs"
       }
     },

@@ -149,7 +149,8 @@ Once pongoOS starts executing:
 - Sets up the MMU (Memory Management Unit)
 - Parses the Apple Device Tree passed by iBoot to discover hardware capabilities
 - Detects the specific SoC variant (t7000, t7001, t8010, etc.) from the device tree
-- Initializes physical page allocator (16KB pages) and virtual memory
+- Initializes PongoOS's physical page allocator and virtual memory (this is
+  separate from the Linux kernel's required 4 KiB page configuration on A7–A8X)
 - Starts the task scheduler
 
 **Phase 4 -- Main task execution:**
@@ -297,7 +298,7 @@ CONFIG_ARM64=y               # AArch64 architecture
 
 # Boot
 CONFIG_ARM64_VA_BITS_48=y    # 48-bit virtual addresses
-CONFIG_ARM64_PAGE_SHIFT=14   # 16KB pages (Apple SoC standard)
+CONFIG_ARM64_4K_PAGES=y      # Required by the A7-A8X bring-up
 CONFIG_CMDLINE_EXTEND=y      # Allow bootloader cmdline extension
 
 # Interrupt controller
@@ -325,9 +326,8 @@ CONFIG_RD_LZMA=y             # LZMA decompression for ramdisk
 CONFIG_USB_DWC2=y            # Synopsys DWC2 OTG controller
 ```
 
-A kernel config file `config_16k` exists in the linux-apple-resources repository (formerly
-SoMainline/linux-apple-resources, now maintained as HoolockLinux/docs), specifically targeting
-16KB page size as used by Apple SoCs.
+The canonical SoMainline resources provide `example.config`; their HOWTO
+explicitly selects 4 KiB pages for A7–A8X and 16 KiB for A9 and newer.
 
 ### Existing Kernel Work
 
@@ -371,8 +371,8 @@ Sources:
 - Incorrect device tree (wrong SoC compatible string, wrong peripheral addresses)
 - Missing kernel config options (AIC driver, page size mismatch)
 - Memory layout conflicts (kernel loaded at wrong address)
-- 4KB vs 16KB page size mismatch (Apple SoCs use 16KB pages; kernel must be built with
-  CONFIG_ARM64_PAGE_SHIFT=14)
+- Wrong page size for the SoC generation (the documented A7–A8X path requires
+  `CONFIG_ARM64_4K_PAGES=y`; A9 and newer use 16 KiB in the same guide)
 
 **No display output:**
 - The simple framebuffer requires iBoot to have initialized the display before pongoOS loads

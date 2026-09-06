@@ -1,7 +1,7 @@
 # Custom Linux kernel for iPad Air 2 (A8X / T7001)
 #
 # Key differences from standard aarch64 kernel:
-# - 16KB pages (Apple SoCs use 16KB, not 4KB)
+# - 4 KiB pages (required by the documented A7-A8X Linux bring-up)
 # - Apple platform drivers (AIC, SPI, watchdog, GPIO)
 # - Z2 touch protocol driver (for BCM5976 touch controller)
 # - USB gadget networking (primary network interface during bring-up)
@@ -33,8 +33,8 @@ buildLinux (args // {
   autoModules = false;
 
   structuredExtraConfig = with lib.kernel; {
-    # --- Page size (Apple SoCs require 16KB) ---
-    ARM64_16K_PAGES = yes;
+    # --- Page size (the SoMainline A7-A8X bring-up requires 4 KiB) ---
+    ARM64_4K_PAGES = yes;
 
     # --- Apple platform support ---
     # ARCH_APPLE is for M-series Macs; A-series iPads use generic ARM64
@@ -135,7 +135,7 @@ buildLinux (args // {
 
   extraMeta = {
     branch = "6.19";
-    description = "Linux kernel for iPad Air 2 (A8X) with 16KB pages and Apple drivers";
+    description = "Linux kernel for iPad Air 2 (A8X) with 4 KiB pages and Apple drivers";
     platforms = [ "aarch64-linux" ];
   };
 } // (args.argsOverride or {}))

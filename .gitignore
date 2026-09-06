@@ -6,6 +6,7 @@ result-*
 boot/Image.lzma
 boot/dtbpack
 boot/Pongo-t7001-diagnostic.bin
+boot/Pongo-t7001-historical.bin
 
 # Extracted firmware (not redistributable, extract from own IPSW)
 firmware/
