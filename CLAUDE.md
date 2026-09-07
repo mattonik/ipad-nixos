@@ -21,34 +21,26 @@ Xperia Z5 debug initramfs hiding its own output -- ruled out once its own
 unconditional startup marker never appeared on screen even after testing at
 120fps, which is what led to finding the real, kernel-level cause instead.)
 
-**The only remaining gap**: postmarketOS's debug-shell hook also starts a
-telnet daemon (`172.16.42.1:23`), but the modern mainline DTB used for that
-boot has no T7001 USB-device-controller node (`g_ether` printed "couldn't
-find an available UDC" during the same boot), so there was no USB network
-link to reach it over -- the shell was alive, just had no input channel.
+**Update, Round 6**: the USB-networking fix is confirmed working on
+hardware. `m1n1-control` now uses the *historical* kernel's own DTB (it
+has the real `usbdev@20c100000`/`apple,t7000-usb` node mainline lacks),
+patched with CPU-cell, framebuffer, and `cpu-release-addr` fixes (Rounds
+3-5 below). On real hardware this boots Linux completely: `g_ether` binds
+to the real USB controller, and the Mac sees a live USB device
+(`0525:a4a2`, confirmed via `pyusb`/`ioreg`) with postmarketOS's
+`172.16.42.1:23` telnet daemon active. **UART is not needed** -- this
+route is proven end to end at the device level.
 
-**In progress, not yet confirmed working**: `m1n1-control` now uses the
-*historical* kernel's own DTB (it has the real `usbdev@20c100000`,
-`apple,t7000-usb` node mainline lacks, matched by a real driver already in
-this same kernel), patched with the same CPU-cell and framebuffer fixes
-proven on the modern DTB. `pd_ignore_unused clk_ignore_unused` and
-`PMOS_NO_OUTPUT_REDIRECT` stay in bootargs. `example.config` already has
-everything the USB gadget path needs (`CONFIG_USB_GADGET`,
-`CONFIG_USB_ETH`, `CONFIG_USB_ETH_RNDIS`, etc.). **UART is not needed** --
-this is a concrete, well-understood, software-only gap.
+**Current gap**: the historical kernel's `example.config` sets
+`CONFIG_USB_ETH_EEM=y`, which makes `g_ether` offer CDC-EEM + RNDIS
+instead of CDC-ECM. macOS has no in-box driver for EEM or RNDIS, only ECM
+(`AppleUSBCDCECMData`), so no network interface appears on the Mac despite
+the device enumerating correctly. Fix (flip that one Kconfig flag off, via
+a small sed'd defconfig in `flake.nix`) is implemented; requires a full
+kernel rebuild, in progress, not yet tested on hardware.
 
-First hardware run of the historical DTB (Round 4) failed: m1n1 couldn't
-write `cpu-release-addr` into the secondary CPU nodes. First guess was a
-DTB-space problem, fixed with `dtc -p 0x10000` padding -- but a second
-hardware run (Round 5) hit the identical failure, proving that guess wrong.
-Reading m1n1's actual source (`src/kboot.c`) showed the real cause: that
-write uses `fdt_setprop_inplace_u64()`, which can only overwrite an
-already-existing same-sized property, never create one -- and this
-historical DTS has no `cpu-release-addr` placeholder at all (it predates
-that mainline convention). Fixed by adding the placeholder directly to
-`cpu@1`/`cpu@2` in the sed transform. Verified locally, not yet re-tested
-on hardware. Full evidence and commands are in
-`docs/software-only-control.md`'s "Round 3", "Round 4", and "Round 5".
+Full evidence and commands are in `docs/software-only-control.md`'s
+"Round 3" through "Round 6".
 
 Driver work (touch, Wi-Fi, etc.) remains explicitly approval-gated --
 booting Linux does not change that; wait for the user before starting any

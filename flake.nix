@@ -94,9 +94,27 @@
       # Cross-compiled packages for iPad (aarch64, 4 KiB pages on A7-A8X)
       packages.${linuxBuildSystem} =
         let
+          # example.config sets CONFIG_USB_ETH_EEM=y, which makes the g_ether
+          # gadget present CDC-EEM instead of CDC-ECM as its non-Windows USB
+          # configuration (drivers/usb/gadget/legacy/Kconfig: "If you say y
+          # here, the Ethernet gadget driver will use the EEM protocol
+          # rather than ECM"). Confirmed on real hardware, 2026-09-07: once
+          # Linux boots and g_ether binds, the Mac's ioreg shows the device
+          # matched+active but stuck on configuration 1 (class 0x02/subclass
+          # 0x0c/proto 0x07 -- CDC-EEM) with configuration 2 being RNDIS
+          # (class 0x02/subclass 0x02/proto 0xff, Microsoft's ACM+vendor
+          # encoding) -- no CDC-ECM (subclass 0x06) offered at all, and
+          # macOS has no in-box driver for either EEM or RNDIS, only ECM.
+          # USB_ETH always `select`s USB_F_ECM regardless of this flag, so
+          # disabling USB_ETH_EEM is enough to make g_ether fall back to
+          # ECM without touching anything else.
+          patchedHistoricalConfig = pkgs.runCommand "ipad-t7001-defconfig-usb-ecm" {} ''
+            sed 's/^CONFIG_USB_ETH_EEM=y$/# CONFIG_USB_ETH_EEM is not set/' \
+              ${inputs.linuxAppleResources}/example.config > "$out"
+          '';
           historicalKernel = pkgsCross.callPackage ./kernel/historical.nix {
             source = inputs.linuxApple519;
-            historicalConfig = "${inputs.linuxAppleResources}/example.config";
+            historicalConfig = patchedHistoricalConfig;
           };
           modernKernel = pkgsCross.callPackage ./kernel {};
         in {

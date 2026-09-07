@@ -8,13 +8,17 @@ Air 2, after `pd_ignore_unused`/`clk_ignore_unused` fixed a power-domain
 auto-shutdown that had been killing the display right after driver probing.
 See "Round 2" under that section for the full transcript. This is the
 project's primary milestone, achieved in full -- the only remaining gap is
-a way to send input to that shell (no USB network link yet). Round 3
-implemented a historical-DTB swap to get a real USB controller node; Rounds
-4 and 5 chased a `cpu-release-addr` DTB bug that swap introduced -- Round 4's
-blob-padding fix was a wrong diagnosis (identical failure on hardware);
-Round 5 found the real cause by reading m1n1's actual source
-(`fdt_setprop_inplace_u64()` requires the property to pre-exist) and added
-the missing placeholder directly. Not yet re-tested on hardware.
+a way to send input to that shell. Round 3 implemented a historical-DTB
+swap to get a real USB controller node; Rounds 4-5 chased and fixed a
+`cpu-release-addr` DTB bug that swap introduced. **Round 6 confirmed the
+fix on hardware: Linux now boots completely, `g_ether` binds to the real
+USB controller, and the Mac sees a live USB device** (`0525:a4a2`,
+confirmed via `pyusb`/`ioreg`) with the postmarketOS debug-shell's telnet
+daemon active on `172.16.42.1:23`. The only remaining gap is that the
+kernel was built with `CONFIG_USB_ETH_EEM=y`, which makes the gadget offer
+CDC-EEM + RNDIS instead of CDC-ECM -- and macOS has no in-box driver for
+either of those, only ECM. A kernel rebuild with that flag off is in
+progress; not yet tested on hardware.
 
 This document originally centered on reproducing the complete June 2022 stack
 reported working on A7/A8/A8X. That historical-Pongo route remains blocked by
@@ -883,6 +887,105 @@ just not what fixes this). Verified locally after rebuilding: `cpu@1` and
 prior fixes (`#address-cells = <0x02>` CPU format, `/chosen/framebuffer`
 placeholder, `usbdev@20c100000` node) remain intact. Not yet re-tested on
 hardware.
+
+### Round 6, 2026-09-07: the cpu-release-addr fix works -- Linux boots fully with a live USB gadget and telnet daemon
+
+Re-ran the rebuilt image on hardware (fresh DFU, PongoOS enumerated
+normally, same upload/`bootm` handoff). This time it worked completely.
+`pyusb` on the Mac immediately picked up a brand-new USB device --
+
+```
+0525:a4a2  Linux 5.19.0-rc1 with 20c100000.usbdev / RNDIS/Ethernet Gadget
+```
+
+-- `0x0525` is the Linux Foundation's gadget vendor ID; the string names
+the exact kernel and DTB node (`20c100000.usbdev`, our real
+`usbdev@20c100000` node). Two screenshots from the user (`IMG_3912`,
+`IMG_3913`) captured the full kernel log scrolling past on the device's
+own display, confirming this independently:
+
+```
+dwc2 20c100000.usbdev: EPs: 9, dedicated fifos, 2056 entries in SPRAM
+g_ether gadget_0: Ethernet Gadget, version: Memorial Day 2008
+dwc2 20c100000.usbdev: bound driver g_ether
+...
+Run /init as init process
+### postmarketOS initramfs ###
+...
+Setting framebuffer mode to: U:1536x2048p-0
+Setup usb network
+Using interface usb0
+Start the dhcpd daemon (forks into background)
+Start the telnet daemon
+
+WARNING: debug-shell is active on 172.16.42.1:23.
+This is a security hole! Only use it for debugging.
+uninstall the debug-shell hook afterwards!
+```
+
+Two things worth calling out:
+
+- **`### postmarketOS initramfs ###` finally appears.** This is the exact
+  marker whose absence, in "Round 2", overturned the original
+  output-redirection theory and pointed at the power-domain bug instead.
+  Seeing it now is independent confirmation that `/init` genuinely runs
+  end-to-end on this boot, not just a plausible inference from the shell
+  prompt.
+- **The postmarketOS-logo overlay the user saw partway through** (visible
+  starting mid-way down `IMG_3913`, "postmarketos.org/debug-shell" text
+  bleeding through the console log) **is expected behavior**, not a new
+  bug -- it is `fbsplash` drawing the bundled Xperia Z5 splash image over
+  the console framebuffer, exactly as already documented in "Software
+  follow-up" above. The console text is still being written underneath it;
+  the overlay is cosmetic.
+
+So the g_ether gadget bound, matched a real host, and the debug-shell's
+`udhcpd`/telnet stack came up -- the DTB/CPU fix in Round 5 was completely
+correct and is the actual fix for the original "no valid payload found"
+failure.
+
+**But no interface appeared on the Mac.** `ioreg -p IOUSB -l` showed the
+device as `matched, active` at the raw `IOUSBHostDevice` level, with no
+Ethernet driver bound underneath it:
+
+```
+kUSBCurrentConfiguration = 1
+bNumConfigurations = 2
+USB Vendor Name = "Linux 5.19.0-rc1 with 20c100000.usbdev"
+kUSBProductString = "RNDIS/Ethernet Gadget"
+```
+
+Reading the actual class/subclass/protocol bytes off both configurations
+(`pyusb`, since the display strings are misleading -- g_ether always
+labels itself "RNDIS/Ethernet Gadget" regardless of which protocol a given
+configuration actually uses) showed why:
+
+```
+Configuration 1 (active): Interface 0: class=0x02 subclass=0x0c proto=0x07   -- CDC-EEM
+Configuration 2:          Interface 0: class=0x02 subclass=0x02 proto=0xff   -- RNDIS (Microsoft's ACM+vendor encoding)
+                           Interface 1: class=0x0a subclass=0x00 proto=0x00   -- CDC-Data (RNDIS's paired data interface)
+```
+
+Neither configuration is CDC-ECM (class 0x02/subclass 0x06) -- the one
+class modern macOS actually ships an in-box driver for
+(`AppleUSBCDCECMData`). macOS has never had native RNDIS support and does
+not support CDC-EEM either, so it correctly recognizes the raw USB device
+but has no driver to bind to either configuration on offer, and never
+creates a network interface for it.
+
+Root cause: `research/.../example.config` sets both
+`CONFIG_USB_ETH_RNDIS=y` and `CONFIG_USB_ETH_EEM=y`. Per the driver's own
+Kconfig help text (`drivers/usb/gadget/legacy/Kconfig`), `USB_ETH_EEM=y`
+makes g_ether use the EEM protocol *instead of* ECM for its non-Windows
+configuration -- `USB_ETH` itself always `select`s `USB_F_ECM` regardless,
+so ECM support is compiled in either way; EEM was simply chosen over it at
+gadget-registration time. Fix: flip `CONFIG_USB_ETH_EEM` off. Implemented
+as a small Nix derivation (`patchedHistoricalConfig` in `flake.nix`) that
+`sed`s the one line in `example.config` to
+`# CONFIG_USB_ETH_EEM is not set` before it's installed as the kernel's
+defconfig, rather than editing the flake-input file directly. This
+requires a full kernel rebuild (not just a DTB patch) since it's a kernel
+config change; in progress, not yet tested on hardware.
 
 ## Attempts and failures while preparing the control
 
