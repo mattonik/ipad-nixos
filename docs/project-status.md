@@ -2147,6 +2147,15 @@ touch, Wi-Fi, Bluetooth or other end-device driver or proprietary firmware.
 boot chain and inherited framebuffer have now produced a Linux log; the
 remaining subsystem rows are still untested unless explicitly marked otherwise.
 
+**2026-09-08 update**: the user separately authorized bundling any driver
+that already exists and just needs enabling (no new driver code, nothing
+touching the concurrent USB investigation). A full survey found RTC and
+backlight (row below) already fully wired and blocked only by a trivial
+GCC build bug, now fixed -- see `research/driver-gap.md`'s 2026-09-08
+update and `research/t7001-usb-next.md`'s "Overnight" section. Every
+other row below still needs real driver/DT/firmware work and remains
+gated exactly as stated above.
+
 The current 6.19.3 kernel configuration is useful infrastructure, but it is
 not a hardware-support claim. The generated `t7001-j81.dtb` contains the
 basic AIC, UART, watchdog, pinctrl, PMGR/I2C, simple framebuffer and GPIO-key
@@ -2159,11 +2168,12 @@ Bluetooth peripheral node. The initramfs packages `kmod` programs but no
 | PongoOS → Linux | **Working** | `bootm`→m1n1 reaches Linux and real driver initialization on this iPad Air 2. | Freeze this route while userspace/console is isolated. |
 | Console / USB gadget | **Software path identified** | The legacy initramfs hides output; the selected mainline DTB has no T7001 USB controller, although the historical DTB and kernel contain a matched node/driver. | Add `PMOS_NO_OUTPUT_REDIRECT`, then use a minimal visible initramfs; restore the patched historical DT before testing USB. |
 | Display | **Inherited framebuffer works briefly** | Linux kernel text is visible, then the legacy initramfs paints an almost-black Xperia splash. Native display, backlight and acceleration support remain absent. | Prove PID 1 with a visible marker; keep native DRM out of the near-term scope. |
-| Touchscreen (BCM5976) | **Blocked; priority 1** | No T7001 SPI-controller or touchscreen DT node, reset/IRQ/power mapping, firmware, or calibration data. Upstream `apple_z2` currently binds only two Mac Touch Bar compatibles, not an iPad. | Establish the Air 2 wiring and protocol first, then make an iPad-specific adaptation only if the evidence supports it. |
-| Wi-Fi (BCM4354) | **Blocked; priority 2** | `brcmfmac` includes BCM4354 and SDIO support, but J81 has no SDIO host/module node, power/reset mapping, board NVRAM or firmware. `brcmfmac`/`cfg80211` are modules outside the initramfs. | Identify and expose the SDIO host, then integrate the required local firmware/NVRAM and modules. |
+| Touchscreen (BCM5976) | **Blocked; priority 1** | Confirmed 2026-09-08 against real kernel source (historical and Hoolock trees): no SPI-controller *driver* exists for this SoC's Samsung-derived SPI block at all (the one in-tree SPI master driver only matches M-series Macs), not just a missing DT node. Upstream `apple_z2` currently binds only two Mac Touch Bar compatibles, not an iPad. | Establish the Air 2 wiring and protocol first, then make an iPad-specific adaptation only if the evidence supports it. |
+| Wi-Fi (BCM4354) | **Blocked; priority 2** | Confirmed 2026-09-08: no Apple SDIO/MMC host-controller *driver* exists in either kernel tree at all (checked every file in `drivers/mmc/host/`), not just a missing DT node -- `brcmfmac`/BCM4354 support itself is fine. | Identify and expose the SDIO host, then integrate the required local firmware/NVRAM and modules. |
 | Bluetooth (BCM4354 combo) | **Blocked** | `hci_uart`/`btbcm` infrastructure exists, but its UART, flow control, power sequencing, firmware and DT node are unknown; its modules are also absent from the initramfs. | Defer until Wi-Fi has identified the Murata module's power and board wiring. |
 | Audio | **No known T7001 stack** | Audio DMA, codec identity/register map, machine description and power routing are absent. | Defer. |
-| Battery / PMIC | **Partial generic support only** | The BQ27xxx driver exists, but no fuel-gauge DT node; the Apple/ Dialog PMIC and charging path lack a supported description. | Probe the standard fuel gauge only after I2C and power topology are mapped. |
+| RTC / Backlight (Apple PMIC) | **Bundled and working, 2026-09-08** | None -- driver and enabled DT node both already present; a GCC build bug blocking backlight is now fixed. | Done; no further work needed. |
+| Battery / PMIC (fuel gauge) | **Kconfig chain fully enabled, 2026-09-08** | The BQ27xxx/HDQ Kconfig chain is on, but no fuel-gauge DT node exists and the HDQ GPIO pin is unidentified. | Add the DT node once the pin is found from an Apple ADT dump; low effort once that data is in hand. |
 | Sensors | **Unknown** | Generic IIO drivers exist, but the sensor chips and their I2C/SPI/M8 path are unidentified and no nodes exist. | Inventory from an Apple device tree before selecting a driver. |
 | GPU | **No Apple A8X integration** | No supported PowerVR A8X DRM/platform backend. | Use framebuffer/software rendering only; defer acceleration. |
 | NAND / cameras / Touch ID | **Unsupported** | Apple storage FTL/encryption, camera ISP paths and Secure Enclave interfaces have no usable Linux path. | Out of scope for the RAM-only milestone. |

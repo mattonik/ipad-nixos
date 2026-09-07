@@ -12,18 +12,81 @@ Research conducted February 2026 and revalidated against the project's Linux
 > only `apple,j293-touchbar` and `apple,j493-touchbar` bindings; it is a
 > BCM5976 protocol reference, not a direct iPad Air 2 driver.
 
+> **2026-09-08 update, verified directly against real kernel source** (the
+> historical 5.19-rc1 tree and the newer Hoolock 7.3-rc1 tree now being
+> evaluated for the T7001 USB bug -- see `research/t7001-usb-next.md`; the
+> built `t7001-j81.dtb` was decompiled and inspected, not assumed):
+>
+> - **RTC and backlight, both Apple PMIC-integrated, are now confirmed
+>   working** on the Hoolock kernel -- not listed as their own rows below
+>   since they were folded into "Battery/Power" and weren't tracked
+>   separately in the original February research, but worth calling out:
+>   the DTB already has an enabled (`status="okay"`) `i2c@20a110000` node
+>   with `pmic@3c` → `rtc@5c0` (`apple,arabela-pmic-rtc`) and
+>   `backlight@600` (`apple,arabela-pmic-bl`) children, both matched by
+>   in-tree drivers (`rtc-apple-pmic.c`, `apple_pmic_bl.c`).
+>   `CONFIG_RTC_DRV_APPLE_PMIC` was already enabled in Hoolock's own
+>   published config; `CONFIG_BACKLIGHT_APPLE_PMIC` was blocked only by a
+>   one-file GCC build bug (`apple_pmic_bl_get_brightness()`'s `switch`
+>   over its 2-value enum had no `default` case, tripping
+>   `-Werror=return-type`) -- fixed with a 2-line `default: return
+>   -EINVAL;` patch in `kernel/hoolock.nix`, not a workaround. Both are
+>   genuine "already exists, just needed bundling" cases per the project
+>   owner's 2026-09-08 authorization to pursue exactly that class of work
+>   without touching the ongoing USB investigation.
+> - **Touch (row below) reconfirmed blocked, with a sharper reason than
+>   "no DT/firmware"**: there is no SPI controller node anywhere in
+>   `t7001.dtsi`/`t7001-air2.dtsi`/`t7001-j81.dts` in *either* kernel tree
+>   (only PMGR power-domain placeholders `ps_spi0`-`ps_spi3`), and the one
+>   in-tree SPI master driver (`spi-apple.c`) only matches
+>   `apple,t8103-spi`/`apple,spi` (M-series Macs), not this SoC's
+>   Samsung-derived SPI block. `apple_z2`'s match table is exactly as
+>   this doc already said: Touch Bar bindings only. This needs real
+>   reverse-engineering and driver work (SPI controller + touch driver +
+>   firmware/calibration), not bundling.
+> - **WiFi reconfirmed blocked, and the gap is bigger than "needs
+>   firmware+DT" implies**: no Apple SDIO/MMC host-controller driver
+>   exists in `drivers/mmc/host/` in either tree at all (every
+>   `sdhci-*`/`dw_mmc-*` file checked; none Apple-specific), and the DTB
+>   has no `mmc@`/SDIO node. `brcmfmac` and the BCM4354 chip ID are both
+>   present and correct, but getting there needs a brand-new host
+>   controller driver first -- squarely the kind of new driver
+>   development the owner's bundling authorization explicitly excludes.
+> - **Bluetooth (same BCM4354 combo chip, different interface) is
+>   closer, but still real work, not bundling**: `CONFIG_BT_BCM`,
+>   `CONFIG_BT_HCIUART`/`_SERDEV`/`_H4`/`_BCM` are already enabled in
+>   Hoolock's config, and `hci_bcm.c` already has an exact match
+>   (`brcm,bcm43540-bt` → `bcm4354_device_data`). But `t7001.dtsi` defines
+>   only one UART node (the console); the other 8 UART power-domains in
+>   `t7001-pmgr.dtsi` have no actual UART/serial DT node, so the BT UART
+>   instance, reset/wake GPIOs, and power sequencing were never wired up,
+>   and firmware still needs extracting from iOS. The Kconfig lift is
+>   done and the chip-specific code match already exists, making this the
+>   nearest of the three wireless/touch gaps -- but adding a whole new DT
+>   node plus firmware extraction is integration work, not a bundle.
+> - **Battery** (row below): `CONFIG_BATTERY_BQ27XXX`,
+>   `_BQ27XXX_HDQ`, `CONFIG_W1`, `CONFIG_W1_MASTER_UART` are already
+>   enabled in Hoolock's config -- the full Kconfig chain for this
+>   standard, public-datasheet TI part is done. Only a DT node (in
+>   `t7001-air2.dtsi`) and the HDQ GPIO pin identification are missing --
+>   plausibly "just needs a DT node," but contingent on finding that exact
+>   pin from an Apple ADT dump (a data-lookup problem, not driver code),
+>   so not attempted without that data in hand.
+
 ## Summary Matrix
 
 | Subsystem | Chip | Linux Driver | Status | Effort |
 |-----------|------|-------------|--------|--------|
-| Display | LG LP097QX2 (eDP) | simplefb / simpledrm | Configured; unverified until Linux boots | Low |
-| Touch | Broadcom BCM5976 | apple_z2 (reference only) | Blocked: no T7001 SPI/DT/firmware/calibration | High |
-| WiFi | Broadcom BCM4354 (Murata module) | brcmfmac | Blocked: no SDIO host/DT/power/firmware/NVRAM | High |
+| Display | LG LP097QX2 (eDP) | simplefb / simpledrm | Working -- Linux boots to a live interactive shell (2026-09-07) | Low |
+| RTC | Apple PMIC (arabela) | rtc-apple-pmic | **Bundled 2026-09-08**: driver + enabled DT node, already worked | Trivial |
+| Backlight | Apple PMIC (arabela) | apple_pmic_bl | **Bundled 2026-09-08**: driver + enabled DT node; fixed a GCC build bug | Trivial |
+| Touch | Broadcom BCM5976 | apple_z2 (reference only) | Blocked: no SPI controller node/driver on this SoC at all (confirmed against real kernel source, 2026-09-08) | High |
+| WiFi | Broadcom BCM4354 (Murata module) | brcmfmac | Blocked: no Apple SDIO/MMC host driver exists in-tree at all (confirmed 2026-09-08) | High |
 | GPU | PowerVR GXA6850 (Series 6XT) | pvr (Mesa) | Experimental | Very High |
 | Audio | Cirrus Logic 338S1213 | None known | None | High |
-| Battery/Power | Dialog 343S0675 PMIC + TI BQ27546 | None (proprietary) | None | High |
-| USB | Synopsys DWC2 OTG | dwc2 | Configured; no J81 controller/UDC node | Medium |
-| Bluetooth | Broadcom (in Murata module) | btbcm / hci_uart | Blocked: no UART/DT/power/firmware mapping | High |
+| Battery/Power | Dialog 343S0675 PMIC + TI BQ27546 (HDQ) | bq27xxx_battery | Kconfig chain fully enabled (2026-09-08); needs a DT node + ADT-sourced HDQ pin ID | Low, once the pin is known |
+| USB | Synopsys DWC2 OTG | dwc2 | Working RX, TX-to-host bug under active investigation (Rounds 7-9) | Medium |
+| Bluetooth | Broadcom (in Murata module) | btbcm / hci_uart | Kconfig + exact chip match already done (2026-09-08); blocked on a new UART DT node + firmware extraction | Medium-High |
 | Sensors | Unknown (likely InvenSense/Bosch) | Unknown | Unidentified; no peripheral nodes | Medium |
 | Storage/NAND | Apple proprietary FTL | None | None | Very High |
 

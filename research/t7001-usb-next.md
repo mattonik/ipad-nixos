@@ -584,3 +584,34 @@ applies here too; kept as a safety net rather than assumed unnecessary.
 **Status**: `m1n1-hoolock-control` builds cleanly and every static check
 available without hardware passes. No hardware boot attempt yet -- that
 is the immediate next step.
+
+### Overnight, 2026-09-08: bundled two already-working drivers on this same kernel (RTC, backlight) -- unrelated to USB, does not change any of the above
+
+While waiting for a hardware window, the project owner authorized
+bundling any driver that's "already exists, needs to get bundled only or
+similar low level effort," explicitly excluding new driver development
+and anything that would disrupt this USB work. A full survey (see
+`research/driver-gap.md`'s 2026-09-08 update for the complete
+per-subsystem breakdown) found touch and WiFi both need genuinely new
+driver/controller work (out of scope), and Bluetooth needs a new DT node
+plus firmware extraction (more than bundling) -- but RTC and backlight,
+both on the same Apple PMIC, were already fully wired (enabled DT node,
+matching in-tree driver) and only blocked by the exact same
+`-Werror=return-type` class of GCC build bug already fixed once tonight
+for the *different* PMIC backlight driver problem in Round 6-7's
+research. Fixed properly this time (a 2-line `default: return -EINVAL;`
+case added to `apple_pmic_bl_get_brightness()`'s switch in
+`kernel/hoolock.nix`'s `configuredSource`, rather than disabling the
+driver) and re-enabled `CONFIG_BACKLIGHT_APPLE_PMIC` in
+`patchedHoolockConfig` (RTC's `CONFIG_RTC_DRV_APPLE_PMIC` was already `y`
+in Hoolock's own published config, no change needed there).
+
+Rebuilt `hoolockKernel` and `m1n1-hoolock-control` fully after this
+change and re-ran every static check already established above: kernel
+builds clean, both Kconfig symbols confirmed `=y` in the built `.config`,
+and the framebuffer-rename/deviceinfo-override checks on the rebuilt DTB
+and initramfs still pass identically. This changes the kernel `Image`
+hash but touches nothing USB-related (backlight and RTC are unrelated
+PMIC peripherals, not on the USB/DTB/CPU code paths this investigation
+touches) -- the payload the user will actually boot tomorrow now also has
+working RTC and backlight, at no cost to the USB test it exists for.

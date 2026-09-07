@@ -21,6 +21,25 @@ let
     cp -R ${source}/. "$out/"
     chmod -R u+w "$out"
     cp ${hoolockConfig} "$out/arch/arm64/configs/ipad_t7001_hoolock_defconfig"
+
+    # drivers/video/backlight/apple_pmic_bl.c's apple_pmic_bl_get_brightness()
+    # switches on enum apple_pmic_type (PMIC_TYPE_ANYA, PMIC_TYPE_ARIA) with
+    # no default case, so GCC can't prove every path returns a value and
+    # fails the build under -Werror=return-type (this project's GCC cross
+    # toolchain; Hoolock's own recommended Clang/LLVM apparently doesn't
+    # flag it). Previously worked around by disabling
+    # CONFIG_BACKLIGHT_APPLE_PMIC entirely, since backlight wasn't needed
+    # for the USB investigation this kernel was first built for. This
+    # driver already has a full, matching, enabled DT node
+    # (i2c@20a110000/pmic@3c/backlight@600, "apple,arabela-pmic-bl",
+    # status="okay") and no other issue, so it's now fixed properly with
+    # the standard, minimal correction instead: an explicit unreachable
+    # default case, which changes no behavior for the two real enum values.
+    file="$out/drivers/video/backlight/apple_pmic_bl.c"
+    grep -q 'return ((cmd\[1\] & 7) << 8) | (cmd\[0\] & 0xff);' "$file"
+    sed -i \
+      's/return ((cmd\[1\] \& 7) << 8) | (cmd\[0\] \& 0xff);/&\n\t\tdefault:\n\t\t\treturn -EINVAL;/' \
+      "$file"
   '';
   buildArgs = builtins.removeAttrs args [ "source" "hoolockConfig" "runCommand" ];
 in

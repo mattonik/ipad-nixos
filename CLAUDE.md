@@ -93,9 +93,25 @@ assumed.
 Full evidence and commands are in `docs/software-only-control.md`'s
 "Round 3" through "Round 8".
 
-Driver work (touch, Wi-Fi, etc.) remains explicitly approval-gated --
-booting Linux does not change that; wait for the user before starting any
-of it, per "Driver readiness and approval gate" in `docs/project-status.md`.
+**Driver bundling, 2026-09-08**: the user authorized bundling any driver
+that's "already exists, needs to get bundled only or similar low level
+effort," explicitly excluding new driver development and anything
+touching the USB work above. A full survey (`research/driver-gap.md`'s
+2026-09-08 update) found RTC and backlight (same Apple PMIC) were already
+fully wired -- driver + enabled DT node both present -- and blocked only
+by the same class of GCC build bug already fixed once for a different
+driver tonight. Fixed properly (a 2-line `default:` case, not a
+workaround) and both now build into the Hoolock kernel; verified the full
+`m1n1-hoolock-control` chain still builds and passes every static check
+after the change. Touch, WiFi, and Bluetooth were surveyed too and all
+need genuine new driver/controller work or DT+firmware integration --
+none qualified as "bundling," so none were touched.
+
+Driver work needing real implementation (touch, Wi-Fi, Bluetooth, GPU,
+audio, etc.) remains explicitly approval-gated -- booting Linux does not
+change that, and neither does the narrower bundling authorization above;
+wait for the user before starting any of it, per "Driver readiness and
+approval gate" in `docs/project-status.md`.
 
 The historical-PongoOS control is a separate, lower-priority experiment,
 still blocked: `palera1n`'s stager rejects its 708,704-byte binary (limit

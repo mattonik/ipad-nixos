@@ -134,25 +134,19 @@
           # follow-up research, not inferred from the filename. Same
           # sed-on-a-derivation technique as patchedHistoricalConfig above.
           #
-          # CONFIG_BACKLIGHT_APPLE_PMIC=y also has to go: this kernel's
-          # drivers/video/backlight/apple_pmic_bl.c fails to build under GCC
-          # (this project's cross-toolchain) with "error: control reaches
-          # end of non-void function [-Werror=return-type]" in
-          # apple_pmic_bl_get_brightness() -- its switch over
-          # enum apple_pmic_type has no default case, which GCC's stricter
-          # -Wreturn-type flags and Hoolock's own recommended Clang/LLVM
-          # toolchain apparently doesn't (confirmed empirically: their
-          # setup guide's own `make ... LLVM=1` instruction was flagged as
-          # an open question during the Round 8 research, and this is
-          # exactly the kind of GCC/Clang divergence that raised it).
-          # Backlight control is irrelevant to the USB investigation this
-          # kernel is being evaluated for, so disabling the driver avoids
-          # touching vendored source for something we don't need.
+          # CONFIG_BACKLIGHT_APPLE_PMIC stays enabled (config_16k's default):
+          # its build failure under this project's GCC cross-toolchain
+          # (drivers/video/backlight/apple_pmic_bl.c, missing default case
+          # in a switch, -Werror=return-type) is now fixed properly at the
+          # source in kernel/hoolock.nix's configuredSource, rather than
+          # worked around by disabling the driver -- see that file's
+          # comment. This DTB already has a matching, enabled DT node for
+          # it (i2c@20a110000/pmic@3c/backlight@600), same as the RTC
+          # (CONFIG_RTC_DRV_APPLE_PMIC, already =y here, untouched).
           patchedHoolockConfig = pkgs.runCommand "ipad-t7001-hoolock-defconfig-4k" {} ''
             sed \
               -e 's/^# CONFIG_ARM64_4K_PAGES is not set$/CONFIG_ARM64_4K_PAGES=y/' \
               -e 's/^CONFIG_ARM64_16K_PAGES=y$/# CONFIG_ARM64_16K_PAGES is not set/' \
-              -e 's/^CONFIG_BACKLIGHT_APPLE_PMIC=y$/# CONFIG_BACKLIGHT_APPLE_PMIC is not set/' \
               ${inputs.hoolockDocs}/config_16k > "$out"
           '';
           hoolockKernel = pkgsCross.callPackage ./kernel/hoolock.nix {
