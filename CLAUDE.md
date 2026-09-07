@@ -31,16 +31,29 @@ to the real USB controller, and the Mac sees a live USB device
 `172.16.42.1:23` telnet daemon active. **UART is not needed** -- this
 route is proven end to end at the device level.
 
-**Current gap**: the historical kernel's `example.config` sets
-`CONFIG_USB_ETH_EEM=y`, which makes `g_ether` offer CDC-EEM + RNDIS
-instead of CDC-ECM. macOS has no in-box driver for EEM or RNDIS, only ECM
-(`AppleUSBCDCECMData`), so no network interface appears on the Mac despite
-the device enumerating correctly. Fix (flip that one Kconfig flag off, via
-a small sed'd defconfig in `flake.nix`) is implemented; requires a full
-kernel rebuild, in progress, not yet tested on hardware.
+**Round 7 update**: the `CONFIG_USB_ETH_EEM` fix works -- macOS now binds
+its native `AppleUSBCDCECMData` driver automatically and a real `en10`
+network interface appears, no third-party driver needed. **But no data
+crosses the link at all.** Both endpoints are independently confirmed
+correctly configured: the Mac's `en10` sends real ARP broadcasts every
+second (captured with `sudo tcpdump -i en10 -n` in the user's own
+terminal, since this environment's shell has no TTY for `sudo`), and the
+iPad's `usb0` is confirmed assigned `172.16.42.1` by reading
+`init_functions.sh` directly out of the extracted `debug_initrd.img`
+(not guessed). Zero packets ever arrive in either direction; unplugging
+and replugging the cable made no difference. A DMA-related dwc2 warning
+seen in every boot was checked and ruled out (`g_dma` is intentionally
+hardcoded off in this historical driver -- `drivers/usb/dwc2/params.c`:
+`bool dma_capable = false;` -- forcing the well-tested PIO fallback, not a
+plausible cause of *total* data loss). The remaining explanation is a real
+bug in this historical kernel's `dwc2` gadget bulk-transfer path on the
+T7001, which was never actually proven to move real Ethernet frames
+before this session. **Unresolved** -- needs either UART/serial access to
+inspect the live shell directly, or another blind kernel-parameter
+iteration on hardware. Awaiting a decision on which path to take.
 
 Full evidence and commands are in `docs/software-only-control.md`'s
-"Round 3" through "Round 6".
+"Round 3" through "Round 7".
 
 Driver work (touch, Wi-Fi, etc.) remains explicitly approval-gated --
 booting Linux does not change that; wait for the user before starting any

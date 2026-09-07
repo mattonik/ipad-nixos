@@ -10,15 +10,17 @@ See "Round 2" under that section for the full transcript. This is the
 project's primary milestone, achieved in full -- the only remaining gap is
 a way to send input to that shell. Round 3 implemented a historical-DTB
 swap to get a real USB controller node; Rounds 4-5 chased and fixed a
-`cpu-release-addr` DTB bug that swap introduced. **Round 6 confirmed the
-fix on hardware: Linux now boots completely, `g_ether` binds to the real
-USB controller, and the Mac sees a live USB device** (`0525:a4a2`,
-confirmed via `pyusb`/`ioreg`) with the postmarketOS debug-shell's telnet
-daemon active on `172.16.42.1:23`. The only remaining gap is that the
-kernel was built with `CONFIG_USB_ETH_EEM=y`, which makes the gadget offer
-CDC-EEM + RNDIS instead of CDC-ECM -- and macOS has no in-box driver for
-either of those, only ECM. A kernel rebuild with that flag off is in
-progress; not yet tested on hardware.
+`cpu-release-addr` DTB bug that swap introduced; Round 6 confirmed Linux
+boots completely with a live USB gadget device. **Round 7: fixed the
+kernel config so macOS binds CDC-ECM natively (`en10` now appears
+automatically, no third-party driver) -- but no data crosses the link at
+all** despite both endpoints independently confirmed correctly configured
+(real ARP broadcasts leaving the Mac every second, captured with
+`tcpdump`; the iPad's `usb0` confirmed assigned `172.16.42.1` by reading
+its actual init script). This points to a real bug in the historical
+kernel's `dwc2` gadget driver's bulk-transfer path on the T7001 --
+unresolved, needs either UART access or another blind kernel-parameter
+iteration to diagnose further.
 
 This document originally centered on reproducing the complete June 2022 stack
 reported working on A7/A8/A8X. That historical-Pongo route remains blocked by
@@ -985,7 +987,87 @@ as a small Nix derivation (`patchedHistoricalConfig` in `flake.nix`) that
 `# CONFIG_USB_ETH_EEM is not set` before it's installed as the kernel's
 defconfig, rather than editing the flake-input file directly. This
 requires a full kernel rebuild (not just a DTB patch) since it's a kernel
-config change; in progress, not yet tested on hardware.
+config change.
+
+### Round 7, 2026-09-07: macOS binds CDC-ECM correctly, but no data ever crosses the link
+
+Kernel rebuild (~75 minutes on the remote `x86_64-linux` builder) confirmed
+the fix compiled in correctly (`grep CONFIG_USB_ETH` on the built
+`.config` showed `# CONFIG_USB_ETH_EEM is not set`, `CONFIG_USB_ETH_RNDIS=y`
+unchanged), and `m1n1-control` was rebuilt on top of it. Ran on hardware:
+this time **macOS automatically created a network interface** --
+
+```
+Hardware Port: RNDIS/Ethernet Gadget
+Device: en10
+```
+
+-- confirming the ECM fix works: `pyusb` showed configuration 1's
+interface 0 is now `class=0x02 subclass=0x06 proto=0x00` (genuine CDC-ECM),
+and macOS's in-box `AppleUSBCDCECMData` bound to it automatically, no
+third-party driver needed.
+
+`networksetup -setmanual "RNDIS/Ethernet Gadget" 172.16.42.2 255.255.255.0
+172.16.42.1` (no `sudo` needed for this specific operation) put a static IP
+on `en10` in the debug-shell's known subnet. But every connectivity test
+failed completely: `ping 172.16.42.1` -- 100% loss; `arp -a` --
+`(incomplete)`; `netstat -I en10 -b` -- 0 inbound packets after 300+
+outbound. Unplugging/replugging the USB-C cable (to force a full
+re-enumeration and redo the CDC-ECM link-up handshake) made no difference
+-- identical symptoms after reconnecting.
+
+Since this environment's shell has no controlling TTY, `sudo` cannot
+prompt for a password here, so root-only diagnostics (`tcpdump`,
+`ifconfig ... down/up`) aren't directly available. The user ran `sudo
+tcpdump -i en10 -n` in their own terminal while a fresh `ping` was
+triggered from here, and captured real ARP broadcasts leaving the
+interface once a second (`ARP, Request who-has 172.16.42.1 tell
+172.16.42.2`) -- proving macOS's side is genuinely correct and actively
+transmitting, not just reporting a fake "active" status. Zero replies, and
+no traffic of any kind, ever came back from the iPad.
+
+Two hypotheses were checked and ruled out:
+
+1. **DMA-related dwc2 warnings** (`dwc2_check_params: Invalid parameter
+   g_dma=1`, `g_dma_desc=1`, seen in every boot's log). Reading
+   `drivers/usb/dwc2/params.c` in the actual kernel source showed this is
+   *intentional*: `bool dma_capable = false;//!(hw->arch ==
+   GHWCFG2_SLAVE_ONLY_ARCH);` -- the real hardware-capability check is
+   commented out and DMA is unconditionally forced off in this historical
+   fork, which is why any config requesting `g_dma=1` gets overridden with
+   a warning. This forces the well-tested PIO (CPU-driven FIFO) fallback
+   path, which should still handle bulk transfers correctly, just slower
+   -- not a plausible explanation for a *total* absence of any data.
+2. **The postmarketOS init script never assigning `usb0` an IP address**,
+   since its own configfs-based gadget setup fails earlier
+   (`UDC core: g1: couldn't find an available UDC or it's busy` -- the
+   *kernel's own* legacy `g_ether` already owns the only UDC by that
+   point). Extracted `debug_initrd.img` locally (`gunzip | cpio -idm`) and
+   read `init_functions.sh`'s actual `start_udhcpd()` directly rather than
+   guessing: it tries `ifconfig rndis0 $IP` (fails, no such interface),
+   then `ifconfig usb0 $IP` -- and the boot log's `"  Using interface
+   usb0"` line only ever prints if that specific `ifconfig` call already
+   returned success (`INTERFACE=usb0` is set by `&&`, and the branch that
+   prints "Could not find an interface" is skipped whenever `$INTERFACE`
+   is non-empty). So `usb0` genuinely has `172.16.42.1` assigned. Ruled
+   out.
+
+With both endpoints independently confirmed correctly configured (`en10`
+up with a real ARP-transmitting ECM driver bound on the Mac; `usb0` up
+with the address assigned and `udhcpd`/telnet listening on the iPad) and
+zero data crossing in either direction, the remaining explanation is a
+real bug in the actual USB bulk-transfer path -- most likely in this
+historical kernel's `dwc2` gadget driver on the T7001, which (per Round 6)
+had never actually been proven to move real Ethernet frames before this
+session; only its USB-descriptor-level enumeration was previously
+confirmed. Further diagnosis from here needs visibility this project
+doesn't have yet: either serial/UART access to run `ip -s link show usb0`
+/ `ethtool` / check `dmesg` for transfer errors directly on the live
+shell, or another guess-and-check kernel-parameter iteration cycle (e.g.
+forcing different `g_rx_fifo_size`/`g_tx_fifo_size` values, or a
+non-composite single-function ECM gadget instead of the RNDIS+ECM
+composite one) tested blind on hardware. Not yet resolved; awaiting a
+decision on which path to pursue.
 
 ## Attempts and failures while preparing the control
 
