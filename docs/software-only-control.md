@@ -1,9 +1,19 @@
 # Software-only T7001 control
 
-This is the last well-evidenced experiment that does not require a custom
-UART/JTAG cable. It reproduces the complete June 2022 stack that was reported
-working on A7/A8/A8X, including the iPad Air 2, before mixing in the current
-kernel, NixOS initramfs or the project's diagnostic PongoOS changes.
+**2026-09-07: Linux boots.** The `bootm` -> m1n1 route below (not the
+historical-control route this document was originally written around --
+see "A second, architecturally different route" further down) got Linux
+running on this exact iPad Air 2, confirmed by genuine kernel driver-probe
+output captured on video. See "Hardware round, 2026-09-07" under that
+section for the full transcript and how it was verified. This is the
+project's primary milestone to date.
+
+This document also covers the last well-evidenced experiment that does not
+require a custom UART/JTAG cable: reproducing the complete June 2022 stack
+that was reported working on A7/A8/A8X, including the iPad Air 2, before
+mixing in the current kernel, NixOS initramfs or the project's diagnostic
+PongoOS changes. That one is still blocked by a `palera1n` size limit, see
+below.
 
 ## Why this is new
 
@@ -384,6 +394,99 @@ recompiling -- verified the repackaged DTB has `/chosen/framebuffer` with no
 unit address. Whether this fix, combined with the CPU-topology fix, was
 enough to reach a real console is exactly the open question attempt 3
 above could not resolve.
+
+### Attempt 4, same round, both fixes together, recorded on video: the CPU check now passes cleanly
+
+Re-ran with both fixes applied, this time with the whole attempt recorded on
+video from the PongoOS logo onward, specifically to catch anything a still
+photo might miss between frames. It did.
+
+The CPU-topology fix worked completely -- no mismatch this time:
+
+```
+FDT: CPU 1 MPIDR=0x1 release-addr=0x803b5c258
+FDT: Reserving stack for CPU 2 0x806e54000
+FDT: Reserving EL3 stack for CPU 2 0x806e68000
+FDT: CPU 2 MPIDR=0x2 release-addr=0x803b5c298
+```
+
+Both started CPUs now report exactly the simple, expected MPIDR values
+(`0x1`, `0x2`) -- confirming the earlier diagnosis precisely: the real
+hardware was never the problem, only the DTB's corrupted 1-cell `reg`
+reads were.
+
+Past that, a long run of non-fatal `FDT:`/`ADT:` "not found, ignoring"
+lines for peripherals this DTB doesn't fully describe for m1n1's purposes
+(AIC affinities, `cpu-map`, WLAN, Bluetooth, GPU, SEP, PCIe, keyboard --
+none of these are needed for a minimal console boot), then:
+
+```
+FDT: DRAM at 0x800000000 size 0x80000000
+FDT: Usable mem bounds 0x800c00000..0x87d0d6000 (0x7c4d6000)
+...
+Preparing to boot kernel at 0x805400000 with fdt at 0x806e7c000
+Booting Linux kernel at 0x805400000 with fdt at 0x806e7c000
+```
+
+**m1n1 completed its entire boot chain and executed the jump into the
+actual Linux kernel entry point.** This is the furthest point this
+investigation has ever reached, by a wide margin -- every m1n1-side check
+now passes cleanly.
+
+The screen still went black, and the device still dropped off USB
+entirely -- same signature as attempt 3. But the video adds a real data
+point the stills couldn't: **the screen actively transitions from m1n1's
+white-text log to solid black, rather than staying frozen mid-log.** A hard
+crash before any display-related code ever ran would leave whatever m1n1
+last painted frozen in framebuffer memory, unchanged -- nothing would have
+overwritten those pixels. Something (a framebuffer driver's own clear-on-
+probe behavior is the obvious candidate, since `CONFIG_FB_SIMPLE=y` and
+`CONFIG_FRAMEBUFFER_CONSOLE=y` are both set in the build) actively wrote
+solid black into that memory after the jump. That is evidence, not proof,
+that code executed *inside* the kernel after entry, not just that the
+handoff itself completed.
+
+**Update, minutes later: it did appear.** The recording was reviewed
+frame-by-frame (`ffmpeg -ss <t> -frames:v 1`) rather than relying on eyes
+watching it live, and at approximately t=6.50s of the video -- roughly
+0.1-0.2s after the last m1n1 log line -- the screen shows genuine Linux
+kernel driver-probe output, independently confirmed directly from the
+source video file:
+
+```
+[    0.xxxxxx] cpufreq-dt cpufreq-dt: failed register driver: -19
+[    0.xxxxxx] sdhci: Secure Digital Host Controller Interface driver
+[    0.xxxxxx] sdhci: Copyright(c) Pierre Ossman
+[    0.xxxxxx] sdhci-pltfm: SDHCI platform and OF driver helper
+[    0.xxxxxx] leds-trig-cpu: registered to indicate activity on CPUs
+[    0.xxxxxx] usbcore: registered new interface driver usbhid
+[    0.xxxxxx] usbhid: USB HID core driver
+[    0.xxxxxx] cs_system_cfg: CoreSight Configuration manager initialised
+[    0.xxxxxx] Driver 'optee' was unable to register with bus_type 'arm_ffa'
+because the bus was not initialized
+```
+
+This is unmistakably genuine upstream Linux kernel source text (`sdhci:
+Copyright(c) Pierre Ossman` is the real SDHCI subsystem's own copyright
+line -- not something any other layer in this chain could produce). **Linux
+booted and executed real driver initialization code on this iPad Air 2.**
+This is confirmed, not inferred -- the single goal this entire multi-week
+investigation has been working toward.
+
+By t=6.60s the screen is fully black again -- the visible window was well
+under half a second, consistent with the user's own description ("flashed
+for a short time"). Given there is no visible panic trace (no "Kernel
+panic", no register dump, no backtrace) in the captured frames, and driver
+probing continuing normally right up to the last visible line, the much
+more mundane explanation is that boot continued past this point and
+something later (a console reconfiguration, the debug initramfs's own
+`/init` doing something display-related, or simply scrolling past faster
+than the camera's frame rate could catch) is responsible for the
+subsequent black screen -- not necessarily a crash. This specific,
+narrower question -- what happens immediately after these driver-probe
+lines -- is what a UART console would resolve outright. But the primary
+question this whole route was built to answer is now answered: **yes, this
+software-only path boots Linux on this exact iPad Air 2.**
 
 ## Attempts and failures while preparing the control
 

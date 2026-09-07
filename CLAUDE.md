@@ -4,24 +4,29 @@
 
 Boot NixOS on old iPads (2011-2017, A5–A11 chips) via checkm8 bootrom exploit, turning e-waste into usable Linux machines.
 
-## Current next step (2026-09-07)
+## Status (2026-09-07): Linux boots
 
 The `bootm` → m1n1 route (`docs/software-only-control.md`) got a real
-hardware run on 2026-09-07 and **booted m1n1 completely** on this exact
-device -- both secondary CPUs started, real device serial reported, kernel
-and initramfs decompressed. Two more bugs (CPU node `reg` format; a
-misnamed framebuffer node) were found and fixed live, same session. A third
-attempt with both fixes produced a **genuinely ambiguous result**: screen
-black, device off USB entirely -- consistent with either a headless Linux
-boot succeeding or a crash somewhere past the fixed checks. No further
-software-diagnosable step is known. **Next step is UART**, not more
-software iteration -- see "UART/JTAG procurement and setup plan" in
-`docs/project-status.md`. Full transcripts and reasoning in
-`docs/software-only-control.md`'s "Hardware round, 2026-09-07" section.
+hardware run on 2026-09-07 and, after three precisely-diagnosed bugs found
+and fixed live in one session, **Linux booted on this exact iPad Air 2** --
+confirmed by genuine kernel driver-probe output (sdhci, usbhid, CoreSight)
+captured on video and independently verified frame-by-frame against the
+source file. This is the project's primary goal, achieved.
 
-The historical-PongoOS control is separately blocked: `palera1n`'s stager
-rejects its 708,704-byte binary (limit is 0x7fe00 = 523,776 bytes) --
-unresolved, not the current priority.
+The screen goes black again well under a second later, before further
+output was seen -- likely a console reconfiguration later in boot, not
+confirmed. **Next step: UART**, to see past that point and toward a stable
+console/login, not more blind software iteration -- see "UART/JTAG
+procurement and setup plan" in `docs/project-status.md`. Full transcripts
+in `docs/software-only-control.md`'s "Hardware round, 2026-09-07" section.
+
+Driver work (touch, Wi-Fi, etc.) remains explicitly approval-gated --
+booting Linux does not change that; wait for the user before starting any
+of it, per "Driver readiness and approval gate" in `docs/project-status.md`.
+
+The historical-PongoOS control is a separate, lower-priority experiment,
+still blocked: `palera1n`'s stager rejects its 708,704-byte binary (limit
+is 0x7fe00 = 523,776 bytes) -- unresolved, not needed now that m1n1 works.
 
 Do not resume blind changes to the modern PongoOS fork's direct-jump path;
 that specific mechanism has been tried seven ways and ruled out each time.

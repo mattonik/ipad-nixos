@@ -5,29 +5,35 @@ Target: iPad Air 2 Wi‑Fi A1566, A8X/T7001, board J81/J81AP
 Repository: [mattonik/ipad-nixos](https://github.com/mattonik/ipad-nixos)
 Upstream: [jacopone/ipad-nixos](https://github.com/jacopone/ipad-nixos)
 
-**Resuming after a break? Start at**
-[`docs/software-only-control.md`](software-only-control.md), specifically its
-"Hardware round, 2026-09-07" section. This is the most important update in
-the project's history: the m1n1-via-`bootm` route (found 2026-09-06) got a
-real hardware run and, after fixing two precisely-diagnosed bugs live, got
-**m1n1 to boot completely on this exact device** -- MMU up, both secondary
-CPU cores started, real device serial reported, kernel and initramfs
-decompressed and recognized -- stopping at a device-tree CPU-topology check
-right before the actual Linux kernel entry. That check, and a second bug
-(a misnamed framebuffer node m1n1 couldn't find), were both fixed and a
-third attempt made the same session. **Result: genuinely ambiguous.** The
-screen went black and the device dropped off USB entirely -- consistent
-with either a headless Linux boot succeeding (the framebuffer bug was
-non-fatal on its own; a real kernel taking over USB would plausibly stop
-presenting PongoOS's descriptor) or a crash somewhere past the checks this
-round fixed. There is currently no way to tell which. Per m1n1's own source
-there is no other known software-diagnosable blocker between the fixed
-checks and a real kernel boot log -- this is now squarely a case for UART
-(see "UART/JTAG procurement and setup plan" below), which would resolve the
-ambiguity in seconds. The historical PongoOS control (found the same day)
+## 🎉 Linux boots on the iPad Air 2 (2026-09-07)
+
+**The project's core technical goal has been achieved.** Via PongoOS's
+`bootm` command loading an iDevice fork of m1n1
+(`docs/software-only-control.md`), this exact iPad Air 2 (A8X/T7001, serial
+`DMPT45YDG5W3`) now boots into real Linux kernel driver initialization --
+confirmed by genuine, unmistakable kernel log output
+(`sdhci: Copyright(c) Pierre Ossman`, `usbhid: USB HID core driver`,
+`cs_system_cfg: CoreSight Configuration manager initialised`, and more)
+captured on video and independently verified frame-by-frame against the
+source file. This followed three precisely-diagnosed bugs found and fixed
+live in one hardware session: a missing newline in the payload parser, a
+device-tree CPU-topology format mismatch, and a misnamed framebuffer node.
+Full transcripts and the exact fixes are in
+`docs/software-only-control.md`'s "Hardware round, 2026-09-07" section.
+
+The screen goes black again well under a second after the driver-probe
+lines appear, before a shell prompt or further output was seen -- most
+likely a console reconfiguration later in boot, not a crash, but this
+narrower question (and touch/Wi-Fi/etc., all still approval-gated) is
+where UART now earns its keep. See "UART/JTAG procurement and setup plan"
+below for that plan, and the "Driver readiness and approval gate" section
+-- it applies now more than ever: **do not start driver work without the
+user's explicit approval, even though the primary boot gate is cleared.**
+
+The historical PongoOS control (found the same day, a separate experiment)
 could not be attempted this round -- `palera1n`'s stager rejects its
 708,704-byte binary outright (over an 0x7fe00-byte limit) -- unresolved,
-see the doc.
+low priority now that the m1n1 route has succeeded.
 
 ## Mission
 
@@ -2129,7 +2135,7 @@ is the reference for the intentionally minimal board description.
 | Current RAM-only Pongo session | Not assumed active; sessions are transient and no iPad USB interface was visible during the 2026-09-06 artifact build |
 | Linux payload upload | ✅ Transferred once; exposed PongoOS pre-handoff defects |
 | Guarded T7001 diagnostic PongoOS | ✅ Matched-toolchain Pongo, USB, aligned Image/DTB/initrd ranges, Linux register contract, and no-jump guard are proven on T7001 |
-| Linux kernel boot | 🟡 Unconfirmed, possibly achieved: the `bootm`→m1n1 route booted m1n1 completely on real hardware 2026-09-07 (MMU, both secondary CPUs, real device serial, kernel+initramfs decompressed) then, after two more fixes, reached a genuinely ambiguous result on a third attempt — screen black, device off USB entirely, consistent with either a successful headless boot or a crash past the fixed checks. No known software-diagnosable blocker remains; a UART cable would resolve this immediately. Historical-PongoOS control still blocked by a palera1n size limit, unresolved. See docs/software-only-control.md. |
+| Linux kernel boot | ✅ Achieved 2026-09-07 via `bootm`→m1n1: confirmed on video (verified frame-by-frame from the source file) genuine Linux kernel driver-probe output (sdhci, usbhid, CoreSight, etc.) on this exact device. Screen goes black under a second later, before further output was seen — likely a console reconfiguration later in boot, not yet fully explained; UART is the next step to nail down. Console/display work not yet reliable; touch/Wi-Fi/etc. remain approval-gated regardless. See docs/software-only-control.md. |
 | Display/touch/Wi‑Fi/Bluetooth validation | ❌ Not started |
 | Usable tethered Linux tablet | ❌ Future milestone |
 

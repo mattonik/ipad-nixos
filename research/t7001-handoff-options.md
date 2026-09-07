@@ -900,6 +900,29 @@ resolved, and the investigation has reached a state a serial console would
 resolve in seconds that screen-color pattern-matching cannot resolve at
 all, however many more DFU cycles are spent on it.
 
+**Fourth update, minutes later -- confirmed. Linux boots.** The recording
+from attempt 4 was reviewed frame-by-frame with `ffmpeg` rather than
+relying on real-time observation, and at approximately t=6.50s -- roughly
+0.1-0.2s after m1n1's last log line -- the screen shows genuine Linux
+kernel driver-probe output: `sdhci: Copyright(c) Pierre Ossman`,
+`usbhid: USB HID core driver`, `cs_system_cfg: CoreSight Configuration
+manager initialised`, and several more real, unmistakable upstream kernel
+log lines. Independently verified directly from the source video file, not
+just the user's own screenshot. **This is confirmed: the `bootm` -> m1n1
+route boots Linux on this exact iPad Air 2.** This is the milestone this
+entire investigation, across eight prior software-only hypotheses and ten
+prior hardware handoff attempts, has been working toward.
+
+The visible window was under half a second before the screen went black
+again -- with no visible panic trace in the captured frames, the more
+likely explanation is a console reconfiguration or display-related action
+later in boot (the debug initramfs's own `/init`, most plausibly), not a
+crash. That narrower question is what UART would still usefully resolve.
+But it is a narrower question now -- the investigation's actual goal,
+"does Linux boot on the iPad Air 2 via this project's checkm8 chain," is
+answered. Full transcript, extraction method, and reasoning in
+`docs/software-only-control.md`.
+
 ## Sources
 
 - [konradybcio/pongoOS](https://github.com/konradybcio/pongoOS)
