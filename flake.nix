@@ -267,6 +267,32 @@
             > "$out/SHA256SUMS"
         '';
 
+        # Same hardware-proven payload, with a display-only USB diagnostic hook.
+        m1n1-usb-diagnostic = pkgs.runCommand "ipad-air2-usb-diagnostic" {
+          nativeBuildInputs = [ pkgs.gzip pkgs.cpio ];
+        } ''
+          mkdir -p "$out" overlay/etc/postmarketos-mkinitfs/hooks
+          control=${self.packages.${linuxBuildSystem}.m1n1-control}
+          cp "$control/"{Pongo.bin,m1n1.bin,t7001-j81.dtb,Image.gz} "$out/"
+          hook=etc/postmarketos-mkinitfs/hooks/20-debug-shell.sh
+          cp ${./boot/usb-diagnostic.sh} "overlay/$hook"
+          chmod 755 "overlay/$hook"
+          touch -d @1 "overlay/$hook"
+          # Linux accepts concatenated newc archives. Preserve the original
+          # archive (including device nodes) and overlay just its debug hook.
+          gzip -dc "$control/initramfs.gz" > initramfs.cpio
+          (cd overlay; printf '%s\0' "$hook" | cpio --null -o -H newc \
+            --owner=0:0 --reproducible) >> initramfs.cpio
+          gzip -n -c initramfs.cpio > "$out/initramfs.gz"
+          # Keep debug messages in dmesg without interrupting dashboard pages.
+          sed 's/ ignore_loglevel//' "$control/bootargs" \
+            | sed 's/$/ dyndbg="func ecm_setup +p; func ecm_set_alt +p; func gether_connect +p"/' \
+            > "$out/bootargs"
+          cat "$out/m1n1.bin" "$out/bootargs" "$out/t7001-j81.dtb" \
+            "$out/Image.gz" "$out/initramfs.gz" > "$out/m1n1-linux.bin"
+          sha256sum "$out/"{Pongo.bin,m1n1.bin,m1n1-linux.bin} > "$out/SHA256SUMS"
+        '';
+
         # Minimal initramfs — entire root filesystem in RAM
         # Build with SSH access:
         # IPAD_AUTHORIZED_KEYS=/absolute/path/key.pub nix build --impure \

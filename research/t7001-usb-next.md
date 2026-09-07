@@ -1,0 +1,223 @@
+# T7001 USB: diagnostics and upgrade candidates
+
+Reviewed 2026-09-07, after Round 7. Hardware diagnosis is still open.
+
+## Session handoff: completed work and exact resume point
+
+The user authorized the diagnostic implementation and additional research.
+Both are complete locally. **The diagnostic payload has not been uploaded or
+booted on hardware yet.** The latest USB observation still showed the previous
+Linux gadget. The user has been asked to enter DFU and run the PongoOS command
+below; no response confirming that step has been received at this handoff.
+`sudo -n true` returned `sudo: a password is required`, so the PongoOS launcher
+must currently be run in the user's terminal. This is an authentication
+requirement, not a new approval requirement for the already-authorized work.
+
+At review start, Git was clean on `main` at
+`51b85b159b39028a235294035bb18f8f6a66eb30`, matching a live `git ls-remote origin`
+check. There were no stashes or extra worktrees. The existing
+`linux-boots-2026-09-07` tag points to the earlier first-boot milestone.
+This session's changes are **uncommitted and unpushed**; no new tag was created.
+`git add -N` was used for `boot/usb-diagnostic.sh` so the Git-backed Nix flake
+can include the new file; its content has not been staged for a commit.
+
+| Changed file | Purpose |
+| --- | --- |
+| `flake.nix` | Adds the separate `m1n1-usb-diagnostic` package; the working control stays intact |
+| `boot/usb-diagnostic.sh` | Replaces only the debug-shell hook with the display diagnostics |
+| `boot/test_usb_diagnostic.py` | Runnable stdlib check of the actual built archive and assembled payload |
+| `research/t7001-usb-next.md` | Evidence, source links, build/run instructions, decision table and this handoff |
+| `docs/project-status.md`, `docs/software-only-control.md` | Point readers to the latest evidence and supersede the overconfident Round 7 diagnosis |
+| `README.md`, `CLAUDE.md` | Refresh entry-point status so future work does not resume the obsolete black-screen or UART-only plan |
+
+Completed validation:
+
+- The Nix diagnostic build succeeded on the configured Linux builder. Only the
+  diagnostic assembly derivation rebuilt; no kernel compilation was needed.
+- The final `python3 boot/test_usb_diagnostic.py result-m1n1-control
+  result-usb-diagnostic` check passed: PongoOS, m1n1, kernel and DTB are
+  byte-identical to the control; the original uncompressed initramfs is intact;
+  only the executable debug hook is overlaid; payload order and hashes match.
+- ShellCheck passed after adding directives for the two sourced files that
+  exist inside the initramfs rather than on the Mac. `sh -n` also passed.
+- `shasum -a 256 -c result-usb-diagnostic/SHA256SUMS` passed for all three entries.
+- `git diff --check` passed. Native macOS `nix flake check --no-build --offline`
+  passed, explicitly excluding incompatible Linux outputs; it is not a full
+  all-systems validation. The Linux diagnostic package itself was built.
+- During the initial review, both existing uploader self-checks passed.
+
+The builder printed cache DNS warnings, but all required inputs were available
+and the builds completed. ShellCheck was fetched to the host's Nix store; no
+new runtime dependency was added to the iPad image. The first diagnostic build
+was replaced by a second build containing only ShellCheck comment additions.
+The final artifact is:
+
+```text
+result-usb-diagnostic -> /nix/store/sibis0nwlpbn3kqfl4rwjxh7lna55hkc-ipad-air2-usb-diagnostic
+m1n1-linux.bin SHA-256: 185f950260bf3dc8302a3df89f3ee00393579706b1dfaaeb295a369138d14e69
+control -> /nix/store/2dk7jm1r3k1gjlmj9zgqszar105w1as2-ipad-air2-m1n1-control
+```
+
+Resume in this order:
+
+1. Confirm DFU/PongoOS with the user and host USB enumeration. Run the existing
+   uploader only once PongoOS (`05ac:4141`) is present, using the diagnostic
+   artifact above. An accepted upload alone is not proof of Linux boot.
+2. Confirm the three diagnostic pages appear. Record screenshots and exact
+   page values; do not label this image hardware-tested until that happens.
+3. Rediscover the Mac interface, verify `172.16.42.2/24`, then compare both
+   endpoints' counters while probing. On the Mac, use `networksetup
+   -listallhardwareports`, `ifconfig <interface>`, `netstat -I <interface> -b`,
+   `arp -n 172.16.42.1`, `ping -c 4 -W 1000 172.16.42.1`, and
+   `nc -vz -G 3 172.16.42.1 23`. If needed, capture ARP/ICMP with
+   `sudo tcpdump -ni <interface> 'arp or icmp'` in the user's terminal.
+4. Follow the observation/decision table below. If telnet works, collect
+   `/tmp/usb-diagnostic/*` and `dmesg` before rebooting, since logs are in RAM.
+   If the diagnostic fails to boot, return to the unchanged `m1n1-control`
+   PongoOS/payload using the same DFU procedure and record the visible failure.
+5. If the old stack still fails, prepare the separate matched Hoolock kernel
+   and DTB experiment described below. It has been researched, **not built**.
+   Keep touch, Wi-Fi and desktop work outside this USB investigation.
+6. Append hardware outcomes, artifact identity, commands, and the revised next
+   step to this record and refresh the status links after each experiment.
+
+## What we actually know
+
+The historical 5.19-rc1 kernel boots with the patched historical J81 DTB.
+macOS binds CDC-ECM and creates `en10`, configured as `172.16.42.2/24`.
+On the hub connection it reported 1,741 transmitted packets and zero received.
+After moving the iPad directly onto the Mac's other USB controller (confirmed
+by `ioreg`, no intervening hub), the fresh interface still reported 119 TX,
+zero RX, incomplete ARP, four unanswered pings and a timeout on TCP port 23.
+
+That rules out the hub as a sufficient explanation. It does **not** prove
+that packets reached the iPad or that both USB directions are broken. Host
+packet capture observes the host networking stack; device RX/TX counters,
+endpoint state and USB transfer completions are still missing.
+
+The old initramfs really does assign `172.16.42.1` before printing
+`Using interface usb0`. That is useful evidence, but not a measurement of
+the live controller. Likewise, the historical driver's forced `g_dma=false`
+explains its warning; it does not establish that its PIO path works on T7001.
+The categorical exclusions in the old Round 7 narrative are superseded here.
+
+## First experiment: observe the device without changing its kernel
+
+Build and verify:
+
+```bash
+nix build .#packages.x86_64-linux.m1n1-usb-diagnostic -o result-usb-diagnostic -L
+python3 boot/test_usb_diagnostic.py result-m1n1-control result-usb-diagnostic
+```
+
+`m1n1-usb-diagnostic` copies the proven PongoOS, m1n1, DTB and kernel unchanged.
+It adds a one-file CPIO overlay replacing the existing postmarketOS debug-shell
+hook. The original `/init`, binaries, device nodes, USB setup and IP assignment
+remain intact. The hook skips the debug splash, retains the RAM-only telnet
+shell on `172.16.42.1:23`, and shows three pages for 12 seconds each:
+
+1. `usb0` address/carrier, packet/error/drop counters, UDC state/speed,
+   ARP entries, USB interrupt counts and a bounded ping toward the Mac.
+2. DWC2 endpoint registers and effective DMA/FIFO parameters from debugfs.
+3. Recent USB kernel messages, including ECM activation and packet-filter logs.
+
+The latest snapshots overwrite `/tmp/usb-diagnostic/{link,controller,kernel,ping}`;
+there is no growing userspace log. `ignore_loglevel` is removed so the hook can
+keep asynchronous kernel messages from obscuring the display. A narrow boot-time
+`dyndbg` query enables `ecm_setup`, `ecm_set_alt` and `gether_connect` messages.
+Both DEBUG_FS and DYNAMIC_DEBUG are enabled in the **actual ECM kernel config**
+(`/nix/store/byndrr6w3r5gxa2di0zsjp2p201jqhmi-linux-config-aarch64-unknown-linux-gnu-5.19.0-rc1`).
+The older `result-historical-config` symlink still points to the pre-ECM config;
+do not use that symlink to infer the currently booted kernel's configuration.
+
+The [kernel initramfs format](https://docs.kernel.org/driver-api/early-userspace/buffer-format.html)
+supports concatenated CPIO archives. Both archives are compressed as **one gzip
+member**: the pinned [m1n1 payload loader](https://github.com/HoolockLinux/m1n1/blob/d5a10ac52a6468484854419a6c5130f1d62073eb/src/payload.c)
+passes the complete decompressed byte count to Linux. The archive check verifies
+the original bytes, the sole replacement entry, executable mode, payload order
+and checksums. This is build validation, not a claim that the dashboard has run
+on the iPad yet.
+
+Boot with the established DFU/PongoOS procedure:
+
+```bash
+sudo /tmp/palera1n-arm64 --pongo-shell \
+  --override-pongo "$PWD/result-usb-diagnostic/Pongo.bin" --debug-logging
+# After PongoOS enumerates as 05ac:4141:
+nix develop -c python3 boot/load_m1n1.py result-usb-diagnostic/m1n1-linux.bin
+```
+
+Retain the direct cable, rediscover the host interface after reboot, and use
+`172.16.42.2/24`. Photograph each page while the host pings `172.16.42.1`.
+
+| Observation | Next investigation |
+| --- | --- |
+| UDC not configured or carrier absent | ECM configuration/alternate setting and endpoint activation |
+| iPad RX rises while Mac receives nothing | iPad response/TX path and host receive path |
+| Neither device counter rises despite both peers probing | Endpoint activation, request queues, interrupts and controller configuration |
+| iPad TX rises but host RX stays zero | Check USB completion/endpoint state; network TX counters alone do not prove delivery |
+| Traffic works with this hook | Compare legacy debug-hook behavior; retain the old kernel until the difference is isolated |
+
+## What a newer kernel could change
+
+The [Hoolock A8/A8X support table](https://github.com/HoolockLinux/docs/blob/23ebe1fbc375599221553a7e1815e5de182a6b42/features/A8.md)
+lists USB2 device mode as available in its patched tree. The
+[build guide](https://github.com/HoolockLinux/docs/blob/23ebe1fbc375599221553a7e1815e5de182a6b42/tutorials/SETUP.md)
+explicitly pairs that tree with Hoolock m1n1 and requires the 4 KiB page
+configuration for these older SoCs. Its example userspace also describes USB
+networking, serial and a RAM disk containing logs; this is project support
+documentation, not a test transcript from our particular iPad.
+
+The live `hoolock` branch resolved to `6831bc701a6ce059e71e5aaa9488c9195bea6927`
+(commit date 2026-09-03). Inspection found relevant differences:
+
+| Area | Historical control | Hoolock candidate |
+| --- | --- | --- |
+| DWC2 match | `apple,t7000-usb` | `apple,t7000-dwc2`, `apple,dwc2` |
+| Gadget TX FIFO requested per FIFO | 256 words | 244 words; effective allocation still depends on hardware validation |
+| DMA capability validation | Hardcoded false, forcing PIO | Hardware capability check restored; actual operating mode must be measured |
+| USB hardware description | Legacy USB node, inherited setup | USB complex, explicit PHY, power domains, resets, peripheral mode, nonposted MMIO |
+| Gadget setup in example config | Built-in legacy `g_ether` | Configfs ECM/ACM/NCM, legacy `g_ether` disabled |
+
+Sources: [Apple DWC2 patch](https://github.com/HoolockLinux/linux/commit/6f725e0733950d172c7672759e509b6a7b5862da),
+[current parameters](https://github.com/HoolockLinux/linux/blob/6831bc701a6ce059e71e5aaa9488c9195bea6927/drivers/usb/dwc2/params.c),
+[T7001 device tree](https://github.com/HoolockLinux/linux/blob/6831bc701a6ce059e71e5aaa9488c9195bea6927/arch/arm64/boot/dts/apple/t7001.dtsi),
+[AUSB PHY driver](https://github.com/HoolockLinux/linux/blob/6831bc701a6ce059e71e5aaa9488c9195bea6927/drivers/phy/apple/ausb.c),
+[example configuration](https://github.com/HoolockLinux/docs/blob/23ebe1fbc375599221553a7e1815e5de182a6b42/config_16k).
+
+The current PHY needs calibration properties supplied by m1n1. Our pinned
+artifact is from Actions run `33380676898`, source commit
+`d5a10ac52a6468484854419a6c5130f1d62073eb` (2026-08-31). Its history already
+contains [the AUSB tunable handoff](https://github.com/HoolockLinux/m1n1/commit/ce0d81ae2aff).
+An m1n1 update is therefore not the first missing prerequisite.
+
+There are also subsequent generic DWC2 fixes for power-state recovery and
+pull-up changes, for example
+[recovery after power-domain off](https://github.com/HoolockLinux/linux/commit/ba6e518d136b)
+and [exiting partial power down when changing pull-up](https://github.com/HoolockLinux/linux/commit/bf1e90189a98).
+Neither establishes our failure's cause; the historical Apple settings already
+disable some low-power modes. Avoid treating an unrelated fix title as proof.
+
+## Recommendation after the diagnostic run
+
+If the old stack still cannot transfer data, test a **separate, pinned Hoolock
+kernel plus its matching J81 DTB**, keeping our working PongoOS/m1n1 and the
+diagnostic display. Enable 4 KiB pages, `APPLE_USBCOMPLEX`, `PHY_APPLE_AUSB`,
+DWC2, framebuffer, debugfs, and a deliberate ECM gadget configuration. Preserve
+the existing result links as the rollback control. Plain mainline is not a
+drop-in substitute for the Apple USB support advertised by Hoolock.
+
+Do not transplant just the new DTB onto 5.19: its compatible strings, PHY,
+power and bus dependencies changed. Do not merely flip DMA on in 5.19 without
+auditing address translation and controller support. FIFO edits likewise need
+the effective debugfs values first: this fork reads DT properties **before**
+its Apple callback overwrites the FIFO values, and exposes no corresponding
+`g_rx_fifo_size`/`g_tx_fifo_size` module parameters. Blind bootarg tuning would
+not do what the old runbook suggested.
+
+A physical Linux host remains a useful independent ECM test. USB ACM serial
+would bypass Ethernet/IP, but shares DWC2 bulk transfers and is not an
+independent UART; the historical config also lacks CONFIG_USB_CONFIGFS_ACM.
+No inspected issue report established an exact fix for this iPad's zero-RX
+symptom. GitHub eventually rate-limited the additional API reads; the concrete
+findings above were obtained before that limit.

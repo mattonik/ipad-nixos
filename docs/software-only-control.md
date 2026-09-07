@@ -1,5 +1,12 @@
 # Software-only T7001 control
 
+**Latest follow-up (2026-09-07):** direct Mac-to-iPad cabling also gives zero
+host RX. A separate `m1n1-usb-diagnostic` payload now builds and passes archive
+checks, ready for a hardware run. It displays device-side counters and DWC2
+state without rebuilding the kernel. The older Round 7 claim of a proven
+bulk-transfer bug was too strong. See the
+[diagnostic runbook and kernel-upgrade research](../research/t7001-usb-next.md).
+
 **2026-09-07: Linux boots to an interactive shell.** The `bootm` -> m1n1
 route below (not the historical-control route this document was originally
 written around -- see "A second, architecturally different route" further

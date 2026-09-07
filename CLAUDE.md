@@ -21,36 +21,38 @@ Xperia Z5 debug initramfs hiding its own output -- ruled out once its own
 unconditional startup marker never appeared on screen even after testing at
 120fps, which is what led to finding the real, kernel-level cause instead.)
 
-**Update, Round 6**: the USB-networking fix is confirmed working on
+**Update, Round 6**: USB gadget enumeration is confirmed working on
 hardware. `m1n1-control` now uses the *historical* kernel's own DTB (it
 has the real `usbdev@20c100000`/`apple,t7000-usb` node mainline lacks),
 patched with CPU-cell, framebuffer, and `cpu-release-addr` fixes (Rounds
 3-5 below). On real hardware this boots Linux completely: `g_ether` binds
 to the real USB controller, and the Mac sees a live USB device
 (`0525:a4a2`, confirmed via `pyusb`/`ioreg`) with postmarketOS's
-`172.16.42.1:23` telnet daemon active. **UART is not needed** -- this
-route is proven end to end at the device level.
+`172.16.42.1:23` telnet startup reported on screen. Remote interaction
+has not yet been demonstrated.
 
-**Round 7 update**: the `CONFIG_USB_ETH_EEM` fix works -- macOS now binds
-its native `AppleUSBCDCECMData` driver automatically and a real `en10`
-network interface appears, no third-party driver needed. **But no data
-crosses the link at all.** Both endpoints are independently confirmed
-correctly configured: the Mac's `en10` sends real ARP broadcasts every
-second (captured with `sudo tcpdump -i en10 -n` in the user's own
-terminal, since this environment's shell has no TTY for `sudo`), and the
-iPad's `usb0` is confirmed assigned `172.16.42.1` by reading
-`init_functions.sh` directly out of the extracted `debug_initrd.img`
-(not guessed). Zero packets ever arrive in either direction; unplugging
-and replugging the cable made no difference. A DMA-related dwc2 warning
-seen in every boot was checked and ruled out (`g_dma` is intentionally
-hardcoded off in this historical driver -- `drivers/usb/dwc2/params.c`:
-`bool dma_capable = false;` -- forcing the well-tested PIO fallback, not a
-plausible cause of *total* data loss). The remaining explanation is a real
-bug in this historical kernel's `dwc2` gadget bulk-transfer path on the
-T7001, which was never actually proven to move real Ethernet frames
-before this session. **Unresolved** -- needs either UART/serial access to
-inspect the live shell directly, or another blind kernel-parameter
-iteration on hardware. Awaiting a decision on which path to take.
+**Current USB handoff, after Round 7 (2026-09-07):** disabling
+`CONFIG_USB_ETH_EEM` lets macOS bind `AppleUSBCDCECMData` and create `en10`.
+The host still receives zero packets, including after a verified direct
+Mac-to-iPad connection. ARP is incomplete; ping and TCP port 23 time out.
+The old assertion that this proves a DWC2 bulk-transfer bug was too strong:
+we have not measured device-side RX/TX or USB completions. Forced-off DMA
+explains the warning but does not validate PIO operation on T7001.
+
+The user authorized display diagnostics and further USB research.
+`m1n1-usb-diagnostic` is implemented, built and archive-verified; it preserves
+the working kernel/DTB/bootloaders and overlays only the debug-shell hook.
+It has **not yet been uploaded or tested on hardware**. The user was asked
+to enter DFU and run PongoOS in their terminal because sudo needs a password.
+Next: upload the diagnostic payload once `05ac:4141` appears, photograph its
+three pages, compare host/device counters, then select the next experiment.
+
+Hoolock's newer matched kernel/DTB is a researched upgrade candidate, not
+yet built. Our pinned m1n1 already has its AUSB PHY tunable handoff. Do not
+blindly swap only the DTB, enable DMA, or tune nonexistent FIFO bootargs.
+See [the complete session handoff](research/t7001-usb-next.md) for changes,
+checks, artifact hash, source links, rollback and ordered next steps.
+Session changes remain uncommitted/unpushed; the original control is intact.
 
 Full evidence and commands are in `docs/software-only-control.md`'s
 "Round 3" through "Round 7".

@@ -1,6 +1,12 @@
 # iPad Linux Project Status
 
 Status date: 2026-09-07
+
+**USB follow-up:** direct cabling has also failed (zero host RX). A display
+diagnostic payload is built and archive-verified, but not yet hardware-tested.
+Hoolock's newer matched kernel/DTB is a researched upgrade candidate. See
+[T7001 USB next steps](../research/t7001-usb-next.md), which supersedes the
+categorical Round 7 driver diagnosis below.
 Target: iPad Air 2 Wi‑Fi A1566, A8X/T7001, board J81/J81AP  
 Repository: [mattonik/ipad-nixos](https://github.com/mattonik/ipad-nixos)
 Upstream: [jacopone/ipad-nixos](https://github.com/jacopone/ipad-nixos)

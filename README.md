@@ -4,7 +4,7 @@ Run Linux on old iPads (2011–2017) via the checkm8 bootrom exploit, turning e-
 
 ## What This Is
 
-A reproducible build system that cross-compiles a Linux kernel and minimal NixOS userland for iPad hardware. Linux now boots on the iPad Air 2 through PongoOS `bootm` and the Hoolock m1n1 fork; genuine kernel driver output was captured on the device. The current black screen is most likely the bundled legacy debug initramfs hiding its own output, not a failed kernel handoff. See [the live project status](docs/project-status.md).
+A reproducible build system that cross-compiles a Linux kernel and minimal NixOS userland for iPad hardware. The iPad Air 2 boots through PongoOS `bootm` and Hoolock m1n1 to a postmarketOS shell using the historical Linux 5.19-rc1 kernel. macOS recognizes its USB Ethernet gadget, but receives no packets even with a direct cable. A display diagnostic image is built and awaiting hardware testing. See [the live project status](docs/project-status.md) and [USB diagnostics, research and next steps](research/t7001-usb-next.md).
 
 **Primary target:** iPad Air 2 (A8X, 2014) — 3-core ARM64, 2GB RAM, 2048x1536 Retina display.
 
@@ -65,13 +65,13 @@ nix build .#packages.x86_64-linux.m1n1-control \
   -o result-m1n1-control -L
 ```
 
-Linux boots, but the bundled legacy postmarketOS initramfs redirects its output
-to a RAM-only log and paints a nearly black splash. The immediate software-only
-test is the same payload with `PMOS_NO_OUTPUT_REDIRECT` added to its bootargs,
-followed by a minimal visible BusyBox initramfs. The selected modern mainline
-DTB also lacks the historical T7001 USB-device node, so USB Ethernet or serial
-is not expected until a matched DT is restored. See the exact evidence and
-ordered next steps in [the software-only control runbook](docs/software-only-control.md).
+The black-screen issue is resolved, and the payload now uses the patched
+historical DTB with its USB controller node. CDC-ECM enumeration works, but
+ARP, ping and telnet receive no response. The separate `m1n1-usb-diagnostic`
+target keeps the proven boot components and displays device-side USB state
+and counters. See its [build/run instructions and kernel-upgrade research](research/t7001-usb-next.md).
+The modern kernel and Nix-built initramfs above remain separate build targets,
+not hardware-validated replacements for this working control.
 
 ## Project Structure
 
@@ -111,7 +111,7 @@ ipad-nixos/
 
 | Device | SoC | Board ID | DTB | Status |
 |--------|-----|----------|-----|--------|
-| iPad Air 2 (WiFi) | A8X (T7001) | J81 | `t7001-j81.dtb` | Payload transferred; PongoOS handoff port required |
+| iPad Air 2 (WiFi) | A8X (T7001) | J81 | `t7001-j81.dtb` | Linux shell visible; USB Ethernet enumerates, traffic unresolved |
 | iPad Air 2 (Cellular) | A8X (T7001) | J82 | `t7001-j82.dtb` | Untested |
 
 ### Expected Compatible (same boot chain, untested)
