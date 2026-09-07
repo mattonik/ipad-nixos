@@ -166,7 +166,18 @@
           # trailing newline to find the end of a "chosen.X=value" line --
           # without it, it can't terminate the value and falls through to
           # "Unknown payload", exactly what a real hardware run hit here.
-          printf '%s\n' 'chosen.bootargs=console=tty0 loglevel=8 ignore_loglevel rdinit=/init' \
+          #
+          # PMOS_NO_OUTPUT_REDIRECT: the bundled debug_initrd.img is a 2020
+          # postmarketOS image for a Sony Xperia Z5. Its /init calls
+          # setup_log() (init_functions.sh), which execs PID 1's own stdout
+          # and stderr into /pmOS_init.log -- a RAM-only file this project
+          # has no way to read -- unless this exact token appears in
+          # /proc/cmdline. Confirmed by inspecting the actual bundled
+          # init_functions.sh; see docs/software-only-control.md's
+          # "Software follow-up" section for the full byte-level evidence
+          # (including why the subsequent black screen is a >99%-black
+          # 1080x1920 Xperia splash image, not a crash).
+          printf '%s\n' 'chosen.bootargs=console=tty0 loglevel=8 ignore_loglevel rdinit=/init PMOS_NO_OUTPUT_REDIRECT' \
             > "$out/bootargs"
           cat "$out/m1n1.bin" "$out/bootargs" "$out/t7001-j81.dtb" \
             "$out/Image.gz" "$out/initramfs.gz" > "$out/m1n1-linux.bin"
