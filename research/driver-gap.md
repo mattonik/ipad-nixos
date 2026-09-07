@@ -68,10 +68,27 @@ Research conducted February 2026 and revalidated against the project's Linux
 >   `_BQ27XXX_HDQ`, `CONFIG_W1`, `CONFIG_W1_MASTER_UART` are already
 >   enabled in Hoolock's config -- the full Kconfig chain for this
 >   standard, public-datasheet TI part is done. Only a DT node (in
->   `t7001-air2.dtsi`) and the HDQ GPIO pin identification are missing --
->   plausibly "just needs a DT node," but contingent on finding that exact
->   pin from an Apple ADT dump (a data-lookup problem, not driver code),
->   so not attempted without that data in hand.
+>   `t7001-air2.dtsi`) and the HDQ GPIO pin identification are missing.
+>   Checked whether that data is actually available: a real Apple ADT
+>   dump for the T7001-family board *is* present in this environment
+>   (`/private/tmp/adt_collection/a8/J82.adt`, PongoOS's own `dt`-command
+>   output format -- J82 is the cellular sibling of our J81 board, same
+>   PMIC/battery circuit expected). It confirms the exact chip match:
+>   `compatible = "gas-gauge,bq27540.gas-gauge,hdq"` (J82.adt:1475-1476),
+>   with a `function-battery_swi` property carrying the HDQ single-wire
+>   line's pin reference, encoded in Apple's proprietary
+>   `function-*`/"OIPG" GPIO-descriptor binary format (J82.adt:1478).
+>   Decoding that format correctly to get an exact, correct pin number is
+>   real low-level reverse-engineering, not "already exists, needs
+>   bundling," and a wrong guess would mean a boot-time DT node driving
+>   the wrong physical pin with no way to catch that without a hardware
+>   test -- so not attempted overnight without the user available to
+>   review it. The concrete next step for whoever picks this up: decode
+>   `function-battery_swi`'s payload (`19 00 00 00 4f 49 50 47 22 00 00
+>   00 02 01 00 00`) against Apple's known GPIO function-descriptor
+>   layout, cross-check against `t7001-air2.dtsi`'s existing GPIO
+>   controller node, then add the fuel-gauge DT node and test on
+>   hardware.
 
 ## Summary Matrix
 
