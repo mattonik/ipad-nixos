@@ -174,6 +174,19 @@
           #    pd_ignore_unused/clk_ignore_unused bootargs fix below still
           #    applies globally as a safety net for whatever domains this
           #    DTB does describe.
+          # 3. Hardware-tested 2026-09-07 and hit "FDT: couldn't set
+          #    cpu-release-addr property" / "Failed to prepare FDT!" / "No
+          #    valid payload found" -- m1n1 fell back to its USB proxy
+          #    instead of booting. This historical DTS predates the
+          #    mainline convention of a static cpu-release-addr = <0 0>;
+          #    placeholder in each secondary CPU node, so m1n1's
+          #    dt_set_cpus() (src/kboot.c) has to *add* the property rather
+          #    than overwrite one in place -- and the recompiled DTB had no
+          #    spare room to grow into (plain `dtc -I dts -O dtb` emits a
+          #    tightly-packed blob with zero slack). Fixed by padding the
+          #    compiled blob with `-p 0x10000` (64 KiB) of free space, the
+          #    standard bootloader technique for a DTB that downstream code
+          #    will mutate.
           dtc -I dtb -O dts ${historicalKernel}/dtbs/apple/t7001-j81.dtb \
             | sed \
                 -e '/^\tcpus {$/,/^\t};$/ s/#address-cells = <0x01>;/#address-cells = <0x02>;/' \
@@ -181,7 +194,7 @@
                 -e '/^\tcpus {$/,/^\t};$/ s/reg = <0x01>;/reg = <0x00 0x01>;/' \
                 -e '/^\tcpus {$/,/^\t};$/ s/reg = <0x02>;/reg = <0x00 0x02>;/' \
                 -e '/^\tchosen {$/,/^\t};$/ s/ranges;/ranges;\n\t\tframebuffer {\n\t\t\tcompatible = "apple,simple-framebuffer", "simple-framebuffer";\n\t\t\treg = <0x00 0x00 0x00 0x00>;\n\t\t\tstatus = "disabled";\n\t\t};/' \
-            | dtc -I dts -O dtb -o "$out/t7001-j81.dtb"
+            | dtc -I dts -O dtb -p 0x10000 -o "$out/t7001-j81.dtb"
           cp ${inputs.linuxAppleResources}/debug_initrd.img "$out/initramfs.gz"
           # m1n1's payload parser (src/payload.c check_var()) requires a
           # trailing newline to find the end of a "chosen.X=value" line --

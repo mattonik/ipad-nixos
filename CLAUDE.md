@@ -27,7 +27,7 @@ boot has no T7001 USB-device-controller node (`g_ether` printed "couldn't
 find an available UDC" during the same boot), so there was no USB network
 link to reach it over -- the shell was alive, just had no input channel.
 
-**Implemented, not yet hardware-tested**: `m1n1-control` now uses the
+**In progress, not yet confirmed working**: `m1n1-control` now uses the
 *historical* kernel's own DTB (it has the real `usbdev@20c100000`,
 `apple,t7000-usb` node mainline lacks, matched by a real driver already in
 this same kernel), patched with the same CPU-cell and framebuffer fixes
@@ -35,8 +35,15 @@ proven on the modern DTB. `pd_ignore_unused clk_ignore_unused` and
 `PMOS_NO_OUTPUT_REDIRECT` stay in bootargs. `example.config` already has
 everything the USB gadget path needs (`CONFIG_USB_GADGET`,
 `CONFIG_USB_ETH`, `CONFIG_USB_ETH_RNDIS`, etc.). **UART is not needed** --
-this is a concrete, well-understood, software-only gap. Full evidence and
-commands are in `docs/software-only-control.md`'s "Round 3".
+this is a concrete, well-understood, software-only gap.
+
+First hardware run of the historical DTB (Round 4) failed differently: m1n1
+couldn't add `cpu-release-addr` to the secondary CPU nodes because the
+recompiled DTB had zero spare room to grow into (this historical DTS
+predates mainline's placeholder-property convention). Fixed by compiling
+with `dtc -p 0x10000` (64 KiB padding); verified locally, not yet
+re-tested on hardware. Full evidence and commands are in
+`docs/software-only-control.md`'s "Round 3" and "Round 4".
 
 Driver work (touch, Wi-Fi, etc.) remains explicitly approval-gated --
 booting Linux does not change that; wait for the user before starting any

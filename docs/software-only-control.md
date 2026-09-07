@@ -8,8 +8,10 @@ Air 2, after `pd_ignore_unused`/`clk_ignore_unused` fixed a power-domain
 auto-shutdown that had been killing the display right after driver probing.
 See "Round 2" under that section for the full transcript. This is the
 project's primary milestone, achieved in full -- the only remaining gap is
-a way to send input to that shell (no USB network link yet; see "Next
-tests, in order" step 3).
+a way to send input to that shell (no USB network link yet). Round 3
+implemented a historical-DTB swap to get a real USB controller node; Round 4
+hit and fixed a DTB-space bug that swap introduced (`cpu-release-addr`
+couldn't be added to a zero-slack blob) -- not yet re-tested on hardware.
 
 This document originally centered on reproducing the complete June 2022 stack
 reported working on A7/A8/A8X. That historical-Pongo route remains blocked by
@@ -747,6 +749,72 @@ still present and untouched. `example.config` was also re-checked and
 already has everything the USB gadget path needs:
 `CONFIG_USB_DWC2=y`, `CONFIG_USB_DWC2_DUAL_ROLE=y`, `CONFIG_USB_GADGET=y`,
 `CONFIG_USB_ETH=y`, `CONFIG_USB_ETH_RNDIS=y`. Not yet run on hardware.
+
+### Round 4, 2026-09-07: historical DTB ran out of room, fixed by padding the blob
+
+Ran the historical-DTB build on real hardware. PongoOS enumerated normally
+(`05ac:4141`, confirmed via `pyusb`) and the payload upload/`bootm` handoff
+completed the same way every prior successful run did. But no Apple USB
+device re-enumerated afterward (checked repeatedly over 30+ seconds with
+`pyusb`), and a photo of the screen (`IMG_3910`, requested from the user)
+showed m1n1 had **not** reached Linux at all this time:
+
+```
+FDT: reporting device serial number: DMPT45YDG5W3
+FDT: Reserving stack for CPU 1 0x806e2c000
+FDT: Reserving EL3 stack for CPU 1 0x806e40000
+FDT: couldn't set cpu-release-addr property
+Failed to prepare FDT!
+No valid payload found
+USB0: initialized at 0x804668140
+Running proxy...
+```
+
+m1n1 got through nearly all of its FDT preparation (bootargs, initrd,
+framebuffer address, KASLR seed, serial number) and only failed on the very
+last step: writing `cpu-release-addr` into the secondary CPUs' device-tree
+nodes (`dt_set_cpus()`, `src/kboot.c`), needed so a spinning secondary CPU
+knows where to jump once released. That is m1n1's message for a failed
+`fdt_setprop`, and the log shows every earlier FDT edit succeeding right up
+to that point -- the signature of running out of space mid-edit, not a
+structural DTB problem.
+
+Decompiling the shipped `t7001-j81.dtb` confirmed why: none of its `cpu@N`
+nodes carry a `cpu-release-addr` (or even `enable-method`) property at all --
+
+```
+cpu@1 {
+	compatible = "apple,typhoon";
+	reg = <0x00 0x01>;
+	device-type = "cpu";
+	phandle = <0x08>;
+};
+```
+
+-- unlike modern mainline Apple DTS files, which predeclare
+`cpu-release-addr = <0 0>;` as a same-size placeholder so m1n1 can overwrite
+it in place (no blob growth needed). This historical DTS predates that
+convention, so m1n1 has to *add* the property from scratch, which requires
+free space in the FDT blob to grow into. Our `flake.nix` recipe compiled it
+with a plain `dtc -I dts -O dtb`, which packs the output with **zero**
+slack -- the very first property m1n1 needed to add (which happened to be
+`cpu-release-addr` for CPU 1) had nowhere to go, and m1n1 aborted FDT prep
+and dropped back to its USB debug proxy instead of jumping to Linux. This is
+also why no USB gadget interface appeared: Linux never started running.
+
+Fix: pad the compiled DTB with free space, the standard technique for a
+DTB a bootloader will mutate --
+
+```
+dtc -I dts -O dtb -p 0x10000 -o "$out/t7001-j81.dtb"
+```
+
+(64 KiB of slack.) Verified locally: the padded blob is 73,234 bytes total
+with its structure block ending at byte 7,124 -- about 66 KB of free space
+-- and a fresh decompile confirms all three prior fixes are still intact
+(`#address-cells = <0x02>` with two-cell CPU `reg` values, the
+`/chosen/framebuffer` placeholder, and the `usbdev@20c100000`
+`apple,t7000-usb` node). Not yet re-run on hardware.
 
 ## Attempts and failures while preparing the control
 
