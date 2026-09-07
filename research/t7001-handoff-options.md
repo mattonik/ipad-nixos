@@ -955,6 +955,59 @@ since this DTB has no USB-device-controller node) -- a concrete,
 already-understood software fix, not a new mystery. Full transcripts for
 every step in `docs/software-only-control.md`.
 
+**Sixth update, same day -- chased the USB gap through three more real
+bugs; two fixed, one open.** Swapped `m1n1-control`'s DTB source to the
+*historical* kernel's own bundled `t7001-j81.dtb`, which has the real
+`usbdev@20c100000`/`apple,t7000-usb` node the DTB above lacks. That DTB
+needed the same CPU-cell and framebuffer fixes already proven above, plus
+a new one found this round: m1n1 failed with `"FDT: couldn't set
+cpu-release-addr property"`. A first fix (assuming the recompiled DTB
+blob had run out of space to grow, `dtc -p 0x10000`) tested clean on
+hardware -- and hit the *identical* failure again, disproving that theory.
+Reading m1n1's actual source (`src/kboot.c`) settled it: that specific
+write uses `fdt_setprop_inplace_u64()`, which can only overwrite an
+*already-existing* same-sized property and never grows the tree -- and
+this historical DTS predates the mainline convention of declaring a
+`cpu-release-addr = <0 0>;` placeholder on every CPU node, so it has none
+at all. Added the placeholder directly to `cpu@1`/`cpu@2` (not `cpu@0`,
+skipped by `dt_set_cpus()` as the boot CPU before it reaches that
+property). Fixed, confirmed on hardware.
+
+With that fixed, **Linux boots completely and the USB gadget comes up for
+real**: `g_ether` binds to the actual T7001 USB controller, and the Mac
+sees a live device (`0525:a4a2`) with the postmarketOS debug-shell's
+telnet daemon active on `172.16.42.1:23` -- but no macOS network interface
+appeared. The historical kernel's `example.config` sets
+`CONFIG_USB_ETH_EEM=y`, which (per the driver's own Kconfig help text)
+makes `g_ether` offer CDC-EEM + RNDIS instead of CDC-ECM; macOS has no
+in-box driver for either of the former, only the latter
+(`AppleUSBCDCECMData`). Flipped that one flag off via a small Nix
+derivation that patches the defconfig before it's installed, and rebuilt
+the kernel. **That fix also worked**: macOS now binds its native ECM
+driver automatically and a real `en10` interface appears, no third-party
+kext needed.
+
+**But no data crosses the link at all**, and this part remains
+unresolved. Confirmed, not guessed, on both ends: the Mac's `en10` sends
+real ARP broadcasts every second (`sudo tcpdump -i en10 -n`, run by the
+user in their own terminal since this environment's own shell has no TTY
+for `sudo`), and the iPad's `usb0` is confirmed assigned `172.16.42.1` by
+extracting `debug_initrd.img` locally and reading `init_functions.sh`'s
+actual `start_udhcpd()` rather than inferring it from the console log. A
+DMA-related `dwc2` warning seen in every boot (`Invalid parameter
+g_dma=1`) was checked and ruled out too: `drivers/usb/dwc2/params.c`
+intentionally hardcodes `dma_capable = false` in this historical fork,
+forcing the well-tested PIO fallback path -- not a plausible cause of
+*total* data loss on its own. With both endpoints independently proven
+correctly configured, the remaining explanation is a real bug in this
+historical kernel's `dwc2` gadget bulk-transfer path on the T7001, which
+was never actually proven to move real Ethernet frames before this
+session -- only its USB-descriptor-level enumeration had been previously
+confirmed. Needs either UART/serial access to inspect the live shell
+directly, or another blind kernel-parameter iteration tested on hardware.
+Full transcripts for every step in `docs/software-only-control.md`'s
+"Round 3" through "Round 7".
+
 ## Sources
 
 - [konradybcio/pongoOS](https://github.com/konradybcio/pongoOS)

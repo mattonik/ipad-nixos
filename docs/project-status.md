@@ -39,17 +39,45 @@ clk_ignore_unused` on the kernel command line fixed it outright, confirmed
 on hardware. Full transcripts for every step are in
 `docs/software-only-control.md`'s "Hardware round" and "Round 2" sections.
 
-**The only remaining gap**: the debug-shell's telnet daemon
-(`172.16.42.1:23`) has no USB network link to be reached over -- the
-mainline DTB used for this boot has no T7001 USB-device-controller node
-(`g_ether` logged "couldn't find an available UDC" during the same boot).
-The shell is alive and waiting for input; there is currently no channel to
-send it. Next step: restore the historical DTB's real USB node
-(`usbdev@20c100000`, `apple,t7000-usb`) while keeping the now-proven
-CPU-cell, framebuffer, and power-domain fixes. **UART is not needed** --
-this is a concrete, well-understood, software-only gap, not a return to
-guessing. Touch/Wi-Fi/etc. remain approval-gated regardless: do not start
-driver work without the user's explicit approval.
+**Follow-up work chasing USB networking to that shell (Rounds 3-7, same
+day)**: the mainline DTB used for the boot above has no T7001
+USB-device-controller node at all (`g_ether` logged "couldn't find an
+available UDC"), so the shell had no input channel. Restoring the
+*historical* kernel's own DTB (it has the real `usbdev@20c100000`,
+`apple,t7000-usb` node) hit two further real bugs, both found and fixed
+live on hardware:
+
+- **Round 4-5**: m1n1 failed with `"FDT: couldn't set cpu-release-addr
+  property" / "Failed to prepare FDT!"` -- a first guess (DTB blob out of
+  space, fixed with `dtc -p 0x10000` padding) was wrong, proven by an
+  identical failure on a second hardware run. Reading m1n1's actual
+  source (`src/kboot.c`) found the real cause: `dt_set_cpus()` writes
+  this property with `fdt_setprop_inplace_u64()`, which can only
+  overwrite an already-existing same-sized property and never creates
+  one, and this historical DTS has no `cpu-release-addr` placeholder at
+  all (it predates that mainline convention). Fixed by adding the
+  placeholder directly to `cpu@1`/`cpu@2` in the DTB patch.
+- **Round 6**: with that fixed, **Linux boots completely** -- `g_ether`
+  binds to the real USB controller, and the Mac sees a live USB device
+  (`0525:a4a2`) with the debug-shell's telnet daemon active on
+  `172.16.42.1:23`. But no macOS network interface appeared: the kernel
+  config had `CONFIG_USB_ETH_EEM=y`, making the gadget offer CDC-EEM +
+  RNDIS -- neither of which macOS has an in-box driver for, only CDC-ECM.
+- **Round 7**: flipping that Kconfig flag off and rebuilding the kernel
+  fixed exactly that -- macOS now binds its native `AppleUSBCDCECMData`
+  driver automatically and a real `en10` interface appears, no
+  third-party driver needed. **But no data crosses the link at all.**
+  Both endpoints were independently confirmed correctly configured (real
+  ARP broadcasts leaving the Mac every second, captured with `tcpdump`;
+  the iPad's `usb0` confirmed assigned `172.16.42.1` by reading its
+  actual init script out of the extracted initramfs) -- pointing at a
+  real, previously-unvalidated bug in this historical kernel's `dwc2`
+  gadget bulk-transfer path on the T7001. **Unresolved** as of
+  2026-09-07; needs either UART/serial access or another blind
+  kernel-parameter iteration to diagnose further. Full evidence for every
+  step is in `docs/software-only-control.md`'s "Round 3" through "Round
+  7". Touch/Wi-Fi/etc. remain approval-gated regardless: do not start
+  driver work without the user's explicit approval.
 
 The historical PongoOS control (found the same day, a separate experiment)
 could not be attempted this round -- `palera1n`'s stager rejects its
@@ -2158,7 +2186,8 @@ is the reference for the intentionally minimal board description.
 | Current RAM-only Pongo session | Not assumed active; sessions are transient and no iPad USB interface was visible during the 2026-09-06 artifact build |
 | Linux payload upload | ✅ Transferred once; exposed PongoOS pre-handoff defects |
 | Guarded T7001 diagnostic PongoOS | ✅ Matched-toolchain Pongo, USB, aligned Image/DTB/initrd ranges, Linux register contract, and no-jump guard are proven on T7001 |
-| Linux kernel boot | ✅✅ Achieved in full, 2026-09-07, via `bootm`→m1n1: reaches a live, interactive postmarketOS `/ #` shell prompt (`pd_ignore_unused`/`clk_ignore_unused` fixed a power-domain auto-shutdown that was killing the display). Only gap: no USB network link to the shell's telnet daemon yet — restoring the historical DTB's USB node is the next step, not UART. See docs/software-only-control.md. |
+| Linux kernel boot | ✅✅ Achieved in full, 2026-09-07, via `bootm`→m1n1: reaches a live, interactive postmarketOS `/ #` shell prompt (`pd_ignore_unused`/`clk_ignore_unused` fixed a power-domain auto-shutdown that was killing the display). See docs/software-only-control.md. |
+| USB networking to the debug shell | ⚠️ Partial, 2026-09-07 (Rounds 3-7): historical-DTB swap + `cpu-release-addr` DTB fix + CDC-ECM kernel-config fix together get a real, correctly-configured network interface on both the iPad (`usb0`, `172.16.42.1`) and the Mac (`en10`, native macOS driver, no third-party kext). But zero data crosses the link — confirmed via live `tcpdump` capture and reading the iPad's own init script — pointing at a real bug in the historical kernel's `dwc2` gadget bulk-transfer path. Unresolved; needs UART or further blind iteration. See docs/software-only-control.md's "Round 3"–"Round 7". |
 | Display/touch/Wi‑Fi/Bluetooth validation | ❌ Not started |
 | Usable tethered Linux tablet | ❌ Future milestone |
 
