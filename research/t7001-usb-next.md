@@ -5,6 +5,13 @@ on hardware (see "Hardware result" below) and found the fault is
 asymmetric -- device RX works, device-to-host TX does not reach the FIFO.
 Hardware diagnosis continues, now narrowed to one direction.**
 
+**Decision, same day:** pursue a newer kernel (Hoolock's tree, tracking
+Linux 7.3-rc1) on `main` regardless of how the trace investigation turns
+out -- tag `usb-diagnostic-round8-2026-09-07` marks the branch point, and
+`usb-dwc2-pio-trace` carries the low-level PIO-fill tracing forward
+independently. See "Decision, 2026-09-07" below for the full reasoning,
+verified version/file facts, and the concrete implementation plan.
+
 ## Hardware result (2026-09-07, Round 8 in `docs/software-only-control.md`)
 
 Ran `m1n1-usb-diagnostic` per the procedure below. Steps 1-2 of the resume
@@ -280,3 +287,124 @@ independent UART; the historical config also lacks CONFIG_USB_CONFIGFS_ACM.
 No inspected issue report established an exact fix for this iPad's zero-RX
 symptom. GitHub eventually rate-limited the additional API reads; the concrete
 findings above were obtained before that limit.
+
+## Decision, 2026-09-07: pursue the newer kernel on `main`, keep tracing the old one on a branch
+
+After Round 8 narrowed the fault (RX works, TX to host doesn't reach the
+FIFO, exact defect not yet pinned), the user decided a newer kernel is
+worth pursuing regardless of outcome -- "only positive in the long run" --
+rather than treating it as a fallback contingent on the trace failing.
+Two parallel paths, so neither blocks the other and neither risks losing
+work:
+
+- **`main`**: adopt a newer, actively-maintained kernel base (below).
+- **`usb-dwc2-pio-trace`** branch (from tag `usb-diagnostic-round8-2026-09-07`,
+  the last commit before this split): continue tracing
+  `dwc2_hsotg_write_fifo()`'s partial-fill/re-arm logic on the *historical*
+  5.19-rc1 kernel, in case the newer kernel turns out to have its own new
+  problems, or simply as an independent confirmation of the root cause.
+
+### Newest kernel available, verified today
+
+Checked directly against the live repositories, not from memory or the
+prior review's cached knowledge:
+
+- Mainline `torvalds/linux` is at **v7.3-rc2** (`git ls-remote`/tags API,
+  2026-09-07). Linux versioning passed 6.x sometime before this session;
+  the jump from our historical 5.19-rc1 (June 2022) spans roughly four
+  years and multiple major versions.
+- `HoolockLinux/linux`'s `hoolock` branch HEAD is still
+  `6831bc701a6ce059e71e5aaa9488c9195bea6927` (2026-09-03, "Merge branch
+  'bits/090-dart' into hoolock") -- unchanged since the prior review, so
+  no newer Hoolock commit has landed in the last four days. Its `Makefile`
+  reads `VERSION=7 PATCHLEVEL=3 SUBLEVEL=0 EXTRAVERSION=-rc1` -- it tracks
+  mainline **Linux 7.3-rc1**, one `-rc` behind current mainline tip. This
+  remains the only actively-maintained tree with real Apple T7001 USB
+  device-mode support; there is no reason to chase raw mainline instead,
+  since mainline's own Apple SoC support is far less complete for this
+  specific hardware (confirmed by this project's own earlier mainline-DTB
+  attempts, which had no USB controller node at all -- see Round 3).
+
+### What actually changes for our implementation, verified against the real files
+
+- **A ready-made DTB for our exact board already exists**:
+  `arch/arm64/boot/dts/apple/t7001-j81.dts` is present in the Hoolock tree
+  at the current HEAD (confirmed via the GitHub contents API) -- unlike
+  the Round 3 situation, no DTB patching from a sibling board is needed as
+  a starting point, though the CDC-ECM/gadget bootargs work already done
+  may still need to be re-applied or adapted.
+- **DMA capability detection is genuinely restored**, confirmed by reading
+  the actual file at HEAD: `bool dma_capable = !(hw->arch ==
+  GHWCFG2_SLAVE_ONLY_ARCH);` (both call sites in `params.c`), replacing
+  our historical fork's hardcoded `bool dma_capable = false;`. Whether the
+  T7001's DWC2 instance's hardware register actually reports
+  DMA-capable silicon (rather than the driver just being *allowed* to try)
+  is an empirical question this project cannot answer without running it
+  -- restoring the check makes real DMA *possible*, not guaranteed.
+- **The gadget setup mechanism is structurally different, not just
+  reconfigured**: confirmed by fetching the actual `config_16k` example
+  config, `CONFIG_USB_ETH` (the legacy compile-time composite gadget this
+  project has been tuning since Round 6) **is not set at all**. Instead:
+  `CONFIG_USB_GADGET=y`, `CONFIG_USB_CONFIGFS=y` with
+  `CONFIG_USB_CONFIGFS_ECM=y`, `_NCM=y`, `_ACM=y`, `_EEM=y`, and
+  explicitly `# CONFIG_USB_CONFIGFS_RNDIS is not set`. This means the
+  entire RNDIS-vs-EEM-vs-ECM Kconfig fight from Rounds 6-7 doesn't apply
+  here at all -- the gadget function is assembled at runtime by userspace
+  writing to `/sys/kernel/config/usb_gadget/`, not selected at compile
+  time. It also means our own `debug_initrd.img`'s existing
+  `setup_usb_network_configfs()` path (which already exists in
+  `init_functions.sh` and already failed harmlessly in every round so far
+  with `"UDC core: g1: couldn't find an available UDC or it's busy"`)
+  would likely start actually succeeding on this kernel, since there is
+  no legacy `g_ether` present to have already claimed the only UDC first.
+  This needs verifying on hardware, not assumed.
+- **4 KiB pages still applies, confirmed directly from the current setup
+  guide** (not inferred): "if you use A7 - A8, then search for
+  `CONFIG_ARM64_4K_PAGES` and enable that instead of
+  `CONFIG_ARM64_16K_PAGES`." The `config_16k` filename is just the example
+  config's name (defaults to 16K for A9-A11/T2); it is explicitly *not* a
+  claim that A8X needs 16K pages. This matches, rather than contradicts,
+  this project's already-established 4K-pages finding.
+- **Toolchain**: the setup guide's Linux build instructions specify `make
+  -j$(nproc) LLVM=1 ARCH=arm64 ...` -- a Clang/LLVM kernel build, not the
+  GCC cross-toolchain this project's `buildLinux`-based Nix packages have
+  used for every kernel so far (including the 5.19-rc1 historical one,
+  which cross-compiles fine with GCC). Mainline aarch64 kernels generally
+  support both toolchains, so GCC cross-compilation may well still work,
+  but this is an unverified assumption inherited from copying the existing
+  `kernel/historical.nix` pattern -- worth trying GCC first since it's the
+  path of least Nix-side change, but switching the Nix kernel build to an
+  LLVM-based toolchain (nixpkgs supports this) is the fallback if GCC
+  build fails or produces something that doesn't boot.
+
+### Concrete plan for the `main`-branch implementation
+
+1. Add `hoolockLinux719` (name pending) as a proper flake input pinned to
+   `6831bc701a6ce059e71e5aaa9488c9195bea6927`, fetched on the Mac like
+   every other kernel-source input this project uses (`linuxApple519`
+   already sets this precedent) -- never let the offline `x86_64-linux`
+   builder try to resolve it itself.
+2. Add a new `kernel/hoolock.nix`, modeled on `kernel/historical.nix`'s
+   defconfig-installation pattern, but starting from `config_16k` with
+   `CONFIG_ARM64_4K_PAGES` swapped in for `CONFIG_ARM64_16K_PAGES` (the
+   same `sed`-on-a-derivation technique already used for
+   `patchedHistoricalConfig` in `flake.nix`).
+3. Point `m1n1-control`'s DTB source at this tree's own
+   `t7001-j81.dts`/`.dtb` instead of the historical kernel's -- check
+   first whether it needs the same `cpu-release-addr` treatment Round 5
+   found necessary (mainline convention predeclares it, so this newer
+   DTB may already be fine, but confirm rather than assume).
+4. First build target: does it boot at all, to the same interactive shell
+   milestone already proven on the historical kernel? This alone
+   re-validates the whole boot chain (m1n1, PMGR power domains, AUSB PHY
+   calibration handoff) against a very different kernel tree before
+   USB networking is even in scope.
+5. Only once that boots: adapt (or replace) the initramfs's USB gadget
+   setup for the configfs-only mechanism this kernel expects, and re-run
+   the same diagnostic methodology (ideally reusing
+   `m1n1-usb-diagnostic`'s approach) to check whether TX to host actually
+   works this time.
+6. Keep the existing `historicalKernel`/`m1n1-control` outputs intact
+   throughout as the working rollback control, exactly as
+   `patchedHistoricalConfig` and `m1n1-usb-diagnostic` already do relative
+   to each other.
