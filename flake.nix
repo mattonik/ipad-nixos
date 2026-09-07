@@ -177,7 +177,27 @@
           # "Software follow-up" section for the full byte-level evidence
           # (including why the subsequent black screen is a >99%-black
           # 1080x1920 Xperia splash image, not a crash).
-          printf '%s\n' 'chosen.bootargs=console=tty0 loglevel=8 ignore_loglevel rdinit=/init PMOS_NO_OUTPUT_REDIRECT' \
+          #
+          # 2026-09-07, second round: with PMOS_NO_OUTPUT_REDIRECT applied
+          # and the attempt re-run at 120fps, the "### postmarketOS
+          # initramfs ###" line that setup_log() prints unconditionally --
+          # before it even checks the redirect flag -- has never appeared
+          # in any captured frame, across either attempt. That means PID 1
+          # likely never starts at all; the black screen is upstream of
+          # userspace, inside the kernel itself. A concrete, well-targeted
+          # candidate: Apple's PMGR power-domain driver
+          # (drivers/soc/apple/apple-pmgr-pwrstate.c) uses the generic
+          # power-domain (genpd) framework, whose genpd_power_off_unused()
+          # runs as a late_initcall() -- right after the device-driver
+          # probing this project has now watched complete on video every
+          # time -- and powers off any domain with no active consumer.
+          # There is no real Linux display driver holding the inherited
+          # framebuffer's power domain open, so it's a plausible candidate
+          # for being powered off right when the screen goes black.
+          # pd_ignore_unused/clk_ignore_unused (drivers/base/power/domain.c,
+          # drivers/clk/clk.c) are the real, standard kernel parameters that
+          # disable this specific behavior -- added to test it directly.
+          printf '%s\n' 'chosen.bootargs=console=tty0 loglevel=8 ignore_loglevel rdinit=/init PMOS_NO_OUTPUT_REDIRECT pd_ignore_unused clk_ignore_unused' \
             > "$out/bootargs"
           cat "$out/m1n1.bin" "$out/bootargs" "$out/t7001-j81.dtb" \
             "$out/Image.gz" "$out/initramfs.gz" > "$out/m1n1-linux.bin"

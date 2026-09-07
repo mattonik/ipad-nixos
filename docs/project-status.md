@@ -21,15 +21,23 @@ device-tree CPU-topology format mismatch, and a misnamed framebuffer node.
 Full transcripts and the exact fixes are in
 `docs/software-only-control.md`'s "Hardware round, 2026-09-07" section.
 
-The screen goes black again well under a second after the driver-probe lines,
-but archive inspection now strongly explains why: the bundled 2020
-postmarketOS debug initramfs is configured for a Sony Xperia Z5, redirects PID
-1 output to `/pmOS_init.log`, paints a more-than-99%-black 1080x1920 splash,
-and waits in a hidden shell/loop. The selected mainline DTB also lacks the
-historical tree's matched T7001 USB-device node, so no USB console can appear.
-**Do not buy UART hardware yet.** Run the software-only console tests in
-`docs/software-only-control.md` first. Touch/Wi-Fi/etc. remain approval-gated:
-do not start driver work without the user's explicit approval.
+The screen goes black again well under a second after the driver-probe lines.
+First theory (a bundled 2020 postmarketOS Xperia Z5 debug initramfs hiding
+its own output behind a near-black splash) didn't hold up: adding
+`PMOS_NO_OUTPUT_REDIRECT` and re-testing at 120fps never showed that
+script's own unconditional startup marker, meaning PID 1 most likely never
+runs at all. Current leading hypothesis, from the same evidence: Apple's
+PMGR power-domain driver's generic-power-domain framework may be powering
+off the framebuffer's `disp0`/`dp` power domains as "unused" via a
+`late_initcall()` that runs right where output stops on every attempt so
+far. `pd_ignore_unused clk_ignore_unused` added to bootargs to test this
+directly -- not yet run on hardware. The selected mainline DTB also lacks
+the historical tree's matched T7001 USB-device node, so no USB console can
+appear either way, separately from both theories above. **Do not buy UART
+hardware yet** -- there's still a concrete, testable software lead; see
+`docs/software-only-control.md`'s "Round 2" for the full evidence.
+Touch/Wi-Fi/etc. remain approval-gated: do not start driver work without
+the user's explicit approval.
 
 The historical PongoOS control (found the same day, a separate experiment)
 could not be attempted this round -- `palera1n`'s stager rejects its

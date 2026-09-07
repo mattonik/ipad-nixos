@@ -551,11 +551,16 @@ That inspection established all of the following:
   reports is 2224x1668. Their mean byte values are only 1.36 and 1.91 on a
   0-255 scale: they are more than 99% black.
 
-This behavior matches the recorded hardware result precisely: Linux prints
-driver-probe lines, PID 1 starts, output disappears into a RAM file, and
-userspace paints the framebuffer nearly black. It is still a hypothesis until
-PID 1 prints a unique marker, but it is now the leading explanation and makes
-another software test useful.
+This behavior matches the recorded hardware result plausibly, but **"Round
+2" below found a sharper, more likely explanation and superseded this as the
+leading one**: `setup_log()` prints an unconditional marker line before it
+ever checks the redirect flag, and that marker has never been observed on
+screen -- across any attempt, with or without `PMOS_NO_OUTPUT_REDIRECT` set.
+That means PID 1 most likely never starts at all, which this specific
+initramfs-behavior explanation doesn't actually predict. It's not wrong
+about what the bundled initramfs does; it's likely just not what's actually
+happening here. See "Round 2" for the current leading hypothesis
+(power-domain auto-shutdown, inside the kernel, before `/init` runs).
 
 There is a separate reason no host-side console appeared. The modern mainline
 DTB selected to fix m1n1's CPU-property parsing has no USB-device controller
@@ -604,6 +609,53 @@ console:
 
 UART remains a useful fallback if both framebuffer and the matched USB-device
 path fail, but it is no longer a prerequisite or the next recommended expense.
+
+### Round 2, 2026-09-07: step 1 alone was insufficient, and a sharper hypothesis
+
+Implemented step 1 (`PMOS_NO_OUTPUT_REDIRECT` added to bootargs) and ran it
+on hardware, twice -- once on ordinary video, once at 120fps specifically to
+catch anything sub-frame. Both times: still black, still off USB. But the
+120fps capture showed noticeably more kernel driver-probe text than any
+previous attempt (PPP, EHCI, Bluetooth HCI UART, `i2c_dev`, device-mapper,
+per-CPU `cpufreq_init` failures, `sdhci`, `ledtrig-cpu`) before the same
+abrupt cutoff to black, within roughly 40ms in the frame-by-frame check.
+
+That extra detail pointed at something the original "hidden Xperia splash"
+theory didn't actually predict, once checked carefully: `setup_log()`
+(`init_functions.sh`) prints `### postmarketOS initramfs ###`
+**unconditionally, before it even checks the redirect flag** -- so if PID 1
+had ever actually started, that exact string should be visible on screen
+regardless of whether `PMOS_NO_OUTPUT_REDIRECT` is set. It has never
+appeared, in any frame, across any attempt. That means the leading
+explanation from the first round was checking the right file but drawing
+the wrong conclusion about whether we ever reach it -- PID 1 most likely
+never starts. Whatever stops output does so **inside the kernel itself**,
+after driver probing, before `/init` ever runs.
+
+A concrete, well-targeted candidate for what that is: Apple's PMGR power-
+domain driver (`drivers/soc/apple/apple-pmgr-pwrstate.c`, in the historical
+kernel source) implements the generic power-domain (genpd) framework.
+`drivers/base/power/domain.c`'s `genpd_power_off_unused()` runs as a
+`late_initcall()` -- exactly the point right after the device-probing this
+project has now watched complete, on video, more than once -- and powers
+off any power domain with no active consumer. Checked directly: the
+packaged DTB's `/chosen/framebuffer` node declares
+`power-domains = <0x18 0x1d>`, and those two phandles resolve to power
+controllers labeled `disp0` and `dp` -- the display controller and
+display-port domains, precisely what the inherited framebuffer depends on
+and precisely the kind of thing with no explicit Linux consumer holding it
+open (there is no real display driver here, just an inherited simplefb
+framebuffer). If the generic `simple-framebuffer` platform driver doesn't
+itself hold a runtime-PM reference on those domains, `genpd_power_off_unused()`
+turning them off would explain the observed behavior exactly: driver
+probing finishes, then shortly after, the screen goes dark, and (since PID 1
+never gets to run) nothing further is ever printed anywhere.
+
+**Fix, added to bootargs alongside the existing ones**: `pd_ignore_unused`
+and `clk_ignore_unused` -- real, standard kernel parameters
+(`drivers/base/power/domain.c`, `drivers/clk/clk.c`, both confirmed present
+in the historical kernel source) that disable exactly this automatic
+unused-resource shutdown. Not yet run on hardware.
 
 ## Attempts and failures while preparing the control
 

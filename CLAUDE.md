@@ -13,16 +13,23 @@ confirmed by genuine kernel driver-probe output (sdhci, usbhid, CoreSight)
 captured on video and independently verified frame-by-frame against the
 source file. This is the project's primary goal, achieved.
 
-The screen goes black again well under a second later, but the cause is now
-strongly explained in software: the payload embeds a 2020 postmarketOS debug
-initramfs configured for a Sony Xperia Z5. Its `/init` redirects output to
-`/pmOS_init.log`, paints an almost entirely black 1080x1920 splash, and waits
-in a hidden shell/loop. The modern mainline DTB used for the successful boot
-also lacks the historical tree's T7001 USB-device node, explaining why no USB
-console appears. **Do not buy UART hardware yet.** Next try the unchanged
-working stack with `PMOS_NO_OUTPUT_REDIRECT`, then a tiny visible BusyBox
-initramfs; restore the historical DTB with only the CPU-cell and framebuffer
-fixes before testing USB. Full evidence and commands are in
+The screen goes black again well under a second later. First theory (the
+bundled 2020 postmarketOS Xperia Z5 debug initramfs hiding its own output
+and painting an almost-black splash) turned out not to fit: its
+unconditional `### postmarketOS initramfs ###` marker line has never
+appeared on screen, even after adding `PMOS_NO_OUTPUT_REDIRECT` and
+re-testing at 120fps -- so PID 1 most likely never starts, and whatever
+stops output is inside the kernel itself. Current leading hypothesis: Apple's
+PMGR power-domain driver uses the generic power-domain framework, whose
+`genpd_power_off_unused()` runs right after driver probing (matching what's
+been observed on video every time) and could be powering off the
+framebuffer's `disp0`/`dp` power domains since nothing holds them open.
+`pd_ignore_unused clk_ignore_unused` added to bootargs to test this
+directly -- not yet run on hardware. The modern mainline DTB used for the
+successful boot also lacks the historical tree's T7001 USB-device node,
+explaining why no USB console appears, separately from either theory above.
+**Do not buy UART hardware yet** -- there's still a concrete, testable
+software lead. Full evidence and commands are in
 `docs/software-only-control.md`.
 
 Driver work (touch, Wi-Fi, etc.) remains explicitly approval-gated --
