@@ -9,13 +9,15 @@ Boot NixOS on old iPads (2011-2017, A5–A11 chips) via checkm8 bootrom exploit,
 The `bootm` → m1n1 route (`docs/software-only-control.md`) got a real
 hardware run on 2026-09-07 and **booted m1n1 completely** on this exact
 device -- both secondary CPUs started, real device serial reported, kernel
-and initramfs decompressed -- stopping one device-tree bug short of the
-actual Linux kernel entry. That bug (CPU node `reg` format) is now fixed
-(the payload uses the modern kernel's DTB instead of the historical one's).
-**Next step: run this fixed payload on hardware** -- per m1n1's own source
-there is no other known blocker before a real Linux boot log. See
-`docs/software-only-control.md`'s "Hardware round, 2026-09-07" section for
-the exact commands and full transcript.
+and initramfs decompressed. Two more bugs (CPU node `reg` format; a
+misnamed framebuffer node) were found and fixed live, same session. A third
+attempt with both fixes produced a **genuinely ambiguous result**: screen
+black, device off USB entirely -- consistent with either a headless Linux
+boot succeeding or a crash somewhere past the fixed checks. No further
+software-diagnosable step is known. **Next step is UART**, not more
+software iteration -- see "UART/JTAG procurement and setup plan" in
+`docs/project-status.md`. Full transcripts and reasoning in
+`docs/software-only-control.md`'s "Hardware round, 2026-09-07" section.
 
 The historical-PongoOS control is separately blocked: `palera1n`'s stager
 rejects its 708,704-byte binary (limit is 0x7fe00 = 523,776 bytes) --

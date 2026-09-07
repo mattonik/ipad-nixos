@@ -877,6 +877,29 @@ Linux kernel entry -- no other blocker is known to exist between here and a
 kernel boot log. This is the first time in this entire investigation that
 statement has been true.
 
+**Third update, same day -- the third attempt, and a genuinely ambiguous
+result.** Also found and fixed, same round: the DTB's framebuffer node was
+a `/chosen/framebuffer@0` placeholder, but m1n1's `dt_set_fb()` looks it up
+by the exact path `/chosen/framebuffer` (no unit address) and does not
+match it -- non-fatal in m1n1 (it just proceeds without a console), but it
+meant nothing would ever be visible even on a fully successful boot. Fixed
+by renaming the node. With both fixes applied, the third hardware attempt
+uploaded successfully, `bootm` was sent, and **the screen went completely
+black with the device dropping off USB entirely** -- a third, distinct
+post-attempt signature from anything seen before. This is honestly
+ambiguous: it's consistent with either a headless Linux boot succeeding
+(the fb-node failure is non-fatal, and a real kernel taking over the USB
+controller would plausibly stop presenting PongoOS/m1n1's descriptor) or a
+crash somewhere past the checks this round fixed. There is no way to tell
+these apart without a serial console. Full transcript and reasoning in
+`docs/software-only-control.md`.
+
+This is now the clearest case yet for prioritizing the UART/JTAG cable:
+every software-only diagnosable step in this specific path has been
+resolved, and the investigation has reached a state a serial console would
+resolve in seconds that screen-color pattern-matching cannot resolve at
+all, however many more DFU cycles are spent on it.
+
 ## Sources
 
 - [konradybcio/pongoOS](https://github.com/konradybcio/pongoOS)

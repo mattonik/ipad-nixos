@@ -125,7 +125,7 @@
         # pinned historical kernel. m1n1 itself can be sent first as a visible
         # handoff diagnostic without involving Linux.
         m1n1-control = pkgs.runCommand "ipad-air2-m1n1-control" {
-          nativeBuildInputs = [ pkgs.gzip ];
+          nativeBuildInputs = [ pkgs.gzip pkgs.dtc ];
         } ''
           mkdir -p "$out"
           cp ${inputs.hoolockDocs}/binaries/Pongo.bin "$out/Pongo.bin"
@@ -142,7 +142,22 @@
           # Mainline's current t7001.dtsi already uses the correct
           # #address-cells=2 two-cell reg format m1n1 expects; the kernel
           # Image itself is still the historical, pinned one.
-          cp ${modernKernel}/dtbs/apple/t7001-j81.dtb "$out/t7001-j81.dtb"
+          #
+          # The mainline DTB's framebuffer node is also a "to be filled by
+          # loader" placeholder ("apple,simple-framebuffer", status=disabled,
+          # zeroed reg) at /chosen/framebuffer@0 -- but m1n1's dt_set_fb()
+          # (src/kboot.c) looks it up by the EXACT path /chosen/framebuffer
+          # (no unit address) via fdt_path_offset(), which does not do
+          # prefix/wildcard matching. Confirmed on real hardware: m1n1
+          # printed "FDT: No framebuffer found" and proceeded anyway (this
+          # is non-fatal in m1n1, just means no console reaches the
+          # screen) -- rename the node so m1n1 can find, populate, and
+          # enable it. m1n1 renames it back to framebuffer@<base> itself
+          # once found, so the pre-rename name doesn't need the real
+          # address; it just needs to exist at that exact path.
+          dtc -I dtb -O dts ${modernKernel}/dtbs/apple/t7001-j81.dtb \
+            | sed 's/framebuffer@0 {/framebuffer {/' \
+            | dtc -I dts -O dtb -o "$out/t7001-j81.dtb"
           cp ${inputs.linuxAppleResources}/debug_initrd.img "$out/initramfs.gz"
           # m1n1's payload parser (src/payload.c check_var()) requires a
           # trailing newline to find the end of a "chosen.X=value" line --

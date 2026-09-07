@@ -12,17 +12,22 @@ the project's history: the m1n1-via-`bootm` route (found 2026-09-06) got a
 real hardware run and, after fixing two precisely-diagnosed bugs live, got
 **m1n1 to boot completely on this exact device** -- MMU up, both secondary
 CPU cores started, real device serial reported, kernel and initramfs
-decompressed and recognized -- stopping only at a device-tree CPU-topology
-check right before the actual Linux kernel entry. That check is now also
-fixed (packaging the modern kernel's correctly-formatted DTB instead of the
-historical kernel's own). A third hardware attempt with that fix is the
-immediate next step, and per m1n1's own source there is no other known
-blocker between that check and a real Linux kernel boot log. The historical
-PongoOS control (found the same day) could not be attempted this round --
-`palera1n`'s stager rejects its 708,704-byte binary outright (over an
-0x7fe00-byte limit) -- unresolved, see the doc. UART/JTAG (a Tamarin Cable
-build, see "UART/JTAG procurement and setup plan" below) remains the
-fallback plan if this route stalls, but is not the current priority.
+decompressed and recognized -- stopping at a device-tree CPU-topology check
+right before the actual Linux kernel entry. That check, and a second bug
+(a misnamed framebuffer node m1n1 couldn't find), were both fixed and a
+third attempt made the same session. **Result: genuinely ambiguous.** The
+screen went black and the device dropped off USB entirely -- consistent
+with either a headless Linux boot succeeding (the framebuffer bug was
+non-fatal on its own; a real kernel taking over USB would plausibly stop
+presenting PongoOS's descriptor) or a crash somewhere past the checks this
+round fixed. There is currently no way to tell which. Per m1n1's own source
+there is no other known software-diagnosable blocker between the fixed
+checks and a real kernel boot log -- this is now squarely a case for UART
+(see "UART/JTAG procurement and setup plan" below), which would resolve the
+ambiguity in seconds. The historical PongoOS control (found the same day)
+could not be attempted this round -- `palera1n`'s stager rejects its
+708,704-byte binary outright (over an 0x7fe00-byte limit) -- unresolved,
+see the doc.
 
 ## Mission
 
@@ -2124,7 +2129,7 @@ is the reference for the intentionally minimal board description.
 | Current RAM-only Pongo session | Not assumed active; sessions are transient and no iPad USB interface was visible during the 2026-09-06 artifact build |
 | Linux payload upload | ✅ Transferred once; exposed PongoOS pre-handoff defects |
 | Guarded T7001 diagnostic PongoOS | ✅ Matched-toolchain Pongo, USB, aligned Image/DTB/initrd ranges, Linux register contract, and no-jump guard are proven on T7001 |
-| Linux kernel boot | 🟡 Not yet achieved, but very close: the `bootm`→m1n1 route booted m1n1 completely on real hardware 2026-09-07 (MMU, both secondary CPUs, real device serial, kernel+initramfs decompressed) and stopped one device-tree fix away from actual Linux kernel entry. That fix is built, not yet hardware-tested. The historical-PongoOS control is blocked by a palera1n size limit, unresolved. See docs/software-only-control.md. |
+| Linux kernel boot | 🟡 Unconfirmed, possibly achieved: the `bootm`→m1n1 route booted m1n1 completely on real hardware 2026-09-07 (MMU, both secondary CPUs, real device serial, kernel+initramfs decompressed) then, after two more fixes, reached a genuinely ambiguous result on a third attempt — screen black, device off USB entirely, consistent with either a successful headless boot or a crash past the fixed checks. No known software-diagnosable blocker remains; a UART cable would resolve this immediately. Historical-PongoOS control still blocked by a palera1n size limit, unresolved. See docs/software-only-control.md. |
 | Display/touch/Wi‑Fi/Bluetooth validation | ❌ Not started |
 | Usable tethered Linux tablet | ❌ Future milestone |
 

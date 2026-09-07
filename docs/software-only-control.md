@@ -329,12 +329,61 @@ route was already labeled a new experiment, not a control), it's fixing a
 bug the 2022 DTB always had that nobody had hardware to catch before.
 Verified: the repackaged `t7001-j81.dtb` now decompiles to
 `#address-cells = <0x02>` / `reg = <0x00 0x00>`, `<0x00 0x01>`,
-`<0x00 0x02>`. Not yet run on hardware.
+`<0x00 0x02>`.
 
-If a third attempt clears this check, the very next thing m1n1 does is
-`kboot_prepare_dt()` followed by `kboot_boot(kernel)` -- i.e. the actual
-Linux kernel entry. There is no known remaining blocker between here and a
-kernel boot log.
+**Attempt 3** (CPU-topology fix only, same DFU session): payload uploaded
+(12,594,482 bytes), `bootm` sent, PongoOS disconnected with a timeout (not
+the I/O error attempt 1 saw). **The screen went completely black**, and
+`05ac:4141` no longer answers on USB at all -- a third, distinct
+post-attempt signature (different from "still enumerated" and different
+from "the PongoOS logo just stays there").
+
+This is genuinely ambiguous, and it is important to be honest about that
+rather than read it either way. Two things point toward this possibly being
+progress, not a regression:
+
+- `dt_set_fb()` failing to find `/chosen/framebuffer` (attempt 2's result,
+  before this round's second fix) is **non-fatal in m1n1** -- it prints
+  "No framebuffer found" and continues (`return 0`), it does not abort the
+  boot. So even attempt 2, which never got to try the fb-node fix, could in
+  principle have proceeded all the way into `kboot_boot(kernel)` with no
+  framebuffer wired -- meaning "black screen" was already a possible
+  *headless success* signature before this round's second fix, not
+  necessarily a new failure mode introduced by fixing the CPU check.
+- A real Linux kernel taking over the DWC2 USB controller for its own
+  purposes (whatever the historical debug initramfs configures, if
+  anything) would very plausibly no longer present PongoOS/m1n1's specific
+  `05ac:4141` vendor descriptor -- "gone from the bus" is *consistent with*
+  a kernel now running and owning the hardware differently, not only with a
+  hard crash.
+
+But it is equally consistent with a crash somewhere past the CPU/FDT checks
+-- inside `kboot_boot()` itself, or in Linux's own very early init before
+any console (fbcon or otherwise) could bind. **There is currently no way to
+tell these apart.** This is precisely the observability gap the UART/JTAG
+plan (`docs/project-status.md`, "UART/JTAG procurement and setup plan")
+exists to close -- a serial console would show either a kernel log or a
+crash dump immediately, resolving this in seconds rather than another round
+of blind DFU cycles and pattern-matching on screen color.
+
+## Fixed the same round: the DTB's framebuffer node was also a placeholder
+
+m1n1's `dt_set_fb()` (`src/kboot.c`) looks up the framebuffer node by the
+*exact* path `/chosen/framebuffer` via `fdt_path_offset()`, which does not
+do prefix/wildcard matching. The mainline DTB (already in use for the CPU
+fix above) declares it as `/chosen/framebuffer@0` -- same "to be filled by
+loader" placeholder pattern as the zero-sized `/memory` node this
+investigation found in Step 6 of the modern-stack work, just a different
+node. `dt_set_fb()` renames the node to `framebuffer@<real base>` itself
+once found and overwrites `reg`/`width`/`height`/`stride`/`format` and
+clears `status` -- so the fix only needs the node to *exist* at the exact
+pre-rename path, not to already have correct values. Fixed in `flake.nix`'s
+`m1n1-control` package by decompiling the DTB, renaming
+`framebuffer@0 { ... }` to `framebuffer { ... }` with `sed`, and
+recompiling -- verified the repackaged DTB has `/chosen/framebuffer` with no
+unit address. Whether this fix, combined with the CPU-topology fix, was
+enough to reach a real console is exactly the open question attempt 3
+above could not resolve.
 
 ## Attempts and failures while preparing the control
 
