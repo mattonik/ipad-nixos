@@ -73,11 +73,17 @@ needed here). Produces a working `Image` and `t7001-j81.dtb` for this
 exact board. That DTB already has `cpu-release-addr` and `enable-method =
 "spin-table"` as proper mainline placeholders -- none of the CPU-topology
 DTB patching Rounds 3-5 needed is required here; only the same
-framebuffer-node rename Round 3 already proved (this DTB has
-`framebuffer@0`, m1n1 needs the exact path `/chosen/framebuffer`) is still
-outstanding. **Not yet wired into `m1n1-control`; no hardware boot attempt
-on this kernel yet.** Full details, including the two build failures and
-their fixes, in `research/t7001-usb-next.md`'s "Implementation progress."
+framebuffer-node rename Round 3 already proved was still needed, and is
+now applied in a new `m1n1-hoolock-control` payload (also overrides
+`deviceinfo_usb_rndis_function="ecm.usb0"` in the initramfs, since this
+kernel has no `CONFIG_USB_ETH`/legacy `g_ether` at all and its configfs
+gadget setup needs a function name this kernel actually has compiled in).
+Builds cleanly, verified statically (DTB decompiled and checked, cpio
+overlay parsed with the kernel's own last-entry-wins semantics rather
+than assumed). **No hardware boot attempt on this kernel yet -- that's
+next.** Full details, including the build and cpio-overlay bugs hit and
+fixed along the way, in `research/t7001-usb-next.md`'s "Implementation
+progress" and "Wired into a bootable payload."
 
 Do not blindly swap only the DTB, enable DMA, or tune nonexistent FIFO
 bootargs -- see [the complete research and implementation

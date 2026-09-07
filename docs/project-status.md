@@ -15,8 +15,11 @@ independent low-level trace of the old kernel's PIO path continues on the
 `usb-dwc2-pio-trace` branch (from tag `usb-diagnostic-round8-2026-09-07`)
 -- neither path blocks the other. **Progress**: the newer kernel already
 builds cleanly (one narrow, USB-unrelated GCC fix needed) and its DTB
-needs less patching than the historical kernel's did; not yet wired into
-a bootable payload or tested on hardware. See
+needed less patching than the historical kernel's did (only a framebuffer
+rename, now applied). Wired into a new `m1n1-hoolock-control` payload
+with a configfs gadget override for this kernel's actual compiled-in
+functions; builds cleanly, verified statically, no hardware boot attempt
+yet. See
 [T7001 USB next steps](../research/t7001-usb-next.md), which supersedes
 the categorical Round 7 driver diagnosis below.
 Target: iPad Air 2 Wi‑Fi A1566, A8X/T7001, board J81/J81AP  

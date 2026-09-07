@@ -315,6 +315,76 @@
             > "$out/SHA256SUMS"
         '';
 
+        # Newer-kernel candidate (see research/t7001-usb-next.md's "Decision,
+        # 2026-09-07" and "Implementation progress") wired into the same
+        # proven PongoOS -> m1n1 -> Linux payload shape as m1n1-control.
+        # Reuses the same Pongo.bin/m1n1.bin (kernel-agnostic, already
+        # proven) and the same debug_initrd.img base, so the only real
+        # changes are the kernel Image, its own DTB, and one deviceinfo
+        # override the USB gadget setup needs on this kernel.
+        m1n1-hoolock-control = pkgs.runCommand "ipad-air2-m1n1-hoolock-control" {
+          nativeBuildInputs = [ pkgs.gzip pkgs.dtc pkgs.cpio ];
+        } ''
+          mkdir -p "$out"
+          cp ${inputs.hoolockDocs}/binaries/Pongo.bin "$out/Pongo.bin"
+          cp ${inputs.hoolockM1n1}/m1n1.bin "$out/m1n1.bin"
+          gzip -n -c ${hoolockKernel}/Image > "$out/Image.gz"
+
+          # Verified 2026-09-07 (research/t7001-usb-next.md): this kernel's
+          # own t7001-j81.dtb already carries #address-cells=2 with correct
+          # two-cell CPU reg values, and cpu-release-addr/enable-method as
+          # proper mainline placeholders on every cpu@N node -- none of the
+          # CPU-topology patching Rounds 3-5 needed for the historical
+          # kernel's DTB applies here. It does still have
+          # /chosen/framebuffer@0 (a unit address on the node), the same
+          # situation the *modern mainline* DTB had back in Round 3 --
+          # m1n1's dt_set_fb() (src/kboot.c) looks up the exact path
+          # /chosen/framebuffer via fdt_path_offset(), which does not
+          # prefix-match a unit address. Same one-line rename fix.
+          dtc -I dtb -O dts ${hoolockKernel}/dtbs/apple/t7001-j81.dtb \
+            | sed -e '/^\tchosen {$/,/^\t};$/ s/framebuffer@0 {/framebuffer {/' \
+            | dtc -I dts -O dtb -p 0x10000 -o "$out/t7001-j81.dtb"
+
+          # This kernel has no CONFIG_USB_ETH (legacy g_ether) at all --
+          # gadget setup is configfs-only (CONFIG_USB_CONFIGFS_ECM=y,
+          # _NCM=y, _EEM=y, _ACM=y; RNDIS is not compiled in). The bundled
+          # debug_initrd.img's own setup_usb_network_configfs()
+          # (init_functions.sh) already exists and already tries this on
+          # every kernel, but defaults to creating a configfs function
+          # named "rndis.usb0" (deviceinfo_usb_rndis_function's fallback),
+          # which needs CONFIG_USB_CONFIGFS_RNDIS -- not available here.
+          # Override it to "ecm.usb0" to match this kernel's actual
+          # CONFIG_USB_CONFIGFS_ECM=y, via a one-line deviceinfo addition
+          # appended as a cpio overlay -- same concatenated-newc-archive
+          # technique m1n1-usb-diagnostic already uses for its debug hook,
+          # applied to a different file. Extracts the *original*
+          # etc/deviceinfo from the pinned debug_initrd.img rather than
+          # hardcoding a copy, so this never drifts from upstream.
+          gzip -dc ${inputs.linuxAppleResources}/debug_initrd.img > initramfs.cpio
+          mkdir -p original-etc overlay/etc
+          (cd original-etc && cpio -id --no-absolute-filenames etc/deviceinfo < ../initramfs.cpio)
+          cp original-etc/etc/deviceinfo overlay/etc/deviceinfo
+          printf '\ndeviceinfo_usb_rndis_function="ecm.usb0"\n' >> overlay/etc/deviceinfo
+          touch -d @1 overlay/etc/deviceinfo
+          (cd overlay; printf '%s\0' "etc/deviceinfo" | cpio --null -o -H newc \
+            --owner=0:0 --reproducible) >> initramfs.cpio
+          gzip -n -c initramfs.cpio > "$out/initramfs.gz"
+
+          # Same proven bootargs baseline as m1n1-control: PMOS_NO_OUTPUT_REDIRECT
+          # for the debug initramfs's console-log redirect, and
+          # pd_ignore_unused/clk_ignore_unused as a safety net against the
+          # same PMGR genpd auto-shutdown Round 2 found -- this DTB's
+          # framebuffer node also carries a power-domains reference
+          # (unlike the historical kernel's DTB, which had none at all),
+          # so the same risk plausibly applies here too.
+          printf '%s\n' 'chosen.bootargs=console=tty0 loglevel=8 ignore_loglevel rdinit=/init PMOS_NO_OUTPUT_REDIRECT pd_ignore_unused clk_ignore_unused' \
+            > "$out/bootargs"
+          cat "$out/m1n1.bin" "$out/bootargs" "$out/t7001-j81.dtb" \
+            "$out/Image.gz" "$out/initramfs.gz" > "$out/m1n1-linux.bin"
+          sha256sum "$out/Pongo.bin" "$out/m1n1.bin" "$out/m1n1-linux.bin" \
+            > "$out/SHA256SUMS"
+        '';
+
         # Same hardware-proven payload, with a display-only USB diagnostic hook.
         m1n1-usb-diagnostic = pkgs.runCommand "ipad-air2-usb-diagnostic" {
           nativeBuildInputs = [ pkgs.gzip pkgs.cpio ];

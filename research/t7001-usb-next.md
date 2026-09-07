@@ -12,16 +12,21 @@ out -- tag `usb-diagnostic-round8-2026-09-07` marks the branch point, and
 independently. See "Decision, 2026-09-07" below for the full reasoning,
 verified version/file facts, and the concrete implementation plan.
 
-**Progress, same day: the newer kernel builds.** After one narrow,
-unrelated GCC compile fix (a missing `default:` case in the Apple PMIC
-backlight driver -- disabled via config, since backlight isn't needed for
-this investigation), `kernel/hoolock.nix` produces a clean `Image` and
-`dtbs/apple/t7001-j81.dtb`. That DTB already has the `cpu-release-addr`
-and `enable-method` placeholders Rounds 3-5 had to hand-patch onto the
-historical kernel's DTB -- only the framebuffer-node rename (proven in
-Round 3) is still needed. Not yet wired into `m1n1-control`; no hardware
-boot attempt yet. See "Implementation progress" under the decision
-section below.
+**Progress, same day: the newer kernel builds, and now boots-ready.**
+After one narrow, unrelated GCC compile fix (a missing `default:` case in
+the Apple PMIC backlight driver -- disabled via config, since backlight
+isn't needed for this investigation), `kernel/hoolock.nix` produces a
+clean `Image` and `dtbs/apple/t7001-j81.dtb`. That DTB already has the
+`cpu-release-addr` and `enable-method` placeholders Rounds 3-5 had to
+hand-patch onto the historical kernel's DTB -- only the framebuffer-node
+rename (proven in Round 3) was still needed, and is now applied. Wired
+into a new `m1n1-hoolock-control` payload (framebuffer patch, plus a
+`deviceinfo_usb_rndis_function="ecm.usb0"` override so the initramfs's
+existing configfs gadget setup targets a function this kernel actually
+has compiled in). Builds cleanly and passes every static check available;
+no hardware boot attempt yet -- that's next. See "Implementation
+progress" and "Wired into a bootable payload" under the decision section
+below.
 
 ## Hardware result (2026-09-07, Round 8 in `docs/software-only-control.md`)
 
@@ -508,12 +513,74 @@ path m1n1's `dt_set_fb()` looks up via `fdt_path_offset()` -- the same
 situation as the *modern mainline* DTB back in Round 3, which needs the
 same one-line rename fix already proven there.
 
-**Not yet done**: wiring this kernel/DTB into `m1n1-control` (needs the
-framebuffer rename patch above, and a decision on the USB gadget/initramfs
-setup for this kernel's configfs-only mechanism -- reusing the existing
-`debug_initrd.img`'s already-present `setup_usb_network_configfs()` path
-is the obvious first thing to try, since Round 6-8's analysis showed it
-already exists and previously only failed because the legacy `g_ether`
-had already claimed the only UDC first -- a conflict that can't happen on
-this kernel, since `CONFIG_USB_ETH` isn't compiled in at all). No
-hardware boot attempt yet on this kernel.
+### Wired into a bootable payload, 2026-09-07: `m1n1-hoolock-control`
+
+Added `m1n1-hoolock-control` to `flake.nix`, directly parallel to
+`m1n1-control`: same `Pongo.bin`/`m1n1.bin` (kernel-agnostic, already
+proven), this kernel's own `Image` and DTB, and the same
+`debug_initrd.img` base as every other payload.
+
+**DTB**: applied the one framebuffer-rename patch identified above
+(`framebuffer@0 {` -> `framebuffer {`, scoped to the `chosen {}` block so
+it can't collide with anything else) via the same
+decompile/`sed`/recompile technique used throughout this project.
+Confirmed by decompiling the built output: the node is `framebuffer {`
+at the exact path m1n1 needs, with `cpu-release-addr`/`enable-method`
+still intact from the kernel's own DTB (no CPU patching needed, as
+established above).
+
+**Gadget setup**: chose to override `deviceinfo_usb_rndis_function` to
+`ecm.usb0` (was going to default to `rndis.usb0`, which needs
+`CONFIG_USB_CONFIGFS_RNDIS` -- not compiled into this kernel) via a
+one-line addition to `/etc/deviceinfo`, applied as a second cpio overlay
+entry appended to the same `initramfs.cpio` stream (concatenated newc
+archives, same mechanism `m1n1-usb-diagnostic` already uses for its debug
+hook, just targeting a different file this time). The *original*
+`etc/deviceinfo` is extracted from the pinned `debug_initrd.img` inside
+the build itself rather than hardcoded, so this can't drift from
+upstream if that input ever changes.
+
+Two real, narrow build bugs hit and fixed while wiring the overlay,
+both in the `cpio` invocation, not the underlying design:
+
+1. First attempt: `cpio: etc/deviceinfo: Cannot open: No such file or
+   directory`. GNU `cpio -i` does not create leading directories by
+   default -- needs the `-d`/`--make-directories` flag, which the
+   already-proven `m1n1-usb-diagnostic` overlay never needed because its
+   target directory (`etc/postmarketos-mkinitfs/hooks/`) happens to
+   already exist elsewhere in that archive by the time it's referenced.
+   Extracting into a path whose parent doesn't exist yet needs `-d`
+   explicitly. A wrong first guess (that the archive stored entries with
+   a `./` prefix, based on misreading the archive-parsing Python script's
+   *own* `removeprefix("./")` defensive normalization as evidence the
+   prefix was actually present) briefly went down the wrong path before
+   directly listing the archive's real contents (`cpio -t`) settled it:
+   the entry is genuinely stored as `etc/deviceinfo`, no leading `./`.
+2. Second attempt (fixed directory creation but reverted to the wrong
+   `./`-prefixed pattern from the first wrong guess): silently extracted
+   nothing (pattern matched no entries, no error printed), so the
+   subsequent `cp` failed with a plain "No such file or directory."
+   Fixed by using the confirmed-correct bare pattern (`etc/deviceinfo`)
+   together with `-d`.
+
+**Verified the override actually applies**, not just that the build
+succeeds: parsed the built `initramfs.gz`'s concatenated cpio streams
+with the same last-entry-wins logic `test_usb_diagnostic.py` already uses
+(matching how the Linux kernel's own initramfs unpacker resolves
+duplicate names -- confirmed distinct from plain userspace `cpio -i`,
+which by default skips re-extracting a file it doesn't consider newer,
+and gave a misleading "override missing" result on a first, wrong,
+verification attempt using that tool directly). The parsed result
+confirms `deviceinfo_usb_rndis_function="ecm.usb0"` is present in the
+version that will actually land at boot.
+
+**Kept the same bootargs baseline as `m1n1-control`**
+(`PMOS_NO_OUTPUT_REDIRECT pd_ignore_unused clk_ignore_unused`, plus the
+usual console/rdinit basics) -- this DTB's framebuffer node carries a
+`power-domains` reference (unlike the historical kernel's DTB, which had
+none), so the same PMGR genpd auto-shutdown risk Round 2 found plausibly
+applies here too; kept as a safety net rather than assumed unnecessary.
+
+**Status**: `m1n1-hoolock-control` builds cleanly and every static check
+available without hardware passes. No hardware boot attempt yet -- that
+is the immediate next step.

@@ -24,10 +24,13 @@ GCC-specific compile error unrelated to USB (a missing `default:` case in
 the Apple PMIC backlight driver, disabled via config). Its `t7001-j81.dtb`
 already has `cpu-release-addr`/`enable-method` as proper mainline
 placeholders -- skipping the CPU-topology patching Rounds 3-5 needed --
-though it still needs the same framebuffer-node rename Round 3 proved.
-Not yet wired into a bootable `m1n1-control`-style payload or tested on
-hardware. Full detail in `research/t7001-usb-next.md`'s "Implementation
-progress."
+though it still needed the same framebuffer-node rename Round 3 proved,
+now applied. Wired into a new `m1n1-hoolock-control` payload (also
+overrides the initramfs's gadget setup to target `ecm.usb0` instead of
+the default `rndis.usb0`, since this kernel has no legacy `g_ether` and
+no `CONFIG_USB_CONFIGFS_RNDIS`). Builds cleanly and verified statically;
+no hardware boot attempt yet. Full detail in `research/t7001-usb-next.md`'s
+"Implementation progress" and "Wired into a bootable payload."
 
 **2026-09-07: Linux boots to an interactive shell.** The `bootm` -> m1n1
 route below (not the historical-control route this document was originally
