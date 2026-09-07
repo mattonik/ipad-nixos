@@ -12,6 +12,17 @@ out -- tag `usb-diagnostic-round8-2026-09-07` marks the branch point, and
 independently. See "Decision, 2026-09-07" below for the full reasoning,
 verified version/file facts, and the concrete implementation plan.
 
+**Progress, same day: the newer kernel builds.** After one narrow,
+unrelated GCC compile fix (a missing `default:` case in the Apple PMIC
+backlight driver -- disabled via config, since backlight isn't needed for
+this investigation), `kernel/hoolock.nix` produces a clean `Image` and
+`dtbs/apple/t7001-j81.dtb`. That DTB already has the `cpu-release-addr`
+and `enable-method` placeholders Rounds 3-5 had to hand-patch onto the
+historical kernel's DTB -- only the framebuffer-node rename (proven in
+Round 3) is still needed. Not yet wired into `m1n1-control`; no hardware
+boot attempt yet. See "Implementation progress" under the decision
+section below.
+
 ## Hardware result (2026-09-07, Round 8 in `docs/software-only-control.md`)
 
 Ran `m1n1-usb-diagnostic` per the procedure below. Steps 1-2 of the resume
@@ -408,3 +419,101 @@ prior review's cached knowledge:
    throughout as the working rollback control, exactly as
    `patchedHistoricalConfig` and `m1n1-usb-diagnostic` already do relative
    to each other.
+
+### Implementation progress, 2026-09-07: steps 1-2 done, kernel builds cleanly
+
+Executed steps 1-2 of the plan above, same day as the research and
+decision. Working notes on what actually happened, including two build
+failures and their fixes -- both real, both narrow, neither a dead end:
+
+- Added `hoolockLinux` as a flake input, pinned to
+  `6831bc701a6ce059e71e5aaa9488c9195bea6927` (the exact commit verified
+  above), fetched on the Mac via `nix flake lock --update-input
+  hoolockLinux` -- same pattern as every other kernel-source input.
+- Added `kernel/hoolock.nix`, directly modeled on
+  `kernel/historical.nix`'s named-defconfig pattern: copies the source
+  tree, installs a config as `arch/arm64/configs/ipad_t7001_hoolock_defconfig`,
+  builds with `buildLinux`. `version`/`modDirVersion` set to `7.3.0-rc1`
+  (matching the `Makefile` fields read during research), `buildDTBs =
+  true`.
+- The `config_16k` example config is reused directly from the *existing*
+  `hoolockDocs` flake input (already pinned for the PongoOS binaries) --
+  no new input needed for it, just the same `sed`-on-a-derivation
+  patching technique as `patchedHistoricalConfig`, applied to swap in
+  `CONFIG_ARM64_4K_PAGES`.
+
+**First build attempt failed immediately**, before any compilation: Nix's
+git-tracked-flake evaluation couldn't see the new, not-yet-`git add`-ed
+`kernel/hoolock.nix` file. Fixed with `git add -N kernel/hoolock.nix`
+(intent-to-add, without actually staging content) -- a mechanical Nix/git
+interaction issue, not a real bug.
+
+**Second build attempt got much further -- compiled thousands of files
+across most of the kernel tree (all of `net/*`, `arch/arm64/kernel`,
+etc.) -- then failed with a generic, uninformative `make: ***
+[Makefile:248: __sub-make] Error 2`.** The default `nix build -L` log
+(and even `nix-store -l` on the failed derivation afterward) only
+retained a small tail of the actual output -- entirely unrelated `net/*`
+compile lines with no visible error text anywhere in what was kept,
+because GNU Make's parallel job scheduler had already dispatched many
+`net/*` compiles before the real failure occurred elsewhere in the tree,
+and by the time the build aborted those already-in-flight jobs had pushed
+the actual error out of whatever tail Nix retained. Retrying with `nix
+build --cores 1` to get a serial, easy-to-read log was the wrong fix (far
+too slow -- kernel builds without parallelism can run for hours); the
+right fix was redirecting `nix build -L`'s own stdout/stderr directly to
+a local file (`> build.log 2>&1`, capturing the client-side stream rather
+than relying on post-hoc log retrieval) with a smaller-but-nonzero
+`--cores 4`, which surfaced the real error cleanly:
+
+```
+../drivers/video/backlight/apple_pmic_bl.c:68:1: error: control reaches
+end of non-void function [-Werror=return-type]
+make[5]: *** [../scripts/Makefile.build:290: drivers/video/backlight/apple_pmic_bl.o] Error 1
+```
+
+Fetched the actual source: `apple_pmic_bl_get_brightness()`'s `switch
+(data->type)` covers both enumerators of `enum apple_pmic_type`
+(`PMIC_TYPE_ANYA`, `PMIC_TYPE_ARIA`) but has no `default:` case, so GCC
+can't statically prove every path returns a value and flags it under
+`-Werror=return-type`. This is exactly the class of GCC-vs-Clang
+divergence the "Toolchain" note above was worried about (Hoolock's own
+build guide recommends `LLVM=1`) -- but narrower and easier to fix than
+switching this project's entire kernel toolchain: `apple_pmic_bl` is
+backlight control, unrelated to the USB investigation this kernel is
+being evaluated for. Rather than patch vendored driver source, disabled
+it at the config level (`CONFIG_BACKLIGHT_APPLE_PMIC=y` ->
+`# CONFIG_BACKLIGHT_APPLE_PMIC is not set`, found via `config_16k`'s own
+`grep -i backlight` and the driver's `Kconfig` entry). GCC cross-compiles
+the rest of the kernel without any other source-level issue found so far.
+
+**Third build attempt succeeded completely**: `Image` (18 MB),
+`System.map`, and a full `dtbs/apple/` directory, including
+`t7001-j81.dtb` and `t7001-j82.dtb` for this project's exact board and
+its cellular sibling. GCC cross-compilation is viable for this kernel
+after all -- the earlier "may need to switch to LLVM" concern from the
+research phase turned out to be a single fixable file, not a fundamental
+toolchain incompatibility.
+
+**Inspected the built `t7001-j81.dtb` directly** (`dtc -I dtb -O dts`,
+not assumed): `#address-cells = <0x02>` with correct two-cell `reg`
+values, and -- unlike the historical kernel's DTB, which needed all of
+this hand-patched across Rounds 3-5 -- `cpu@0`/`cpu@1`/`cpu@2` already
+carry both `cpu-release-addr = <0x00 0x00>` *and* `enable-method =
+"spin-table"` as proper mainline-convention placeholders. None of the
+CPU-related DTB patching this project spent three rounds developing is
+needed for this kernel's own DTB. It does still have `/chosen/framebuffer@0`
+(a unit address on the node name) rather than the exact `/chosen/framebuffer`
+path m1n1's `dt_set_fb()` looks up via `fdt_path_offset()` -- the same
+situation as the *modern mainline* DTB back in Round 3, which needs the
+same one-line rename fix already proven there.
+
+**Not yet done**: wiring this kernel/DTB into `m1n1-control` (needs the
+framebuffer rename patch above, and a decision on the USB gadget/initramfs
+setup for this kernel's configfs-only mechanism -- reusing the existing
+`debug_initrd.img`'s already-present `setup_usb_network_configfs()` path
+is the obvious first thing to try, since Round 6-8's analysis showed it
+already exists and previously only failed because the legacy `g_ether`
+had already claimed the only UDC first -- a conflict that can't happen on
+this kernel, since `CONFIG_USB_ETH` isn't compiled in at all). No
+hardware boot attempt yet on this kernel.

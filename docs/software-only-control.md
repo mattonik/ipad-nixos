@@ -13,6 +13,22 @@ normally. See "Round 8" below and
 [the diagnostic runbook and kernel-upgrade research](../research/t7001-usb-next.md)
 for the full evidence and next-step options.
 
+**Decision and progress, same day.** Rather than treat the newer-kernel
+option as a fallback, decided to pursue it on `main` regardless of the
+trace investigation's outcome ("only positive in the long run") -- tagged
+`usb-diagnostic-round8-2026-09-07` at this point and branched
+`usb-dwc2-pio-trace` to carry the low-level PIO-fill tracing forward
+independently. The newer kernel (Hoolock's tree, tracking Linux 7.3-rc1)
+now builds cleanly via a new `kernel/hoolock.nix`, after fixing one
+GCC-specific compile error unrelated to USB (a missing `default:` case in
+the Apple PMIC backlight driver, disabled via config). Its `t7001-j81.dtb`
+already has `cpu-release-addr`/`enable-method` as proper mainline
+placeholders -- skipping the CPU-topology patching Rounds 3-5 needed --
+though it still needs the same framebuffer-node rename Round 3 proved.
+Not yet wired into a bootable `m1n1-control`-style payload or tested on
+hardware. Full detail in `research/t7001-usb-next.md`'s "Implementation
+progress."
+
 **2026-09-07: Linux boots to an interactive shell.** The `bootm` -> m1n1
 route below (not the historical-control route this document was originally
 written around -- see "A second, architecturally different route" further

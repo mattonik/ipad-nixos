@@ -56,13 +56,33 @@ a PIO partial-fill/re-arm bug specific to this forced-PIO (DMA hardcoded
 off) historical fork. Full evidence in `docs/software-only-control.md`'s
 "Round 8" and `research/t7001-usb-next.md`.
 
-Hoolock's newer matched kernel/DTB is a researched upgrade candidate, not
-yet built -- it restores real DMA hardware-capability detection instead of
-forcing PIO, which could sidestep this whole class of bug. Our pinned
-m1n1 already has its AUSB PHY tunable handoff. Do not blindly swap only
-the DTB, enable DMA, or tune nonexistent FIFO bootargs. See
-[the complete session handoff](research/t7001-usb-next.md) for changes,
-checks, artifact hashes, source links, rollback and ordered next steps.
+**Decision, 2026-09-07, after Round 8**: pursue Hoolock's newer kernel
+(tracks mainline Linux 7.3-rc1, restores real dwc2 DMA hardware-capability
+detection instead of forcing PIO) on `main`, while carrying the low-level
+PIO-fill trace investigation forward independently on the
+`usb-dwc2-pio-trace` branch (from tag `usb-diagnostic-round8-2026-09-07`)
+so neither path blocks or discards the other -- "only positive in the
+long run" regardless of which path resolves the USB fault first.
+
+**Newer-kernel progress, same day: it builds.** `kernel/hoolock.nix` (new,
+modeled on `kernel/historical.nix`) cross-compiles cleanly with this
+project's existing GCC toolchain after one narrow, USB-unrelated fix (the
+Apple PMIC backlight driver fails GCC's `-Werror=return-type`; disabled
+via config, since Hoolock's own docs recommend Clang and backlight isn't
+needed here). Produces a working `Image` and `t7001-j81.dtb` for this
+exact board. That DTB already has `cpu-release-addr` and `enable-method =
+"spin-table"` as proper mainline placeholders -- none of the CPU-topology
+DTB patching Rounds 3-5 needed is required here; only the same
+framebuffer-node rename Round 3 already proved (this DTB has
+`framebuffer@0`, m1n1 needs the exact path `/chosen/framebuffer`) is still
+outstanding. **Not yet wired into `m1n1-control`; no hardware boot attempt
+on this kernel yet.** Full details, including the two build failures and
+their fixes, in `research/t7001-usb-next.md`'s "Implementation progress."
+
+Do not blindly swap only the DTB, enable DMA, or tune nonexistent FIFO
+bootargs -- see [the complete research and implementation
+log](research/t7001-usb-next.md) for what's actually been verified versus
+assumed.
 
 Full evidence and commands are in `docs/software-only-control.md`'s
 "Round 3" through "Round 8".

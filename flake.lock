@@ -176,6 +176,23 @@
         "type": "github"
       }
     },
+    "hoolockLinux": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1788414569,
+        "narHash": "sha256-6DxPpBXrGemOQV98lw0VZCpkAliLiixVvDl1exGaEO8=",
+        "owner": "HoolockLinux",
+        "repo": "linux",
+        "rev": "6831bc701a6ce059e71e5aaa9488c9195bea6927",
+        "type": "github"
+      },
+      "original": {
+        "owner": "HoolockLinux",
+        "repo": "linux",
+        "rev": "6831bc701a6ce059e71e5aaa9488c9195bea6927",
+        "type": "github"
+      }
+    },
     "hoolockM1n1": {
       "flake": false,
       "locked": {
@@ -310,6 +327,7 @@
       "inputs": {
         "devenv": "devenv",
         "hoolockDocs": "hoolockDocs",
+        "hoolockLinux": "hoolockLinux",
         "hoolockM1n1": "hoolockM1n1",
         "linuxApple519": "linuxApple519",
         "linuxAppleResources": "linuxAppleResources",

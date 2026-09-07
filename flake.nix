@@ -19,6 +19,16 @@
       url = "github:HoolockLinux/docs/23ebe1fbc375599221553a7e1815e5de182a6b42";
       flake = false;
     };
+    # Newer-kernel candidate researched after Round 8 (see
+    # research/t7001-usb-next.md's "Decision, 2026-09-07"): tracks mainline
+    # Linux 7.3-rc1, restores real dwc2 DMA hardware-capability detection
+    # instead of the historical fork's hardcoded PIO fallback, and already
+    # has a t7001-j81.dts for this exact board. Pinned to the same commit
+    # verified against the live repository during that research.
+    hoolockLinux = {
+      url = "github:HoolockLinux/linux/6831bc701a6ce059e71e5aaa9488c9195bea6927";
+      flake = false;
+    };
     # Fetched as a proper flake input (resolved on the Mac, which has real
     # internet access) rather than via pkgs.fetchzip inside the package body
     # -- that fetch used to run on the offline cross-compilation builder,
@@ -117,6 +127,38 @@
             historicalConfig = patchedHistoricalConfig;
           };
           modernKernel = pkgsCross.callPackage ./kernel {};
+
+          # config_16k defaults to 16K pages (A9-A11/T2); Hoolock's own setup
+          # guide says to swap in CONFIG_ARM64_4K_PAGES for A7-A8X instead --
+          # confirmed directly from that guide's text during the Round 8
+          # follow-up research, not inferred from the filename. Same
+          # sed-on-a-derivation technique as patchedHistoricalConfig above.
+          #
+          # CONFIG_BACKLIGHT_APPLE_PMIC=y also has to go: this kernel's
+          # drivers/video/backlight/apple_pmic_bl.c fails to build under GCC
+          # (this project's cross-toolchain) with "error: control reaches
+          # end of non-void function [-Werror=return-type]" in
+          # apple_pmic_bl_get_brightness() -- its switch over
+          # enum apple_pmic_type has no default case, which GCC's stricter
+          # -Wreturn-type flags and Hoolock's own recommended Clang/LLVM
+          # toolchain apparently doesn't (confirmed empirically: their
+          # setup guide's own `make ... LLVM=1` instruction was flagged as
+          # an open question during the Round 8 research, and this is
+          # exactly the kind of GCC/Clang divergence that raised it).
+          # Backlight control is irrelevant to the USB investigation this
+          # kernel is being evaluated for, so disabling the driver avoids
+          # touching vendored source for something we don't need.
+          patchedHoolockConfig = pkgs.runCommand "ipad-t7001-hoolock-defconfig-4k" {} ''
+            sed \
+              -e 's/^# CONFIG_ARM64_4K_PAGES is not set$/CONFIG_ARM64_4K_PAGES=y/' \
+              -e 's/^CONFIG_ARM64_16K_PAGES=y$/# CONFIG_ARM64_16K_PAGES is not set/' \
+              -e 's/^CONFIG_BACKLIGHT_APPLE_PMIC=y$/# CONFIG_BACKLIGHT_APPLE_PMIC is not set/' \
+              ${inputs.hoolockDocs}/config_16k > "$out"
+          '';
+          hoolockKernel = pkgsCross.callPackage ./kernel/hoolock.nix {
+            source = inputs.hoolockLinux;
+            hoolockConfig = patchedHoolockConfig;
+          };
         in {
         # Linux kernel for iPad Air 2 (A8X)
         kernel = modernKernel;
@@ -124,6 +166,12 @@
         # Exact kernel branch used by the June 2022 T7001 proof. Keep this as
         # a control; do not add current-tree fixes until it has booted as-is.
         historical-kernel = historicalKernel;
+
+        # Newer-kernel candidate researched after Round 8 (see
+        # research/t7001-usb-next.md). Kept as its own independent output --
+        # not yet wired into m1n1-control -- so the working historical
+        # control stays the rollback path while this is evaluated.
+        hoolock-kernel = hoolockKernel;
 
         # Kernel, the published multi-device DTB pack, and debug initramfs in
         # the exact file layout consumed by the historical PongoOS loader.

@@ -9,8 +9,14 @@ complete ARP entry for the Mac's real MAC address) -- host-to-device
 works. Device-to-host does not: the bulk IN endpoint has a packet
 programmed into its transfer-size register that never reaches the
 physical TX FIFO, while CDC-ECM control-channel negotiation is completely
-normal. Hoolock's newer matched kernel/DTB (restores real DMA detection
-instead of forcing PIO) remains a researched upgrade candidate. See
+normal. **Decision**: pursue Hoolock's newer kernel (Linux 7.3-rc1,
+restores real DMA detection instead of forcing PIO) on `main`, while an
+independent low-level trace of the old kernel's PIO path continues on the
+`usb-dwc2-pio-trace` branch (from tag `usb-diagnostic-round8-2026-09-07`)
+-- neither path blocks the other. **Progress**: the newer kernel already
+builds cleanly (one narrow, USB-unrelated GCC fix needed) and its DTB
+needs less patching than the historical kernel's did; not yet wired into
+a bootable payload or tested on hardware. See
 [T7001 USB next steps](../research/t7001-usb-next.md), which supersedes
 the categorical Round 7 driver diagnosis below.
 Target: iPad Air 2 Wi‑Fi A1566, A8X/T7001, board J81/J81AP  
