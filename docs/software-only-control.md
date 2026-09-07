@@ -1,12 +1,15 @@
 # Software-only T7001 control
 
-**2026-09-07: Linux boots.** The `bootm` -> m1n1 route below (not the
-historical-control route this document was originally written around --
-see "A second, architecturally different route" further down) got Linux
-running on this exact iPad Air 2, confirmed by genuine kernel driver-probe
-output captured on video. See "Hardware round, 2026-09-07" under that
-section for the full transcript and how it was verified. This is the
-project's primary milestone to date.
+**2026-09-07: Linux boots to an interactive shell.** The `bootm` -> m1n1
+route below (not the historical-control route this document was originally
+written around -- see "A second, architecturally different route" further
+down) reached a live `/ #` postmarketOS shell prompt on this exact iPad
+Air 2, after `pd_ignore_unused`/`clk_ignore_unused` fixed a power-domain
+auto-shutdown that had been killing the display right after driver probing.
+See "Round 2" under that section for the full transcript. This is the
+project's primary milestone, achieved in full -- the only remaining gap is
+a way to send input to that shell (no USB network link yet; see "Next
+tests, in order" step 3).
 
 This document originally centered on reproducing the complete June 2022 stack
 reported working on A7/A8/A8X. That historical-Pongo route remains blocked by
@@ -655,7 +658,52 @@ never gets to run) nothing further is ever printed anywhere.
 and `clk_ignore_unused` -- real, standard kernel parameters
 (`drivers/base/power/domain.c`, `drivers/clk/clk.c`, both confirmed present
 in the historical kernel source) that disable exactly this automatic
-unused-resource shutdown. Not yet run on hardware.
+unused-resource shutdown.
+
+**Run on hardware the same day: confirmed correct.** The console stayed up.
+postmarketOS's real userspace ran -- the actual boot sequence, not a
+placeholder:
+
+```
+[postmarketOS logo]
+WARNING
+debug-shell is active
+https://postmarketos.org/debug-shell
+
+Create 'pmos_continue_boot' script
+Create 'pmos_shell' script
+Create 'pmos_loop_forever' script
+Start the telnet daemon
+---
+WARNING: debug-shell is active on 172.16.42.1:23.
+This is a security hole! Only use it for debugging, and
+uninstall the debug-shell hook afterwards!
+---
+tty: Ignoring all arguments
+/dev/console
+Exit the shell to continue booting:
+sh: can't access tty: job control turned off
+/ #
+```
+
+A live, interactive `/ #` shell prompt. **This is the milestone the entire
+investigation was aimed at**, reached in full: checkm8 -> PongoOS `bootm` ->
+m1n1 -> Linux -> a running postmarketOS userspace with an interactive
+shell, on this exact iPad Air 2.
+
+The debug-shell hook (a genuine postmarketOS feature, intentionally pausing
+boot for interactive debugging) also starts a telnet daemon at
+`172.16.42.1:23` -- but nothing on the Mac routes to that address
+(`netstat -rn` confirms no `172.16.42.x` route), consistent with the
+already-diagnosed missing USB-device-controller node: `g_ether` printed
+"couldn't find an available UDC" earlier in this same boot, so there is no
+USB network link for that telnet daemon to be reachable over. The shell is
+alive and waiting for input from *some* console; this project currently has
+no channel to provide one. This is now the single remaining gap, and step 3
+of the plan above -- restoring the historical DTB's real USB-device node
+(`usbdev@20c100000`, `apple,t7000-usb`, with its matched historical kernel
+driver) while keeping the now-proven CPU-cell, framebuffer, and
+power-domain fixes -- is the direct way to close it.
 
 ## Attempts and failures while preparing the control
 

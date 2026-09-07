@@ -932,8 +932,28 @@ The packaged DTB has no `psci` or `arm_ffa` node at all, so this is routine
 driver-probe noise the `optee` driver produces unconditionally when
 compiled in, unrelated to whatever happens next -- and this DTB's CPUs use
 `enable-method = "spin-table"`, not PSCI, ruling out a PSCI-mediated crash
-hypothesis too. Full transcript, extraction method, and reasoning in
-`docs/software-only-control.md`.
+hypothesis too.
+
+**Fifth update, same investigation, next day -- solved.** Added
+`PMOS_NO_OUTPUT_REDIRECT` to test whether the bundled postmarketOS Xperia Z5
+debug initramfs was hiding its own output (it wasn't the cause: its
+unconditional startup marker line never appeared on screen, even re-tested
+at 120fps, meaning PID 1 never actually started). That ruled the kernel
+itself in as the point of failure. Traced it to Apple's PMGR power-domain
+driver: the generic power-domain framework's `genpd_power_off_unused()`
+runs as a `late_initcall()` right after device-driver probing and powers off
+any power domain with no active consumer -- and the packaged DTB's
+`/chosen/framebuffer` node depends on power domains labeled `disp0`/`dp`,
+with no real Linux display driver holding them open. Adding
+`pd_ignore_unused clk_ignore_unused` to the kernel command line, tested on
+hardware the same day, **fixed it completely**: the device now boots to a
+live, interactive postmarketOS `/ #` shell prompt. This is the
+investigation's actual goal, reached in full -- not just "Linux boots" but
+"Linux boots to a running, interactive userspace." The only remaining gap
+is USB (the shell's own telnet daemon has no network link to reach it over,
+since this DTB has no USB-device-controller node) -- a concrete,
+already-understood software fix, not a new mystery. Full transcripts for
+every step in `docs/software-only-control.md`.
 
 ## Sources
 

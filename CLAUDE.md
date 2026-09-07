@@ -4,33 +4,33 @@
 
 Boot NixOS on old iPads (2011-2017, A5–A11 chips) via checkm8 bootrom exploit, turning e-waste into usable Linux machines.
 
-## Status (2026-09-07): Linux boots
+## Status (2026-09-07): Linux boots to an interactive shell
 
 The `bootm` → m1n1 route (`docs/software-only-control.md`) got a real
-hardware run on 2026-09-07 and, after three precisely-diagnosed bugs found
-and fixed live in one session, **Linux booted on this exact iPad Air 2** --
-confirmed by genuine kernel driver-probe output (sdhci, usbhid, CoreSight)
-captured on video and independently verified frame-by-frame against the
-source file. This is the project's primary goal, achieved.
+hardware run on 2026-09-07 and, after four precisely-diagnosed bugs found
+and fixed live across the session, **reached a live, interactive
+postmarketOS `/ #` shell prompt on this exact iPad Air 2** -- the project's
+primary goal, achieved in full. Bugs fixed in order: a missing newline in
+the payload parser; a device-tree CPU-topology format mismatch; a misnamed
+framebuffer node; and, decisively, a power-domain auto-shutdown
+(`genpd_power_off_unused()`, a `late_initcall()` in Apple's PMGR driver)
+that was killing the display's `disp0`/`dp` power domains right after
+driver probing finished, fixed with `pd_ignore_unused clk_ignore_unused` on
+the kernel command line. (An earlier theory blamed the bundled postmarketOS
+Xperia Z5 debug initramfs hiding its own output -- ruled out once its own
+unconditional startup marker never appeared on screen even after testing at
+120fps, which is what led to finding the real, kernel-level cause instead.)
 
-The screen goes black again well under a second later. First theory (the
-bundled 2020 postmarketOS Xperia Z5 debug initramfs hiding its own output
-and painting an almost-black splash) turned out not to fit: its
-unconditional `### postmarketOS initramfs ###` marker line has never
-appeared on screen, even after adding `PMOS_NO_OUTPUT_REDIRECT` and
-re-testing at 120fps -- so PID 1 most likely never starts, and whatever
-stops output is inside the kernel itself. Current leading hypothesis: Apple's
-PMGR power-domain driver uses the generic power-domain framework, whose
-`genpd_power_off_unused()` runs right after driver probing (matching what's
-been observed on video every time) and could be powering off the
-framebuffer's `disp0`/`dp` power domains since nothing holds them open.
-`pd_ignore_unused clk_ignore_unused` added to bootargs to test this
-directly -- not yet run on hardware. The modern mainline DTB used for the
-successful boot also lacks the historical tree's T7001 USB-device node,
-explaining why no USB console appears, separately from either theory above.
-**Do not buy UART hardware yet** -- there's still a concrete, testable
-software lead. Full evidence and commands are in
-`docs/software-only-control.md`.
+**The only remaining gap**: postmarketOS's debug-shell hook also starts a
+telnet daemon (`172.16.42.1:23`), but the modern mainline DTB used for this
+boot has no T7001 USB-device-controller node (`g_ether` printed "couldn't
+find an available UDC" during the same boot), so there is no USB network
+link to reach it over -- the shell is alive, just has no input channel yet.
+Next step: restore the historical DTB's real USB node
+(`usbdev@20c100000`, `apple,t7000-usb`) while keeping the now-proven
+CPU-cell, framebuffer, and power-domain fixes. **UART is not needed** --
+this is a concrete, well-understood, software-only gap. Full evidence and
+commands are in `docs/software-only-control.md`.
 
 Driver work (touch, Wi-Fi, etc.) remains explicitly approval-gated --
 booting Linux does not change that; wait for the user before starting any

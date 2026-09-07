@@ -5,39 +5,51 @@ Target: iPad Air 2 Wi‑Fi A1566, A8X/T7001, board J81/J81AP
 Repository: [mattonik/ipad-nixos](https://github.com/mattonik/ipad-nixos)
 Upstream: [jacopone/ipad-nixos](https://github.com/jacopone/ipad-nixos)
 
-## 🎉 Linux boots on the iPad Air 2 (2026-09-07)
+## 🎉 Linux boots to an interactive shell on the iPad Air 2 (2026-09-07)
 
-**The project's core technical goal has been achieved.** Via PongoOS's
-`bootm` command loading an iDevice fork of m1n1
+**The project's core technical goal has been achieved, in full.** Via
+PongoOS's `bootm` command loading an iDevice fork of m1n1
 (`docs/software-only-control.md`), this exact iPad Air 2 (A8X/T7001, serial
-`DMPT45YDG5W3`) now boots into real Linux kernel driver initialization --
-confirmed by genuine, unmistakable kernel log output
-(`sdhci: Copyright(c) Pierre Ossman`, `usbhid: USB HID core driver`,
-`cs_system_cfg: CoreSight Configuration manager initialised`, and more)
-captured on video and independently verified frame-by-frame against the
-source file. This followed three precisely-diagnosed bugs found and fixed
-live in one hardware session: a missing newline in the payload parser, a
-device-tree CPU-topology format mismatch, and a misnamed framebuffer node.
-Full transcripts and the exact fixes are in
-`docs/software-only-control.md`'s "Hardware round, 2026-09-07" section.
+`DMPT45YDG5W3`) boots all the way to a live, interactive postmarketOS `/ #`
+shell prompt:
 
-The screen goes black again well under a second after the driver-probe lines.
-First theory (a bundled 2020 postmarketOS Xperia Z5 debug initramfs hiding
-its own output behind a near-black splash) didn't hold up: adding
-`PMOS_NO_OUTPUT_REDIRECT` and re-testing at 120fps never showed that
-script's own unconditional startup marker, meaning PID 1 most likely never
-runs at all. Current leading hypothesis, from the same evidence: Apple's
-PMGR power-domain driver's generic-power-domain framework may be powering
-off the framebuffer's `disp0`/`dp` power domains as "unused" via a
-`late_initcall()` that runs right where output stops on every attempt so
-far. `pd_ignore_unused clk_ignore_unused` added to bootargs to test this
-directly -- not yet run on hardware. The selected mainline DTB also lacks
-the historical tree's matched T7001 USB-device node, so no USB console can
-appear either way, separately from both theories above. **Do not buy UART
-hardware yet** -- there's still a concrete, testable software lead; see
-`docs/software-only-control.md`'s "Round 2" for the full evidence.
-Touch/Wi-Fi/etc. remain approval-gated: do not start driver work without
-the user's explicit approval.
+```
+postmarketOS
+WARNING
+debug-shell is active
+...
+Start the telnet daemon
+WARNING: debug-shell is active on 172.16.42.1:23.
+Exit the shell to continue booting:
+/ #
+```
+
+Four precisely-diagnosed bugs were found and fixed live across the session,
+each verified on hardware in turn: a missing newline in the payload parser;
+a device-tree CPU-topology format mismatch; a misnamed framebuffer node;
+and, decisively, a power-domain auto-shutdown. That last one was found by
+first ruling out a plausible-looking but wrong theory (a bundled
+postmarketOS Xperia Z5 debug initramfs hiding its own output) once its
+unconditional startup marker never appeared on screen even at 120fps --
+which pointed at the kernel itself instead. Apple's PMGR power-domain
+driver's generic-power-domain framework was found to power off the
+framebuffer's `disp0`/`dp` power domains via a `late_initcall()` right
+after driver probing, with nothing holding them open; `pd_ignore_unused
+clk_ignore_unused` on the kernel command line fixed it outright, confirmed
+on hardware. Full transcripts for every step are in
+`docs/software-only-control.md`'s "Hardware round" and "Round 2" sections.
+
+**The only remaining gap**: the debug-shell's telnet daemon
+(`172.16.42.1:23`) has no USB network link to be reached over -- the
+mainline DTB used for this boot has no T7001 USB-device-controller node
+(`g_ether` logged "couldn't find an available UDC" during the same boot).
+The shell is alive and waiting for input; there is currently no channel to
+send it. Next step: restore the historical DTB's real USB node
+(`usbdev@20c100000`, `apple,t7000-usb`) while keeping the now-proven
+CPU-cell, framebuffer, and power-domain fixes. **UART is not needed** --
+this is a concrete, well-understood, software-only gap, not a return to
+guessing. Touch/Wi-Fi/etc. remain approval-gated regardless: do not start
+driver work without the user's explicit approval.
 
 The historical PongoOS control (found the same day, a separate experiment)
 could not be attempted this round -- `palera1n`'s stager rejects its
@@ -2146,7 +2158,7 @@ is the reference for the intentionally minimal board description.
 | Current RAM-only Pongo session | Not assumed active; sessions are transient and no iPad USB interface was visible during the 2026-09-06 artifact build |
 | Linux payload upload | ✅ Transferred once; exposed PongoOS pre-handoff defects |
 | Guarded T7001 diagnostic PongoOS | ✅ Matched-toolchain Pongo, USB, aligned Image/DTB/initrd ranges, Linux register contract, and no-jump guard are proven on T7001 |
-| Linux kernel boot | ✅ Achieved 2026-09-07 via `bootm`→m1n1: genuine Linux driver-probe output was verified frame-by-frame. The subsequent black screen is strongly explained by the bundled Xperia debug initramfs redirecting output and painting a nearly black splash. The next tests remain software-only; UART is a fallback. See docs/software-only-control.md. |
+| Linux kernel boot | ✅✅ Achieved in full, 2026-09-07, via `bootm`→m1n1: reaches a live, interactive postmarketOS `/ #` shell prompt (`pd_ignore_unused`/`clk_ignore_unused` fixed a power-domain auto-shutdown that was killing the display). Only gap: no USB network link to the shell's telnet daemon yet — restoring the historical DTB's USB node is the next step, not UART. See docs/software-only-control.md. |
 | Display/touch/Wi‑Fi/Bluetooth validation | ❌ Not started |
 | Usable tethered Linux tablet | ❌ Future milestone |
 
