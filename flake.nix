@@ -131,35 +131,56 @@
           cp ${inputs.hoolockDocs}/binaries/Pongo.bin "$out/Pongo.bin"
           cp ${inputs.hoolockM1n1}/m1n1.bin "$out/m1n1.bin"
           gzip -n -c ${historicalKernel}/Image > "$out/Image.gz"
-          # Deliberately the MODERN (mainline-sourced) DTB, not the
-          # historical kernel's own bundled one: the 2022 DT declares CPU
-          # nodes with #address-cells=1 (a single-cell "reg"), but m1n1's
-          # dt_set_cpus() (src/kboot.c) reads that property with fdt64_ld()
-          # -- an 8-byte load. Against a 4-byte property that over-reads
-          # into adjacent DTB data, producing a corrupted "expected MPIDR"
-          # and a hard-fail "DT CPU 1 MPIDR mismatch" on real hardware
-          # (confirmed on this exact device -- see docs/software-only-control.md).
-          # Mainline's current t7001.dtsi already uses the correct
-          # #address-cells=2 two-cell reg format m1n1 expects; the kernel
-          # Image itself is still the historical, pinned one.
-          # Caveat found after the first successful Linux boot: this mainline
-          # DTB has no T7001 USB-device controller node. The historical DTB
-          # does, and its apple,t7000-usb binding matches this kernel.
+          # 2026-09-07: switched from the modern (mainline-sourced) DTB back
+          # to the HISTORICAL kernel's own bundled one, now that the reason
+          # for the earlier switch (a CPU reg-cell bug) is independently
+          # patchable and the historical DTB has something mainline's
+          # doesn't: a real T7001 USB-device-controller node
+          # (usbdev@20c100000, compatible "apple,t7000-usb"), matched by a
+          # real driver in this same historical kernel
+          # (drivers/usb/dwc2/params.c). The modern DTB has no USB
+          # controller node at all -- confirmed the first time Linux
+          # reached a live shell here: g_ether logged "couldn't find an
+          # available UDC", so its own telnet debug-shell had no network
+          # link to be reached over. See docs/software-only-control.md.
           #
-          # The mainline DTB's framebuffer node is also a "to be filled by
-          # loader" placeholder ("apple,simple-framebuffer", status=disabled,
-          # zeroed reg) at /chosen/framebuffer@0 -- but m1n1's dt_set_fb()
-          # (src/kboot.c) looks it up by the EXACT path /chosen/framebuffer
-          # (no unit address) via fdt_path_offset(), which does not do
-          # prefix/wildcard matching. Confirmed on real hardware: m1n1
-          # printed "FDT: No framebuffer found" and proceeded anyway (this
-          # is non-fatal in m1n1, just means no console reaches the
-          # screen) -- rename the node so m1n1 can find, populate, and
-          # enable it. m1n1 renames it back to framebuffer@<base> itself
-          # once found, so the pre-rename name doesn't need the real
-          # address; it just needs to exist at that exact path.
-          dtc -I dtb -O dts ${modernKernel}/dtbs/apple/t7001-j81.dtb \
-            | sed 's/framebuffer@0 {/framebuffer {/' \
+          # Same two structural defects the modern-DTB fix addressed are
+          # patched here too, since they're properties of the *historical*
+          # DTB, not specific to which DTB was in use:
+          #
+          # 1. /cpus declares #address-cells=1 (a single-cell "reg" per
+          #    CPU), but m1n1's dt_set_cpus() (src/kboot.c) reads that
+          #    property with fdt64_ld() -- an 8-byte load. Against a 4-byte
+          #    property that over-reads into adjacent DTB data, producing a
+          #    corrupted "expected MPIDR" and a hard-fail "DT CPU 1 MPIDR
+          #    mismatch" on real hardware (confirmed running the modern DTB
+          #    variant of this exact bug -- docs/software-only-control.md).
+          #    Converted to the binding's correct #address-cells=2, two-cell
+          #    reg format, matching mainline's current t7001.dtsi.
+          # 2. The historical DTB has no /chosen/framebuffer node at all
+          #    (unlike the modern one, which at least had a misnamed
+          #    placeholder) -- m1n1's dt_set_fb() (src/kboot.c) looks it up
+          #    by the exact path /chosen/framebuffer via fdt_path_offset()
+          #    and silently skips console setup if it's missing (confirmed
+          #    non-fatal on real hardware, see docs/software-only-control.md
+          #    for the exact "FDT: No framebuffer found" case). Added a
+          #    minimal placeholder node at that exact path; m1n1 renames it
+          #    to framebuffer@<real base> and fills in
+          #    reg/width/height/stride/format itself once found, so the
+          #    placeholder's own field values don't matter. Unlike the
+          #    modern DTB, this historical one has no PMGR power-domain
+          #    nodes at all (predates that level of hardware description),
+          #    so no power-domains reference is needed here -- the
+          #    pd_ignore_unused/clk_ignore_unused bootargs fix below still
+          #    applies globally as a safety net for whatever domains this
+          #    DTB does describe.
+          dtc -I dtb -O dts ${historicalKernel}/dtbs/apple/t7001-j81.dtb \
+            | sed \
+                -e '/^\tcpus {$/,/^\t};$/ s/#address-cells = <0x01>;/#address-cells = <0x02>;/' \
+                -e '/^\tcpus {$/,/^\t};$/ s/reg = <0x00>;/reg = <0x00 0x00>;/' \
+                -e '/^\tcpus {$/,/^\t};$/ s/reg = <0x01>;/reg = <0x00 0x01>;/' \
+                -e '/^\tcpus {$/,/^\t};$/ s/reg = <0x02>;/reg = <0x00 0x02>;/' \
+                -e '/^\tchosen {$/,/^\t};$/ s/ranges;/ranges;\n\t\tframebuffer {\n\t\t\tcompatible = "apple,simple-framebuffer", "simple-framebuffer";\n\t\t\treg = <0x00 0x00 0x00 0x00>;\n\t\t\tstatus = "disabled";\n\t\t};/' \
             | dtc -I dts -O dtb -o "$out/t7001-j81.dtb"
           cp ${inputs.linuxAppleResources}/debug_initrd.img "$out/initramfs.gz"
           # m1n1's payload parser (src/payload.c check_var()) requires a

@@ -705,6 +705,49 @@ of the plan above -- restoring the historical DTB's real USB-device node
 driver) while keeping the now-proven CPU-cell, framebuffer, and
 power-domain fixes -- is the direct way to close it.
 
+### Round 3, 2026-09-07: implementing the USB path
+
+Switched `m1n1-control`'s DTB from the modern (mainline) one back to the
+*historical* kernel's own bundled `t7001-j81.dtb` -- it has the real
+`usbdev@20c100000` (`compatible = "apple,t7000-usb"`) node mainline lacks,
+matched by a real driver already confirmed present in the historical kernel
+source (`drivers/usb/dwc2/params.c:340`,
+`{ .compatible = "apple,t7000-usb", .data = dwc2_set_apple_t7000_params }`).
+Kernel and DTB are now from the same original source tree for the first
+time in this route, rather than a mix of historical kernel + mainline DTB.
+
+The historical DTB needed the same two structural fixes already proven on
+the modern one, since both are properties of *this specific DTB*, not
+specific to which one was previously in use:
+
+- `/cpus` declared `#address-cells = <1>` (the same single-cell `reg` bug
+  diagnosed and fixed on the modern DTB). Converted to the binding's
+  correct `#address-cells = <2>`, with each `cpu@N`'s `reg` updated to the
+  matching two-cell form (`reg = <0x0 N>`).
+- The historical DTB has **no** `/chosen/framebuffer` node at all (the
+  modern one at least had a misnamed placeholder to rename). Added a
+  minimal one at the exact path m1n1's `dt_set_fb()` looks for; m1n1 fills
+  in the real address/dimensions and renames it itself once found, so the
+  placeholder's own field values don't matter -- same mechanism already
+  confirmed working on hardware for the modern DTB.
+
+Unlike the modern DTB, this historical one has **no PMGR power-domain
+nodes at all** -- it predates that level of hardware description, so
+there's no `power-domains` property on the framebuffer node to worry about
+here specifically. `pd_ignore_unused clk_ignore_unused` stay in bootargs
+regardless, as a safety net for whatever power/clock domains this DTB does
+describe elsewhere.
+
+Both new sed-based transforms were verified locally against a real
+`dtc`-decompiled/recompiled round-trip before wiring into `flake.nix`, and
+the resulting `t7001-j81.dtb` was independently re-checked after the Nix
+build: `#address-cells = <0x02>` with two-cell CPU `reg` values, an exact
+`/chosen/framebuffer` node, and the historical `usbdev@20c100000` node
+still present and untouched. `example.config` was also re-checked and
+already has everything the USB gadget path needs:
+`CONFIG_USB_DWC2=y`, `CONFIG_USB_DWC2_DUAL_ROLE=y`, `CONFIG_USB_GADGET=y`,
+`CONFIG_USB_ETH=y`, `CONFIG_USB_ETH_RNDIS=y`. Not yet run on hardware.
+
 ## Attempts and failures while preparing the control
 
 - Building the historical PongoOS source with Apple Clang 14 initially failed

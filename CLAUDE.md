@@ -22,15 +22,21 @@ unconditional startup marker never appeared on screen even after testing at
 120fps, which is what led to finding the real, kernel-level cause instead.)
 
 **The only remaining gap**: postmarketOS's debug-shell hook also starts a
-telnet daemon (`172.16.42.1:23`), but the modern mainline DTB used for this
+telnet daemon (`172.16.42.1:23`), but the modern mainline DTB used for that
 boot has no T7001 USB-device-controller node (`g_ether` printed "couldn't
-find an available UDC" during the same boot), so there is no USB network
-link to reach it over -- the shell is alive, just has no input channel yet.
-Next step: restore the historical DTB's real USB node
-(`usbdev@20c100000`, `apple,t7000-usb`) while keeping the now-proven
-CPU-cell, framebuffer, and power-domain fixes. **UART is not needed** --
+find an available UDC" during the same boot), so there was no USB network
+link to reach it over -- the shell was alive, just had no input channel.
+
+**Implemented, not yet hardware-tested**: `m1n1-control` now uses the
+*historical* kernel's own DTB (it has the real `usbdev@20c100000`,
+`apple,t7000-usb` node mainline lacks, matched by a real driver already in
+this same kernel), patched with the same CPU-cell and framebuffer fixes
+proven on the modern DTB. `pd_ignore_unused clk_ignore_unused` and
+`PMOS_NO_OUTPUT_REDIRECT` stay in bootargs. `example.config` already has
+everything the USB gadget path needs (`CONFIG_USB_GADGET`,
+`CONFIG_USB_ETH`, `CONFIG_USB_ETH_RNDIS`, etc.). **UART is not needed** --
 this is a concrete, well-understood, software-only gap. Full evidence and
-commands are in `docs/software-only-control.md`.
+commands are in `docs/software-only-control.md`'s "Round 3".
 
 Driver work (touch, Wi-Fi, etc.) remains explicitly approval-gated --
 booting Linux does not change that; wait for the user before starting any
