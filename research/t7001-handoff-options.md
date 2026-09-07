@@ -894,11 +894,9 @@ crash somewhere past the checks this round fixed. There is no way to tell
 these apart without a serial console. Full transcript and reasoning in
 `docs/software-only-control.md`.
 
-This is now the clearest case yet for prioritizing the UART/JTAG cable:
-every software-only diagnosable step in this specific path has been
-resolved, and the investigation has reached a state a serial console would
-resolve in seconds that screen-color pattern-matching cannot resolve at
-all, however many more DFU cycles are spent on it.
+At this point, before the bundled initramfs itself was inspected, UART/JTAG
+appeared to be the only remaining observability path. That conclusion is
+superseded by the software-only follow-up below.
 
 **Fourth update, minutes later -- confirmed. Linux boots.** The recording
 from attempt 4 was reviewed frame-by-frame with `ffmpeg` rather than
@@ -916,9 +914,15 @@ prior hardware handoff attempts, has been working toward.
 The visible window was under half a second before the screen went black
 again -- with no visible panic trace in the captured frames, the more
 likely explanation is a console reconfiguration or display-related action
-later in boot (the debug initramfs's own `/init`, most plausibly), not a
-crash. That narrower question is what UART would still usefully resolve.
-But it is a narrower question now -- the investigation's actual goal,
+later in boot, not a crash. Subsequent inspection confirmed that the bundled
+2020 postmarketOS initramfs redirects output to `/pmOS_init.log`, paints a
+more-than-99%-black Xperia Z5 splash, and waits in a hidden shell/loop. The
+selected mainline DTB also dropped the historical tree's matched T7001 USB
+controller node. The next step is therefore software-only: first add
+`PMOS_NO_OUTPUT_REDIRECT`, then use a minimal visible initramfs and restore the
+historical DTB with only the already-proven CPU-cell and framebuffer fixes.
+UART is a fallback, not a prerequisite.
+The investigation's actual goal,
 "does Linux boot on the iPad Air 2 via this project's checkm8 chain," is
 answered.
 

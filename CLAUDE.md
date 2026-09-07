@@ -13,12 +13,17 @@ confirmed by genuine kernel driver-probe output (sdhci, usbhid, CoreSight)
 captured on video and independently verified frame-by-frame against the
 source file. This is the project's primary goal, achieved.
 
-The screen goes black again well under a second later, before further
-output was seen -- likely a console reconfiguration later in boot, not
-confirmed. **Next step: UART**, to see past that point and toward a stable
-console/login, not more blind software iteration -- see "UART/JTAG
-procurement and setup plan" in `docs/project-status.md`. Full transcripts
-in `docs/software-only-control.md`'s "Hardware round, 2026-09-07" section.
+The screen goes black again well under a second later, but the cause is now
+strongly explained in software: the payload embeds a 2020 postmarketOS debug
+initramfs configured for a Sony Xperia Z5. Its `/init` redirects output to
+`/pmOS_init.log`, paints an almost entirely black 1080x1920 splash, and waits
+in a hidden shell/loop. The modern mainline DTB used for the successful boot
+also lacks the historical tree's T7001 USB-device node, explaining why no USB
+console appears. **Do not buy UART hardware yet.** Next try the unchanged
+working stack with `PMOS_NO_OUTPUT_REDIRECT`, then a tiny visible BusyBox
+initramfs; restore the historical DTB with only the CPU-cell and framebuffer
+fixes before testing USB. Full evidence and commands are in
+`docs/software-only-control.md`.
 
 Driver work (touch, Wi-Fi, etc.) remains explicitly approval-gated --
 booting Linux does not change that; wait for the user before starting any

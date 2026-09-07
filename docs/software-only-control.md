@@ -8,12 +8,11 @@ output captured on video. See "Hardware round, 2026-09-07" under that
 section for the full transcript and how it was verified. This is the
 project's primary milestone to date.
 
-This document also covers the last well-evidenced experiment that does not
-require a custom UART/JTAG cable: reproducing the complete June 2022 stack
-that was reported working on A7/A8/A8X, including the iPad Air 2, before
-mixing in the current kernel, NixOS initramfs or the project's diagnostic
-PongoOS changes. That one is still blocked by a `palera1n` size limit, see
-below.
+This document originally centered on reproducing the complete June 2022 stack
+reported working on A7/A8/A8X. That historical-Pongo route remains blocked by
+a `palera1n` size limit. The active software-only path is now the successful
+PongoOS `bootm` -> m1n1 route plus the console/initramfs experiments documented
+below; it does not require a custom UART/JTAG cable.
 
 ## Why this is new
 
@@ -515,6 +514,96 @@ this boot regardless. The `optee`/`arm_ffa` line is a coincidence of
 timing, not a cause -- whatever actually happens between it and the black
 screen is exactly as unknown as before, and is still what UART would
 resolve.
+
+### Software follow-up: the black screen is expected behavior from the bundled initramfs
+
+The earlier conclusion that UART was the only useful next step was premature.
+Opening the exact `debug_initrd.img` embedded in the successful payload found a
+much simpler explanation that requires no additional hardware.
+
+The payload recipe copies the pinned SoMainline image unchanged:
+
+```sh
+cp ${inputs.linuxAppleResources}/debug_initrd.img "$out/initramfs.gz"
+```
+
+The hardware-tested result can be inspected without unpacking it into the
+working tree:
+
+```sh
+file result-m1n1-control/initramfs.gz
+gzip -dc result-m1n1-control/initramfs.gz | bsdtar -tf -
+gzip -dc result-m1n1-control/initramfs.gz | bsdtar -xOf - init
+gzip -dc result-m1n1-control/initramfs.gz | bsdtar -xOf - init_functions.sh
+gzip -dc result-m1n1-control/initramfs.gz | bsdtar -xOf - etc/deviceinfo
+```
+
+That inspection established all of the following:
+
+- `/etc/deviceinfo` identifies **Sony Xperia Z5 (`sony-sumire`)**, not an
+  Apple device. The archive's files are dated June 2020.
+- `setup_log()` redirects PID 1's stdout and stderr to `/pmOS_init.log` unless
+  `/proc/cmdline` contains `PMOS_NO_OUTPUT_REDIRECT`. The log exists only in
+  RAM and is currently unreachable from the host.
+- `setup_framebuffer()` waits for `/dev/fb0`; the debug-shell hook then calls
+  `fbsplash` and waits forever in a shell or sleep loop.
+- Both bundled splash images are 1080x1920, while the Air 2 framebuffer m1n1
+  reports is 2224x1668. Their mean byte values are only 1.36 and 1.91 on a
+  0-255 scale: they are more than 99% black.
+
+This behavior matches the recorded hardware result precisely: Linux prints
+driver-probe lines, PID 1 starts, output disappears into a RAM file, and
+userspace paints the framebuffer nearly black. It is still a hypothesis until
+PID 1 prints a unique marker, but it is now the leading explanation and makes
+another software test useful.
+
+There is a separate reason no host-side console appeared. The modern mainline
+DTB selected to fix m1n1's CPU-property parsing has no USB-device controller
+node. Decompiling the two built DTBs shows:
+
+- `result-historical-kernel/dtbs/apple/t7001-j81.dtb` contains
+  `usbdev@20c100000`, compatible with `apple,t7000-usb`.
+- `result-m1n1-control/t7001-j81.dtb` contains USB power domains but no USB
+  controller. The historical kernel includes a matching Apple DWC2 driver;
+  without the DT node it can never create a UDC for the initramfs.
+
+The current Hoolock tree reaches the same conclusion from the other direction:
+its T7001 DT describes the USB complex, PHY and peripheral-mode DWC2 controller,
+and its test ramdisk exposes a framebuffer shell plus USB network and ACM
+serial consoles. See [Hoolock's setup guide](https://github.com/HoolockLinux/docs/blob/master/tutorials/SETUP.md),
+[A8/A8X feature matrix](https://github.com/HoolockLinux/docs/blob/master/features/A8.md),
+and [HoolockRD](https://github.com/HoolockLinux/HoolockRD).
+
+#### Next tests, in order
+
+Change one layer at a time and stop at the first test that provides a stable
+console:
+
+1. Keep the hardware-proven PongoOS, m1n1, DTB, kernel and initramfs. Change
+   only the bootargs to:
+
+   ```text
+   chosen.bootargs=console=tty0 loglevel=8 ignore_loglevel rdinit=/init PMOS_NO_OUTPUT_REDIRECT
+   ```
+
+   Success is visible postmarketOS PID 1 output after the kernel messages.
+2. If the splash still obscures the console, replace only the initramfs with a
+   tiny BusyBox `/init` that mounts `/proc`, `/sys` and `/dev`, repeatedly
+   prints an unmistakable `PID 1 ALIVE` marker to `/dev/console`, and never
+   exits. Do not add SSH, networking or storage to this diagnostic.
+3. Restore the historical DTB and patch only the two defects already confirmed
+   on hardware: convert the CPU `reg` values to two cells for m1n1, and add the
+   exact `/chosen/framebuffer` placeholder m1n1 expects. This preserves the
+   historical USB node and its matched kernel driver.
+4. After PID 1 is visible, test host enumeration over the existing Lightning
+   cable. If the historical RNDIS-only userspace is unsuitable on macOS, move
+   the whole kernel/DTB/initramfs set together to a pinned Hoolock kernel plus
+   HoolockRD, which provides USB ACM serial and NCM/RNDIS networking.
+5. Only after a stable visible or USB shell exists, substitute this project's
+   NixOS initramfs and diagnose its services one at a time.
+
+UART remains a useful fallback if both framebuffer and the matched USB-device
+path fail, but it is no longer a prerequisite or the next recommended expense.
 
 ## Attempts and failures while preparing the control
 

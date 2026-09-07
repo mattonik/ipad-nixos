@@ -4,7 +4,7 @@ Run Linux on old iPads (2011–2017) via the checkm8 bootrom exploit, turning e-
 
 ## What This Is
 
-A reproducible build system that cross-compiles a Linux kernel and minimal NixOS userland for iPad hardware. PongoOS USB control and one RAM-only payload transfer are verified on the iPad Air 2, but Linux has not booted: stock PongoOS has no supported A8X handoff. See [the live project status](docs/project-status.md).
+A reproducible build system that cross-compiles a Linux kernel and minimal NixOS userland for iPad hardware. Linux now boots on the iPad Air 2 through PongoOS `bootm` and the Hoolock m1n1 fork; genuine kernel driver output was captured on the device. The current black screen is most likely the bundled legacy debug initramfs hiding its own output, not a failed kernel handoff. See [the live project status](docs/project-status.md).
 
 **Primary target:** iPad Air 2 (A8X, 2014) — 3-core ARM64, 2GB RAM, 2048x1536 Retina display.
 
@@ -13,13 +13,14 @@ A reproducible build system that cross-compiles a Linux kernel and minimal NixOS
 ## How It Works
 
 ```
-checkm8 exploit → pongoOS → Linux 6.19 kernel → NixOS initramfs (in RAM)
+checkm8 exploit → PongoOS `bootm` → m1n1 → Linux → initramfs (in RAM)
 ```
 
 1. **checkm8** — permanent, unpatchable bootrom exploit ([CVE-2019-8900](https://nvd.nist.gov/vuln/detail/CVE-2019-8900)) for Apple A5–A11 SoCs
 2. **pongoOS** — pre-boot environment loaded via checkm8, provides USB protocol for uploading payloads
-3. **Linux kernel** — cross-compiled for aarch64 with 4 KiB pages on A7–A8X and Apple-specific drivers (touch, SPI, USB, framebuffer)
-4. **NixOS initramfs** — minimal root filesystem running entirely from RAM; it is archive-verified but not yet reached on hardware
+3. **m1n1** — Hoolock's iDevice fork prepares the device tree and performs the working T7001 Linux handoff
+4. **Linux kernel** — cross-compiled for aarch64 with 4 KiB pages on A7–A8X and Apple-specific drivers (touch, SPI, USB, framebuffer)
+5. **NixOS initramfs** — minimal root filesystem running entirely from RAM; archive-verified, but not yet substituted into the newly working m1n1 boot path
 
 The boot is **tethered** — the iPad must be connected to a host computer via USB and re-flashed on every power cycle (~30 seconds).
 
@@ -56,25 +57,21 @@ xz --format=lzma -z -k -9 -c result-kernel/Image > boot/Image.lzma
 
 ### Boot status
 
-Do not use `flash.sh` as a working-boot recipe yet. The first payload
-handoff returned to PongoOS before Linux ran, and the current J81 DTB has no
-USB device-controller node, so USB Ethernet and SSH cannot work. Follow the
-evidence-backed next step in [the live project status](docs/project-status.md).
-For the Air 2, build and run only the guarded `--diagnostic` PongoOS path
-documented there until a T7001 handoff is explicitly ported; it validates the
-payload without attempting `bootl`.
-
-The next software-only experiment is the complete, pinned June 2022 stack that
-previously booted T7001, not another change to the modern diagnostic fork:
+`flash.sh` is not the working recipe. The verified route is PongoOS `bootm` to
+the Hoolock m1n1 payload built by `m1n1-control`:
 
 ```bash
-nix build .#packages.x86_64-linux.historical-payload \
-  -o result-historical-payload -L
+nix build .#packages.x86_64-linux.m1n1-control \
+  -o result-m1n1-control -L
 ```
 
-See [the historical control runbook](docs/software-only-control.md). It keeps
-the known PongoOS, Linux and initramfs revisions together so later changes can
-be introduced one at a time.
+Linux boots, but the bundled legacy postmarketOS initramfs redirects its output
+to a RAM-only log and paints a nearly black splash. The immediate software-only
+test is the same payload with `PMOS_NO_OUTPUT_REDIRECT` added to its bootargs,
+followed by a minimal visible BusyBox initramfs. The selected modern mainline
+DTB also lacks the historical T7001 USB-device node, so USB Ethernet or serial
+is not expected until a matched DT is restored. See the exact evidence and
+ordered next steps in [the software-only control runbook](docs/software-only-control.md).
 
 ## Project Structure
 

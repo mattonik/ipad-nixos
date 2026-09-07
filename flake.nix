@@ -142,6 +142,9 @@
           # Mainline's current t7001.dtsi already uses the correct
           # #address-cells=2 two-cell reg format m1n1 expects; the kernel
           # Image itself is still the historical, pinned one.
+          # Caveat found after the first successful Linux boot: this mainline
+          # DTB has no T7001 USB-device controller node. The historical DTB
+          # does, and its apple,t7000-usb binding matches this kernel.
           #
           # The mainline DTB's framebuffer node is also a "to be filled by
           # loader" placeholder ("apple,simple-framebuffer", status=disabled,

@@ -21,14 +21,15 @@ device-tree CPU-topology format mismatch, and a misnamed framebuffer node.
 Full transcripts and the exact fixes are in
 `docs/software-only-control.md`'s "Hardware round, 2026-09-07" section.
 
-The screen goes black again well under a second after the driver-probe
-lines appear, before a shell prompt or further output was seen -- most
-likely a console reconfiguration later in boot, not a crash, but this
-narrower question (and touch/Wi-Fi/etc., all still approval-gated) is
-where UART now earns its keep. See "UART/JTAG procurement and setup plan"
-below for that plan, and the "Driver readiness and approval gate" section
--- it applies now more than ever: **do not start driver work without the
-user's explicit approval, even though the primary boot gate is cleared.**
+The screen goes black again well under a second after the driver-probe lines,
+but archive inspection now strongly explains why: the bundled 2020
+postmarketOS debug initramfs is configured for a Sony Xperia Z5, redirects PID
+1 output to `/pmOS_init.log`, paints a more-than-99%-black 1080x1920 splash,
+and waits in a hidden shell/loop. The selected mainline DTB also lacks the
+historical tree's matched T7001 USB-device node, so no USB console can appear.
+**Do not buy UART hardware yet.** Run the software-only console tests in
+`docs/software-only-control.md` first. Touch/Wi-Fi/etc. remain approval-gated:
+do not start driver work without the user's explicit approval.
 
 The historical PongoOS control (found the same day, a separate experiment)
 could not be attempted this round -- `palera1n`'s stager rejects its
@@ -2061,9 +2062,10 @@ investigation will have had access to since it began.
 ## Driver readiness and approval gate (2026-09-02)
 
 This is an evidence-based planning record, not authorization to change a
-driver, device tree, PongoOS, or firmware. **Wait for explicit approval before
-implementing or fixing any item below.** Every subsystem is untested in Linux
-until the T7001 PongoOS handoff above produces a Linux log.
+touch, Wi-Fi, Bluetooth or other end-device driver or proprietary firmware.
+**Wait for explicit approval before implementing or fixing those items.** The
+boot chain and inherited framebuffer have now produced a Linux log; the
+remaining subsystem rows are still untested unless explicitly marked otherwise.
 
 The current 6.19.3 kernel configuration is useful infrastructure, but it is
 not a hardware-support claim. The generated `t7001-j81.dtb` contains the
@@ -2074,9 +2076,9 @@ Bluetooth peripheral node. The initramfs packages `kmod` programs but no
 
 | Subsystem | Current state | Missing or broken prerequisite | Planned work after approval |
 | --- | --- | --- | --- |
-| PongoOS → Linux | **Broken; primary gate** | The modern patched stack has failed ten handoff runs; the complete historical T7001 stack has not yet been run as a control. | Run the pinned historical control before any more handoff changes. |
-| Console / USB gadget | **Not described by J81 DTB** | DWC2 and USB gadget support are configured, but there is no T7001 USB controller/UDC node, clocks, PHY or interrupt wiring in the generated DTB. | Add only the verified controller description; use a serial or USB console before networking work. |
-| Display | **Unverified** | A simple framebuffer is described, but Linux has not reached it. Native display, backlight and acceleration support are absent. | Validate the inherited framebuffer after first boot; keep native DRM out of the near-term scope. |
+| PongoOS → Linux | **Working** | `bootm`→m1n1 reaches Linux and real driver initialization on this iPad Air 2. | Freeze this route while userspace/console is isolated. |
+| Console / USB gadget | **Software path identified** | The legacy initramfs hides output; the selected mainline DTB has no T7001 USB controller, although the historical DTB and kernel contain a matched node/driver. | Add `PMOS_NO_OUTPUT_REDIRECT`, then use a minimal visible initramfs; restore the patched historical DT before testing USB. |
+| Display | **Inherited framebuffer works briefly** | Linux kernel text is visible, then the legacy initramfs paints an almost-black Xperia splash. Native display, backlight and acceleration support remain absent. | Prove PID 1 with a visible marker; keep native DRM out of the near-term scope. |
 | Touchscreen (BCM5976) | **Blocked; priority 1** | No T7001 SPI-controller or touchscreen DT node, reset/IRQ/power mapping, firmware, or calibration data. Upstream `apple_z2` currently binds only two Mac Touch Bar compatibles, not an iPad. | Establish the Air 2 wiring and protocol first, then make an iPad-specific adaptation only if the evidence supports it. |
 | Wi-Fi (BCM4354) | **Blocked; priority 2** | `brcmfmac` includes BCM4354 and SDIO support, but J81 has no SDIO host/module node, power/reset mapping, board NVRAM or firmware. `brcmfmac`/`cfg80211` are modules outside the initramfs. | Identify and expose the SDIO host, then integrate the required local firmware/NVRAM and modules. |
 | Bluetooth (BCM4354 combo) | **Blocked** | `hci_uart`/`btbcm` infrastructure exists, but its UART, flow control, power sequencing, firmware and DT node are unknown; its modules are also absent from the initramfs. | Defer until Wi-Fi has identified the Murata module's power and board wiring. |
@@ -2088,14 +2090,15 @@ Bluetooth peripheral node. The initramfs packages `kmod` programs but no
 
 ### Priority bring-up plan
 
-1. **Run the complete historical control.** Build and launch the pinned
-   PongoOS, Linux 5.19-rc1 and published debug initramfs exactly as documented
-   in `docs/software-only-control.md`. Do not diagnose touch/Wi-Fi before a
-   Linux log exists.
-2. **Create a console before a network dependency.** Use the Pongo/Linux
-   display or UART output first. Port the USB controller/UDC description only
-   from verified T7001 register, clock, PHY and interrupt data; then test the
-   built-in gadget path.
+1. **Prove PID 1 visibly.** Keep the working boot chain unchanged and add only
+   `PMOS_NO_OUTPUT_REDIRECT`; if its Xperia splash still obscures output, swap
+   only the initramfs for the minimal BusyBox marker described in
+   `docs/software-only-control.md`.
+2. **Restore the matched USB path.** Patch the historical DTB's CPU cells and
+   framebuffer placeholder while retaining its T7001 USB controller node and
+   matched historical kernel driver. Test enumeration before adding network
+   services. Use the pinned Hoolock kernel plus HoolockRD if macOS needs USB
+   ACM/NCM rather than the historical RNDIS setup.
 3. **Touch evidence phase.** From a user-supplied iPad Air 2 IPSW and Apple
    device tree, record the actual SPI controller, chip select, reset, IRQ,
    power sequence, firmware name and calibration source. Compare the observed
@@ -2135,7 +2138,7 @@ is the reference for the intentionally minimal board description.
 | Current RAM-only Pongo session | Not assumed active; sessions are transient and no iPad USB interface was visible during the 2026-09-06 artifact build |
 | Linux payload upload | ✅ Transferred once; exposed PongoOS pre-handoff defects |
 | Guarded T7001 diagnostic PongoOS | ✅ Matched-toolchain Pongo, USB, aligned Image/DTB/initrd ranges, Linux register contract, and no-jump guard are proven on T7001 |
-| Linux kernel boot | ✅ Achieved 2026-09-07 via `bootm`→m1n1: confirmed on video (verified frame-by-frame from the source file) genuine Linux kernel driver-probe output (sdhci, usbhid, CoreSight, etc.) on this exact device. Screen goes black under a second later, before further output was seen — likely a console reconfiguration later in boot, not yet fully explained; UART is the next step to nail down. Console/display work not yet reliable; touch/Wi-Fi/etc. remain approval-gated regardless. See docs/software-only-control.md. |
+| Linux kernel boot | ✅ Achieved 2026-09-07 via `bootm`→m1n1: genuine Linux driver-probe output was verified frame-by-frame. The subsequent black screen is strongly explained by the bundled Xperia debug initramfs redirecting output and painting a nearly black splash. The next tests remain software-only; UART is a fallback. See docs/software-only-control.md. |
 | Display/touch/Wi‑Fi/Bluetooth validation | ❌ Not started |
 | Usable tethered Linux tablet | ❌ Future milestone |
 
