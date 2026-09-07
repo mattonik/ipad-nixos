@@ -1,5 +1,11 @@
 # Software-only T7001 control
 
+**Branch note (`usb-dwc2-pio-trace`):** this branch continues the
+low-level `dwc2` PIO tracing independently of the newer-kernel work on
+`main` (see "Round 9" below) -- forked from tag
+`usb-diagnostic-round8-2026-09-07`, so it does not have `main`'s
+Hoolock-kernel changes.
+
 **Latest follow-up (2026-09-07): Round 8, hardware-tested.** The
 `m1n1-usb-diagnostic` payload ran on real hardware and settled the
 question Round 7 left open. The fault is **asymmetric, not total**: the
@@ -1200,7 +1206,80 @@ whether Hoolock's newer kernel (which restores real DMA capability
 detection instead of forcing PIO) sidesteps this entirely -- both
 options already scoped in `research/t7001-usb-next.md`.
 
-## Attempts and failures while preparing the control
+### Round 9 (branch `usb-dwc2-pio-trace`), 2026-09-08: the "PIO fill/re-arm bug" hypothesis was too narrow -- traced further, no hardware needed
+
+Continued the trace independently of the newer-kernel work on `main`
+(this branch forked from tag `usb-diagnostic-round8-2026-09-07`, so it
+has none of the Hoolock-kernel changes). Pure source-reading, no
+hardware -- and it meaningfully revises Round 8's leading hypothesis.
+
+**Traced `dwc2_hsotg_write_fifo()` for the *specific* 90-byte transfer
+the diagnostic observed, not the general case.** The function's own
+non-dedicated-FIFO branch clamps `can_write` to 512 bytes and only
+re-arms `NPTXFEMP`/re-splits the write when `to_write > max_transfer`
+(512) or `to_write > can_write` -- neither applies to a 90-byte payload
+against a 512-byte `max_transfer` and a mostly-empty dedicated FIFO. For
+a transfer this small, the function does not chunk or need a
+re-arm/retry cycle at all: it should write all 90 bytes in the single
+call already made when the request was first queued
+(`dwc2_hsotg_start_req()` calls `write_fifo()` directly, before waiting
+for any `NPTxFEmp` interrupt). **This rules out "partial-fill/re-arm bug"
+as the mechanism for this specific failure** -- there's no partial fill
+happening; a full, one-shot fill is what should occur, and it likely did.
+
+**Diffed the entire function against real mainline Linux (v7.2,
+`torvalds/linux`) byte-for-byte: identical.** No divergence at all in
+`dwc2_hsotg_write_fifo()` between this historical Apple fork and stock
+upstream. The same is true of the surrounding dispatch code
+(`dwc2_hsotg_handle_generic_irq()`'s `daint &= daintmsk` masking, and the
+`ctrl |= DXEPCTL_EPENA` *then* `write_fifo()` ordering in
+`dwc2_hsotg_start_req()`, which exists at the same relative position in
+mainline too) -- confirmed this is not an Apple-specific bug introduced
+by patching, it is exactly the same code thousands of other DWC2 gadget
+deployments use successfully.
+
+**Traced where the actual break must be, given all of the above**: the
+FIFO write itself is software bookkeeping (`hs_req->req.actual = buf_pos
++ to_write`) plus a register write (`dwc2_writel_rep(..., EPFIFO(...),
+...)`) -- neither confirms the data was ever picked up by the host over
+the USB bus. That confirmation is a *separate* mechanism:
+`dwc2_hsotg_epint()`'s `DXEPINT_XFERCOMPL` handling, which only fires
+from a real hardware completion interrupt once the host has actually
+completed an IN transaction reading the FIFO's contents, and is what
+would normally decrement `DIEPTSIZ` to 0 and let the driver consider the
+request done. Since the diagnostic's snapshot showed `DIEPTSIZ` **still
+at the full, originally-programmed 90 bytes/1 packet** with `NPTxFEmp`
+asserted, the most consistent explanation is that the software-side fill
+completed normally, but the corresponding hardware completion interrupt
+never arrived -- i.e. **the filled FIFO data was never actually collected
+by an IN transaction at the USB bus level**, not that the fill logic
+itself malfunctioned.
+
+**Checked the Apple-specific glue code** (`dwc2_set_apple_t7000_params()`
+in `params.c`) for anything that could explain a bus-level transmission
+failure: it only tunes FIFO sizes, host channel count, speed, and
+power-down/LPM mode -- a completely ordinary vendor-parameter block,
+structurally identical in shape to the BCM/Rockchip/Ingenic/etc. entries
+in the same file. Nothing here reads as obviously wrong.
+
+**Revised conclusion**: the earlier "PIO fill/re-arm bug in this forced-PIO
+fork" hypothesis was too specific and, on closer reading, doesn't fit the
+actual failure mode for a small transfer. The fault is more precisely
+located *downstream* of software FIFO-filling -- in whatever makes an
+enabled, filled bulk IN endpoint actually complete a real USB transaction
+with the host. That could be a genuine T7001 DWC2/PHY hardware quirk
+specific to this forced-PIO configuration (plausible, since PIO mode on
+this exact SoC was very likely never validated by anyone before this
+project's own testing), or something host-side on the macOS end despite
+the healthy ECM control-channel negotiation. Distinguishing between those
+needs evidence this source-reading pass cannot produce alone: either
+real-time device-side register polling across multiple attempts (not a
+single snapshot) to see whether `NPTxFEmp`/`DIEPTSIZ` ever change state
+at all, a genuinely independent USB host (a real Linux machine, to rule
+out a macOS-specific quirk), or UART/JTAG-level access. Not resolved;
+this correction is itself the useful output of this pass -- it prevents
+wasted effort chasing a fill-logic bug that mainline's own widespread use
+of identical code makes implausible.
 
 - Building the historical PongoOS source with Apple Clang 14 initially failed
   because two unused-but-set warnings were promoted to errors. The narrow
