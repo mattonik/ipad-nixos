@@ -488,6 +488,34 @@ lines -- is what a UART console would resolve outright. But the primary
 question this whole route was built to answer is now answered: **yes, this
 software-only path boots Linux on this exact iPad Air 2.**
 
+### Checked the last visible line specifically -- it's a dead end, not a lead
+
+`Driver 'optee' was unable to register with bus_type 'arm_ffa' because the
+bus was not initialized` is the last text visible before the screen goes
+black, which raises the obvious question of whether it's causally
+connected. Checked directly rather than assumed: the packaged
+`t7001-j81.dtb` has **no `psci` node and no `arm_ffa`/`ffa` node anywhere**
+(`dtc -I dtb -O dts ... | grep -i "psci\|ffa"` returns nothing). The
+`optee` driver, when compiled in (it is, per `example.config`), always
+attempts FF-A bus registration as one of its possible discovery paths
+regardless of whether the DTB describes that interface -- so this message
+is routine, unconditional driver-probe noise on any board without an FF-A
+firmware interface wired up, not a symptom of something going wrong. It
+would print at essentially this same point on nearly any boot with this
+kernel config, working or not.
+
+This also rules out a specific hypothesis worth naming since it was
+tempting: ARM FF-A is often tied to PSCI-mediated power management, so a
+later PSCI call hitting an unconfigured secure-firmware path was briefly
+considered as a way this could cascade into a crash. It doesn't apply here
+-- this DTB's CPU nodes use `enable-method = "spin-table"` (confirmed
+directly in m1n1's own log: each CPU gets an explicit `release-addr`), not
+PSCI, so Linux was never going to rely on PSCI/FF-A for CPU management in
+this boot regardless. The `optee`/`arm_ffa` line is a coincidence of
+timing, not a cause -- whatever actually happens between it and the black
+screen is exactly as unknown as before, and is still what UART would
+resolve.
+
 ## Attempts and failures while preparing the control
 
 - Building the historical PongoOS source with Apple Clang 14 initially failed

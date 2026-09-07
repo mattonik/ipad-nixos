@@ -920,7 +920,15 @@ later in boot (the debug initramfs's own `/init`, most plausibly), not a
 crash. That narrower question is what UART would still usefully resolve.
 But it is a narrower question now -- the investigation's actual goal,
 "does Linux boot on the iPad Air 2 via this project's checkm8 chain," is
-answered. Full transcript, extraction method, and reasoning in
+answered.
+
+Checked the specific last visible line (`Driver 'optee' was unable to
+register with bus_type 'arm_ffa'...`) as a possible lead: it isn't one.
+The packaged DTB has no `psci` or `arm_ffa` node at all, so this is routine
+driver-probe noise the `optee` driver produces unconditionally when
+compiled in, unrelated to whatever happens next -- and this DTB's CPUs use
+`enable-method = "spin-table"`, not PSCI, ruling out a PSCI-mediated crash
+hypothesis too. Full transcript, extraction method, and reasoning in
 `docs/software-only-control.md`.
 
 ## Sources
