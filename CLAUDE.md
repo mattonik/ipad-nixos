@@ -4,18 +4,22 @@
 
 Boot NixOS on old iPads (2011-2017, A5–A11 chips) via checkm8 bootrom exploit, turning e-waste into usable Linux machines.
 
-## Current next step (2026-09-06)
+## Current next step (2026-09-07)
 
-Two software-only experiments are built, verified, and ready for a hardware
-round -- see `docs/software-only-control.md` for both:
+The `bootm` → m1n1 route (`docs/software-only-control.md`) got a real
+hardware run on 2026-09-07 and **booted m1n1 completely** on this exact
+device -- both secondary CPUs started, real device serial reported, kernel
+and initramfs decompressed -- stopping one device-tree bug short of the
+actual Linux kernel entry. That bug (CPU node `reg` format) is now fixed
+(the payload uses the modern kernel's DTB instead of the historical one's).
+**Next step: run this fixed payload on hardware** -- per m1n1's own source
+there is no other known blocker before a real Linux boot log. See
+`docs/software-only-control.md`'s "Hardware round, 2026-09-07" section for
+the exact commands and full transcript.
 
-1. The complete pinned June 2022 T7001 stack, run as a control (reproduces
-   `konradybcio`'s historical PongoOS + kernel + initramfs together, rather
-   than transplanting selected diffs into the modern fork).
-2. PongoOS's own `bootm` command loading an iDevice fork of m1n1
-   (HoolockLinux), then Linux -- an independently-engineered bootloader
-   stage, architecturally different from every `bootl`-direct-jump variant
-   tried so far (all of which failed across ten hardware handoffs).
+The historical-PongoOS control is separately blocked: `palera1n`'s stager
+rejects its 708,704-byte binary (limit is 0x7fe00 = 523,776 bytes) --
+unresolved, not the current priority.
 
 Do not resume blind changes to the modern PongoOS fork's direct-jump path;
 that specific mechanism has been tried seven ways and ruled out each time.

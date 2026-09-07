@@ -120,6 +120,27 @@ The loader's `Success.` message only means the USB control transfer disconnected
 it is not boot evidence. Success means Linux output or the initramfs is visibly
 reached on the iPad framebuffer.
 
+**2026-09-07: this control could not be attempted as documented.**
+`palera1n`'s checkm8 stager rejects the historical `Pongo.bin` outright:
+
+```
+Error: PongoOS image is too large: must be at most 0x7fe00, have 0xad060
+Failed preparing stage3! (error code: -status_resources_load_failed)
+```
+
+0x7fe00 = 523,776 bytes; the historical build is 708,704 bytes (0xad060) --
+about 185 KB over. This project's own modern diagnostic build (270,416 bytes)
+and the m1n1 route's prebuilt `Pongo.bin` (238,096 bytes) are both
+comfortably under the limit, so this is specific to the historical `a7`
+branch's build -- likely from the much broader set of platform drivers and
+XNU/SEP/IMG4 handling code it compiles in (see the build command in
+"Attempts and failures" below) that this project's own patched build doesn't
+carry. Not yet investigated further -- pivoted to the m1n1 route below
+instead of spending the same DFU cycle on it. Revisit by either trimming the
+historical build's compiled-in driver set (tension: that stops being an
+exact reproduction of the 2022 stack) or finding whether `palera1n` has an
+undocumented flag or an alternate stager path without this limit.
+
 ## Decision after the run
 
 - If it boots, preserve the exact control artifacts and replace only the
@@ -179,14 +200,20 @@ nix build .#packages.x86_64-linux.m1n1-control -o result-m1n1-control -L
 Produces `Pongo.bin` (HoolockLinux's, pinned to commit `bb492b0` per the
 version-string check above), `m1n1.bin` (from a pinned GitHub Actions
 artifact, `HoolockLinux/m1n1` run `33380676898`, branch `idevice`), and
-`m1n1-linux.bin` -- m1n1 concatenated with a bootargs string, the historical
-control kernel's `t7001-j81.dtb`, its `Image.gz`, and the published debug
-initramfs, in the exact order `HoolockLinux/docs`'s own
-`tutorials/SETUP_pongoOS.md` documents. All three source fetches (`linux-
-apple`, `linux-apple-resources`, `hoolockDocs`, `hoolockM1n1`) are locked
-flake inputs, resolved on the Mac rather than fetched from inside the
-offline cross-compilation builder -- see "Attempts and failures" below for
-why that distinction matters.
+`m1n1-linux.bin` -- m1n1 concatenated with a newline-terminated bootargs
+string, `t7001-j81.dtb`, `Image.gz` (both from the historical control
+kernel), and the published debug initramfs, in the exact order
+`HoolockLinux/docs`'s own `tutorials/SETUP_pongoOS.md` documents. All source
+fetches (`linux-apple`, `linux-apple-resources`, `hoolockDocs`,
+`hoolockM1n1`) are locked flake inputs, resolved on the Mac rather than
+fetched from inside the offline cross-compilation builder -- see "Attempts
+and failures" below for why that distinction matters.
+
+**As of the 2026-09-07 hardware round below, the DTB in this payload is the
+*modern* kernel's `t7001-j81.dtb` (mainline-sourced), not the historical
+kernel's own bundled one** -- the historical DT's CPU nodes use a format
+that crashes m1n1's CPU bring-up; see that section for the exact bug. The
+kernel *Image* is still the historical, pinned 5.19-rc1 build.
 
 ### Hardware run
 
@@ -205,6 +232,109 @@ python3 boot/load_m1n1.py result-m1n1-control/m1n1-linux.bin
 not boot evidence, same caveat as every other loader in this project.
 Success means m1n1's own output, or Linux's, is visibly reached on the
 iPad's framebuffer.
+
+### Hardware round, 2026-09-07: m1n1 boots. Two real bugs found and fixed, live
+
+The historical-control DFU cycle above hit the palera1n size-limit blocker
+and couldn't be attempted at all, so this round tried the m1n1 route
+instead -- its `Pongo.bin` (238,096 bytes) is well under the limit.
+
+**Attempt 1** (before either fix below): payload uploaded (12,575,458 bytes),
+`bootm` sent, PongoOS disconnected. On screen, m1n1 (`d5a10ac`) printed its
+full banner, read `boot_args` correctly (`phys_base: 0x800c00000`,
+`mem_size: 0x7c4de000` -- matching every prior PongoOS diagnostic run
+exactly), then: `Checking for payloads... Devicetree compatible value:
+apple,j81` followed immediately by `Unknown payload at 0x803b8c000 (magic:
+63686f73)` and `No valid payload found`. `0x63686f73` is ASCII `chos` -- the
+start of this project's own `chosen.bootargs=...` line.
+
+Root cause, from `src/payload.c`'s `check_var()`: it parses a
+`chosen.X=value` line by finding `=`, then requires a trailing `\n` to
+locate the end of `value` (`memchr(val, '\n', ...)`); without one it returns
+`false` and the parser falls through to "unknown payload", using whatever
+bytes sit at the start of the whole remaining blob. This project's Nix
+recipe built the file with `printf '%s' '...'` -- no trailing newline. Fixed
+to `printf '%s\n' '...'` (see `flake.nix`).
+
+**Attempt 2** (newline fix only): uploaded 12,575,459 bytes (exactly one
+more, as expected), `bootm` sent. This time m1n1 got dramatically further --
+the single most information-dense result this entire investigation has
+produced:
+
+```
+Found a variable at 0x803b8c000: chosen.bootargs=console=tty0 loglevel=8 ignore_...
+Found a devicetree for apple,j81 at 0x803b8c045
+Found a gzip compressed payload at 0x803b8ddcb
+Uncompressing... 10072011 bytes uncompressed to 24309768 bytes
+Found kernel at 0x805400000
+Found a gzip compressed payload at 0x804528d96
+Uncompressing... 1299789 bytes uncompressed to 2266748 bytes
+Found a cpio initramfs at 0x806c00000
+No more payloads at 0x8046662e3
+cpufreq: Initializing clusters
+Starting secondary CPUs...
+Starting CPU 1 (0:0:1)... Started.
+Starting CPU 2 (0:0:2)... Started.
+
+CPU vulnerability status:
+  gofetch: Not vulnerable
+
+FDT: asahi,m1n1-stage1-version = 'd5a10ac'
+FDT: bootargs = 'console=tty0 loglevel=8 ignore_logic rdinit=/init'
+FDT: initrd at 0x806c00000 size 0x22967c
+FDT: No framebuffer found
+ADT: 64 bytes of random seed available
+FDT: KASLR seed initialized
+FDT: Passing 64 bytes of random seed
+FDT: reporting device serial number: DMPT45YDG5W3
+FDT: CPU 0 is not alive, disabling...
+FDT: Reserving stack for CPU 1 0x806e2c000
+FDT: Reserving EL3 stack for CPU 1 0x806e40000
+FDT: DT CPU 1 MPIDR mismatch: 0x100000003 != 0x1
+Failed to prepare FDT!
+No valid payload found
+```
+
+Every payload component parsed correctly (bootargs, DTB matched to
+`apple,j81`, kernel decompressed, initramfs decompressed and recognized).
+m1n1 brought up **both secondary CPU cores** (`Starting CPU 1`, `Starting
+CPU 2`, both `Started.`), ran a CPU vulnerability check, and began preparing
+the FDT to hand off to Linux -- reporting this exact device's real serial
+number (`DMPT45YDG5W3`) along the way. It failed on the very last
+pre-handoff step: validating each started CPU's real MPIDR against what the
+device tree declares.
+
+Root cause, from `src/kboot.c`'s `dt_set_cpus()`: for each `cpu@N` node it
+reads the `reg` property with `fdt64_ld()` -- an 8-byte load -- then compares
+it against the CPU's real hardware MPIDR (`smp_get_mpidr()`), aborting on a
+mismatch. The historical (2022) device tree declares `/cpus` with
+`#address-cells = <1>`, so `reg` is a single 4-byte cell (`reg = <0x01>` for
+`cpu@1`); `fdt64_ld()` reading 8 bytes from a 4-byte property over-reads
+into whatever DTB data follows, producing the corrupted "expected" value
+`0x100000003` printed above. Confirmed by decompiling both DTBs: mainline
+Linux's *current* `t7001.dtsi` already uses the binding's correct
+`#address-cells = <2>` (`reg = <0x0 0x1>`) -- this was never fixed
+retroactively in the 2022 branch, but is already right upstream. This is
+also why the "real" MPIDR value in the mismatch message, `0x1`, is the
+simple, expected one -- it's the *DT-declared* side that was corrupted, not
+the hardware.
+
+**Fix**: package the *modern* kernel's `t7001-j81.dtb` (mainline-sourced,
+correct 2-cell CPU `reg` format) instead of the historical kernel's own
+bundled one, while keeping the historical kernel *Image* unchanged (see
+`flake.nix`'s `m1n1-control` package). DTBs are meant to be decoupled from
+a specific kernel build; pairing an older kernel with a structurally
+corrected DTB isn't reproducing a working 2022 image byte-for-byte (this
+route was already labeled a new experiment, not a control), it's fixing a
+bug the 2022 DTB always had that nobody had hardware to catch before.
+Verified: the repackaged `t7001-j81.dtb` now decompiles to
+`#address-cells = <0x02>` / `reg = <0x00 0x00>`, `<0x00 0x01>`,
+`<0x00 0x02>`. Not yet run on hardware.
+
+If a third attempt clears this check, the very next thing m1n1 does is
+`kboot_prepare_dt()` followed by `kboot_boot(kernel)` -- i.e. the actual
+Linux kernel entry. There is no known remaining blocker between here and a
+kernel boot log.
 
 ## Attempts and failures while preparing the control
 

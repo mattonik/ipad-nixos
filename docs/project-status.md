@@ -1,27 +1,28 @@
 # iPad Linux Project Status
 
-Status date: 2026-09-06
+Status date: 2026-09-07
 Target: iPad Air 2 Wi‑Fi A1566, A8X/T7001, board J81/J81AP  
 Repository: [mattonik/ipad-nixos](https://github.com/mattonik/ipad-nixos)
 Upstream: [jacopone/ipad-nixos](https://github.com/jacopone/ipad-nixos)
 
 **Resuming after a break? Start at**
-[`docs/software-only-control.md`](software-only-control.md). A 2026-09-06
-audit found two things worth a hardware round before pursuing UART/JTAG: the
-complete 2022 T7001 stack was never tested together (only selected diffs
-were transplanted into the modern PongoOS fork), and this project's Linux
-configuration incorrectly used 16 KiB rather than the documented 4 KiB page
-size for A7–A8X. Both are fixed and built. A second, independent idea was
-also found and verified real: PongoOS's own `bootm` command (on its `iOS15`
-branch, a direct descendant of this project's pinned base) can load an
-iDevice fork of m1n1 (HoolockLinux) as its own bootloader stage before
-Linux -- architecturally different from every direct-jump variant tried so
-far. Both experiments are built and ready; see the doc for exact commands.
-The seven failed hypotheses below remain valid evidence about the modern
-patched stack specifically, not about either of these. UART/JTAG (a Tamarin
-Cable build, see "UART/JTAG procurement and setup plan" below) is still the
-plan once the user has built one -- these two experiments don't replace it,
-they're just cheaper to try first.
+[`docs/software-only-control.md`](software-only-control.md), specifically its
+"Hardware round, 2026-09-07" section. This is the most important update in
+the project's history: the m1n1-via-`bootm` route (found 2026-09-06) got a
+real hardware run and, after fixing two precisely-diagnosed bugs live, got
+**m1n1 to boot completely on this exact device** -- MMU up, both secondary
+CPU cores started, real device serial reported, kernel and initramfs
+decompressed and recognized -- stopping only at a device-tree CPU-topology
+check right before the actual Linux kernel entry. That check is now also
+fixed (packaging the modern kernel's correctly-formatted DTB instead of the
+historical kernel's own). A third hardware attempt with that fix is the
+immediate next step, and per m1n1's own source there is no other known
+blocker between that check and a real Linux kernel boot log. The historical
+PongoOS control (found the same day) could not be attempted this round --
+`palera1n`'s stager rejects its 708,704-byte binary outright (over an
+0x7fe00-byte limit) -- unresolved, see the doc. UART/JTAG (a Tamarin Cable
+build, see "UART/JTAG procurement and setup plan" below) remains the
+fallback plan if this route stalls, but is not the current priority.
 
 ## Mission
 
@@ -2123,7 +2124,7 @@ is the reference for the intentionally minimal board description.
 | Current RAM-only Pongo session | Not assumed active; sessions are transient and no iPad USB interface was visible during the 2026-09-06 artifact build |
 | Linux payload upload | ✅ Transferred once; exposed PongoOS pre-handoff defects |
 | Guarded T7001 diagnostic PongoOS | ✅ Matched-toolchain Pongo, USB, aligned Image/DTB/initrd ranges, Linux register contract, and no-jump guard are proven on T7001 |
-| Linux kernel boot | ❌ Not achieved; 10 modern-stack (direct-jump) handoff attempts failed. Two next software-only hardware tests are built and verified: the exact June 2022 PongoOS + Linux 5.19-rc1 + debug-initrd stack as a control, and PongoOS's own `bootm` loading an iDevice m1n1 fork as an independent bootloader stage. Neither run on hardware yet. |
+| Linux kernel boot | 🟡 Not yet achieved, but very close: the `bootm`→m1n1 route booted m1n1 completely on real hardware 2026-09-07 (MMU, both secondary CPUs, real device serial, kernel+initramfs decompressed) and stopped one device-tree fix away from actual Linux kernel entry. That fix is built, not yet hardware-tested. The historical-PongoOS control is blocked by a palera1n size limit, unresolved. See docs/software-only-control.md. |
 | Display/touch/Wi‑Fi/Bluetooth validation | ❌ Not started |
 | Usable tethered Linux tablet | ❌ Future milestone |
 

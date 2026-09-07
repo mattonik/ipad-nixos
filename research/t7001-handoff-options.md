@@ -848,8 +848,34 @@ succeeds and produces `Pongo.bin`, `m1n1.bin`, and the concatenated
 `m1n1-linux.bin` payload. Two real bugs were found and fixed while getting
 there (a DNS-unreachable fetch running on the offline builder instead of the
 Mac; a missing "discard previous upload" step in `boot/load_m1n1.py`) -- see
-`docs/software-only-control.md`'s "Attempts and failures" for both. Not yet
-run on hardware.
+`docs/software-only-control.md`'s "Attempts and failures" for both.
+
+**Update, 2026-09-07 -- run on hardware, and it went further than anything
+in this investigation's history.** The planned historical-control DFU cycle
+(above) couldn't even be attempted: `palera1n`'s stager hard-rejects the
+708,704-byte historical `Pongo.bin` (`must be at most 0x7fe00`). Pivoted to
+this route instead, whose `Pongo.bin` (238 KB) is well under that limit.
+
+First real attempt hit a payload-framing bug (`boot/load_m1n1.py`'s
+`chosen.bootargs=` line needed a trailing newline for m1n1's parser to find
+its end -- fixed). The **second** attempt is the headline result: m1n1
+booted completely -- MMU up, both secondary CPU cores started, the exact
+device's real serial number reported (`DMPT45YDG5W3`), kernel and initramfs
+decompressed and recognized -- and got all the way to the last step before
+handing off to Linux, where it hit a device-tree CPU-topology validation
+failure (`FDT: DT CPU 1 MPIDR mismatch`). Root-caused precisely: the 2022
+DTB's `/cpus` node uses a single-cell `reg` format that m1n1's 8-byte
+`fdt64_ld()` read over-reads, producing a corrupted comparison value --
+mainline's *current* T7001 DTS already uses the binding's correct two-cell
+format. Fixed by packaging the modern kernel's DTB (correct format) with the
+historical kernel's Image (unchanged) instead. Verified, not yet run on
+hardware. Full blow-by-blow, including the exact on-screen transcripts, in
+`docs/software-only-control.md`'s "Hardware round, 2026-09-07" section.
+
+If a third attempt clears the CPU check, m1n1's very next step is the actual
+Linux kernel entry -- no other blocker is known to exist between here and a
+kernel boot log. This is the first time in this entire investigation that
+statement has been true.
 
 ## Sources
 
@@ -880,5 +906,10 @@ run on hardware.
 - [HoolockLinux/docs](https://github.com/HoolockLinux/docs), specifically
   `tutorials/SETUP_pongoOS.md` -- the primary source for the `bootm` boot
   sequence
-- [HoolockLinux/m1n1](https://github.com/HoolockLinux/m1n1), branch `idevice` --
-  the T7001/A8X-aware m1n1 fork used in Round 8
+- [HoolockLinux/m1n1](https://github.com/HoolockLinux/m1n1), branch `idevice`,
+  commit `d5a10ac` -- the T7001/A8X-aware m1n1 fork used in Round 8;
+  `src/payload.c` (`check_var()`, the newline-termination bug) and
+  `src/kboot.c` (`dt_set_cpus()`, the CPU `reg`/MPIDR-format bug) are the
+  primary sources for both bugs found and fixed on 2026-09-07
+- [torvalds/linux — arch/arm64/boot/dts/apple/t7001.dtsi](https://github.com/torvalds/linux/blob/master/arch/arm64/boot/dts/apple/t7001.dtsi) --
+  confirms the current, correct `#address-cells = <2>` CPU `reg` format

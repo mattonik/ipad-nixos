@@ -98,9 +98,10 @@
             source = inputs.linuxApple519;
             historicalConfig = "${inputs.linuxAppleResources}/example.config";
           };
+          modernKernel = pkgsCross.callPackage ./kernel {};
         in {
         # Linux kernel for iPad Air 2 (A8X)
-        kernel = pkgsCross.callPackage ./kernel {};
+        kernel = modernKernel;
 
         # Exact kernel branch used by the June 2022 T7001 proof. Keep this as
         # a control; do not add current-tree fixes until it has booted as-is.
@@ -130,9 +131,24 @@
           cp ${inputs.hoolockDocs}/binaries/Pongo.bin "$out/Pongo.bin"
           cp ${inputs.hoolockM1n1}/m1n1.bin "$out/m1n1.bin"
           gzip -n -c ${historicalKernel}/Image > "$out/Image.gz"
-          cp ${historicalKernel}/dtbs/apple/t7001-j81.dtb "$out/t7001-j81.dtb"
+          # Deliberately the MODERN (mainline-sourced) DTB, not the
+          # historical kernel's own bundled one: the 2022 DT declares CPU
+          # nodes with #address-cells=1 (a single-cell "reg"), but m1n1's
+          # dt_set_cpus() (src/kboot.c) reads that property with fdt64_ld()
+          # -- an 8-byte load. Against a 4-byte property that over-reads
+          # into adjacent DTB data, producing a corrupted "expected MPIDR"
+          # and a hard-fail "DT CPU 1 MPIDR mismatch" on real hardware
+          # (confirmed on this exact device -- see docs/software-only-control.md).
+          # Mainline's current t7001.dtsi already uses the correct
+          # #address-cells=2 two-cell reg format m1n1 expects; the kernel
+          # Image itself is still the historical, pinned one.
+          cp ${modernKernel}/dtbs/apple/t7001-j81.dtb "$out/t7001-j81.dtb"
           cp ${inputs.linuxAppleResources}/debug_initrd.img "$out/initramfs.gz"
-          printf '%s' 'chosen.bootargs=console=tty0 loglevel=8 ignore_loglevel rdinit=/init' \
+          # m1n1's payload parser (src/payload.c check_var()) requires a
+          # trailing newline to find the end of a "chosen.X=value" line --
+          # without it, it can't terminate the value and falls through to
+          # "Unknown payload", exactly what a real hardware run hit here.
+          printf '%s\n' 'chosen.bootargs=console=tty0 loglevel=8 ignore_loglevel rdinit=/init' \
             > "$out/bootargs"
           cat "$out/m1n1.bin" "$out/bootargs" "$out/t7001-j81.dtb" \
             "$out/Image.gz" "$out/initramfs.gz" > "$out/m1n1-linux.bin"
