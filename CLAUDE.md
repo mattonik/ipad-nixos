@@ -37,13 +37,18 @@ everything the USB gadget path needs (`CONFIG_USB_GADGET`,
 `CONFIG_USB_ETH`, `CONFIG_USB_ETH_RNDIS`, etc.). **UART is not needed** --
 this is a concrete, well-understood, software-only gap.
 
-First hardware run of the historical DTB (Round 4) failed differently: m1n1
-couldn't add `cpu-release-addr` to the secondary CPU nodes because the
-recompiled DTB had zero spare room to grow into (this historical DTS
-predates mainline's placeholder-property convention). Fixed by compiling
-with `dtc -p 0x10000` (64 KiB padding); verified locally, not yet
-re-tested on hardware. Full evidence and commands are in
-`docs/software-only-control.md`'s "Round 3" and "Round 4".
+First hardware run of the historical DTB (Round 4) failed: m1n1 couldn't
+write `cpu-release-addr` into the secondary CPU nodes. First guess was a
+DTB-space problem, fixed with `dtc -p 0x10000` padding -- but a second
+hardware run (Round 5) hit the identical failure, proving that guess wrong.
+Reading m1n1's actual source (`src/kboot.c`) showed the real cause: that
+write uses `fdt_setprop_inplace_u64()`, which can only overwrite an
+already-existing same-sized property, never create one -- and this
+historical DTS has no `cpu-release-addr` placeholder at all (it predates
+that mainline convention). Fixed by adding the placeholder directly to
+`cpu@1`/`cpu@2` in the sed transform. Verified locally, not yet re-tested
+on hardware. Full evidence and commands are in
+`docs/software-only-control.md`'s "Round 3", "Round 4", and "Round 5".
 
 Driver work (touch, Wi-Fi, etc.) remains explicitly approval-gated --
 booting Linux does not change that; wait for the user before starting any

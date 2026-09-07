@@ -9,9 +9,12 @@ auto-shutdown that had been killing the display right after driver probing.
 See "Round 2" under that section for the full transcript. This is the
 project's primary milestone, achieved in full -- the only remaining gap is
 a way to send input to that shell (no USB network link yet). Round 3
-implemented a historical-DTB swap to get a real USB controller node; Round 4
-hit and fixed a DTB-space bug that swap introduced (`cpu-release-addr`
-couldn't be added to a zero-slack blob) -- not yet re-tested on hardware.
+implemented a historical-DTB swap to get a real USB controller node; Rounds
+4 and 5 chased a `cpu-release-addr` DTB bug that swap introduced -- Round 4's
+blob-padding fix was a wrong diagnosis (identical failure on hardware);
+Round 5 found the real cause by reading m1n1's actual source
+(`fdt_setprop_inplace_u64()` requires the property to pre-exist) and added
+the missing placeholder directly. Not yet re-tested on hardware.
 
 This document originally centered on reproducing the complete June 2022 stack
 reported working on A7/A8/A8X. That historical-Pongo route remains blocked by
@@ -802,8 +805,8 @@ slack -- the very first property m1n1 needed to add (which happened to be
 and dropped back to its USB debug proxy instead of jumping to Linux. This is
 also why no USB gadget interface appeared: Linux never started running.
 
-Fix: pad the compiled DTB with free space, the standard technique for a
-DTB a bootloader will mutate --
+First fix tried: pad the compiled DTB with free space, the standard
+technique for a DTB a bootloader will mutate --
 
 ```
 dtc -I dts -O dtb -p 0x10000 -o "$out/t7001-j81.dtb"
@@ -811,10 +814,75 @@ dtc -I dts -O dtb -p 0x10000 -o "$out/t7001-j81.dtb"
 
 (64 KiB of slack.) Verified locally: the padded blob is 73,234 bytes total
 with its structure block ending at byte 7,124 -- about 66 KB of free space
--- and a fresh decompile confirms all three prior fixes are still intact
+-- and a fresh decompile confirmed all three prior fixes were still intact
 (`#address-cells = <0x02>` with two-cell CPU `reg` values, the
 `/chosen/framebuffer` placeholder, and the `usbdev@20c100000`
-`apple,t7000-usb` node). Not yet re-run on hardware.
+`apple,t7000-usb` node). **This diagnosis turned out to be wrong** -- see
+Round 5 below.
+
+### Round 5, 2026-09-07: the padding fix didn't work; reading m1n1's actual source found the real cause
+
+Re-ran the padded build on hardware (replugged/re-DFU'd, fresh PongoOS
+enumeration, same upload/`bootm` handoff). Screen (`IMG_3911`) showed the
+exact same failure, byte for byte:
+
+```
+FDT: couldn't set cpu-release-addr property
+Failed to prepare FDT!
+No valid payload found
+USB0: initialized at 0x804668140
+Running proxy...
+```
+
+Identical output despite 66 KB of blob padding meant the "ran out of
+space" theory was wrong. A local checkout of the actual m1n1 source
+(`src/kboot.c`, both the `HoolockLinux` fork and upstream `AsahiLinux/m1n1`
+agree) settled it:
+
+```c
+u64 release_addr = smp_get_release_addr(cpu);
+if (fdt_setprop_inplace_u64(dt, node, "cpu-release-addr", release_addr))
+    bail_cleanup("FDT: couldn't set cpu-release-addr property\n");
+```
+
+Two things the padding theory got wrong:
+
+1. This is `fdt_setprop_inplace_u64()`, not `fdt_setprop_u64()`. libfdt's
+   "inplace" calls never restructure or grow the tree -- they only
+   overwrite an *already-existing* same-sized property's bytes, and return
+   `-FDT_ERR_NOTFOUND` if the property is absent. No amount of blob padding
+   makes an inplace call able to create a new property.
+2. Blob padding was moot anyway: m1n1 never uses whatever slack our own
+   `dtc` compile provides. A few hundred lines earlier in the same file it
+   reopens the incoming DTB into its own buffer, unconditionally sized 96
+   KiB larger than whatever came in --
+   `dt_bufsize = fdt_totalsize(fdt) + 6 * SZ_16K;` followed by
+   `fdt_open_into(fdt, dt, dt_bufsize)`. All the *growable* edits earlier
+   in the same boot (bootargs, initrd, framebuffer, KASLR seed, serial
+   number -- all visible succeeding in both failure screenshots before the
+   CPU step) use regular `fdt_setprop()` and were never at risk either way.
+
+The real bug: this historical (2019/2020) DTS predates the mainline
+convention of declaring a static `cpu-release-addr = <0 0>;` placeholder
+on every CPU node. Ours has none at all, so the inplace write always fails,
+on any build, padded or not.
+
+Fix: add the placeholder directly to the `cpu@1` and `cpu@2` nodes in the
+sed transform (not `cpu@0`: `dt_set_cpus()` skips the boot CPU -- matched
+by comparing the node's `reg` against the running core's `MPIDR_EL1` --
+before it ever reaches the `cpu-release-addr` write):
+
+```
+-e '/^\tcpus {$/,/^\t};$/ s/reg = <0x01>;/reg = <0x00 0x01>;\n\t\t\tcpu-release-addr = <0x00 0x00>;/' \
+-e '/^\tcpus {$/,/^\t};$/ s/reg = <0x02>;/reg = <0x00 0x02>;\n\t\t\tcpu-release-addr = <0x00 0x00>;/' \
+```
+
+The `-p 0x10000` padding stays in the recipe (harmless standard practice,
+just not what fixes this). Verified locally after rebuilding: `cpu@1` and
+`cpu@2` both now carry `cpu-release-addr = <0x00 0x00>;`, and all three
+prior fixes (`#address-cells = <0x02>` CPU format, `/chosen/framebuffer`
+placeholder, `usbdev@20c100000` node) remain intact. Not yet re-tested on
+hardware.
 
 ## Attempts and failures while preparing the control
 
