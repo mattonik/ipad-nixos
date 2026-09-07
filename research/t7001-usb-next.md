@@ -1,6 +1,65 @@
 # T7001 USB: diagnostics and upgrade candidates
 
-Reviewed 2026-09-07, after Round 7. Hardware diagnosis is still open.
+Reviewed 2026-09-07, after Round 7. **Update, same day: the diagnostic ran
+on hardware (see "Hardware result" below) and found the fault is
+asymmetric -- device RX works, device-to-host TX does not reach the FIFO.
+Hardware diagnosis continues, now narrowed to one direction.**
+
+## Hardware result (2026-09-07, Round 8 in `docs/software-only-control.md`)
+
+Ran `m1n1-usb-diagnostic` per the procedure below. Steps 1-2 of the resume
+checklist are complete: PongoOS/`load_m1n1.py` handoff succeeded normally,
+and the user photographed all three diagnostic pages (four photos across
+two page-1/page-3 cycles, since the hook loops forever).
+
+**Page 1** (~2 min uptime): `usb0` shows `rx_packets: 304`, zero
+errors/drops, and a **complete** ARP entry for `172.16.42.2` with the
+exact MAC address of the Mac's `en10` from the same round
+(`ca:03:00:00:3f:72`). Linux only completes an ARP entry like this by
+processing a real incoming ARP request addressed to a local IP (RFC 826
+merge behavior), so the Mac's broadcasts are provably reaching and being
+parsed by the iPad's kernel. The device's own outbound ping to
+`172.16.42.2` still shows 100% loss, matching the Mac-side symptom from
+every prior round.
+
+**Page 2**: the bulk IN endpoint (device-to-host, `ep1`) shows
+`DIEPTSIZ=0x2008005a` -- a 90-byte, 1-packet transfer still marked
+pending -- while `GINTSTS` reports `NPTxFEmp` (TX FIFO empty) asserted at
+the same time. The transfer was programmed at the descriptor level but
+never reached the physical FIFO for the host to read. `DAINTMSK` does
+unmask EP1's completion interrupt, and `dwc2_hsotg_handle_generic_irq()`/
+`dwc2_hsotg_irq_fifoempty()`/`dwc2_hsotg_trytx()` in this exact kernel
+tree all read as unmodified, standard mainline PIO fill-on-`NPTxFEmp`
+logic on inspection -- ruling out the simplest explanations (a masked
+interrupt, an obviously Apple-patched fill routine) without yet pinning
+the actual defect. Separately, `DAINT` shows the CDC notification
+endpoint (`ep3`) has a pending, *unmasked-out* interrupt bit -- possibly
+related, possibly a separate lower-stakes issue.
+
+**Page 3**: `init ecm` / `activate ecm` fire within 0.5s of boot
+(matching the `ecm_setup`/`ecm_set_alt` dyndbg trace this diagnostic
+enables), and the host successfully drives `SET_ETHERNET_PACKET_FILTER`
+through several values ending at `0x0e` (broadcast+directed+all-multicast
+-- a normal "link is live" state), confirming macOS's ECM class-level
+negotiation is completely healthy. The fault is specifically in the bulk
+data path, not control-channel setup.
+
+**Conclusion**: RX (host-to-device) is proven working end-to-end from
+real device-side counters. TX (device-to-host) fails between the
+software transfer-size register and the physical FIFO -- a real, narrow,
+now-localized defect, not the "total, cause-unknown" failure Round 7
+described. Leading hypothesis: a PIO fill/re-arm bug specific to this
+forced-PIO (DMA hardcoded off) historical fork, not yet pinned to an
+exact line. Full write-up in `docs/software-only-control.md`'s "Round 8".
+
+**Next steps, not yet done**: trace `dwc2_hsotg_write_fifo()`'s handling
+of a partial fill / FIFO-empty re-arm for the specific case where a
+transfer doesn't complete in one write, since the generic dispatch logic
+around it reads correctly. In parallel or as an alternative, the
+"Hoolock kernel candidate" section below remains a live option -- it
+restores real DMA hardware-capability detection instead of forcing PIO,
+which could sidestep this exact class of bug rather than requiring it to
+be found and fixed in the historical fork.
 
 ## Session handoff: completed work and exact resume point
 

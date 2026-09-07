@@ -39,23 +39,33 @@ The old assertion that this proves a DWC2 bulk-transfer bug was too strong:
 we have not measured device-side RX/TX or USB completions. Forced-off DMA
 explains the warning but does not validate PIO operation on T7001.
 
-The user authorized display diagnostics and further USB research.
-`m1n1-usb-diagnostic` is implemented, built and archive-verified; it preserves
-the working kernel/DTB/bootloaders and overlays only the debug-shell hook.
-It has **not yet been uploaded or tested on hardware**. The user was asked
-to enter DFU and run PongoOS in their terminal because sudo needs a password.
-Next: upload the diagnostic payload once `05ac:4141` appears, photograph its
-three pages, compare host/device counters, then select the next experiment.
+**Round 8 (2026-09-07): the diagnostic ran on hardware and found the fault
+is asymmetric, not total.** `m1n1-usb-diagnostic` (preserves the working
+kernel/DTB/bootloaders, overlays only a display hook) showed real
+device-side evidence for the first time: `usb0` has 304 clean `rx_packets`
+and a *complete* ARP entry for the Mac's exact MAC address -- proving
+host-to-device traffic genuinely arrives and is processed. But
+device-to-host fails: the bulk IN endpoint has a 90-byte packet programmed
+into its transfer-size register that never reaches the physical TX FIFO
+(`NPTxFEmp` asserted despite a pending transfer), while the CDC-ECM
+control channel (`init ecm`, `activate ecm`, `SET_ETHERNET_PACKET_FILTER`
+progressing to `0x0e`) negotiates completely normally. The generic PIO
+fill-on-`NPTxFEmp` dispatch code read as unmodified mainline logic on
+inspection, so the exact defect isn't pinned yet -- leading hypothesis is
+a PIO partial-fill/re-arm bug specific to this forced-PIO (DMA hardcoded
+off) historical fork. Full evidence in `docs/software-only-control.md`'s
+"Round 8" and `research/t7001-usb-next.md`.
 
 Hoolock's newer matched kernel/DTB is a researched upgrade candidate, not
-yet built. Our pinned m1n1 already has its AUSB PHY tunable handoff. Do not
-blindly swap only the DTB, enable DMA, or tune nonexistent FIFO bootargs.
-See [the complete session handoff](research/t7001-usb-next.md) for changes,
-checks, artifact hash, source links, rollback and ordered next steps.
-Session changes remain uncommitted/unpushed; the original control is intact.
+yet built -- it restores real DMA hardware-capability detection instead of
+forcing PIO, which could sidestep this whole class of bug. Our pinned
+m1n1 already has its AUSB PHY tunable handoff. Do not blindly swap only
+the DTB, enable DMA, or tune nonexistent FIFO bootargs. See
+[the complete session handoff](research/t7001-usb-next.md) for changes,
+checks, artifact hashes, source links, rollback and ordered next steps.
 
 Full evidence and commands are in `docs/software-only-control.md`'s
-"Round 3" through "Round 7".
+"Round 3" through "Round 8".
 
 Driver work (touch, Wi-Fi, etc.) remains explicitly approval-gated --
 booting Linux does not change that; wait for the user before starting any

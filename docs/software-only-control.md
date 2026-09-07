@@ -1,11 +1,17 @@
 # Software-only T7001 control
 
-**Latest follow-up (2026-09-07):** direct Mac-to-iPad cabling also gives zero
-host RX. A separate `m1n1-usb-diagnostic` payload now builds and passes archive
-checks, ready for a hardware run. It displays device-side counters and DWC2
-state without rebuilding the kernel. The older Round 7 claim of a proven
-bulk-transfer bug was too strong. See the
-[diagnostic runbook and kernel-upgrade research](../research/t7001-usb-next.md).
+**Latest follow-up (2026-09-07): Round 8, hardware-tested.** The
+`m1n1-usb-diagnostic` payload ran on real hardware and settled the
+question Round 7 left open. The fault is **asymmetric, not total**: the
+iPad's `usb0` genuinely receives the Mac's broadcasts (304 clean
+`rx_packets`, a complete ARP entry for the Mac's real MAC address) --
+host-to-device works. But device-to-host does not: the bulk IN endpoint
+shows a 90-byte packet programmed into its transfer-size register that
+never reaches the physical TX FIFO (`NPTxFEmp` asserted despite a pending
+transfer), while the CDC-ECM control channel negotiates completely
+normally. See "Round 8" below and
+[the diagnostic runbook and kernel-upgrade research](../research/t7001-usb-next.md)
+for the full evidence and next-step options.
 
 **2026-09-07: Linux boots to an interactive shell.** The `bootm` -> m1n1
 route below (not the historical-control route this document was originally
@@ -1075,6 +1081,124 @@ forcing different `g_rx_fifo_size`/`g_tx_fifo_size` values, or a
 non-composite single-function ECM gadget instead of the RNDIS+ECM
 composite one) tested blind on hardware. Not yet resolved; awaiting a
 decision on which path to pursue.
+
+**Correction, same day (see `research/t7001-usb-next.md`):** a follow-up
+review found this "real bug" conclusion too strong -- it rested entirely
+on host-side evidence (Mac ARP/tcpdump counters); the device's own RX/TX
+counters, endpoint state, and USB completions were never actually
+measured. A `m1n1-usb-diagnostic` payload was built to fix exactly that
+gap: it keeps the proven PongoOS/m1n1/kernel/DTB byte-identical to the
+working control and overlays only a display hook showing `usb0` counters,
+DWC2 endpoint/FIFO registers, and dyndbg-traced `g_ether`/ECM kernel
+messages directly on the framebuffer. See below for what it showed.
+
+### Round 8, 2026-09-07: the diagnostic reveals an asymmetric fault -- RX works, TX to the host does not
+
+Ran `m1n1-usb-diagnostic` on hardware (same DFU/PongoOS/`load_m1n1.py`
+procedure as every prior round). Three pages cycle on the framebuffer
+every 12 seconds; the user photographed each. This overturns the "total,
+undifferentiated failure" picture from Round 7 with something much more
+precise.
+
+**Page 1 (link and packet counters)** -- captured about two minutes into
+boot:
+
+```
+2: usb0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 ... state UP
+    inet 172.16.42.1/16 brd 172.16.255.255 scope global usb0
+rx_packets: 304        tx_packets: 10
+rx_errors: 0            tx_errors: 0
+rx_dropped: 0           tx_dropped: 0
+
+IP address    HW type  Flags  HW address          Device
+172.16.42.2   0x1      0x2    ca:03:00:00:3f:72   usb0
+
+--- 172.16.42.2 ping statistics ---
+1 packets transmitted, 0 packets received, 100% packet loss
+```
+
+`rx_packets: 304` with zero errors/drops means the device's kernel really
+is receiving and correctly processing a steady stream of inbound frames
+-- consistent with the Mac's once-a-second ARP broadcasts (and mDNS
+noise) accumulating over ~2 minutes. The ARP table entry is the clincher:
+flags `0x2` is `ATF_COM` (complete), and the MAC address
+(`ca:03:00:00:3f:72`) is an *exact* match for the Mac's `en10` from the
+same test round. Linux's ARP layer populates a complete entry like this
+by processing an incoming ARP *request* addressed to a local IP (RFC 826
+"merge" behavior) -- so the Mac's ARP broadcasts are unambiguously
+arriving at and being parsed by the iPad. **The USB OUT direction
+(host-to-device) works.**
+
+But the device's own outbound ping to the Mac shows 100% loss, matching
+every ping/ARP/telnet test from the Mac's side across every round so far.
+Given RX demonstrably works, this narrows the fault to one direction:
+**something the device sends back never reaches the host.**
+
+**Page 2 (USB controller / endpoints)** explains why at the hardware
+level. The bulk IN endpoint used for device-to-host traffic (physical
+`ep1`, matched by its `DIEPCTL` bits: `EPEna=1`, bulk type, 512-byte max
+packet, TxFIFO#2) shows:
+
+```
+ep1: DIEPCTL=0x80888200 ... DIEPTSIZ=0x2008005a
+```
+
+Decoding `DIEPTSIZ`: a 19-bit `XferSize` of 90 bytes and a `PktCnt` of 1
+-- a single ~90-byte packet is programmed and still *pending* in this
+endpoint's transfer-size register, not yet delivered. At the same time,
+the global interrupt status shows `GINTSTS` bit5 (`NPTxFEmp`, non-periodic
+TX FIFO empty) asserted -- the hardware's actual FIFO reports empty even
+though a transfer is still marked pending. In other words: the network
+stack queued something to send (matching `tx_packets: 10` on page 1,
+which most drivers increment at submission time, not on confirmed
+delivery), but it never actually made it into the physical FIFO for the
+USB SIE to shift out to the host.
+
+**What this is not, ruled out by reading the actual driver source**
+(`drivers/usb/dwc2/gadget.c` in this exact kernel tree): `DAINTMSK`
+(`0x00050003`) does unmask IN EP1's completion interrupt (bit 1), and
+`dwc2_hsotg_handle_generic_irq()` correctly ANDs `DAINT` against
+`DAINTMSK` before dispatch (`daint &= daintmsk;`) -- so EP1 isn't simply
+being ignored the way a masked interrupt would be. `dwc2_hsotg_irq_fifoempty()`
+and `dwc2_hsotg_trytx()`, the generic PIO fill-the-FIFO path triggered by
+`NPTxFEmp`, both read as ordinary, unmodified mainline logic on
+inspection -- not something this Apple-specific fork visibly patched. A
+separate, smaller finding on the same page: `DAINT` shows bit 3 (the CDC
+notification/interrupt endpoint, `ep3`) pending, but `DAINTMSK` does not
+include bit 3 -- so that specific endpoint's completion is masked out.
+Whether that is related to the bulk-IN stall (e.g. a shared root cause in
+how any device-to-host transfer gets serviced) or a separate, lower-stakes
+issue is not established.
+
+**Page 3 (kernel messages)** shows the control-channel side working
+normally: `init ecm` and `activate ecm` both fire within the first half
+second of boot (matching `ecm_setup`/`ecm_set_alt`, the two functions the
+diagnostic's `dyndbg` query specifically traces), and the host
+successfully drives `SET_ETHERNET_PACKET_FILTER` (`ecm req21.43`) through
+several values ending at `0x0e` (broadcast + directed + all-multicast --
+a normal "interface is live" filter), including a second burst ~14
+seconds later. This confirms macOS's ECM driver genuinely believes the
+link is active and is configuring it normally at the control-channel
+level -- the fault is specifically in the bulk data path, not in class-level
+negotiation.
+
+**Net finding**: the fault is asymmetric, not total. RX (host to device)
+is proven working end-to-end at the network-stack level. TX (device to
+host) gets as far as being programmed into the endpoint's transfer-size
+register but never reaches the physical TX FIFO -- a real, narrow,
+hardware-observable defect, most plausibly in this historical fork's PIO
+fill-on-`NPTxFEmp` path (forced-PIO since DMA capability is hardcoded
+off, per Round 7), though the specific defective line has not been
+pinned down; the generic mainline fill logic read correctly on
+inspection, so the actual bug is likely in a lower-level or
+Apple-specific interaction not yet traced. This is real progress over
+Round 7's "total failure, cause unknown": we now know exactly which
+direction fails and roughly where in the stack, from device-side evidence
+rather than inference. Next steps: trace `dwc2_hsotg_write_fifo()` and
+the FIFO-empty re-arm logic for a partial-write case, or move to testing
+whether Hoolock's newer kernel (which restores real DMA capability
+detection instead of forcing PIO) sidesteps this entirely -- both
+options already scoped in `research/t7001-usb-next.md`.
 
 ## Attempts and failures while preparing the control
 

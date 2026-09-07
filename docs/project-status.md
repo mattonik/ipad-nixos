@@ -2,11 +2,17 @@
 
 Status date: 2026-09-07
 
-**USB follow-up:** direct cabling has also failed (zero host RX). A display
-diagnostic payload is built and archive-verified, but not yet hardware-tested.
-Hoolock's newer matched kernel/DTB is a researched upgrade candidate. See
-[T7001 USB next steps](../research/t7001-usb-next.md), which supersedes the
-categorical Round 7 driver diagnosis below.
+**USB follow-up, Round 8 (hardware-tested):** the display diagnostic ran on
+real hardware and found the fault is asymmetric, not total. The iPad's
+`usb0` genuinely receives the Mac's traffic (304 clean `rx_packets`, a
+complete ARP entry for the Mac's real MAC address) -- host-to-device
+works. Device-to-host does not: the bulk IN endpoint has a packet
+programmed into its transfer-size register that never reaches the
+physical TX FIFO, while CDC-ECM control-channel negotiation is completely
+normal. Hoolock's newer matched kernel/DTB (restores real DMA detection
+instead of forcing PIO) remains a researched upgrade candidate. See
+[T7001 USB next steps](../research/t7001-usb-next.md), which supersedes
+the categorical Round 7 driver diagnosis below.
 Target: iPad Air 2 Wi‑Fi A1566, A8X/T7001, board J81/J81AP  
 Repository: [mattonik/ipad-nixos](https://github.com/mattonik/ipad-nixos)
 Upstream: [jacopone/ipad-nixos](https://github.com/jacopone/ipad-nixos)
@@ -72,17 +78,28 @@ live on hardware:
 - **Round 7**: flipping that Kconfig flag off and rebuilding the kernel
   fixed exactly that -- macOS now binds its native `AppleUSBCDCECMData`
   driver automatically and a real `en10` interface appears, no
-  third-party driver needed. **But no data crosses the link at all.**
-  Both endpoints were independently confirmed correctly configured (real
-  ARP broadcasts leaving the Mac every second, captured with `tcpdump`;
-  the iPad's `usb0` confirmed assigned `172.16.42.1` by reading its
-  actual init script out of the extracted initramfs) -- pointing at a
-  real, previously-unvalidated bug in this historical kernel's `dwc2`
-  gadget bulk-transfer path on the T7001. **Unresolved** as of
-  2026-09-07; needs either UART/serial access or another blind
-  kernel-parameter iteration to diagnose further. Full evidence for every
-  step is in `docs/software-only-control.md`'s "Round 3" through "Round
-  7". Touch/Wi-Fi/etc. remain approval-gated regardless: do not start
+  third-party driver needed. **But no data crosses the link at all**, and
+  a follow-up review found the "proven bulk-transfer bug" conclusion here
+  too strong: it rested only on host-side evidence, never device-side
+  counters or USB completions.
+- **Round 8**: a purpose-built diagnostic payload (`m1n1-usb-diagnostic`
+  -- keeps the proven boot components byte-identical, overlays only a
+  framebuffer display hook) supplied that missing device-side evidence.
+  The fault turned out to be **asymmetric**: `usb0` shows 304 clean
+  `rx_packets` and a complete ARP entry for the Mac's exact MAC address --
+  host-to-device traffic genuinely arrives and is processed. But
+  device-to-host fails specifically: the bulk IN endpoint has a 90-byte
+  packet programmed into its transfer-size register that never reaches
+  the physical TX FIFO (`NPTxFEmp` asserted despite a pending transfer),
+  while CDC-ECM's control channel (`init ecm`, `activate ecm`,
+  `SET_ETHERNET_PACKET_FILTER` progressing normally) negotiates
+  perfectly. The generic PIO fill-on-`NPTxFEmp` code read as unmodified
+  mainline logic on inspection, so the exact defect isn't pinned down yet
+  -- leading hypothesis is a PIO partial-fill/re-arm bug specific to this
+  forced-PIO (DMA hardcoded off) historical fork. **Real progress, not yet
+  fully resolved** as of 2026-09-07. Full evidence for every step is in
+  `docs/software-only-control.md`'s "Round 3" through "Round 8" and
+  `research/t7001-usb-next.md`. Touch/Wi-Fi/etc. remain approval-gated regardless: do not start
   driver work without the user's explicit approval.
 
 The historical PongoOS control (found the same day, a separate experiment)
@@ -2193,7 +2210,7 @@ is the reference for the intentionally minimal board description.
 | Linux payload upload | ✅ Transferred once; exposed PongoOS pre-handoff defects |
 | Guarded T7001 diagnostic PongoOS | ✅ Matched-toolchain Pongo, USB, aligned Image/DTB/initrd ranges, Linux register contract, and no-jump guard are proven on T7001 |
 | Linux kernel boot | ✅✅ Achieved in full, 2026-09-07, via `bootm`→m1n1: reaches a live, interactive postmarketOS `/ #` shell prompt (`pd_ignore_unused`/`clk_ignore_unused` fixed a power-domain auto-shutdown that was killing the display). See docs/software-only-control.md. |
-| USB networking to the debug shell | ⚠️ Partial, 2026-09-07 (Rounds 3-7): historical-DTB swap + `cpu-release-addr` DTB fix + CDC-ECM kernel-config fix together get a real, correctly-configured network interface on both the iPad (`usb0`, `172.16.42.1`) and the Mac (`en10`, native macOS driver, no third-party kext). But zero data crosses the link — confirmed via live `tcpdump` capture and reading the iPad's own init script — pointing at a real bug in the historical kernel's `dwc2` gadget bulk-transfer path. Unresolved; needs UART or further blind iteration. See docs/software-only-control.md's "Round 3"–"Round 7". |
+| USB networking to the debug shell | ⚠️ Partial, 2026-09-07 (Rounds 3-8): historical-DTB swap + `cpu-release-addr` DTB fix + CDC-ECM kernel-config fix together get a real, correctly-configured network interface on both the iPad (`usb0`, `172.16.42.1`) and the Mac (`en10`, native macOS driver, no third-party kext). A device-side diagnostic (Round 8) found the fault is asymmetric, not total: RX (host→device) is proven working (304 clean `rx_packets`, complete ARP entry for the Mac's real MAC); TX (device→host) fails — a packet is programmed into the bulk IN endpoint's transfer-size register but never reaches the physical FIFO, despite normal CDC-ECM control-channel negotiation. Narrowed but not yet fixed; leading hypothesis is a PIO fill/re-arm bug in this forced-PIO historical fork. See docs/software-only-control.md's "Round 3"–"Round 8" and research/t7001-usb-next.md. |
 | Display/touch/Wi‑Fi/Bluetooth validation | ❌ Not started |
 | Usable tethered Linux tablet | ❌ Future milestone |
 
