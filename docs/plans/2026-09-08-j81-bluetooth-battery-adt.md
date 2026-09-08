@@ -557,37 +557,87 @@ change until BT-3 is proven working at all, but that's a judgment call
 worth revisiting once the measurement below actually says what register
 and polarity are involved.
 
-#### The measurement itself (not yet done -- needs the device back on the bench)
+#### Stage A result, 2026-09-08: read-only scan done, protocol confirmed, no GPIO2 register identified with confidence yet
 
-Read-only, at the PongoOS/m1n1 stage, before Linux boots -- doesn't touch
-the proven boot chain, doesn't write anything irreversible:
+The original plan was to do this via m1n1's own USB proxy mode, before
+Linux boots at all. **That channel doesn't work on this hardware**: m1n1
+reaches its own `Running proxy...` state cleanly and repeatably (confirmed
+via the framebuffer console, four separate attempts -- cold restart, cable
+left alone, cable reconnected, reconnected again), but the Mac never
+enumerates a USB device from it at all, under any VID/PID, across every
+variation tried. Not a workflow mistake; a real gap in this m1n1 fork's
+USB gadget support for T7001, distinct from Linux's own `dwc2` gadget
+driver (proven solid all session -- 0% packet loss). Pivoted to reading
+the same chip from **Linux** instead, over `/dev/i2c-0` -- functionally
+identical read semantics, just after Linux (not m1n1) has already touched
+this PMIC for RTC/backlight, which isn't a real risk given those already
+run constantly without issue.
 
-```python
-# via m1n1's own proxyclient (proxyclient/m1n1/hw/i2c.py), same I2C class
-# experiments/i2c_pmu_rtc.py already uses successfully against this exact
-# pmu,d2207 chip for RTC/NVMEM -- known-working transport, new target.
-from m1n1.setup import *
-from m1n1.hw.i2c import I2C
+Two small, real additions were needed, both now in `flake.nix`:
 
-reg = u.adt["/arm-io/i2c0/pmu"].reg[0]   # == 0x3c, cross-checked above
-i2c0 = I2C(u, "/arm-io/i2c0")
-# broad, read-only scan of low register space (Dialog-derived PMIC GPIO
-# blocks are typically a compact bank near the base of the address space,
-# distinct from the 0x4000/0x5000 NVMEM/RTC banks already known) plus
-# anything nearby resource number 2 might plausibly index into.
-```
+- `CONFIG_I2C_CHARDEV=y` in `patchedHoolockConfig` (was off; `CONFIG_I2C`
+  and `CONFIG_I2C_APPLE` were already on, i.e. the bus itself already
+  works, just not exposed to userspace). Purely additive -- doesn't touch
+  existing driver behavior.
+- `i2cToolsPkg`: the real `i2c-tools` package (small, dependency-free,
+  unlike bluez -- the stock derivation cross-compiles directly). Had to
+  override it to build statically (`BUILD_DYNAMIC_LIB=0
+  BUILD_STATIC_LIB=1 USE_STATIC_LIB=1 LDFLAGS=-static` as real `make`
+  variables, not `NIX_LDFLAGS` -- that route left the final tool-link step
+  still pulling in shared `libgcc_s`, "cannot find -lgcc_s", since it
+  doesn't reach gcc's own driver-level static-link detection the same
+  way): confirmed via a *dynamically*-linked build first that its ELF
+  interpreter path genuinely doesn't exist in this initramfs (same class
+  of bug `btattach` hit and fixed the same way). Bundled into
+  `m1n1-hoolock-control`'s initramfs via the same cpio-overlay pattern,
+  alongside `btattach`.
 
-Stage A: dump broadly, read-only, to find candidate GPIO2 register(s) --
-no hypothesis about the layout is assumed going in, since none of the
-prior art checked above has one either. Stage B: once a candidate is
-found, correlate it with the known-bad state (chip totally silent,
-`-ETIMEDOUT` on a plain HCI Reset) as the falsifiable test -- write the
-candidate bit via the same read-only-proven m1n1 I2C class (reversible,
-scoped to this one chip's own power rail, not the shared PMIC control
-path RTC/backlight depend on), then re-run `btattach` from Linux and see
-if the chip answers. Only once that succeeds repeatably does Stage C
-(pick one of the three implementation options above and actually write
-DTS/driver/tool code) start.
+Bus number turned out trivial to confirm, not needed to guess ahead of
+time: `/sys/class/i2c-dev/i2c-0/name` reads `PA Semi SMBus adapter
+(20a110000.i2c)` -- bus 0 is `i2c0`, matching `pmic@3c`'s parent exactly,
+and `/sys/bus/i2c/devices/0-003c` confirms the kernel's own driver is
+bound there (so every `i2ctransfer`/`i2cget` call needs `-f`, since the
+address is "reserved" from i2c-dev's point of view -- expected, not an
+error, and harmless for a read).
+
+**Protocol verified before trusting anything unknown**: read the already
+-documented `nvmem@0x4004` register (`i2ctransfer -f -y 0 w2@0x3c 0x40
+0x04 r4`) and got `ef 93 2a 64` -- decoded as a little-endian u32 that's
+a plausible mid-2023 Unix timestamp, consistent with `experiments/
+i2c_pmu_rtc.py`'s own documented `NVMEM=0x4004` for this exact chip
+family (`d2045`/`d2089`/`d2186`/`d2207`) and with this being a persistent
+epoch-anchor value, not current time. This confirms the wire format (16
+-bit big-endian register address, little-endian multi-byte values) is
+correct.
+
+Then a broad read-only dump: `0x0000`-`0x0400`, plus the known
+`0x4000`/`0x5c00` regions for completeness. Full raw bytes kept private
+in gitignored `artifacts/i2c/` (PMIC configuration state, not
+device-identifying data, but kept to the same privacy convention as
+`artifacts/adt/` regardless). Notable, but **not conclusive**:
+
+- `0x0300`-`0x03a0` has an obvious structured, repeating 8-byte-stride
+  table (`XX XX 00 YY 00 02 00 00`-shaped rows) -- looks like it could be
+  a per-rail/regulator configuration table, which is exactly the kind of
+  place a Bluetooth/WiFi combo chip's own supply might live. This is an
+  observation worth carrying into Stage B, not a claimed identification --
+  nothing ties any specific row to "resource 2" without either a
+  datasheet (doesn't exist, checked) or an actual write-and-observe test.
+- `0x5c00`-`0x5c30` (the documented live RTC counter region) read all
+  -zero, which could look like a protocol failure but isn't necessarily
+  one: this is a volatile, free-running counter (unlike nvmem, which is
+  persistent), and this board has been power-cycled many times this
+  session -- zero is also consistent with "recently reset". Noted
+  honestly rather than treated as either a confirmed problem or explained
+  away.
+
+**Deliberately stopping before Stage B** (writing a candidate bit and
+observing whether the chip responds). Nothing in the read-only dump gives
+strong enough confidence in one specific register to justify a write yet
+-- picking one to try is a real decision, not a mechanical next step, and
+this document's own stop condition is exactly about not doing PMU GPIO
+work on inferred-not-measured evidence. Flagging back rather than
+guessing.
 
 BT completion criteria: cold-boot repeatability, firmware loaded, controller
 address stable, scan works, and three minutes of connect/disconnect activity

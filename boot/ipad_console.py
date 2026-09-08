@@ -275,6 +275,37 @@ def action_bt_attach(shell: IPadShell) -> None:
     ))
 
 
+PMU_I2C_BUS = 0
+PMU_I2C_ADDR = "0x3c"  # pmu,d2207 (BT-3): confirmed at /sys/bus/i2c/devices/0-003c
+
+
+def action_pmu_read(shell: IPadShell) -> None:
+    # BT-3 (docs/plans/2026-09-08-j81-bluetooth-battery-adt.md): read-only
+    # register scan of the PMU chip that also backs RTC/backlight, looking
+    # for the GPIO2 control register power_enable needs. -f: the kernel's
+    # own apple,i2c-pmic driver already owns this address, so i2c-dev
+    # treats it as "reserved" without it -- harmless for a plain read.
+    raw = input("Register address (hex, e.g. 0x300): ").strip()
+    try:
+        addr = int(raw, 16)
+    except ValueError:
+        print("Not a valid hex address, cancelled.")
+        return
+    length_raw = input("Bytes to read [16]: ").strip() or "16"
+    try:
+        length = int(length_raw)
+    except ValueError:
+        print("Not a number, cancelled.")
+        return
+    hi, lo = (addr >> 8) & 0xFF, addr & 0xFF
+    cmd = (
+        f"i2ctransfer -f -y {PMU_I2C_BUS} w2@{PMU_I2C_ADDR} "
+        f"0x{hi:02x} 0x{lo:02x} r{length}"
+    )
+    print(f"$ {cmd}")
+    print(shell.run(cmd, timeout=8))
+
+
 def action_uptime_mem(shell: IPadShell) -> None:
     print(shell.run("uptime"))
     print(shell.run("free 2>&1 || head -5 /proc/meminfo"))
@@ -299,6 +330,7 @@ ACTIONS: list[tuple[str, Callable[["IPadShell"], None]]] = [
     ("Bluetooth: UART3 tty device check", action_tty_devices),
     ("Bluetooth: hci0 status", action_bt_status),
     ("Bluetooth: attach HCI UART (btattach)", action_bt_attach),
+    ("PMU: read I2C register (pmu,d2207 @ 0x3c)", action_pmu_read),
     ("Uptime & memory", action_uptime_mem),
     ("Run a raw shell command", action_raw_command),
 ]

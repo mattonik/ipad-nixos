@@ -197,10 +197,25 @@ own design, so the original "just add shutdown-gpios" bullet needed
 correction. Three implementation options scoped (serdev support in
 `samsung_tty.c`; a small DT-match patch to `hci_bcm.c`'s platform driver;
 or a userspace-only I2C-poke tool bundled like `btattach`, no kernel
-change at all) -- no register write attempted yet, no DTS changed. Full
-scope in `docs/plans/2026-09-08-j81-bluetooth-battery-adt.md`'s "BT-3:
-add wake and power control only when required". Needs the device back on
-the bench for the actual (read-only, m1n1-proxy-based) measurement step.
+change at all).
+
+**BT-3 Stage A done, 2026-09-08: read-only scan complete, no register
+write yet.** m1n1's USB proxy mode never enumerates on this hardware
+(four separate attempts, real gap in this m1n1 fork's gadget support, not
+a workflow mistake) -- pivoted to reading the same `pmu,d2207` chip from
+Linux instead, over `/dev/i2c-0` (needed `CONFIG_I2C_CHARDEV=y`, off by
+default, and a statically-linked `i2c-tools` bundled the same way as
+`btattach` -- the stock dynamic build hit the identical ELF-interpreter
+problem `btattach` did). Protocol verified against the known
+`nvmem@0x4004` register before trusting anything new (decoded as a
+plausible timestamp, matching `i2c_pmu_rtc.py`'s own documented offset
+for this chip family). Full `0x0000`-`0x0400` dump done; a structured
+table at `0x0300`-`0x03a0` looks plausibly like a per-rail config table
+but isn't confirmed as anything specific. **Deliberately stopped before
+writing any register** -- nothing in the read-only data justifies picking
+one candidate over another yet; that's a real decision needing its own
+go-ahead, not a mechanical next step. Full writeup in
+`docs/plans/2026-09-08-j81-bluetooth-battery-adt.md`'s "Stage A result".
 
 The historical-PongoOS control is a separate, lower-priority experiment,
 still blocked: `palera1n`'s stager rejects its 708,704-byte binary (limit

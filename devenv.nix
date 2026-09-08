@@ -26,6 +26,13 @@ in
     radare2           # CLI reverse engineering toolkit
     python3           # Many RE scripts are Python
     python3Packages.pyusb  # PyUSB for boot/load_linux.py
+    # BT-3 measurement (docs/plans/2026-09-08-j81-bluetooth-battery-adt.md):
+    # m1n1's own proxyclient talks to a running (non-Linux-booted) m1n1 over
+    # a USB CDC-ACM virtual serial port -- pyserial for that transport,
+    # construct for its ADT/register struct parsing (both pinned exactly in
+    # the upstream m1n1 tree's requirements.txt).
+    python3Packages.pyserial
+    python3Packages.construct
 
     # Build tools
     gnumake

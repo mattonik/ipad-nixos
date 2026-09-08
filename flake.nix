@@ -147,6 +147,7 @@
             sed \
               -e 's/^# CONFIG_ARM64_4K_PAGES is not set$/CONFIG_ARM64_4K_PAGES=y/' \
               -e 's/^CONFIG_ARM64_16K_PAGES=y$/# CONFIG_ARM64_16K_PAGES is not set/' \
+              -e 's/^# CONFIG_I2C_CHARDEV is not set$/CONFIG_I2C_CHARDEV=y/' \
               ${inputs.hoolockDocs}/config_16k > "$out"
           '';
           hoolockKernel = pkgsCross.callPackage ./kernel/hoolock.nix {
@@ -165,6 +166,39 @@
             bluezSrc = pkgsCrossMusl.bluez.src;
             bluezVersion = pkgsCrossMusl.bluez.version;
           };
+
+          # BT-3 (docs/plans/2026-09-08-j81-bluetooth-battery-adt.md): m1n1's
+          # own USB proxy mode doesn't enumerate on this hardware (tried
+          # repeatedly, 2026-09-08), so the PMU GPIO2 register scan runs
+          # from Linux instead, over the same pmic@3c I2C chip RTC/backlight
+          # already prove works. i2c-tools is small and dependency-free
+          # (unlike bluez, no glib/dbus-style chain to route around), so the
+          # real package cross-compiles directly -- no from-scratch minimal
+          # build needed here. Static for the same reason as btattach: the
+          # debug initramfs's musl is a separate build from Nix's own, and
+          # the stock package's dynamic linking against Nix's musl produced
+          # a real "not found" failure on hardware (the ELF interpreter
+          # path doesn't exist there) before this override was added.
+          # lib/Module.mk documents its own static-build variables
+          # (BUILD_DYNAMIC_LIB/BUILD_STATIC_LIB/USE_STATIC_LIB) -- disabling
+          # the shared libi2c.so build entirely avoids it fighting a global
+          # -static (which broke with "cannot find -lgcc_s" when the
+          # Makefile's own `-shared` link line picked it up too).
+          i2cToolsPkg = pkgsCrossMusl.i2c-tools.overrideAttrs (old: {
+            # LDFLAGS=-static (a plain make variable the Makefile's own
+            # $(CC) $(LDFLAGS) link line picks up directly), not
+            # NIX_LDFLAGS -- that route left the tools/Module.mk link step
+            # still pulling in shared libgcc_s ("cannot find -lgcc_s", no
+            # static libgcc_s.a exists in this musl cross toolchain),
+            # because it doesn't reach gcc's own driver-level "this is a
+            # static link, use libgcc.a" detection the same way.
+            makeFlags = old.makeFlags ++ [
+              "BUILD_DYNAMIC_LIB=0"
+              "BUILD_STATIC_LIB=1"
+              "USE_STATIC_LIB=1"
+              "LDFLAGS=-static"
+            ];
+          });
         in {
         # Linux kernel for iPad Air 2 (A8X)
         kernel = modernKernel;
@@ -380,8 +414,25 @@
           chmod 755 overlay/usr/bin/btattach
           touch -d @1 overlay/usr/bin/btattach
 
-          (cd overlay; printf '%s\0' "etc/deviceinfo" "usr/bin/btattach" \
-            | cpio --null -o -H newc --owner=0:0 --reproducible) >> initramfs.cpio
+          # BT-3: i2cget/i2cset/i2cdetect/i2ctransfer/i2cdump, for the PMU
+          # GPIO2 register scan over pmic@3c now that CONFIG_I2C_CHARDEV is
+          # on (see patchedHoolockConfig above) -- m1n1's own USB proxy
+          # mode doesn't enumerate on this hardware, so this runs from
+          # Linux instead, read-only, over the same chip RTC/backlight
+          # already prove works.
+          for f in ${i2cToolsPkg}/bin/*; do
+            cp "$f" "overlay/usr/bin/$(basename "$f")"
+            chmod 755 "overlay/usr/bin/$(basename "$f")"
+            touch -d @1 "overlay/usr/bin/$(basename "$f")"
+          done
+
+          (cd overlay
+           { printf '%s\0' "etc/deviceinfo" "usr/bin/btattach"
+             for f in ${i2cToolsPkg}/bin/*; do
+               printf 'usr/bin/%s\0' "$(basename "$f")"
+             done
+           } | cpio --null -o -H newc --owner=0:0 --reproducible
+          ) >> initramfs.cpio
           gzip -n -c initramfs.cpio > "$out/initramfs.gz"
 
           # Same proven bootargs baseline as m1n1-control: PMOS_NO_OUTPUT_REDIRECT
