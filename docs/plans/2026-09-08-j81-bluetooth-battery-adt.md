@@ -362,6 +362,48 @@ registers `hci0` -- or fails with a firmware-loading error, which is
 itself progress and would give the exact `.hcd` filename BT-2 needs -- is
 still an open, hardware-only question.
 
+### Hardware attach attempt, 2026-09-08: `hci0` registers; the chip itself never answers
+
+Ran `m1n1-hoolock-control` with `btattach` bundled, then used the
+console tool's new "Bluetooth: attach HCI UART" action against the live
+device. `hci_bcm` bound immediately:
+
+```
+lrwxrwxrwx  hci0 -> .../20a0cc000.serial:0/20a0cc000.serial:0.0/tty/ttySAC1/hci0
+```
+
+This is the "`hci0` half" of BT-1's original pass criterion, now also
+hardware-confirmed -- UART3's register/pinmux/clock description, the
+`hci_bcm` UART-transport driver, and the manual `btattach` line-discipline
+attach all work correctly together. But every actual command to the chip
+timed out:
+
+```
+[ 38.815423] Bluetooth: hci0: command 0xfc18 tx timeout
+[ 38.815627] Bluetooth: hci0: BCM: failed to write update baudrate (-110)
+[ 40.863451] Bluetooth: hci0: command 0xfc18 tx timeout
+[ 40.863667] Bluetooth: hci0: BCM: Reset failed (-110)
+```
+
+`-110` is `-ETIMEDOUT`: the BCM43540 never sent a single byte back over
+UART3, not even a response to a plain HCI Reset -- this fails *before*
+firmware is even relevant, so it isn't BT-2's territory yet. The most
+likely explanation, and the one this document's own "Bluetooth
+implementation" section already anticipated: the chip has no power.
+`function-power_enable` (independently decoded above as PMU GPIO2, tag
+`0x4e`) is exactly the kind of line real BCM4354x designs require
+asserted before the chip's UART interface does anything at all, and BT-3
+("add wake and power control only when required") was deliberately left
+unimplemented -- this hardware result is the "when required" signal.
+
+**Deliberately not proceeding past this point without a separate
+go-ahead.** This document's own "Stop conditions" say: "Do not add D2207
+PMU GPIO control until its register layout and polarity are measured" --
+that measurement (register layout, polarity, and safe sequencing for a
+PMU-controlled supply rail) is real new hardware-facing work, not the
+"bundle an already-working driver" class of task this initramfs/btattach
+change was. Flagging back rather than continuing into it.
+
 ### BT-2: supply exact local firmware
 
 Extract the requested Broadcom patchram file from the matching local IPSW or

@@ -166,9 +166,21 @@ the `ecm.usb0` deviceinfo override. Console tool gained matching actions
 ("Bluetooth: hci0 status", "Bluetooth: attach HCI UART"). Verified at the
 Nix level only (binary present, genuinely static, deviceinfo override
 intact -- see the plan doc for how, since a naive `cpio -it` listing looks
-like a silent failure here and isn't one). **Not yet hardware-tested**:
-whether `hci_bcm` actually binds `hci0` against `/dev/ttySAC1` is still
-open.
+like a silent failure here and isn't one).
+
+**Hardware-tested, 2026-09-08: `hci0` registers, chip stays silent.**
+`hci_bcm` bound to `/dev/ttySAC1` immediately and `hci0` appeared in
+`/sys/class/bluetooth` -- BT-1's full pass criterion, now hardware-proven
+end to end. But the chip never answered a single command: `Bluetooth:
+hci0: command 0xfc18 tx timeout` / `BCM: Reset failed (-110)`. This fails
+before firmware is even relevant, and points at `function-power_enable`
+(PMU GPIO2, independently decoded earlier) needing to be asserted first --
+exactly the gap BT-3 left open. **Stopping here deliberately**: the plan
+doc's own stop condition is "Do not add D2207 PMU GPIO control until its
+register layout and polarity are measured" -- that's real new
+hardware-facing work, not more bundling, so it needs its own go-ahead.
+Full detail in `docs/plans/2026-09-08-j81-bluetooth-battery-adt.md`'s
+"Hardware attach attempt, 2026-09-08".
 
 The historical-PongoOS control is a separate, lower-priority experiment,
 still blocked: `palera1n`'s stager rejects its 708,704-byte binary (limit
