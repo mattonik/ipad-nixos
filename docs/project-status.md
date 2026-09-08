@@ -14,12 +14,14 @@ RTC and backlight (bundled overnight, see below) were also confirmed
 working on real hardware in the same session. Full transcript in
 `docs/software-only-control.md`'s "Round 10."
 
-**Driver review, 2026-09-08:** the current kernel/ADT/source research and
+**Bluetooth/battery planning, 2026-09-08:** live inspection through the working
+USB shell confirms only UART0 in the active J81 FDT, with no Bluetooth or
+power-supply device. The private live FDT is saved under ignored
+`artifacts/adt/`. A safe PongoOS J81 ADT capture tool and the commit-sized
 implementation sequence are recorded in
-[the iPad Air 2 driver bring-up plan](plans/2026-09-08-ipad-air2-driver-bringup.md).
-The main correction is BCM4350 Wi-Fi over T7000 PCIe rather than the previous
-BCM4354/SDIO assumption. The immediate hardware step remains the already-built
-Hoolock USB payload over the direct cable.
+[the focused Bluetooth, battery and ADT plan](plans/2026-09-08-j81-bluetooth-battery-adt.md).
+The next hardware step is to stop at PongoOS once, capture the exact J81 ADT,
+then implement the UART3 Bluetooth transport.
 
 **USB follow-up, Round 8 (hardware-tested):** the display diagnostic ran on
 real hardware and found the fault is asymmetric, not total. The iPad's
@@ -2160,7 +2162,9 @@ investigation will have had access to since it began.
 The user authorized the next driver phase on 2026-09-08. The source and ADT
 review is complete; implementation no longer has a separate approval gate.
 Use [the dated driver bring-up plan](plans/2026-09-08-ipad-air2-driver-bringup.md)
-for the evidence, exact wiring, acceptance criteria and primary sources.
+for the whole platform and the focused
+[Bluetooth, battery and ADT plan](plans/2026-09-08-j81-bluetooth-battery-adt.md)
+for exact wiring gates, capture procedure, commits and acceptance criteria.
 
 The new evidence corrects two earlier conclusions:
 
@@ -2177,11 +2181,11 @@ Never commit Apple firmware, NVRAM, touch calibration or device identifiers.
 
 | Subsystem | Current state | Next concrete step |
 | --- | --- | --- |
-| PongoOS → Linux | **Working** on the historical route | Preserve it as the control image. |
-| Console / USB gadget | Historical ECM RX works but device TX stalls; Hoolock replacement payload is built and untested | Boot result-hoolock-control, then test ping/telnet in both directions. |
+| PongoOS → Linux | **Working** on Hoolock Linux 7.3-rc1; historical route remains a control | Preserve the working Hoolock payload and the historical control. |
+| Console / USB gadget | Hoolock CDC-ECM works bidirectionally at `172.16.42.1` | Keep it as the driver-development control channel. |
 | Display | Inherited framebuffer produces a visible shell | Keep simplefb; defer native display/GPU. |
 | Buttons | GPIO driver, config and DT are present | Verify Home, Power and both volume input events on Hoolock. |
-| RTC / backlight | Drivers, config and DT are built; backlight compiler bug fixed | Hardware-test read/set/read and brightness/blanking. These are not yet proven working. |
+| RTC / backlight | Both hardware-verified over the USB shell | Preserve their current nodes and drivers. |
 | Bluetooth | BCM HCI UART support is enabled; J82 maps radio to UART3 | Add UART3/pinctrl/serdev DT, initially relying on retained bootloader power. |
 | Battery | J82 maps BQ27540-family HDQ to UART5/GPIO34 | Implement minimal HDQ serdev transport using bq27xxx core, then add DT. |
 | Touch | Z2 protocol code exists; old-SoC SPI support is experimental | Clean Hoolock's S5L8960X SPI variant and prove SPI3 before adapting touch. |
@@ -2190,17 +2194,16 @@ Never commit Apple firmware, NVRAM, touch calibration or device identifiers.
 
 ### Priority bring-up sequence
 
-1. **Hoolock USB hardware gate.** Boot the complete payload already built from
-   the current Hoolock tip. Capture Pongo output, the iPad screen, macOS USB
-   enumeration, interface configuration and packet counters. Do not change
-   another driver until the result is recorded.
-2. **Validate bundled basics.** Test buttons, RTC and backlight on the same
-   kernel so their status reflects hardware rather than a successful build.
-3. **Bluetooth.** Add the J81 UART3 node, BCM serdev child, 3 Mbaud flow control
-   and AP wake GPIO164. If the bootloader did not retain radio power, derive the
-   D2207 PMU GPIO2 control instead of guessing its register offsets.
-4. **Battery.** Add a small 57,600-baud TI HDQ serdev transport and UART5/GPIO34
+1. **Capture the J81 ADT.** Stop at PongoOS and run
+   `nix develop -c python3 boot/dump_adt.py`. Record only sanitized UART3/UART5
+   resources and the private capture's hash.
+2. **Bluetooth transport.** Add the confirmed J81 UART3 node and minimal BCM
+   serdev child at 3 Mbaud. Add wake/power control only after the transport
+   result shows it is required.
+3. **Battery.** Add a small 57,600-baud TI HDQ serdev transport and UART5/GPIO34
    DT node. Read DEVICE_TYPE before selecting the bq27xxx chip table.
+4. **Buttons.** Validate Home, Power and both volume inputs through the USB
+   shell.
 5. **SPI and touch.** Reduce the Hoolock SPI experiment to a clean S5L8960X
    controller port, verify bounded SPI3 transfers, then add firmware,
    calibration and touch input.
@@ -2229,8 +2232,9 @@ Never commit Apple firmware, NVRAM, touch calibration or device identifiers.
 | Linux kernel boot | ✅✅ Achieved in full, 2026-09-07, via `bootm`→m1n1: reaches a live, interactive postmarketOS `/ #` shell prompt (`pd_ignore_unused`/`clk_ignore_unused` fixed a power-domain auto-shutdown that was killing the display). See docs/software-only-control.md. |
 | USB networking to the debug shell | ✅✅ **Resolved, 2026-09-08 (Round 10)**: switched to the newer Hoolock kernel (Linux 7.3-rc1, real `dwc2` DMA support instead of the historical fork's forced PIO). Booted completely on first hardware attempt; USB networking works bidirectionally — 0% ping loss, working telnet, genuine interactive remote shell access to the live device confirmed by running real commands (`uname -a`, `cat /proc/version`) over the network. See docs/software-only-control.md's "Round 10" for the full transcript; Rounds 3-9 document the path that led here. |
 | RTC / Backlight (Apple PMIC) | ✅✅ **Hardware-verified, 2026-09-08**: connected over the newly-working USB network link and confirmed both live on real hardware — RTC set the system clock from real PMIC time (`rtc-apple-pmic ... registered as rtc0`); backlight physically dimmed the screen on command, visually confirmed by the user, then restored. |
-| Hoolock payload / buttons / RTC / backlight validation | ❌ Artifact built; physical test not started |
-| Touch / Wi‑Fi / Bluetooth implementation | ❌ Planned from source and ADT evidence; not started |
+| Hoolock payload / RTC / backlight validation | ✅✅ Hardware-verified; buttons remain untested |
+| J81 ADT capture tooling | ✅ Implemented with private ignored output; raw capture awaits the next PongoOS stop |
+| Touch / Wi‑Fi / Bluetooth / battery implementation | ❌ Planned from source and ADT evidence; not started |
 | Usable tethered Linux tablet | ❌ Future milestone |
 
 ## Safety boundaries
@@ -2252,5 +2256,7 @@ Never commit Apple firmware, NVRAM, touch calibration or device identifiers.
 - [`boot/load_linux.py`](../boot/load_linux.py): PongoOS USB uploader.
 - [`boot/load_m1n1.py`](../boot/load_m1n1.py): uploads an m1n1(+Linux) payload
   and requests PongoOS's `bootm` handoff.
+- [`boot/dump_adt.py`](../boot/dump_adt.py): captures and validates a private
+  J81 Apple Device Tree from PongoOS without printing sensitive content.
 - [`boot/mkdtbpack.sh`](../boot/mkdtbpack.sh): DTB pack creation.
 - [`research/`](../research/): hardware and driver research.

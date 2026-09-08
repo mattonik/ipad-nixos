@@ -12,6 +12,9 @@ boot/Pongo-t7001-historical.bin
 firmware/
 *.ipsw
 
+# Raw Apple Device Tree/FDT captures contain per-device identifiers
+artifacts/adt/
+
 # Nix / devenv
 .devenv/
 .direnv/

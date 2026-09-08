@@ -4,7 +4,7 @@ Run Linux on old iPads (2011–2017) via the checkm8 bootrom exploit, turning e-
 
 ## What This Is
 
-A reproducible build system that cross-compiles a Linux kernel and minimal NixOS userland for iPad hardware. The iPad Air 2 boots through PongoOS `bootm` and Hoolock m1n1 to a postmarketOS shell using the historical Linux 5.19-rc1 kernel. Its USB gadget receives traffic from macOS but cannot transmit replies. A Hoolock Linux 7.3-rc1 replacement payload is built and is the next direct-cable hardware test. See [the live project status](docs/project-status.md), [USB research](research/t7001-usb-next.md), and [the driver bring-up plan](docs/plans/2026-09-08-ipad-air2-driver-bringup.md).
+A reproducible build system that cross-compiles a Linux kernel and minimal userland for iPad hardware. The iPad Air 2 now boots through PongoOS `bootm` and Hoolock m1n1 into Linux 7.3-rc1 with working bidirectional USB networking. RTC and backlight are also verified on hardware. See [the live project status](docs/project-status.md), [the general driver roadmap](docs/plans/2026-09-08-ipad-air2-driver-bringup.md), and the focused [J81 Bluetooth, battery and ADT plan](docs/plans/2026-09-08-j81-bluetooth-battery-adt.md).
 
 **Primary target:** iPad Air 2 (A8X, 2014) — 3-core ARM64, 2GB RAM, 2048x1536 Retina display.
 
@@ -65,18 +65,19 @@ nix build .#packages.x86_64-linux.m1n1-control \
   -o result-m1n1-control -L
 ```
 
-The black-screen issue is resolved, and the historical payload uses its matched
-DTB with the USB controller. CDC-ECM receives host traffic but its bulk-IN path
-does not transmit replies. A newer replacement is now built:
+The black-screen issue is resolved. The historical Linux 5.19 control still has
+an asymmetric USB bulk-IN failure, while the newer payload is the verified
+development baseline:
 
 ```bash
 nix build .#packages.x86_64-linux.m1n1-hoolock-control \
   -o result-hoolock-control -L
 ```
 
-This Hoolock Linux 7.3-rc1 payload has the newer T7001 DWC2/PHY path and a
-configfs ECM override. It awaits its first physical boot. Keep the historical
-payload as the control and follow the [dated driver plan](docs/plans/2026-09-08-ipad-air2-driver-bringup.md).
+This Hoolock Linux 7.3-rc1 payload booted successfully on J81 on 2026-09-08.
+CDC-ECM works in both directions at `172.16.42.1`; the postmarketOS debug shell
+is reachable by telnet on port 23. Keep the historical payload as a control.
+Bluetooth and battery work follows the [focused dated plan](docs/plans/2026-09-08-j81-bluetooth-battery-adt.md), including a safe private ADT capture tool.
 
 ## Project Structure
 
@@ -116,7 +117,7 @@ ipad-nixos/
 
 | Device | SoC | Board ID | DTB | Status |
 |--------|-----|----------|-----|--------|
-| iPad Air 2 (WiFi) | A8X (T7001) | J81 | `t7001-j81.dtb` | Linux shell visible; USB Ethernet enumerates, traffic unresolved |
+| iPad Air 2 (WiFi) | A8X (T7001) | J81 | `t7001-j81.dtb` | Linux 7.3-rc1 boots; USB Ethernet, RTC and backlight verified |
 | iPad Air 2 (Cellular) | A8X (T7001) | J82 | `t7001-j82.dtb` | Untested |
 
 ### Expected Compatible (same boot chain, untested)
@@ -228,6 +229,7 @@ The `research/` directory contains detailed analysis of every subsystem:
 - **[driver-gap.md](research/driver-gap.md)** — Per-subsystem driver status and effort estimates
 - **[feasibility.md](research/feasibility.md)** — Go/no-go assessment and roadmap
 - **[driver bring-up plan](docs/plans/2026-09-08-ipad-air2-driver-bringup.md)** — Current evidence, implementation phases and acceptance tests
+- **[Bluetooth, battery and ADT plan](docs/plans/2026-09-08-j81-bluetooth-battery-adt.md)** — Live J81 baseline, safe ADT capture and commit-sized UART3/UART5 implementation gates
 - **[touch-deep-dive.md](research/touch-deep-dive.md)** — BCM5976 Z2 protocol analysis across 5 independent implementations
 - **[compatibility-matrix.md](research/compatibility-matrix.md)** — All 40 checkm8-vulnerable iPad models
 

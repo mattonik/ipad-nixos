@@ -7,6 +7,17 @@ Target: iPad Air 2 Wi-Fi, J81 / T7001 (A8X)
 Kernel candidate: Hoolock Linux 7.3-rc1, commit
 `6831bc701a6ce059e71e5aaa9488c9195bea6927`
 
+## Execution update
+
+The Hoolock payload passed its hardware gate on 2026-09-08: Linux boots,
+CDC-ECM works bidirectionally, and the iPad is accessible at
+`172.16.42.1:23`. RTC and backlight also passed their hardware tests. Live
+inspection found only UART0 in the active J81 FDT and no Bluetooth or
+power-supply device. Bluetooth, battery and private raw-ADT capture now follow
+the more precise
+[J81 Bluetooth, battery and ADT plan](2026-09-08-j81-bluetooth-battery-adt.md).
+That focused plan supersedes this document for those two subsystems.
+
 ## Decision
 
 Keep the new Hoolock kernel and its boot payload as the development baseline.
@@ -15,14 +26,15 @@ Hoolock's `hoolock` branch, and no newer branch provides finished J81 peripheral
 support. The useful newer work is isolated on Hoolock test branches and should
 be ported selectively after the USB payload is tested on the iPad.
 
-The implementation order is:
+The implementation order is now:
 
-1. Test the Hoolock USB payload and recover a bidirectional debug channel.
-2. Validate the already-wired buttons, RTC and backlight on that kernel.
-3. Bring up Bluetooth on UART3, initially relying on bootloader power state.
-4. Add the battery fuel gauge through a small HDQ serdev transport.
-5. Clean up the old-SoC SPI controller support, then adapt touch.
-6. Port the T7000 PCIe host path, then enumerate and enable BCM4350 Wi-Fi.
+1. Capture and sanitize evidence from this J81's raw ADT at the next PongoOS
+   stop. `boot/dump_adt.py` is ready and writes only to a protected ignored
+   artifact by default.
+2. Bring up Bluetooth on UART3, initially relying on bootloader power state.
+3. Add the battery fuel gauge through a small HDQ serdev transport.
+4. Clean up the old-SoC SPI controller support, then adapt touch.
+5. Port the T7000 PCIe host path, then enumerate and enable BCM4350 Wi-Fi.
 
 This order follows the dependencies actually present on J81. Wi-Fi is PCIe,
 not SDIO. Touch depends on a missing old-Apple SPI controller variant. The
@@ -71,10 +83,9 @@ The overnight work added six commits on `main`, all already present on
 | `f3363f4` | Fixed the Apple PMIC backlight build error and bundled RTC/backlight. |
 | `b34f349` | Located the battery gauge and HDQ pin in the J82 ADT. |
 
-The Hoolock kernel and the complete `m1n1-hoolock-control` payload build. Static
-inspection confirms the framebuffer rename and configfs ECM override. They have
-not been booted on the iPad. RTC and backlight are therefore **build-ready and
-DT-wired**, not hardware-validated. The same distinction applies to GPIO keys.
+The Hoolock kernel and the complete `m1n1-hoolock-control` payload build and
+boot on J81. CDC-ECM, RTC and backlight are hardware-validated. GPIO keys have
+not yet been validated.
 
 The older 5.19 path remains useful as a diagnostic reference. It boots Linux,
 shows a shell, creates `usb0` at `172.16.42.1`, receives 304 packets from the
@@ -88,10 +99,10 @@ blocker.
 
 | Subsystem | Hardware path | Current source/config | Concrete solution | Readiness |
 | --- | --- | --- | --- | --- |
-| USB gadget | T7001 USB PHY + DWC2 | Hoolock driver and ECM payload built | Boot the existing payload and test bidirectional traffic before editing it | Ready for hardware test |
+| USB gadget | T7001 USB PHY + DWC2 | Hoolock driver and ECM payload built | Preserve the working bidirectional `172.16.42.1` control channel | Hardware-verified |
 | Buttons | AP GPIO 0/1/92/93 | DT nodes and `KEYBOARD_GPIO=y` | Verify all four input events | Ready for hardware test |
-| RTC | D2207 PMIC child | Driver, DT and config built-in | Read/set/read time; confirm persistence behavior | Ready for hardware test |
-| Backlight | D2207 PMIC child | Driver and DT built; compiler bug fixed | Exercise brightness range and blank/unblank | Ready for hardware test |
+| RTC | D2207 PMIC child | Driver, DT and config built-in | Preserve the working hardware clock path | Hardware-verified |
+| Backlight | D2207 PMIC child | Driver and DT built; compiler bug fixed | Preserve the working brightness path | Hardware-verified |
 | Bluetooth | BCM4350-family radio on UART3 | `hci_bcm`, HCI UART BCM and serdev enabled | Add UART3/pinctrl/BT child; then solve PMU GPIO2 only if retained power is insufficient | Best first new peripheral |
 | Battery | BQ27540-family gauge on UART5/HDQ | bq27xxx core exists; enabled generic W1-UART path is the wrong wire protocol | Add a minimal HDQ serdev frontend using Corellium's proven byte encoding and reuse bq27xxx core | Small driver required |
 | Touch | `multi-touch,j82` on SPI3 | `apple_z2` exists but only for Mac Touch Bars; S5L SPI work is on test branches | Clean the old-controller SPI variant first, prove SPI3, then adapt Z2 firmware/calibration and protocol | Two-stage port |
@@ -131,7 +142,7 @@ PCIe host code is the limiting factor for Wi-Fi, not the kernel version.
 The ADT names the Wi-Fi endpoint `wlan-pcie,bcm4350`, which supersedes the
 older teardown-based BCM4354/SDIO assumption in this repository.
 
-## Phase 0: hardware gate with the existing Hoolock payload
+## Phase 0: hardware gate with the existing Hoolock payload — complete
 
 Boot the already-built artifacts over the direct USB-C-to-iPad cable using the
 same Pongo shell flow that produced the historical shell:
@@ -148,7 +159,7 @@ otherwise assign the host `172.16.42.2/16`. Test `ping 172.16.42.1` and the
 existing telnet shell on port 23. Save the full Pongo log, screen output,
 `ioreg` device tree, `ifconfig`, and packet counters in a dated session record.
 
-Acceptance criteria:
+Acceptance criteria, all passed on 2026-09-08:
 
 - Linux reaches the existing visible shell or another unambiguous PID 1 marker.
 - macOS enumerates the ECM function.

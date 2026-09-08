@@ -112,10 +112,14 @@ assumed.
 Full evidence and commands are in `docs/software-only-control.md`'s
 "Round 3" through "Round 8".
 
-**Driver review and implementation plan, 2026-09-08**: the user authorized
-continued driver work. The complete source/ADT review and phased plan are in
-docs/plans/2026-09-08-ipad-air2-driver-bringup.md; the corrected compact
-matrix is in research/driver-gap.md.
+**Bluetooth/battery execution plan, 2026-09-08**: USB is now a working control
+channel. Live inspection over `172.16.42.1:23` confirmed Linux 7.3-rc1, the
+correct `apple,j81` FDT, only UART0/`ttySAC0`, an empty Bluetooth class and an
+empty power-supply class. The active 29,812-byte FDT was saved privately under
+ignored `artifacts/adt/`; never commit it because it includes the device
+serial. The focused plan is
+docs/plans/2026-09-08-j81-bluetooth-battery-adt.md. The general roadmap remains
+docs/plans/2026-09-08-ipad-air2-driver-bringup.md.
 
 Key corrections: J82's T7001-family ADT identifies BCM4350 Wi-Fi on PCIe port
 1, not BCM4354 over SDIO; Bluetooth is on UART3; the battery gauge uses HDQ on
@@ -123,15 +127,13 @@ UART5/GPIO34; and touch is on SPI3. Treat J82 as sibling evidence and compare
 the live J81 ADT before committing board nodes.
 
 The current Hoolock tip is already pinned. Do not update kernels blindly or
-merge its test branches wholesale. First boot the existing
-m1n1-hoolock-control payload over the direct cable and test bidirectional ECM.
-Then hardware-validate the already-built buttons, RTC and backlight. New driver
-order is Bluetooth UART3, the battery HDQ serdev frontend, S5L8960X SPI then
-touch, and T7000 PCIe/DART then BCM4350 brcmfmac. Keep firmware, NVRAM,
-calibration data and per-device identifiers outside Git.
-
-RTC and backlight are build-ready and DT-wired, not proven on hardware. The
-backlight compiler fix and complete payload both pass their static/build checks.
+merge its test branches wholesale. RTC and backlight are hardware-verified.
+Before adding UART3/UART5 board data, reboot only as far as PongoOS and run
+`nix develop -c python3 boot/dump_adt.py`; the default output is private and
+Git-ignored. Record only sanitized J81 resources and the capture hash. Then add
+Bluetooth as a DT-only transport probe, followed by the battery HDQ serdev
+frontend. Keep firmware, NVRAM, raw ADT/FDT, calibration data and per-device
+identifiers outside Git.
 
 The historical-PongoOS control is a separate, lower-priority experiment,
 still blocked: `palera1n`'s stager rejects its 708,704-byte binary (limit
