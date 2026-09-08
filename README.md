@@ -243,7 +243,7 @@ Areas where help is needed:
 - **Device trees** — improve/fix DTBs for specific board IDs
 - **Touch driver** — port the T7001 SPI controller, then adapt and test `apple_z2`
 - **WiFi** — port T7000 PCIe/DART, then document exact BCM4350 firmware extraction
-- **GPU** — PowerVR GXA6850 has no open-source driver; any Mesa/PVR work is valuable
+- **GPU** — no supported GXA6850 kernel/Mesa platform stack exists; native graphics is long-term work
 - **NixOS modules** — build out the userland (GUI, networking, power management)
 - **Documentation** — improve guides, add troubleshooting
 

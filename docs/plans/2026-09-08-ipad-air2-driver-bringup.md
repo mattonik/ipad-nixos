@@ -11,12 +11,18 @@ Kernel candidate: Hoolock Linux 7.3-rc1, commit
 
 The Hoolock payload passed its hardware gate on 2026-09-08: Linux boots,
 CDC-ECM works bidirectionally, and the iPad is accessible at
-`172.16.42.1:23`. RTC and backlight also passed their hardware tests. Live
+`172.16.42.1:23`. RTC and backlight also passed their hardware tests. Initial
 inspection found only UART0 in the active J81 FDT and no Bluetooth or
 power-supply device. Bluetooth, battery and private raw-ADT capture now follow
 the more precise
 [J81 Bluetooth, battery and ADT plan](2026-09-08-j81-bluetooth-battery-adt.md).
 That focused plan supersedes this document for those two subsystems.
+
+Later work captured the real J81 ADT, hardware-validated UART3 and manual
+`hci0` registration, and implemented BAT-1/2/3 at commit `863d2e4`. The battery
+patches and complete payload compile, but BAT-4 has not yet been booted on the
+iPad. Finish that hardware gate before stacking another peripheral change into
+the same test image.
 
 ## Decision
 
@@ -28,28 +34,66 @@ be ported selectively after the USB payload is tested on the iPad.
 
 The implementation order is now:
 
-1. Capture and sanitize evidence from this J81's raw ADT at the next PongoOS
-   stop. `boot/dump_adt.py` is ready and writes only to a protected ignored
-   artifact by default.
-2. Bring up Bluetooth on UART3, initially relying on bootloader power state.
-3. Add the battery fuel gauge through a small HDQ serdev transport.
-4. Clean up the old-SoC SPI controller support, then adapt touch.
-5. Port the T7000 PCIe host path, then enumerate and enable BCM4350 Wi-Fi.
+1. Hardware-test the implemented battery transport and keep the resulting
+   failure signature isolated.
+2. Clean up the old-SoC SPI controller support, prove SPI3, then adapt touch.
+3. Finish Bluetooth power control through the D2207 PMU GPIO path.
+4. Research and port the T7000 PCIe host, then enumerate and enable BCM4350
+   Wi-Fi.
+5. Keep the working simple framebuffer; defer native display/GPU work.
 
 This order follows the dependencies actually present on J81. Wi-Fi is PCIe,
 not SDIO. Touch depends on a missing old-Apple SPI controller variant. The
 battery needs TI's HDQ-over-UART encoding, not Linux's generic 1-Wire UART
-timings. Bluetooth is the first practical new peripheral because the kernel's
-Broadcom HCI UART driver already supports the radio family.
+timings. Bluetooth is already past its UART transport gate. Touch is now the
+highest-value new subsystem because Linux already contains the Z2 protocol,
+firmware loader and input reporting code; only the old SPI controller and J81
+board integration stand in front of it.
+
+## Priority review: touch, Wi-Fi and graphics
+
+The private J81 ADT directly confirms both paths that were previously inferred
+mainly from J82:
+
+- Touch is `multi-touch,j82` on `spi3` at `0x20a08c000`, IRQ 155, clock gate
+  `0x4d`. It uses AP GPIO51 for CS, GPIO84 for its interrupt, GPIO55 for
+  display sync, GPIO82 for reset, GPIO95 for LDO power, and PMU resource
+  `0x20e` for analog power.
+- Wi-Fi is `wlan-pcie,bcm4350` on T7000 PCIe port 1 at link speed 1. Its AP
+  GPIOs are 165 for device wake, 174 for CLKREQ and 179 for PERST. The matching
+  `dart,t7001` block is at `0x602002000`, IRQ 216.
+
+| Rank | Subsystem | First useful result | Reason |
+| ---: | --- | --- | --- |
+| 1 | Touch | SPI3 registers as a master, then `apple_z2` reaches a deterministic IRQ or firmware stage | The protocol/input driver already exists, and Hoolock has a focused S5L SPI experiment to clean up. Touch makes the device locally interactive. |
+| 2 | Wi-Fi research | A reviewable T7000 PCIe resource and register map from the J81 ADT and existing drivers | `brcmfmac` recognizes BCM4350 PCIe, but the T7000 host controller is absent. Research can proceed now; implementation starts with PCIe enumeration. |
+| 3 | Native graphics | No implementation work yet | Simplefb supplies a usable display. Hoolock marks the A8X display pipe and GPU TBA, and current PowerVR kernel/Mesa support does not list GXA6850. |
+
+For touch, port only the `APPLE_SPI_S5L` register-layout and FIFO/IRQ differences
+from Hoolock's `0019398` experiment into the pinned `spi-apple.c`. Add the SPI3
+controller and pinctrl first and require a stable `/sys/class/spi_master/`
+entry. Then add the J81 touch child and the smallest `apple_z2` match needed to
+observe reset IRQ and the exact firmware request. Reuse `apple_z2`; do not add a
+second touch parser or port Corellium's userspace daemon.
+
+For Wi-Fi, preserve the J81 `apcie-config-tunables`, `dbi-overrides`, ranges and
+port data privately and document only sanitized register values. Compare the
+T7000 sequence with `pcie-apple.c` and Corellium's old-Apple host, add only port
+1, and stop at repeatable PCI configuration-space enumeration. DART should bind
+through Hoolock's existing `apple,s5l8960x-dart` support. Enable `brcmfmac` and
+provide local BCM4350 firmware/NVRAM only after the endpoint enumerates.
+
+For graphics, retain simplefb and software rendering. A native effort would
+first need separate A8X display-pipe and `gpu,t7001` platform work, firmware and
+an exact GXA6850 BVNC target. It is not on the critical path to touch or Wi-Fi.
 
 ## Evidence and limits
 
-The repository's generated J81 DT is intentionally incomplete, so the hardware
-map below also uses Apple's J82 ADT from SoMainline's collection. J82 is the
-cellular sibling of J81 and uses the same T7001 platform, but it is supporting
-evidence rather than authority for the Wi-Fi-only board. Before committing a
-J81 peripheral node, dump the live J81 ADT through m1n1 and compare the relevant
-node, GPIO descriptors, register ranges and calibration properties.
+The repository's generated Linux DT is intentionally incomplete. The private
+real-J81 ADT is now captured and is authoritative for the sanitized values in
+the priority section above. The hardware table below was first assembled from
+the public J82 ADT; its touch and Wi-Fi resources now match the J81 capture.
+Keep firmware, calibration and per-device properties private.
 
 Apple's `function-*` properties use the OIPG record already decoded by m1n1:
 
@@ -103,8 +147,8 @@ blocker.
 | Buttons | AP GPIO 0/1/92/93 | DT nodes and `KEYBOARD_GPIO=y` | Verify all four input events | Ready for hardware test |
 | RTC | D2207 PMIC child | Driver, DT and config built-in | Preserve the working hardware clock path | Hardware-verified |
 | Backlight | D2207 PMIC child | Driver and DT built; compiler bug fixed | Preserve the working brightness path | Hardware-verified |
-| Bluetooth | BCM4350-family radio on UART3 | `hci_bcm`, HCI UART BCM and serdev enabled | Add UART3/pinctrl/BT child; then solve PMU GPIO2 only if retained power is insufficient | Best first new peripheral |
-| Battery | BQ27540-family gauge on UART5/HDQ | bq27xxx core exists; enabled generic W1-UART path is the wrong wire protocol | Add a minimal HDQ serdev frontend using Corellium's proven byte encoding and reuse bq27xxx core | Small driver required |
+| Bluetooth | BCM4350-family radio on UART3 | UART3 and manual `hci0` registration work | Implement measured PMU GPIO2 power control, then add the standard `hci_bcm` serdev child | Transport proven |
+| Battery | BQ27540-family gauge on UART5/HDQ | Stop-bit API, HDQ frontend and DT compile | Run BAT-4 and identify the real gauge on hardware | Hardware test next |
 | Touch | `multi-touch,j82` on SPI3 | `apple_z2` exists but only for Mac Touch Bars; S5L SPI work is on test branches | Clean the old-controller SPI variant first, prove SPI3, then adapt Z2 firmware/calibration and protocol | Two-stage port |
 | Wi-Fi | BCM4350 on T7000 PCIe port 1 through DART | brcmfmac PCIe source exists but CFG80211/BRCMFMAC are disabled; T7000 PCIe host is absent | Port T7000 PCIe host, add DART/port DT, enumerate endpoint, then enable brcmfmac and local firmware/NVRAM | Largest near-term driver task |
 | Display | Bootloader framebuffer | simplefb works | Keep simplefb; native display/GPU is separate research | Usable baseline |
@@ -186,6 +230,9 @@ device. A successful kernel build is not a passing hardware test.
 
 ## Phase 2: Bluetooth on UART3
 
+Status: UART3 and manual `hci0` registration are hardware-confirmed. The radio
+does not answer until its D2207 PMU GPIO2 power path is implemented.
+
 Add the smallest J81 DT patch:
 
 - UART3 node with its register/IRQ/power-domain resources.
@@ -217,6 +264,9 @@ Acceptance criteria:
   controller.
 
 ## Phase 3: battery over HDQ/UART5
+
+Status: implemented and compile-verified at `863d2e4`; run the hardware
+acceptance tests below before changing the transport.
 
 Do not use the currently enabled `w1-uart` master. It generates standard
 1-Wire slots at 9600/115200 baud, while this board uses TI HDQ signaling through
@@ -325,6 +375,8 @@ note with:
 - [Linux Broadcom HCI UART driver](https://github.com/torvalds/linux/blob/master/drivers/bluetooth/hci_bcm.c)
 - [Linux Apple PCIe host driver](https://github.com/torvalds/linux/blob/master/drivers/pci/controller/pcie-apple.c)
 - [Linux Apple Z2 touch driver](https://github.com/torvalds/linux/blob/master/drivers/input/touchscreen/apple_z2.c)
+- [Mesa PowerVR supported-hardware list](https://docs.mesa3d.org/drivers/powervr.html)
+- [Linux PowerVR driver supported cores](https://docs.kernel.org/gpu/imagination/index.html)
 - [Corellium HDQ-UART battery driver](https://github.com/corellium/linux-sandcastle/blob/sandcastle-5.4/drivers/power/supply/bq27545-battery-hdquart.c)
 - [Corellium old-Apple SPI controller](https://github.com/corellium/linux-sandcastle/blob/sandcastle-5.4/drivers/spi/spi-hx.c)
 - [Corellium old-Apple touch driver](https://github.com/corellium/linux-sandcastle/blob/sandcastle-5.4/drivers/input/touchscreen/hx-touch.c)

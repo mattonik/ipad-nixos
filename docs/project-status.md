@@ -22,12 +22,20 @@ silent because PMU GPIO2 power control is not implemented. A fresh USB-shell
 check finds UART0 and UART3 present, with no UART5 or power supply yet.
 
 The battery source audit found that Samsung UART already supports serdev
-children through the common serial core, correcting the earlier conclusion
-that a UART-driver change was needed. The narrow remaining API gap is two stop
-bits. The chosen implementation is a small tty-serdev stop-bit operation plus
-an HDQ-UART frontend that reuses the existing bq27xxx core. Wiring, TI timing,
-driver scope, hardware gates, and source links are in
+children through the common serial core. Commit `863d2e4` now implements the
+tty-serdev stop-bit operation, HDQ-UART frontend using bq27xxx, and UART5/J81
+device-tree nodes. The kernel and full payload compile; no hardware boot has
+yet tested the gauge. Wiring, TI timing, driver scope, and hardware gates are in
 [the dedicated J81 battery research](../research/j81-battery-hdq.md).
+
+**Next-subsystem priority:** after the battery hardware gate, bring up SPI3 and
+touch first. The real J81 ADT confirms the controller and GPIO resources, Linux
+already has the Z2 protocol/input driver, and Hoolock has a focused old-SPI
+experiment. Research T7000 PCIe for Wi-Fi in parallel, but defer implementation
+until its host sequence is understood. Keep native graphics deferred; simplefb
+works while the A8X display pipe, GPU platform integration and GXA6850 support
+remain unavailable. See the
+[updated bring-up plan](plans/2026-09-08-ipad-air2-driver-bringup.md#priority-review-touch-wi-fi-and-graphics).
 
 **USB follow-up, Round 8 (hardware-tested):** the display diagnostic ran on
 real hardware and found the fault is asymmetric, not total. The iPad's
@@ -2177,12 +2185,12 @@ The new evidence corrects two earlier conclusions:
 - Wi-Fi is BCM4350 on T7000 PCIe port 1, not BCM4354 over SDIO. brcmfmac has
   the endpoint support, but the missing T7000 PCIe host path must be ported
   before that driver can probe.
-- The battery's GPIO is known (UART5/HDQ on AP GPIO34), but generic w1-uart
-  uses the wrong signaling. It needs a small TI HDQ serdev frontend modeled on
-  Corellium's proven transport and backed by the upstream bq27xxx core.
+- The battery's UART5/HDQ frontend and DT are compile-verified. Hardware must
+  still identify the gauge and validate timing and readings.
 
-J82, the cellular T7001 sibling, is the public ADT evidence for UART/SPI/PCIe
-resources. Dump and compare the live J81 ADT before committing board nodes.
+J82 remains the public cross-check for UART/SPI/PCIe resources. The private J81
+capture now confirms those resource mappings; only sanitized values belong in
+Git.
 Never commit Apple firmware, NVRAM, touch calibration or device identifiers.
 
 | Subsystem | Current state | Next concrete step |
@@ -2193,28 +2201,28 @@ Never commit Apple firmware, NVRAM, touch calibration or device identifiers.
 | Buttons | GPIO driver, config and DT are present | Verify Home, Power and both volume input events on Hoolock. |
 | RTC / backlight | Both hardware-verified over the USB shell | Preserve their current nodes and drivers. |
 | Bluetooth | Real J81 UART3 and manual `hci0` attach are hardware-confirmed | Implement measured D2207 PMU GPIO2 control, then use the standard `hci_bcm` serdev child. |
-| Battery | Real J81 maps the BQ2754x-family HDQ gauge to UART5/GPIO34 | Add the serdev stop-bit operation, minimal HDQ-UART frontend using bq27xxx, and confirmed DT. |
+| Battery | Stop-bit API, HDQ-UART frontend and UART5/GPIO34 DT compile | Run BAT-4 on hardware and identify the gauge. |
 | Touch | Z2 protocol code exists; old-SoC SPI support is experimental | Clean Hoolock's S5L8960X SPI variant and prove SPI3 before adapting touch. |
 | Wi-Fi | BCM4350 brcmfmac PCIe endpoint code exists; wireless config is disabled | Port T7000 PCIe/DART and enumerate port 1 before enabling brcmfmac. |
 | Audio / GPU / NAND / cameras / Touch ID | No complete A8X stack | Defer beyond the interactive-tablet milestone. |
 
 ### Priority bring-up sequence
 
-1. **Battery transport.** Add the small serdev stop-bit operation, a
-   57,600-baud TI HDQ-UART frontend that reuses bq27xxx, and the confirmed
-   UART5/GPIO34 DT node. Read `DEVICE_TYPE` before selecting a bq27xxx chip
-   table.
-2. **Bluetooth power.** Finish the measured D2207 PMU GPIO2 work, then add the
+1. **Battery hardware gate.** Boot `863d2e4`, verify stable `DEVICE_TYPE` and
+   power-supply readings, and preserve the exact failure signature if it does
+   not probe.
+2. **Touch.** Port only the S5L SPI controller differences, prove SPI3, then
+   adapt the existing `apple_z2` driver with private local firmware/calibration.
+3. **Bluetooth power.** Finish the measured D2207 PMU GPIO2 work, then add the
    standard `hci_bcm` serdev child and its power/wake GPIOs. UART3 and manual
    HCI attachment are already hardware-confirmed.
-3. **Buttons.** Validate Home, Power and both volume inputs through the USB
+4. **Buttons.** Validate Home, Power and both volume inputs through the USB
    shell.
-4. **SPI and touch.** Reduce the Hoolock SPI experiment to a clean S5L8960X
-   controller port, verify bounded SPI3 transfers, then add firmware,
-   calibration and touch input.
 5. **PCIe and Wi-Fi.** Add the existing old-Apple DART node, port the T7000 PCIe
    host using live A8X tunables, enumerate BCM4350, then enable the wireless
    Kconfig closure and load local firmware/NVRAM.
+6. **Graphics.** Keep simplefb and software rendering; revisit native display
+   and GPU only after touch and Wi-Fi.
 
 ## Current state at a glance
 
@@ -2238,10 +2246,10 @@ Never commit Apple firmware, NVRAM, touch calibration or device identifiers.
 | USB networking to the debug shell | ✅✅ **Resolved, 2026-09-08 (Round 10)**: switched to the newer Hoolock kernel (Linux 7.3-rc1, real `dwc2` DMA support instead of the historical fork's forced PIO). Booted completely on first hardware attempt; USB networking works bidirectionally — 0% ping loss, working telnet, genuine interactive remote shell access to the live device confirmed by running real commands (`uname -a`, `cat /proc/version`) over the network. See docs/software-only-control.md's "Round 10" for the full transcript; Rounds 3-9 document the path that led here. |
 | RTC / Backlight (Apple PMIC) | ✅✅ **Hardware-verified, 2026-09-08**: connected over the newly-working USB network link and confirmed both live on real hardware — RTC set the system clock from real PMIC time (`rtc-apple-pmic ... registered as rtc0`); backlight physically dimmed the screen on command, visually confirmed by the user, then restored. |
 | Hoolock payload / RTC / backlight validation | ✅✅ Hardware-verified; buttons remain untested |
-| J81 ADT capture | ✅ Real raw ADT captured privately; UART3/UART5/Bluetooth/battery resources sanitized and documented |
+| J81 ADT capture | ✅ Real raw ADT captured privately; UART, battery, touch and Wi-Fi/PCIe resources sanitized and documented |
 | Bluetooth | 🟡 UART3 and `hci0` registration hardware-confirmed; radio needs measured D2207 PMU GPIO2 power control |
-| Battery | 🟡 Real wiring and protocol researched; UART5 DT, serdev stop-bit API and HDQ frontend remain to implement |
-| Touch / Wi‑Fi implementation | ❌ Planned from source and ADT evidence; not started |
+| Battery | 🟡 UART5 DT, serdev stop-bit API and HDQ frontend compile; hardware test remains |
+| Touch / Wi‑Fi implementation | ❌ Real J81 resources confirmed and prioritized; implementation not started |
 | Usable tethered Linux tablet | ❌ Future milestone |
 
 ## Safety boundaries
