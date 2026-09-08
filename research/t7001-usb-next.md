@@ -1,5 +1,16 @@
 # T7001 USB: diagnostics and upgrade candidates
 
+**RESOLVED, 2026-09-08.** `m1n1-hoolock-control` booted completely on its
+first hardware attempt and USB networking works bidirectionally: 0% ping
+loss, working telnet, genuine interactive remote shell access to the live
+device. The two overnight-bundled drivers (Apple PMIC RTC, backlight)
+were also confirmed working on real hardware in the same session (RTC set
+the system clock from real hardware time; backlight physically dimmed the
+screen on command, visually confirmed). Full transcript in
+`docs/software-only-control.md`'s "Round 10." Everything below this point
+is the research and implementation trail that led there -- kept as the
+record of how the fix was found, not superseded or deleted.
+
 Reviewed 2026-09-07, after Round 7. **Update, same day: the diagnostic ran
 on hardware (see "Hardware result" below) and found the fault is
 asymmetric -- device RX works, device-to-host TX does not reach the FIFO.

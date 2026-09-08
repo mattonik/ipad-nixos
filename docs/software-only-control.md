@@ -1,17 +1,29 @@
 # Software-only T7001 control
 
-**Latest follow-up (2026-09-07): Round 8, hardware-tested.** The
+**RESOLVED, 2026-09-08: full bidirectional USB networking, real remote
+shell access.** The newer Hoolock kernel (Linux 7.3-rc1, real `dwc2` DMA
+support instead of the historical fork's forced PIO) booted completely
+on its first hardware attempt and USB networking works in both
+directions -- 0% ping loss, working telnet, genuine interactive command
+execution on the live device over the network. This is the actual goal
+this document has been chasing since Round 3: not just Linux booting,
+but a working way to send it input. See "Round 10" below for the full
+transcript, including two overnight-bundled drivers (RTC, backlight)
+also confirmed working on real hardware in the same session.
+
+**Prior state (2026-09-07): Round 8, hardware-tested.** The
 `m1n1-usb-diagnostic` payload ran on real hardware and settled the
-question Round 7 left open. The fault is **asymmetric, not total**: the
-iPad's `usb0` genuinely receives the Mac's broadcasts (304 clean
+question Round 7 left open. The fault was **asymmetric, not total**: the
+iPad's `usb0` genuinely received the Mac's broadcasts (304 clean
 `rx_packets`, a complete ARP entry for the Mac's real MAC address) --
-host-to-device works. But device-to-host does not: the bulk IN endpoint
-shows a 90-byte packet programmed into its transfer-size register that
-never reaches the physical TX FIFO (`NPTxFEmp` asserted despite a pending
-transfer), while the CDC-ECM control channel negotiates completely
-normally. See "Round 8" below and
+host-to-device worked. But device-to-host did not: the bulk IN endpoint
+showed a 90-byte packet programmed into its transfer-size register that
+never reached the physical TX FIFO (`NPTxFEmp` asserted despite a pending
+transfer), while the CDC-ECM control channel negotiated completely
+normally. This is what motivated the newer-kernel path that resolved it
+-- see "Round 8" below and
 [the diagnostic runbook and kernel-upgrade research](../research/t7001-usb-next.md)
-for the full evidence and next-step options.
+for the full evidence trail.
 
 **Decision and progress, same day.** Rather than treat the newer-kernel
 option as a fallback, decided to pursue it on `main` regardless of the
@@ -1219,6 +1231,107 @@ the FIFO-empty re-arm logic for a partial-write case, or move to testing
 whether Hoolock's newer kernel (which restores real DMA capability
 detection instead of forcing PIO) sidesteps this entirely -- both
 options already scoped in `research/t7001-usb-next.md`.
+
+### Round 10, 2026-09-08: resolved -- the newer kernel boots and USB networking works bidirectionally, first attempt
+
+Overnight (2026-09-07 into 2026-09-08), while waiting for a hardware
+window, pursued two things in parallel on separate branches: continued
+low-level tracing of the historical kernel's `dwc2` driver (see "Round 9"
+on branch `usb-dwc2-pio-trace`, which revised the Round 8 hypothesis but
+did not resolve it), and built `m1n1-hoolock-control` -- the newer
+Hoolock kernel (Linux 7.3-rc1, real DMA hardware-capability detection
+instead of the historical fork's forced PIO) wired into the same proven
+PongoOS/m1n1 boot chain, plus two bundled drivers (Apple PMIC RTC and
+backlight) authorized and added the same night (see
+`research/driver-gap.md`). Full detail on all of that in
+`research/t7001-usb-next.md`.
+
+First hardware boot of this kernel, 2026-09-08: **it worked completely,
+on the first attempt.** The screen showed the full postmarketOS boot
+sequence through to the `/ #` debug-shell prompt, identical in shape to
+every prior successful boot -- confirming the whole chain (m1n1, AUSB PHY
+calibration handoff, PMGR power domains, framebuffer, configfs USB
+gadget setup) survived the kernel swap intact. `dwc2 20c100000.usbdev:
+new address 10` confirmed USB enumeration proceeded.
+
+On the Mac side, a new hardware port appeared named **"Sony Xperia Z5"**
+-- the `deviceinfo_name` string, not a generic "RNDIS/Ethernet Gadget"
+label -- direct evidence the initramfs's configfs gadget setup
+(`setup_usb_network_configfs()`, targeting our `ecm.usb0` override) ran
+successfully this time, rather than the legacy `g_ether` path the
+historical kernel used. Set `172.16.42.2/24` on it (same procedure as
+every round):
+
+```
+$ ping -c 4 172.16.42.1
+4 packets transmitted, 4 packets received, 0.0% packet loss
+round-trip min/avg/max/stddev = 0.761/1.091/1.418/0.304 ms
+
+$ arp -a | grep 172.16.42
+? (172.16.42.1) at a6:28:e8:ac:0:51 on en11 ifscope [ethernet]
+
+$ nc -vz -G 3 172.16.42.1 23
+Connection to 172.16.42.1 port 23 [tcp/telnet] succeeded!
+```
+
+**Zero packet loss, complete ARP, telnet succeeded.** Both directions
+work -- exactly the asymmetry Round 8 found on the historical kernel is
+gone. Connected for real (Python raw-socket client stripping telnet IAC
+negotiation bytes, since modern macOS ships no `telnet` client and
+`telnetlib` was removed in Python 3.13) and ran commands on the live
+device over the network:
+
+```
+/ # uname -a
+Linux (none) 7.3.0-rc1 #1-NixOS SMP PREEMPT ... aarch64 Linux
+/ # cat /proc/version
+Linux version 7.3.0-rc1 (nixbld@localhost) (aarch64-unknown-linux-gnu-gcc (GCC) 15.2.0, ...)
+```
+
+This is the actual goal this whole software-only-control investigation
+was aimed at from the start: not just Linux booting, but a working way
+to send it input. Verified the two overnight-bundled drivers on real
+hardware while connected:
+
+```
+/ # cat /sys/class/rtc/rtc0/name; date; hwclock -r
+rtc-apple-pmic 20a110000.i2c:pmic@3c:rtc@5c0
+Tue Sep  8 07:20:14 UTC 2026
+Tue Sep  8 07:20:14 2026  0.000000 seconds
+
+/ # cat /sys/class/backlight/*/max_brightness /sys/class/backlight/*/actual_brightness
+2047
+1627
+```
+
+Kernel log confirms both probed against real PMIC hardware:
+`rtc-apple-pmic ...: registered as rtc0` followed by `setting system
+clock to 2026-09-08T07:15:40 UTC` (a real hardware clock read, matching
+the actual date) -- and then physically dimmed the backlight
+(`echo 200 > .../brightness`) and had the user confirm on camera the
+screen actually got darker, then restored it to 1627. Both drivers are
+now proven working on this exact device, not just build-verified.
+`/proc/net/dev` on the device side confirms the network link
+symmetrically: `usb0: RX 144895 bytes/522 packets, TX 12448 bytes/133
+packets` -- real, nonzero, growing counters in both directions, matching
+what the Mac side observed independently.
+
+**Root cause, in retrospect**: the historical (June 2022) 5.19-rc1 kernel
+had `dma_capable` hardcoded to `false` in its `dwc2` driver
+(`drivers/usb/dwc2/params.c`), forcing PIO mode on a controller/PHY
+combination that, on real T7001 silicon, apparently cannot reliably
+complete bulk IN (device-to-host) transfers that way -- Round 9's tracing
+found the software fill logic itself byte-identical to mainline and
+therefore not the bug, consistent with this: the fault was never in
+software fill logic, it was PIO mode itself not working reliably on this
+specific SoC's controller. Hoolock's kernel restores the real hardware
+capability check (`dma_capable = !(hw->arch ==
+GHWCFG2_SLAVE_ONLY_ARCH)`), and on this hardware that lets the driver use
+DMA instead -- which just works. The historical kernel's `dwc2` PIO path
+remains an open, unresolved mystery in its own right (Round 9's
+correction stands: it's not the fill-logic bug originally suspected), but
+is no longer this project's blocking problem, since the working kernel
+path doesn't depend on it.
 
 ## Attempts and failures while preparing the control
 

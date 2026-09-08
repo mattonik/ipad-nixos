@@ -2,6 +2,18 @@
 
 Status date: 2026-09-08
 
+## 🎉 USB networking resolved -- real remote shell access to the device (2026-09-08)
+
+`m1n1-hoolock-control` (the newer Hoolock kernel, Linux 7.3-rc1) booted
+completely on its first hardware attempt, and USB networking works
+**bidirectionally**: 0% ping loss, working telnet, genuine interactive
+command execution over the network on the live iPad. This is the actual
+goal the whole USB investigation (Rounds 3-9) was chasing -- not just
+Linux booting, but a working way to send it input, achieved in full.
+RTC and backlight (bundled overnight, see below) were also confirmed
+working on real hardware in the same session. Full transcript in
+`docs/software-only-control.md`'s "Round 10."
+
 **Driver review, 2026-09-08:** the current kernel/ADT/source research and
 implementation sequence are recorded in
 [the iPad Air 2 driver bring-up plan](plans/2026-09-08-ipad-air2-driver-bringup.md).
@@ -2215,7 +2227,8 @@ Never commit Apple firmware, NVRAM, touch calibration or device identifiers.
 | Linux payload upload | ✅ Transferred once; exposed PongoOS pre-handoff defects |
 | Guarded T7001 diagnostic PongoOS | ✅ Matched-toolchain Pongo, USB, aligned Image/DTB/initrd ranges, Linux register contract, and no-jump guard are proven on T7001 |
 | Linux kernel boot | ✅✅ Achieved in full, 2026-09-07, via `bootm`→m1n1: reaches a live, interactive postmarketOS `/ #` shell prompt (`pd_ignore_unused`/`clk_ignore_unused` fixed a power-domain auto-shutdown that was killing the display). See docs/software-only-control.md. |
-| USB networking to the debug shell | ⚠️ Partial, 2026-09-07 (Rounds 3-8): historical-DTB swap + `cpu-release-addr` DTB fix + CDC-ECM kernel-config fix together get a real, correctly-configured network interface on both the iPad (`usb0`, `172.16.42.1`) and the Mac (`en10`, native macOS driver, no third-party kext). A device-side diagnostic (Round 8) found the fault is asymmetric, not total: RX (host→device) is proven working (304 clean `rx_packets`, complete ARP entry for the Mac's real MAC); TX (device→host) fails — a packet is programmed into the bulk IN endpoint's transfer-size register but never reaches the physical FIFO, despite normal CDC-ECM control-channel negotiation. Narrowed but not yet fixed; leading hypothesis is a PIO fill/re-arm bug in this forced-PIO historical fork. See docs/software-only-control.md's "Round 3"–"Round 8" and research/t7001-usb-next.md. |
+| USB networking to the debug shell | ✅✅ **Resolved, 2026-09-08 (Round 10)**: switched to the newer Hoolock kernel (Linux 7.3-rc1, real `dwc2` DMA support instead of the historical fork's forced PIO). Booted completely on first hardware attempt; USB networking works bidirectionally — 0% ping loss, working telnet, genuine interactive remote shell access to the live device confirmed by running real commands (`uname -a`, `cat /proc/version`) over the network. See docs/software-only-control.md's "Round 10" for the full transcript; Rounds 3-9 document the path that led here. |
+| RTC / Backlight (Apple PMIC) | ✅✅ **Hardware-verified, 2026-09-08**: connected over the newly-working USB network link and confirmed both live on real hardware — RTC set the system clock from real PMIC time (`rtc-apple-pmic ... registered as rtc0`); backlight physically dimmed the screen on command, visually confirmed by the user, then restored. |
 | Hoolock payload / buttons / RTC / backlight validation | ❌ Artifact built; physical test not started |
 | Touch / Wi‑Fi / Bluetooth implementation | ❌ Planned from source and ADT evidence; not started |
 | Usable tethered Linux tablet | ❌ Future milestone |

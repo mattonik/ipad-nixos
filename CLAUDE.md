@@ -4,6 +4,25 @@
 
 Boot NixOS on old iPads (2011-2017, A5–A11 chips) via checkm8 bootrom exploit, turning e-waste into usable Linux machines.
 
+## Status (2026-09-08): USB networking works -- real remote shell access to the device
+
+The newer Hoolock kernel (`m1n1-hoolock-control`, Linux 7.3-rc1) booted
+completely on its first hardware attempt and USB networking works
+**bidirectionally** -- 0% ping loss, working telnet, genuine interactive
+command execution on the live iPad over the network. This resolves the
+entire USB investigation (Rounds 3-9) and reaches the actual goal that
+work was chasing: not just Linux booting, but a working way to send it
+input. Two overnight-bundled drivers (Apple PMIC RTC, backlight) were
+also confirmed working on real hardware in the same session -- RTC set
+the system clock from real hardware time, and the backlight physically
+dimmed the screen on command (visually confirmed). Full transcript in
+`docs/software-only-control.md`'s "Round 10."
+
+Root cause in retrospect: the historical (2022) kernel had `dwc2` DMA
+support hardcoded off, forcing a PIO mode that apparently can't reliably
+complete bulk IN transfers on real T7001 silicon. Hoolock's kernel
+restores real DMA hardware-capability detection, and that just works.
+
 ## Status (2026-09-07): Linux boots to an interactive shell
 
 The `bootm` → m1n1 route (`docs/software-only-control.md`) got a real

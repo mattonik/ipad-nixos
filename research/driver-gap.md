@@ -19,12 +19,17 @@ identifiers stay outside Git.
 
 - The historical Linux 5.19 route boots fully and reaches a visible shell.
 - Historical DWC2 gadget networking receives host packets but cannot transmit
-  them back through the bulk-IN endpoint.
-- Hoolock Linux 7.3-rc1 at `6831bc7` and the complete
-  `m1n1-hoolock-control` payload build successfully.
-- That Hoolock payload has not been booted on the physical iPad yet.
-- Buttons, Apple PMIC RTC and Apple PMIC backlight are DT-wired and built in;
-  they await hardware validation.
+  them back through the bulk-IN endpoint -- this remains true only for the
+  historical kernel; see below.
+- **2026-09-08: resolved.** Hoolock Linux 7.3-rc1 at `6831bc7` booted
+  completely on its first hardware attempt via `m1n1-hoolock-control`, and
+  USB gadget networking works bidirectionally (0% ping loss, working
+  telnet, real interactive shell access over the network). Full transcript
+  in `docs/software-only-control.md`'s "Round 10."
+- Apple PMIC RTC and backlight are hardware-verified as of the same
+  session: RTC set the system clock from real hardware time; backlight
+  physically dimmed the screen on command.
+- Buttons remain DT-wired and built in, awaiting hardware validation.
 
 ## Corrected driver matrix
 
@@ -34,10 +39,10 @@ identifiers stay outside Git.
 | Interrupts | Apple AIC | Working during boot | None observed | Preserve |
 | GPIO/pinctrl | Apple GPIO | Working during boot | New peripheral pins absent | Add only from live ADT evidence |
 | Display | Bootloader framebuffer | Visible Linux console | No native A8X display/GPU stack | Retain simplefb |
-| USB gadget | T7001 PHY + DWC2 | Historical RX works; TX stalls | New Hoolock path untested | Boot existing Hoolock payload first |
+| USB gadget | T7001 PHY + DWC2 | **Resolved 2026-09-08** on the Hoolock kernel: bidirectional networking works | None -- historical kernel's TX stall doesn't apply, real DMA works | Done; USB networking is the live channel now used for further hardware validation |
 | Buttons | GPIO 0/1/92/93 | Driver/config/DT present | Physical test missing | Verify input events |
-| RTC | Apple D2207 PMIC child | Driver/config/DT present | Physical test missing | Read/set/read on Hoolock boot |
-| Backlight | Apple D2207 PMIC child | Driver/config/DT present; build bug fixed | Physical test missing | Exercise conservative brightness range |
+| RTC | Apple D2207 PMIC child | **Hardware-verified 2026-09-08** | None | `rtc-apple-pmic` registered as `rtc0`, set system clock from real hardware time (`hwclock -r` matched actual date), confirmed live over the newly-working USB network link |
+| Backlight | Apple D2207 PMIC child | **Hardware-verified 2026-09-08** | None | `echo 200 > brightness` physically dimmed the screen, visually confirmed by the user, then restored to 1627/2047; confirmed live over the USB network link |
 | Bluetooth | BCM4350-family radio over UART3 | `hci_bcm` and HCI UART BCM enabled | UART3 DT, wake, power and local firmware | First new peripheral after USB |
 | Battery | TI BQ27540-family over HDQ/UART5 | bq27xxx core exists | Generic W1-UART has the wrong signaling; no serdev transport/DT | Reuse core behind a small HDQ serdev frontend |
 | Touch | Apple `multi-touch,j82` / BCM Z2 family over SPI3 | Z2 parser/uploader exists for Mac Touch Bars | Old-SoC SPI variant, J81 binding, power, firmware and calibration | Prove SPI3 before adapting touch |
