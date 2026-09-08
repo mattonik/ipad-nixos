@@ -135,7 +135,7 @@ Bluetooth as a DT-only transport probe, followed by the battery HDQ serdev
 frontend. Keep firmware, NVRAM, raw ADT/FDT, calibration data and per-device
 identifiers outside Git.
 
-**BT-1, 2026-09-08: UART3 hardware-confirmed, one real correction made.**
+**BT-1, 2026-09-08: UART3 hardware-confirmed.**
 Real J81 ADT captured; UART3/UART5/battery pin numbers independently
 decoded from its raw OIPG GPIO-function bytes (not copied from J82) --
 every one matched J82 exactly, which is itself confirmatory evidence.
@@ -143,15 +143,23 @@ Added `serial3`/`uart3_pins` to `t7001.dtsi` and enabled `&serial3` with
 RTS/CTS in `t7001-air2.dtsi`, as real `.patch` files under
 `kernel/patches/` (multi-line DTS insertions, much more reviewable as a
 diff than more `sed`), applied via `patch -p1` from `kernel/hoolock.nix`.
-**Correction found before writing any DTS**: `apple,s5l-uart`'s driver
-(`samsung_tty.c`) has no serdev support at all, so the plan's original
-Bluetooth serdev child node would never have probed regardless of
-correctness -- implemented without it. Booted on hardware: `ttySAC1`
+Implemented first without a Bluetooth child so the UART could be tested
+independently. Booted on hardware: `ttySAC1`
 registered at `0x20a0cc000` with `CTS|DSR|CD` active, confirming the
 register/clock/power-domain/pinmux description is correct. Reaching
-`hci0` needs `btattach` added to the initramfs (checked: none exists
-there today) since kernel auto-probe isn't possible. Full detail in
+`hci0` in that transport-only image needs `btattach` in the initramfs.
+Full detail in
 `docs/plans/2026-09-08-j81-bluetooth-battery-adt.md`'s "BT-1 result".
+
+**Serdev correction, 2026-09-08.** A later exact-source audit found the
+earlier “Samsung UART has no serdev” conclusion stopped one call too early:
+`samsung_tty.c` calls `uart_add_one_port()`, and common serial core then calls
+`tty_port_register_device_attr_serdev()`. The built config already enables the
+tty-backed serdev controller. UART3 Bluetooth and UART5 battery DT children
+can therefore bind normally. The actual battery API gap is two-stop-bit
+selection, which mainline serdev lacks even though `samsung_tty.c` honors
+`CSTOPB`. Full research and the corrected implementation plan are in
+`research/j81-battery-hdq.md`.
 
 **`btattach` built and bundled, 2026-09-08.** `boot/btattach.nix` compiles
 just `tools/btattach.c` and the handful of `src/shared/*.c` files it
@@ -190,14 +198,12 @@ resource 2. `t7001-air2.dtsi`'s `pmic@3c` uses the generic
 transport plumbing -- but no driver anywhere in this kernel tree (or in
 m1n1 upstream's own D2207-aware Python tooling) implements PMU-GPIO
 control for this chip family, confirming real measurement is unavoidable.
-Found a real complication first: `hci_bcm`'s standard `shutdown-gpios`
-binding is DT-reachable only via `serdev` (confirmed no serdev support,
-per BT-1) -- its plain `platform_driver` path is ACPI-only by mainline's
-own design, so the original "just add shutdown-gpios" bullet needed
-correction. Three implementation options scoped (serdev support in
-`samsung_tty.c`; a small DT-match patch to `hci_bcm.c`'s platform driver;
-or a userspace-only I2C-poke tool bundled like `btattach`, no kernel
-change at all).
+`hci_bcm`'s standard `shutdown-gpios` binding is DT-reachable through its
+serdev driver; the plain `platform_driver` path is ACPI-only by mainline's
+design. The corrected serial-core audit confirms the standard serdev path is
+available here, so no Samsung UART or `hci_bcm` probe-path patch is needed.
+The remaining Bluetooth dependency is the unimplemented D2207 PMU GPIO
+provider and measured GPIO2 register/polarity.
 
 **BT-3 Stage A done, 2026-09-08: read-only scan complete, no register
 write yet.** m1n1's USB proxy mode never enumerates on this hardware

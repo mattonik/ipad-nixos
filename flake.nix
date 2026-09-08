@@ -156,11 +156,10 @@
           };
 
           # BT-1 (docs/plans/2026-09-08-j81-bluetooth-battery-adt.md):
-          # apple,s5l-uart has no serdev support, so the kernel can never
-          # auto-probe UART3's Bluetooth HCI transport -- this userspace
-          # tool is the only way to attach it. See boot/btattach.nix for
-          # why it's a from-scratch minimal build rather than the real
-          # bluez package.
+          # The transport-only UART3 DT patch deliberately has no Bluetooth
+          # child. This userspace tool attaches the raw HCI UART independently;
+          # see boot/btattach.nix for why it is a minimal source build rather
+          # than the full BlueZ package.
           btattachPkg = pkgsCrossMusl.callPackage ./boot/btattach.nix {
             stdenvCross = pkgsCrossMusl.stdenv;
             bluezSrc = pkgsCrossMusl.bluez.src;

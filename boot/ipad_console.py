@@ -252,9 +252,8 @@ def action_bt_attach(shell: IPadShell) -> None:
     # btattach (BlueZ tools/btattach.c) has no daemonize flag -- it blocks
     # in its own event loop until killed, so it has to be launched
     # backgrounded rather than run to completion like the console's other
-    # commands. apple,s5l-uart has no serdev support (confirmed by reading
-    # drivers/tty/serial/samsung_tty.c), so this manual attach is the only
-    # way to reach hci0 at all.
+    # commands. The current transport-only DT has no Bluetooth serdev child,
+    # so this manual attach keeps the raw UART test independent of DT binding.
     existing = shell.run("ls /sys/class/bluetooth 2>&1")
     if "hci0" in existing:
         print(f"hci0 already attached:\n{existing}")

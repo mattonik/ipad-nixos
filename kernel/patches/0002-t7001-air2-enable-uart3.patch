@@ -1,6 +1,6 @@
 --- a/arch/arm64/boot/dts/apple/t7001-air2.dtsi
 +++ b/arch/arm64/boot/dts/apple/t7001-air2.dtsi
-@@ -74,6 +74,38 @@
+@@ -74,6 +74,30 @@
  	status = "okay";
  };
  
@@ -9,19 +9,11 @@
 + * combo chip's HCI UART interface. See
 + * docs/plans/2026-09-08-j81-bluetooth-battery-adt.md's "BT-1".
 + *
-+ * Deliberately no bluetooth serdev child node here yet, despite the
-+ * plan's original description: `apple,s5l-uart`'s actual driver
-+ * (drivers/tty/serial/samsung_tty.c) never calls
-+ * serdev_tty_port_register() or registers as a serdev_controller at
-+ * all, unlike the newer serdev-native UART drivers this binding style
-+ * normally assumes. A child node here would simply never probe --
-+ * hci_bcm would never bind, regardless of how correct the pinmux/IRQ
-+ * values are. Confirmed by reading the actual driver source, not
-+ * assumed. Testing this transport therefore uses the plain tty device
-+ * (userspace `btattach`) instead of kernel DT auto-probe for now; see
-+ * the plan doc's "BT-1" for the revised test procedure and the
-+ * follow-up option of adding real serdev support to samsung_tty.c
-+ * later, as a separate, bigger, shared-driver change.
++ * Deliberately no bluetooth serdev child node here yet: this patch
++ * validates the UART transport independently through the plain tty and
++ * userspace `btattach`. The common serial core does expose Samsung UART
++ * ports as serdev controllers when a DT child is present, so the later
++ * power-managed Bluetooth node can use the standard hci_bcm serdev path.
 + *
 + * Host-wake (AP GPIO 164) and PMU power-enable (PMU GPIO 2) are also
 + * deliberately left out of this first patch either way -- both are

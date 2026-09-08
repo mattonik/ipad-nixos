@@ -1,10 +1,11 @@
 # J81 Bluetooth, battery and ADT development plan
 
-Status: BT-1's UART3 hardware description is confirmed correct on real J81
-hardware 2026-09-08 (`ttySAC1` registered at `0x20a0cc000` with RTS/CTS
-active) -- see "BT-1 result" below. `hci0` still needs `btattach` tooling
-added to the initramfs, since the parent UART driver has no serdev support
-(a real, hardware-confirmed correction to this plan's original approach).
+Status: UART3 is hardware-confirmed and the bundled `btattach` reaches `hci0`,
+although the unpowered radio does not answer HCI commands. Battery research
+has also corrected an earlier source-reading error: Samsung UART ports do
+support DT serdev children through the common serial core. The remaining
+battery-specific API gap is two-stop-bit selection. See
+[`research/j81-battery-hdq.md`](../../research/j81-battery-hdq.md).
 
 Target: iPad Air 2 Wi-Fi, J81/J81AP, A8X/T7001, A1566
 
@@ -228,11 +229,10 @@ BT-1 passes when UART3 probes and `hci0` registers with a non-placeholder
 controller address. A firmware error after HCI registration is progress and
 must be recorded verbatim; it gives the exact `.hcd` filename to supply.
 
-### BT-1 result, 2026-09-08: UART3 probes correctly on real hardware; the serdev-child approach needed a real correction first
+### BT-1 result, 2026-09-08: UART3 probes correctly on real hardware
 
-**Two corrections to this section's original description, found before
-writing any DTS, by reading the actual driver source rather than assuming
-the binding style this section describes would just work:**
+**The J81 pin decode below remains correct. A later audit corrected the
+serdev conclusion that accompanied it.**
 
 1. **Pin numbers were independently decoded, not copied from J82.** The
    real J81 ADT's `function-tx`/`function-rts` properties on UART3 (and
@@ -253,22 +253,24 @@ the binding style this section describes would just work:**
    independently-decoded numbers matches this section's original
    J82-sourced numbers exactly, which is real confirmatory evidence for
    both the decode method and J81/J82 pin-compatibility -- not just an
-   assumption carried over from the sibling board. Alt-function index 2
-   (used in the `APPLE_PINMUX(pin, 2)` entries) is not encoded in the ADT
-   itself; taken from this document's existing "alt2" annotation.
+   assumption carried over from the sibling board. The low byte of the raw
+   UART function flags is `0x02`, which independently corroborates the
+   `APPLE_PINMUX(pin, 2)` alt-function setting. The meaning of the upper
+   `0x100` flag remains unknown and is not needed for the pinmux entry.
 
-2. **The serdev child node in this section's original description would
-   never have probed.** `apple,s5l-uart`'s actual driver
-   (`drivers/tty/serial/samsung_tty.c`) never calls
-   `serdev_tty_port_register()` and never registers as a
-   `serdev_controller` -- confirmed by grepping the real driver source,
-   not assumed. A `bluetooth { compatible = "brcm,bcm43540-bt"; ...};`
-   child of `&serial3` requires the parent to be a working serdev bus;
-   without that, the child node is simply inert data in the tree --
-   `hci_bcm` never gets a chance to bind, no matter how correct the
-   register/pinmux description is. **Implemented without the child node
-   and without the `bluetooth0` alias** (which would otherwise be an
-   unresolved-label compile error with no `bluetooth:` node to point at).
+2. **Correction, 2026-09-08: Samsung UART does get a serdev controller.**
+   `drivers/tty/serial/samsung_tty.c` calls `uart_add_one_port()`. The common
+   `drivers/tty/serial/serial_core.c` path then calls
+   `tty_port_register_device_attr_serdev()`, which registers a serdev
+   controller whenever the UART DT node has a child. The earlier audit stopped
+   one call too early in the stack. The built config already enables
+   `CONFIG_SERIAL_DEV_BUS` and `CONFIG_SERIAL_DEV_CTRL_TTYPORT`, so a
+   `brcm,bcm43540-bt` child can bind to `hci_bcm`; the same mechanism can bind
+   the battery frontend on UART5. The BT-1 patch still intentionally shipped
+   without the child node so the raw UART could be validated independently
+   with `btattach`.
+
+   The implemented DT change therefore remains useful:
    `t7001.dtsi` gained `serial3` (register, IRQ 161, clocks,
    `power-domains = <&ps_uart3>`, disabled by default) plus a new
    `uart3_pins` pinmux group; `t7001-air2.dtsi` enables `&serial3` with
@@ -294,16 +296,16 @@ criterion, hardware-confirmed. (Linux's own IRQ 47 here is a virtual IRQ
 number the kernel's IRQ domain allocated when mapping AIC's hardware
 IRQ 161 -- not expected to match 161 directly, and it doesn't need to.)
 
-**The `hci0` half of BT-1 is not yet reachable, for a reason beyond the
-serdev gap above**: the debug initramfs (`debug_initrd.img`) has *no*
+**At this point in the work, the `hci0` half of BT-1 was not yet reachable**:
+the debug initramfs (`debug_initrd.img`) had *no*
 Bluetooth userspace tooling at all -- no `btattach`, `hciattach`,
 `bluetoothctl`, or BusyBox applet (checked the extracted image directly).
-Without kernel serdev auto-probe (impossible per the correction above) or
-a userspace tool to manually attach the HCI UART line discipline over
-`/dev/ttySAC1`, nothing can drive this transport yet, regardless of how
-correct the DTS description is.
+Because the transport-only DT patch deliberately had no serdev child, a
+userspace tool was needed to attach the HCI UART line discipline over
+`/dev/ttySAC1` for that image. The later bundled `btattach` test reached
+`hci0` and established that the remaining failure is radio power control.
 
-### `btattach` built and bundled, 2026-09-08: hardware attach attempt still pending
+### `btattach` built and bundled, 2026-09-08: `hci0` reached on hardware
 
 BlueZ's own `./configure` unconditionally requires glib and dbus
 (`configure.ac`'s `PKG_CHECK_MODULES(GLIB, ...)` / `(DBUS, ...)` have no
@@ -447,10 +449,8 @@ meaning: it's identical on `bt_wake` (AP GPIO164) and on an unrelated
 can't be a per-pin polarity encoding -- more likely a generic "plain GPIO
 resource" tag. (By contrast, `function-tx`/`function-rts`'s args both carry
 `0x102`/`0x002`, sharing a low byte of `0x02` that matches the
-`APPLE_PINMUX(pin, 2)` alt-function-2 already used in `kernel/patches/`;
-worth a small corrective note in the BT-1 section since it contradicts that
-section's claim that alt-function isn't ADT-encoded, but doesn't change
-anything already implemented.) **This confirms the resource number and the
+`APPLE_PINMUX(pin, 2)` alt-function-2 already used in `kernel/patches/`.)
+**This confirms the resource number and the
 exact chip, but not polarity** -- consistent with, and not overriding, this
 section's original stop condition.
 
@@ -506,11 +506,9 @@ platform:
   serdev path only; the platform-device path exists solely for
   ACPI-described x86 Macs. `bcm_bluetooth_of_match` (which lists
   `"brcm,bcm43540-bt"`) is wired to the *serdev* driver only.
-- We already know from BT-1 that `apple,s5l-uart` has no serdev support.
-  So neither existing `hci_bcm` probe path can ever fire on this board,
-  no matter how the DTS describes the Bluetooth node -- the
-  `shutdown-gpios` binding is currently unreachable here, independent of
-  the register-measurement question.
+- The later serial-core audit established that `apple,s5l-uart` does expose a
+  serdev controller when its DT node has a child. The standard DT path can
+  therefore consume these GPIOs once the D2207 GPIO provider exists.
 - One structural detail worth keeping for later, though: `bcm_open()` (the
   path `btattach`'s manual ldisc attach actually takes, `!hu->serdev`)
   *does* still look for a matching `struct bcm_device` by comparing
@@ -521,26 +519,15 @@ platform:
   power on a plain USB-attached ldisc. It just needs a probe path that can
   reach it via DT, which doesn't exist upstream today.
 
-Three implementation options follow from this, independent of the
-measurement step below (which is required no matter which is chosen):
+The corrected implementation choices are:
 
-1. **Add minimal serdev support to `samsung_tty.c`.** Reuses `hci_bcm`'s
-   existing, standard, already-correct `shutdown-gpios` DT binding exactly
-   as the original bullet list assumed, with zero changes to `hci_bcm.c`.
-   Real driver work (a `serdev_controller` needs `.write_buf` and flow
-   control wired through the existing UART TX path) but self-contained to
-   one driver, and benefits every other serdev-shaped peripheral on this
-   SoC too (this board's own HDQ/BAT-1 section already wants serdev on
-   UART5).
-2. **Teach `bcm_driver` a DT match table.** A few lines in `hci_bcm.c`
-   (add `.of_match_table = bcm_bluetooth_of_match` to `bcm_driver`) plus a
-   plain sibling `platform_device` node (child of `/soc`, which is
-   `compatible = "simple-bus"` and auto-populates its children -- checked)
-   rather than a child of `&serial3`. Smaller kernel diff than option 1,
-   but rides on `bcm_open()`'s parent-pointer matching as an
-   implementation detail mainline's own comment frames as legacy/ACPI-only
-   -- more opportunistic, could break on an unrelated `hci_bcm` refactor.
-3. **Userspace-only: no kernel GPIO driver at all.** Bundle one more small
+1. **Preferred: use the existing serdev path.** Once the D2207 GPIO provider
+   is implemented, add the Bluetooth child below UART3 and let unmodified
+   `hci_bcm` consume `shutdown-gpios`, wake GPIOs, and the UART.
+2. **Keep `btattach` as the transport diagnostic.** It already proved UART3
+   and the HCI line discipline independently and remains useful while PMU
+   power control is being developed.
+3. **Userspace-only fallback.** Bundle one more small
    static tool (same pattern as `btattach` itself) that pokes the measured
    I2C register/bit for PMU GPIO2 directly via `/dev/i2c-N`, run once
    before `btattach`. No DTS change, no new kernel driver, nothing for
@@ -766,10 +753,14 @@ produces no UART overruns or HCI timeouts.
 
 ## Battery implementation
 
+The complete source audit, timing analysis, and commit-level plan are in
+[`research/j81-battery-hdq.md`](../../research/j81-battery-hdq.md). It
+supersedes this section where the details differ.
+
 ### BAT-1: add an HDQ-over-serdev frontend
 
 Add one focused driver,
-`drivers/power/supply/bq27xxx_battery_hdquart.c`, plus its Makefile/Kconfig
+`drivers/power/supply/bq27xxx_battery_hdq_uart.c`, plus its Makefile/Kconfig
 entries. Reuse `struct bq27xxx_device_info`,
 `struct bq27xxx_access_methods`, `bq27xxx_battery_setup()` and
 `bq27xxx_battery_teardown()` from the existing core. Do not copy Corellium's
@@ -789,15 +780,21 @@ The transport should retain the proven Corellium wire behavior:
 - 500 ms bounded completion timeout;
 - stable 16-bit reads using high/low/high and retry if the high byte changes.
 
+The pinned kernel already registers Samsung UARTs with the tty-backed serdev
+core, but mainline serdev has no stop-bit setter. Add the small generic
+`CSTOPB` serdev operation used by Corellium before this frontend; do not patch
+`samsung_tty.c`. Its existing termios implementation already honors two stop
+bits.
+
 The first probe transaction must issue TI Control() `DEVICE_TYPE` and log only
 the numeric response. The ADT string says `bq27540`, while upstream's enum has
 `BQ27541` and `BQ27545` but no exact `BQ27540`. Map to a core layout only after
 the returned ID and register behavior are checked against the TI documentation.
 Unknown IDs must fail with `-ENODEV`; they must not silently select BQ27545.
 
-Use a provisional, narrow development compatible such as
-`ti,bq27540-hdq-uart`, with a matching YAML binding. Confirm or rename it from
-the hardware ID before treating the patch as upstreamable.
+Use a provisional development compatible tied to the ADT evidence, then
+finalize the TI-compatible name from the hardware ID before treating the patch
+as upstreamable.
 
 One hardware-independent kernel test is sufficient: KUnit or a tiny extracted
 test for byte encode/decode and echo alignment. The real acceptance test is on
@@ -879,4 +876,5 @@ backlight baseline. Record the Git commit, payload SHA-256, full subsystem
 - [Linux bq27xxx core interface](https://github.com/torvalds/linux/blob/master/include/linux/power/bq27xxx_battery.h)
 - [Linux bq27xxx HDQ frontend](https://github.com/torvalds/linux/blob/master/drivers/power/supply/bq27xxx_battery_hdq.c)
 - [Corellium's Apple HDQ-UART implementation](https://github.com/corellium/linux-sandcastle/blob/sandcastle-5.4/drivers/power/supply/bq27545-battery-hdquart.c)
-- [TI bq27541 HDQ datasheet](https://www.ti.com/lit/ds/symlink/bq27541.pdf)
+- [TI-hosted bq27541-V200 datasheet](https://e2e.ti.com/cfs-file/__key/communityserver-discussions-components-files/196/bq27541_5F00_V200_5F00_DS.pdf)
+- [Dedicated J81 battery/HDQ research](../../research/j81-battery-hdq.md)

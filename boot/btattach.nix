@@ -1,9 +1,8 @@
 # Minimal, dependency-free build of BlueZ's btattach tool for the
 # postmarketOS debug initramfs -- BT-1 (docs/plans/2026-09-08-j81-bluetooth-
-# battery-adt.md) confirmed UART3's hardware description is correct, but
-# kernel auto-probe isn't possible (the apple,s5l-uart driver has no
-# serdev support), so this is the only way to attach the HCI UART line
-# discipline and reach hci0.
+# battery-adt.md) confirmed UART3's hardware description is correct. The
+# transport-only DT deliberately has no Bluetooth child, so this tool attaches
+# the HCI UART line discipline and lets us test the raw UART independently.
 #
 # btattach.c itself only needs libc + BlueZ's own "src/shared/*" helper
 # code (confirmed by reading Makefile.tools:

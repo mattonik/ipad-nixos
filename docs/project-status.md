@@ -14,14 +14,20 @@ RTC and backlight (bundled overnight, see below) were also confirmed
 working on real hardware in the same session. Full transcript in
 `docs/software-only-control.md`'s "Round 10."
 
-**Bluetooth/battery planning, 2026-09-08:** live inspection through the working
-USB shell confirms only UART0 in the active J81 FDT, with no Bluetooth or
-power-supply device. The private live FDT is saved under ignored
-`artifacts/adt/`. A safe PongoOS J81 ADT capture tool and the commit-sized
-implementation sequence are recorded in
-[the focused Bluetooth, battery and ADT plan](plans/2026-09-08-j81-bluetooth-battery-adt.md).
-The next hardware step is to stop at PongoOS once, capture the exact J81 ADT,
-then implement the UART3 Bluetooth transport.
+**Bluetooth/battery progress, 2026-09-08:** the real J81 ADT is captured
+privately and its UART3/UART5 resources are sanitized in
+[the focused plan](plans/2026-09-08-j81-bluetooth-battery-adt.md). UART3 now
+registers on hardware and bundled `btattach` reaches `hci0`; the radio remains
+silent because PMU GPIO2 power control is not implemented. A fresh USB-shell
+check finds UART0 and UART3 present, with no UART5 or power supply yet.
+
+The battery source audit found that Samsung UART already supports serdev
+children through the common serial core, correcting the earlier conclusion
+that a UART-driver change was needed. The narrow remaining API gap is two stop
+bits. The chosen implementation is a small tty-serdev stop-bit operation plus
+an HDQ-UART frontend that reuses the existing bq27xxx core. Wiring, TI timing,
+driver scope, hardware gates, and source links are in
+[the dedicated J81 battery research](../research/j81-battery-hdq.md).
 
 **USB follow-up, Round 8 (hardware-tested):** the display diagnostic ran on
 real hardware and found the fault is asymmetric, not total. The iPad's
@@ -2186,28 +2192,27 @@ Never commit Apple firmware, NVRAM, touch calibration or device identifiers.
 | Display | Inherited framebuffer produces a visible shell | Keep simplefb; defer native display/GPU. |
 | Buttons | GPIO driver, config and DT are present | Verify Home, Power and both volume input events on Hoolock. |
 | RTC / backlight | Both hardware-verified over the USB shell | Preserve their current nodes and drivers. |
-| Bluetooth | BCM HCI UART support is enabled; J82 maps radio to UART3 | Add UART3/pinctrl/serdev DT, initially relying on retained bootloader power. |
-| Battery | J82 maps BQ27540-family HDQ to UART5/GPIO34 | Implement minimal HDQ serdev transport using bq27xxx core, then add DT. |
+| Bluetooth | Real J81 UART3 and manual `hci0` attach are hardware-confirmed | Implement measured D2207 PMU GPIO2 control, then use the standard `hci_bcm` serdev child. |
+| Battery | Real J81 maps the BQ2754x-family HDQ gauge to UART5/GPIO34 | Add the serdev stop-bit operation, minimal HDQ-UART frontend using bq27xxx, and confirmed DT. |
 | Touch | Z2 protocol code exists; old-SoC SPI support is experimental | Clean Hoolock's S5L8960X SPI variant and prove SPI3 before adapting touch. |
 | Wi-Fi | BCM4350 brcmfmac PCIe endpoint code exists; wireless config is disabled | Port T7000 PCIe/DART and enumerate port 1 before enabling brcmfmac. |
 | Audio / GPU / NAND / cameras / Touch ID | No complete A8X stack | Defer beyond the interactive-tablet milestone. |
 
 ### Priority bring-up sequence
 
-1. **Capture the J81 ADT.** Stop at PongoOS and run
-   `nix develop -c python3 boot/dump_adt.py`. Record only sanitized UART3/UART5
-   resources and the private capture's hash.
-2. **Bluetooth transport.** Add the confirmed J81 UART3 node and minimal BCM
-   serdev child at 3 Mbaud. Add wake/power control only after the transport
-   result shows it is required.
-3. **Battery.** Add a small 57,600-baud TI HDQ serdev transport and UART5/GPIO34
-   DT node. Read DEVICE_TYPE before selecting the bq27xxx chip table.
-4. **Buttons.** Validate Home, Power and both volume inputs through the USB
+1. **Battery transport.** Add the small serdev stop-bit operation, a
+   57,600-baud TI HDQ-UART frontend that reuses bq27xxx, and the confirmed
+   UART5/GPIO34 DT node. Read `DEVICE_TYPE` before selecting a bq27xxx chip
+   table.
+2. **Bluetooth power.** Finish the measured D2207 PMU GPIO2 work, then add the
+   standard `hci_bcm` serdev child and its power/wake GPIOs. UART3 and manual
+   HCI attachment are already hardware-confirmed.
+3. **Buttons.** Validate Home, Power and both volume inputs through the USB
    shell.
-5. **SPI and touch.** Reduce the Hoolock SPI experiment to a clean S5L8960X
+4. **SPI and touch.** Reduce the Hoolock SPI experiment to a clean S5L8960X
    controller port, verify bounded SPI3 transfers, then add firmware,
    calibration and touch input.
-6. **PCIe and Wi-Fi.** Add the existing old-Apple DART node, port the T7000 PCIe
+5. **PCIe and Wi-Fi.** Add the existing old-Apple DART node, port the T7000 PCIe
    host using live A8X tunables, enumerate BCM4350, then enable the wireless
    Kconfig closure and load local firmware/NVRAM.
 
@@ -2233,8 +2238,10 @@ Never commit Apple firmware, NVRAM, touch calibration or device identifiers.
 | USB networking to the debug shell | ✅✅ **Resolved, 2026-09-08 (Round 10)**: switched to the newer Hoolock kernel (Linux 7.3-rc1, real `dwc2` DMA support instead of the historical fork's forced PIO). Booted completely on first hardware attempt; USB networking works bidirectionally — 0% ping loss, working telnet, genuine interactive remote shell access to the live device confirmed by running real commands (`uname -a`, `cat /proc/version`) over the network. See docs/software-only-control.md's "Round 10" for the full transcript; Rounds 3-9 document the path that led here. |
 | RTC / Backlight (Apple PMIC) | ✅✅ **Hardware-verified, 2026-09-08**: connected over the newly-working USB network link and confirmed both live on real hardware — RTC set the system clock from real PMIC time (`rtc-apple-pmic ... registered as rtc0`); backlight physically dimmed the screen on command, visually confirmed by the user, then restored. |
 | Hoolock payload / RTC / backlight validation | ✅✅ Hardware-verified; buttons remain untested |
-| J81 ADT capture tooling | ✅ Implemented with private ignored output; raw capture awaits the next PongoOS stop |
-| Touch / Wi‑Fi / Bluetooth / battery implementation | ❌ Planned from source and ADT evidence; not started |
+| J81 ADT capture | ✅ Real raw ADT captured privately; UART3/UART5/Bluetooth/battery resources sanitized and documented |
+| Bluetooth | 🟡 UART3 and `hci0` registration hardware-confirmed; radio needs measured D2207 PMU GPIO2 power control |
+| Battery | 🟡 Real wiring and protocol researched; UART5 DT, serdev stop-bit API and HDQ frontend remain to implement |
+| Touch / Wi‑Fi implementation | ❌ Planned from source and ADT evidence; not started |
 | Usable tethered Linux tablet | ❌ Future milestone |
 
 ## Safety boundaries
@@ -2259,4 +2266,6 @@ Never commit Apple firmware, NVRAM, touch calibration or device identifiers.
 - [`boot/dump_adt.py`](../boot/dump_adt.py): captures and validates a private
   J81 Apple Device Tree from PongoOS without printing sensitive content.
 - [`boot/mkdtbpack.sh`](../boot/mkdtbpack.sh): DTB pack creation.
+- [`research/j81-battery-hdq.md`](../research/j81-battery-hdq.md): battery
+  wiring, protocol research and implementation gates.
 - [`research/`](../research/): hardware and driver research.
