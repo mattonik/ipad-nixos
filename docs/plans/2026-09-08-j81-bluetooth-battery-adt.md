@@ -1,6 +1,7 @@
 # J81 Bluetooth, battery and ADT development plan
 
-Status: ready to implement after one raw J81 ADT capture
+Status: J81 ADT captured and gate cleared 2026-09-08 (see "J81 ADT evidence"
+below) -- ready to implement BT-1
 
 Target: iPad Air 2 Wi-Fi, J81/J81AP, A8X/T7001, A1566
 
@@ -123,6 +124,53 @@ collection also requires those values to be censored before sharing.
 ADT gate: UART3 and UART5 values must be taken from the private J81 capture.
 If they match J82, record the match and proceed. Any difference overrides this
 plan's J82-derived numbers.
+
+## J81 ADT evidence (captured 2026-09-08)
+
+Real J81 ADT captured via `boot/dump_adt.py` during a PongoOS stop, before
+loading m1n1: 357,402 bytes, validated as this exact board (target-type J81,
+platform-name t7001, regulatory-model A1566). Stored privately at
+`artifacts/adt/20260908T082112Z-j81.adt` (git-ignored, `sha256=cf743765...`).
+Inspected with the `rg` commands above; sensitive fields present in the
+capture (Bluetooth TX/RX calibration arrays, `local-mac-address`, and the
+POSM threshold/VAC-level battery calibration arrays) were read but are
+intentionally **not** reproduced below.
+
+**UART3 (Bluetooth transport)** -- `compatible = "uart-1,samsung"`,
+`interrupts = 0xa1` (161), `clock-gates = 0x53` (83), register base low bits
+`0x0a0cc000`. `function-tx`/`function-rts` are present (non-empty
+Apple GPIO-function descriptors; exact AP GPIO pin numbers not decoded from
+the binary encoding in this pass). Every one of these values is an **exact
+match** to the J82 sibling reference this plan was drafted against.
+
+**Bluetooth child node** -- `compatible = "bluetooth,n88"`,
+`device_type = "bluetooth"`, `transport-speed = 0x002dc6c0`
+(3,000,000 -- exact match to J82's 3 Mbaud), `transport-encoding = 0x3`,
+`vendor-id = 0x05ac`, `product-id = 0x12a0` (both exact matches to J82),
+`supported-profiles = 0x2ffb`, `coex = 0x2`. `function-bt_wake` and
+`function-power_enable` are present and non-empty (host-wake/PMU
+power-enable wiring confirmed present; exact GPIO numbers not decoded here).
+
+**UART5 (battery transport)** -- `compatible = "uart-1,samsung"`,
+`interrupts = 0xa3` (163), `clock-gates = 0x55` (85), register base low bits
+`0x0a0d4000`, `no-flow-control` present. All exact matches to J82.
+`function-tx` is present.
+
+**Gas-gauge child node** -- `compatible = "gas-gauge,bq27540"`,
+`"gas-gauge,hdq"` (exact match to J82), `device_type = "gas-gauge"`,
+`battery-id-block = 0x1`, `update-sample-config = 0x10`.
+`function-battery_swi` is present -- and its raw OIPG-encoded payload is
+**byte-identical** to UART5's own `function-tx` payload. That's a real,
+new-to-this-capture confirmation (not visible in the J82-only reference) of
+the plan's HDQ-over-UART model: the battery's single-wire HDQ signal rides
+the same physical pin as UART5's transmit line, rather than a separate GPIO.
+
+**ADT gate result**: every structural value checked above (register base,
+IRQ, clock gate, compatible strings, transport speed, vendor/product ID)
+matches the J82 sibling reference exactly on real J81 hardware. Per this
+plan's own rule, that clears the gate to proceed using the existing
+J82-derived numbers in the BT-1/BAT-2 sections below with confidence, now
+backed by this board's own data rather than sibling inference alone.
 
 ## Bluetooth implementation
 
