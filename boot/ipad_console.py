@@ -53,6 +53,12 @@ _SPINNER_FRAMES = "|/-\\"
 BACKLIGHT = "/sys/class/backlight/20a110000.i2c:pmic@3c:backlight@600"
 RTC = "/sys/class/rtc/rtc0"
 
+# BT-1 (docs/plans/2026-09-08-j81-bluetooth-battery-adt.md): UART3's tty
+# node and the BCM43540's transport-speed, both independently decoded from
+# the real J81 ADT and confirmed on hardware -- not guessed.
+BT_TTY = "/dev/ttySAC1"
+BT_SPEED = "3000000"
+
 _ANSI_RE = re.compile(rb"\x1b\[[0-9;]*[a-zA-Z]")
 
 
@@ -238,6 +244,37 @@ def action_tty_devices(shell: IPadShell) -> None:
     print(shell.run("cat /proc/tty/driver/s3c2410_serial 2>&1 || echo '(no s3c2410_serial entry)'"))
 
 
+def action_bt_status(shell: IPadShell) -> None:
+    print(shell.run("ls -la /sys/class/bluetooth/ 2>&1"))
+
+
+def action_bt_attach(shell: IPadShell) -> None:
+    # btattach (BlueZ tools/btattach.c) has no daemonize flag -- it blocks
+    # in its own event loop until killed, so it has to be launched
+    # backgrounded rather than run to completion like the console's other
+    # commands. apple,s5l-uart has no serdev support (confirmed by reading
+    # drivers/tty/serial/samsung_tty.c), so this manual attach is the only
+    # way to reach hci0 at all.
+    existing = shell.run("ls /sys/class/bluetooth 2>&1")
+    if "hci0" in existing:
+        print(f"hci0 already attached:\n{existing}")
+        return
+    shell.run(
+        f"nohup btattach -B {BT_TTY} -P bcm -S {BT_SPEED} "
+        ">/tmp/btattach.log 2>&1 & disown",
+        timeout=5,
+    )
+    print(f"Started btattach against {BT_TTY} @ {BT_SPEED} baud, waiting...")
+    time.sleep(2)
+    print(shell.run("ls -la /sys/class/bluetooth/ 2>&1"))
+    print()
+    print(shell.run("cat /tmp/btattach.log 2>&1"))
+    print()
+    print(shell.run(
+        "dmesg | grep -iE '20a0cc000|ttysac1|bluetooth|hci|bcm43' | tail -n 20"
+    ))
+
+
 def action_uptime_mem(shell: IPadShell) -> None:
     print(shell.run("uptime"))
     print(shell.run("free 2>&1 || head -5 /proc/meminfo"))
@@ -260,6 +297,8 @@ ACTIONS: list[tuple[str, Callable[["IPadShell"], None]]] = [
     ("Kernel log: USB/gadget only", action_usb_dmesg),
     ("Kernel log: UART3/Bluetooth only", action_bt_dmesg),
     ("Bluetooth: UART3 tty device check", action_tty_devices),
+    ("Bluetooth: hci0 status", action_bt_status),
+    ("Bluetooth: attach HCI UART (btattach)", action_bt_attach),
     ("Uptime & memory", action_uptime_mem),
     ("Run a raw shell command", action_raw_command),
 ]

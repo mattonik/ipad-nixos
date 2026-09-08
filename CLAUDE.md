@@ -153,6 +153,23 @@ register/clock/power-domain/pinmux description is correct. Reaching
 there today) since kernel auto-probe isn't possible. Full detail in
 `docs/plans/2026-09-08-j81-bluetooth-battery-adt.md`'s "BT-1 result".
 
+**`btattach` built and bundled, 2026-09-08.** `boot/btattach.nix` compiles
+just `tools/btattach.c` and the handful of `src/shared/*.c` files it
+actually needs, directly with `$CC` -- bypassing BlueZ's autotools, whose
+`./configure` unconditionally requires glib+dbus for every tool
+regardless of which one you want (confirmed slow in practice: killed a
+full-package build after 24+ minutes). Statically linked, since the debug
+initramfs's musl is a separate build from this project's own. Wired into
+`flake.nix` as `btattachPkg` and bundled into `m1n1-hoolock-control` at
+`usr/bin/btattach` via the same cpio-overlay technique already used for
+the `ecm.usb0` deviceinfo override. Console tool gained matching actions
+("Bluetooth: hci0 status", "Bluetooth: attach HCI UART"). Verified at the
+Nix level only (binary present, genuinely static, deviceinfo override
+intact -- see the plan doc for how, since a naive `cpio -it` listing looks
+like a silent failure here and isn't one). **Not yet hardware-tested**:
+whether `hci_bcm` actually binds `hci0` against `/dev/ttySAC1` is still
+open.
+
 The historical-PongoOS control is a separate, lower-priority experiment,
 still blocked: `palera1n`'s stager rejects its 708,704-byte binary (limit
 is 0x7fe00 = 523,776 bytes) -- unresolved, not needed now that m1n1 works.

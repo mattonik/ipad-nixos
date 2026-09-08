@@ -301,10 +301,66 @@ Bluetooth userspace tooling at all -- no `btattach`, `hciattach`,
 Without kernel serdev auto-probe (impossible per the correction above) or
 a userspace tool to manually attach the HCI UART line discipline over
 `/dev/ttySAC1`, nothing can drive this transport yet, regardless of how
-correct the DTS description is. Next step: add a minimal static
-`btattach` (or equivalent) binary to the initramfs via the same
-cpio-overlay technique `m1n1-usb-diagnostic` already uses, then manually
-attach and check for `hci0`. Not yet done.
+correct the DTS description is.
+
+### `btattach` built and bundled, 2026-09-08: hardware attach attempt still pending
+
+BlueZ's own `./configure` unconditionally requires glib and dbus
+(`configure.ac`'s `PKG_CHECK_MODULES(GLIB, ...)` / `(DBUS, ...)` have no
+enabling `if` guard) even though `btattach` itself needs neither --
+building the real package to get one tool pulled in that whole chain and
+was confirmed painfully slow in practice (killed after 24+ minutes with
+no visibility into what it was even doing). Instead,
+[`boot/btattach.nix`](../../boot/btattach.nix) compiles just
+`tools/btattach.c` plus the exact `src/shared/*.c` helper files its own
+`#include` list touches (`util.c`, `queue.c`, `hci.c`, `mainloop.c`,
+`mainloop-notify.c`, `io-mainloop.c`, `timeout-mainloop.c`) directly with
+`$CC`, bypassing autotools/configure entirely -- found iteratively against
+real linker errors (a first attempt with the *full* `shared_sources` list
+`libshared-mainloop.la` bundles for every BlueZ tool pulled in unrelated
+LE-GATT/audio-profile code and its own further dependencies). Statically
+linked (`-static`): the debug initramfs's musl build is a separate,
+externally-sourced artifact, not guaranteed ABI-compatible with this
+project's own Nix-built musl. Confirmed via `file`: `ELF 64-bit ... ARM
+aarch64 ..., statically linked`, 227 KiB.
+
+Wired into `flake.nix` as `btattachPkg` (built with `pkgsCrossMusl`, same
+cross instantiation the rest of the initramfs userspace already uses) and
+bundled into `m1n1-hoolock-control`'s initramfs at `usr/bin/btattach`
+alongside the image's other standalone tools (`usr/bin/evtest`,
+`usr/bin/fftest`), via the same concatenated-newc-cpio-archive overlay
+technique already used for the `ecm.usb0` deviceinfo override just above
+it. Verified the append actually worked -- and worth recording *how*,
+since a naive check is misleading: ordinary `cpio -it`/`cpio -id` (both
+macOS's `bsdcpio` and a real GNU `cpio`) stop reading at the first
+`TRAILER!!!` record, so a plain listing of the built `initramfs.gz` only
+ever shows the *original* debug_initrd.img content, never the overlay --
+this is expected (only the Linux kernel's own initramfs unpacker
+continues past a `TRAILER!!!` into a concatenated second archive) but
+looks exactly like a silent failure if you don't know that going in. Confirmed
+correctly appended by parsing the first archive's cpio headers directly
+(namesize/filesize fields, 4-byte alignment padding) to find the real byte
+offset where the second archive begins, then listing/extracting *that*
+segment on its own: both `etc/deviceinfo` (with the `ecm.usb0` override
+line intact) and `usr/bin/btattach` (matching, `file`-confirmed static
+ELF) are present.
+
+Console tool gained two matching actions
+([`boot/ipad_console.py`](../../boot/ipad_console.py)): "Bluetooth: hci0
+status" (`ls /sys/class/bluetooth`) and "Bluetooth: attach HCI UART
+(btattach)", which backgrounds `btattach -B /dev/ttySAC1 -P bcm -S
+3000000` (device and baud rate both from this document's own ADT
+evidence above -- `btattach` has no daemonize flag, so it has to be
+launched with `&`/`disown` rather than run to completion like the
+console's other actions), waits briefly, then prints `hci0` status,
+`btattach`'s own log, and a focused `dmesg` filter.
+
+**Not yet done**: actually running this against real hardware. The
+build/bundle is verified at the Nix level (binary present, statically
+linked, deviceinfo override intact); whether `hci_bcm` actually binds and
+registers `hci0` -- or fails with a firmware-loading error, which is
+itself progress and would give the exact `.hcd` filename BT-2 needs -- is
+still an open, hardware-only question.
 
 ### BT-2: supply exact local firmware
 

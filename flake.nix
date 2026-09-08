@@ -153,6 +153,18 @@
             source = inputs.hoolockLinux;
             hoolockConfig = patchedHoolockConfig;
           };
+
+          # BT-1 (docs/plans/2026-09-08-j81-bluetooth-battery-adt.md):
+          # apple,s5l-uart has no serdev support, so the kernel can never
+          # auto-probe UART3's Bluetooth HCI transport -- this userspace
+          # tool is the only way to attach it. See boot/btattach.nix for
+          # why it's a from-scratch minimal build rather than the real
+          # bluez package.
+          btattachPkg = pkgsCrossMusl.callPackage ./boot/btattach.nix {
+            stdenvCross = pkgsCrossMusl.stdenv;
+            bluezSrc = pkgsCrossMusl.bluez.src;
+            bluezVersion = pkgsCrossMusl.bluez.version;
+          };
         in {
         # Linux kernel for iPad Air 2 (A8X)
         kernel = modernKernel;
@@ -355,13 +367,21 @@
           # etc/deviceinfo from the pinned debug_initrd.img rather than
           # hardcoding a copy, so this never drifts from upstream.
           gzip -dc ${inputs.linuxAppleResources}/debug_initrd.img > initramfs.cpio
-          mkdir -p original-etc overlay/etc
+          mkdir -p original-etc overlay/etc overlay/usr/bin
           (cd original-etc && cpio -id --no-absolute-filenames etc/deviceinfo < ../initramfs.cpio)
           cp original-etc/etc/deviceinfo overlay/etc/deviceinfo
           printf '\ndeviceinfo_usb_rndis_function="ecm.usb0"\n' >> overlay/etc/deviceinfo
           touch -d @1 overlay/etc/deviceinfo
-          (cd overlay; printf '%s\0' "etc/deviceinfo" | cpio --null -o -H newc \
-            --owner=0:0 --reproducible) >> initramfs.cpio
+
+          # BT-1: bundle the standalone btattach binary alongside the
+          # initramfs's other standalone tools (usr/bin/evtest,
+          # usr/bin/fftest) so it's reachable on PATH from the debug shell.
+          cp ${btattachPkg}/bin/btattach overlay/usr/bin/btattach
+          chmod 755 overlay/usr/bin/btattach
+          touch -d @1 overlay/usr/bin/btattach
+
+          (cd overlay; printf '%s\0' "etc/deviceinfo" "usr/bin/btattach" \
+            | cpio --null -o -H newc --owner=0:0 --reproducible) >> initramfs.cpio
           gzip -n -c initramfs.cpio > "$out/initramfs.gz"
 
           # Same proven bootargs baseline as m1n1-control: PMOS_NO_OUTPUT_REDIRECT
