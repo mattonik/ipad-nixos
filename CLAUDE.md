@@ -135,6 +135,24 @@ Bluetooth as a DT-only transport probe, followed by the battery HDQ serdev
 frontend. Keep firmware, NVRAM, raw ADT/FDT, calibration data and per-device
 identifiers outside Git.
 
+**BT-1, 2026-09-08: UART3 hardware-confirmed, one real correction made.**
+Real J81 ADT captured; UART3/UART5/battery pin numbers independently
+decoded from its raw OIPG GPIO-function bytes (not copied from J82) --
+every one matched J82 exactly, which is itself confirmatory evidence.
+Added `serial3`/`uart3_pins` to `t7001.dtsi` and enabled `&serial3` with
+RTS/CTS in `t7001-air2.dtsi`, as real `.patch` files under
+`kernel/patches/` (multi-line DTS insertions, much more reviewable as a
+diff than more `sed`), applied via `patch -p1` from `kernel/hoolock.nix`.
+**Correction found before writing any DTS**: `apple,s5l-uart`'s driver
+(`samsung_tty.c`) has no serdev support at all, so the plan's original
+Bluetooth serdev child node would never have probed regardless of
+correctness -- implemented without it. Booted on hardware: `ttySAC1`
+registered at `0x20a0cc000` with `CTS|DSR|CD` active, confirming the
+register/clock/power-domain/pinmux description is correct. Reaching
+`hci0` needs `btattach` added to the initramfs (checked: none exists
+there today) since kernel auto-probe isn't possible. Full detail in
+`docs/plans/2026-09-08-j81-bluetooth-battery-adt.md`'s "BT-1 result".
+
 The historical-PongoOS control is a separate, lower-priority experiment,
 still blocked: `palera1n`'s stager rejects its 708,704-byte binary (limit
 is 0x7fe00 = 523,776 bytes) -- unresolved, not needed now that m1n1 works.

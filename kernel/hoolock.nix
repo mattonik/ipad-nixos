@@ -40,6 +40,17 @@ let
     sed -i \
       's/return ((cmd\[1\] \& 7) << 8) | (cmd\[0\] \& 0xff);/&\n\t\tdefault:\n\t\t\treturn -EINVAL;/' \
       "$file"
+
+    # BT-1 (docs/plans/2026-09-08-j81-bluetooth-battery-adt.md): describe
+    # and enable UART3, the BCM43540 Bluetooth combo chip's HCI UART
+    # transport. Register base, IRQ, clock gate, and the TX/RTS pinmux
+    # were independently decoded from a real J81 ADT capture and confirmed
+    # byte-for-byte against the T7001-family J82 sibling reference (see
+    # the plan doc's "J81 ADT evidence" section) -- not guessed. As real
+    # DTS patches (not sed) since the insertions are multi-line and this
+    # is much easier to review as a diff.
+    patch -d "$out" -p1 < ${./patches/0001-t7001-add-uart3-node.patch}
+    patch -d "$out" -p1 < ${./patches/0002-t7001-air2-enable-uart3.patch}
   '';
   buildArgs = builtins.removeAttrs args [ "source" "hoolockConfig" "runCommand" ];
 in

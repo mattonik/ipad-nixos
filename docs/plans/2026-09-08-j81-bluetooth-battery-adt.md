@@ -1,7 +1,10 @@
 # J81 Bluetooth, battery and ADT development plan
 
-Status: J81 ADT captured and gate cleared 2026-09-08 (see "J81 ADT evidence"
-below) -- ready to implement BT-1
+Status: BT-1's UART3 hardware description is confirmed correct on real J81
+hardware 2026-09-08 (`ttySAC1` registered at `0x20a0cc000` with RTS/CTS
+active) -- see "BT-1 result" below. `hci0` still needs `btattach` tooling
+added to the initramfs, since the parent UART driver has no serdev support
+(a real, hardware-confirmed correction to this plan's original approach).
 
 Target: iPad Air 2 Wi-Fi, J81/J81AP, A8X/T7001, A1566
 
@@ -224,6 +227,84 @@ done
 BT-1 passes when UART3 probes and `hci0` registers with a non-placeholder
 controller address. A firmware error after HCI registration is progress and
 must be recorded verbatim; it gives the exact `.hcd` filename to supply.
+
+### BT-1 result, 2026-09-08: UART3 probes correctly on real hardware; the serdev-child approach needed a real correction first
+
+**Two corrections to this section's original description, found before
+writing any DTS, by reading the actual driver source rather than assuming
+the binding style this section describes would just work:**
+
+1. **Pin numbers were independently decoded, not copied from J82.** The
+   real J81 ADT's `function-tx`/`function-rts` properties on UART3 (and
+   `function-battery_swi` on the gas-gauge, `function-bt_wake`/
+   `function-power_enable` on the bluetooth child) are 16-byte Apple
+   "OIPG" GPIO-function descriptors: 4 little-endian `u32` words --
+   resource-type tag, the `"OIPG"` magic, a resource number, and flags.
+   Decoding word 3 (the resource number) against every property gave:
+   UART3 TX = AP GPIO 14, UART3 RTS = AP GPIO 32, gas-gauge
+   `battery_swi` = AP GPIO 34 (identical encoding to UART5's own
+   `function-tx` -- confirming HDQ rides UART5's TX pin), Bluetooth
+   `bt_wake` = AP GPIO 164. The `power_enable` property carries a
+   *different* resource-type tag (0x4e instead of 0x1f used by all the
+   AP-GPIO properties above), consistent with it being a *PMU* GPIO (2)
+   rather than an AP GPIO -- exactly matching this document's own
+   "PMU power-enable GPIO2" description, decoded independently from a
+   different, more structural signal in the data. Every one of these
+   independently-decoded numbers matches this section's original
+   J82-sourced numbers exactly, which is real confirmatory evidence for
+   both the decode method and J81/J82 pin-compatibility -- not just an
+   assumption carried over from the sibling board. Alt-function index 2
+   (used in the `APPLE_PINMUX(pin, 2)` entries) is not encoded in the ADT
+   itself; taken from this document's existing "alt2" annotation.
+
+2. **The serdev child node in this section's original description would
+   never have probed.** `apple,s5l-uart`'s actual driver
+   (`drivers/tty/serial/samsung_tty.c`) never calls
+   `serdev_tty_port_register()` and never registers as a
+   `serdev_controller` -- confirmed by grepping the real driver source,
+   not assumed. A `bluetooth { compatible = "brcm,bcm43540-bt"; ...};`
+   child of `&serial3` requires the parent to be a working serdev bus;
+   without that, the child node is simply inert data in the tree --
+   `hci_bcm` never gets a chance to bind, no matter how correct the
+   register/pinmux description is. **Implemented without the child node
+   and without the `bluetooth0` alias** (which would otherwise be an
+   unresolved-label compile error with no `bluetooth:` node to point at).
+   `t7001.dtsi` gained `serial3` (register, IRQ 161, clocks,
+   `power-domains = <&ps_uart3>`, disabled by default) plus a new
+   `uart3_pins` pinmux group; `t7001-air2.dtsi` enables `&serial3` with
+   `pinctrl-0 = <&uart3_pins>` and `uart-has-rtscts`. Both as real `.patch`
+   files (`kernel/patches/0001-t7001-add-uart3-node.patch`,
+   `0002-t7001-air2-enable-uart3.patch`, applied via `patch -p1` from
+   `kernel/hoolock.nix`) rather than more `sed`, since the insertions are
+   multi-line and a diff is far more reviewable than a sed one-liner here.
+   Test-compiled locally (`clang -E` then `dtc`) before ever touching Nix,
+   confirming clean compilation and correct pinmux/phandle encoding in the
+   resulting DTB.
+
+**Hardware result**: booted on the iPad, checked via `boot/ipad_console.py`'s
+new UART3/Bluetooth dmesg and tty-device actions.
+`[ 0.123640] 20a0cc000.serial: ttySAC1 MMIO32:0x000000020a0cc000 (irq = 47,
+base_baud = 0) is a APPLE S5L` -- a second, distinct serial device
+registered at exactly UART3's address, alongside the existing `ttySAC0`
+console. `/proc/tty/driver/s3c2410_serial` confirms it:
+`1: uart:APPLE S5L MMIO32:0x000000020a0cc000 irq:47 tx:0 rx:0
+CTS|DSR|CD` -- flow-control flags active, confirming `uart-has-rtscts` was
+read and applied. This is the "UART3 probes" half of BT-1's pass
+criterion, hardware-confirmed. (Linux's own IRQ 47 here is a virtual IRQ
+number the kernel's IRQ domain allocated when mapping AIC's hardware
+IRQ 161 -- not expected to match 161 directly, and it doesn't need to.)
+
+**The `hci0` half of BT-1 is not yet reachable, for a reason beyond the
+serdev gap above**: the debug initramfs (`debug_initrd.img`) has *no*
+Bluetooth userspace tooling at all -- no `btattach`, `hciattach`,
+`bluetoothctl`, or BusyBox applet (checked the extracted image directly).
+Without kernel serdev auto-probe (impossible per the correction above) or
+a userspace tool to manually attach the HCI UART line discipline over
+`/dev/ttySAC1`, nothing can drive this transport yet, regardless of how
+correct the DTS description is. Next step: add a minimal static
+`btattach` (or equivalent) binary to the initramfs via the same
+cpio-overlay technique `m1n1-usb-diagnostic` already uses, then manually
+attach and check for `hci0`. Not yet done.
 
 ### BT-2: supply exact local firmware
 
