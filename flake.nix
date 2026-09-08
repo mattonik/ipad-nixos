@@ -149,6 +149,17 @@
               -e 's/^CONFIG_ARM64_16K_PAGES=y$/# CONFIG_ARM64_16K_PAGES is not set/' \
               -e 's/^# CONFIG_I2C_CHARDEV is not set$/CONFIG_I2C_CHARDEV=y/' \
               ${inputs.hoolockDocs}/config_16k > "$out"
+
+            # BAT-1/BAT-2 (docs/plans/2026-09-08-j81-bluetooth-battery-adt.md,
+            # research/j81-battery-hdq.md): CONFIG_BATTERY_BQ27XXX_HDQ_UART
+            # is a symbol this project's own kernel patches add (see
+            # kernel/patches/0004-add-bq27xxx-hdq-uart-frontend.patch) --
+            # it can't exist in the pinned upstream config_16k yet, so
+            # there's no existing line for sed to flip; append it instead.
+            # CONFIG_BATTERY_BQ27XXX, CONFIG_SERIAL_DEV_BUS and
+            # CONFIG_SERIAL_DEV_CTRL_TTYPORT (its real dependencies) are
+            # already =y in the base config -- checked, not assumed.
+            echo 'CONFIG_BATTERY_BQ27XXX_HDQ_UART=y' >> "$out"
           '';
           hoolockKernel = pkgsCross.callPackage ./kernel/hoolock.nix {
             source = inputs.hoolockLinux;

@@ -757,6 +757,16 @@ The complete source audit, timing analysis, and commit-level plan are in
 [`research/j81-battery-hdq.md`](../../research/j81-battery-hdq.md). It
 supersedes this section where the details differ.
 
+**Implemented and compile-verified, 2026-09-08** (BAT-1/2/3 in that
+document's own numbering: the serdev stop-bit API, the
+`bq27xxx_battery_hdq_uart.c` frontend, and the UART5/gauge DTS) -- four
+kernel patches, a real `nix build` of the kernel and the full boot
+payload both succeed, and the built kernel's `System.map`/DTB both
+confirm the new code and DT nodes actually compiled in. **Not yet
+hardware-tested** (BAT-4): nothing has been flashed to the iPad since
+this was written. Full detail, including exactly what was verified and
+what wasn't, in that document's "Implementation result, 2026-09-08".
+
 ### BAT-1: add an HDQ-over-serdev frontend
 
 Add one focused driver,

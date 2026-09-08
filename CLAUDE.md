@@ -161,6 +161,19 @@ selection, which mainline serdev lacks even though `samsung_tty.c` honors
 `CSTOPB`. Full research and the corrected implementation plan are in
 `research/j81-battery-hdq.md`.
 
+**Battery BAT-1/2/3 implemented and compile-verified, 2026-09-08.** Four
+kernel patches (`kernel/patches/0003`-`0006`): a serdev stop-bit API
+mirroring the existing `set_parity` op exactly; a new
+`bq27xxx_battery_hdq_uart.c` frontend reusing the existing `bq27xxx` core
+(identifies the real chip via a live TI `DEVICE_TYPE` readback rather
+than trusting the ADT's compatible string); UART5 + the gauge serdev
+child in DTS. A real `nix build` of both the kernel and the full
+`m1n1-hoolock-control` payload succeeds; `System.map` and the built DTB
+both confirm the new code and DT nodes actually compiled in. **Not
+hardware-tested yet** -- nothing has been flashed to the device with
+this kernel. Full detail in `research/j81-battery-hdq.md`'s
+"Implementation result, 2026-09-08".
+
 **`btattach` built and bundled, 2026-09-08.** `boot/btattach.nix` compiles
 just `tools/btattach.c` and the handful of `src/shared/*.c` files it
 actually needs, directly with `$CC` -- bypassing BlueZ's autotools, whose

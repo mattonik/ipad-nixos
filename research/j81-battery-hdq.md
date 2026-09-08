@@ -261,6 +261,92 @@ The pass condition is a registered Linux battery with stable, plausible
 readings while USB networking, RTC, backlight, and the existing UART3 work
 continue to function.
 
+## Implementation result, 2026-09-08: BAT-1/2/3 written and compile-verified; BAT-4 (hardware) not yet run
+
+BAT-1, BAT-2 and BAT-3 are implemented as four kernel patches applied from
+`kernel/hoolock.nix`, following this document's plan closely:
+
+- `kernel/patches/0003-serdev-add-stop-bit-selection.patch` (BAT-1):
+  `enum serdev_stopbits { SERDEV_STOPBITS_ONE, SERDEV_STOPBITS_TWO }`, a
+  `set_stopbits` controller op, and `serdev_device_set_stopbits()`, built by
+  copying the existing `set_parity` three-file shape exactly (`serdev.h`'s
+  enum/op/helper-plus-disabled-stub, `core.c`'s dispatch, `serdev-ttyport.c`'s
+  real implementation) rather than inventing a new pattern. The ttyport
+  implementation mirrors `ttyport_set_parity()` line for line, substituting
+  the single `CSTOPB` flag for parity's `PARENB|PARODD|CMSPAR` group, and
+  keeps the same "copy ktermios, apply, call `tty_set_termios()`, then
+  compare the live result against what was requested" verify step this
+  document's plan called for.
+- `kernel/patches/0004-add-bq27xxx-hdq-uart-frontend.patch` (BAT-2):
+  `drivers/power/supply/bq27xxx_battery_hdq_uart.c`, new
+  `CONFIG_BATTERY_BQ27XXX_HDQ_UART` Kconfig/Makefile entries. Structural
+  reference was the existing (wrong-transport) `bq27xxx_battery_hdq.c`'s
+  `read()`/16-bit-retry shape and `bq27xxx_battery_i2c.c`'s minimal
+  `di->dev`/`di->chip`/`di->name`/`di->bus.read`/`di->bus.write` field set
+  before calling `bq27xxx_battery_setup()` -- confirmed by reading both, not
+  guessed, that `bq27xxx_battery_setup()` already handles
+  `power_supply_register()` and the initial poll scheduling internally, so
+  the frontend needs nothing beyond those five fields.
+  - The HDQ break is driven manually (`serdev_device_break_ctl()` assert,
+    `usleep_range(250, 500)`, deassert, `usleep_range(150, 500)` recovery)
+    rather than trusting a single fixed-duration break request, since
+    `break_ctl()`'s own timing granularity doesn't match TI's
+    microsecond-precision requirement.
+  - `receive_buf()` only moves `rx_buf`/`rx_count` under `rx_lock` (a
+    spinlock, since it may run in IRQ context) and signals a completion;
+    every transaction (break, write, echo wait, response wait) is
+    serialized under a separate sleeping `xfer_lock` mutex held by the
+    caller, matching this document's own stated constraint.
+  - `DEVICE_TYPE` identification (`hdq_uart_identify()`) writes Control()
+    subcommand `0x0001` then reads the same register back; `0x0541`/`0x0545`
+    map to the existing `BQ27541`/`BQ27545` core enums, anything else fails
+    probe with `-ENODEV` rather than guessing a register table, exactly as
+    specified.
+- `kernel/patches/0005-t7001-add-uart5-node.patch` and
+  `0006-t7001-air2-enable-uart5-battery.patch` (BAT-3): `serial5` (register
+  `0x20a0d4000`, IRQ 163, clock gate context, `power-domains = <&ps_uart5>`)
+  and the `uart5_pins` AP-GPIO34-function-2 pinmux group added to
+  `t7001.dtsi`; `&serial5` enabled with the gauge as a real serdev child
+  (`compatible = "ti,bq27540-hdq-uart"`, matching BAT-2's `of_device_id`) in
+  `t7001-air2.dtsi`. Unlike `serial3` (BT-1), the gauge child ships from the
+  start, since BAT-2's driver needs a real `serdev_device` to bind to and the
+  serdev correction above confirms it will actually probe -- there is no
+  manual-attach diagnostic step for this transport the way `btattach` was for
+  Bluetooth.
+
+**Verified, not just written:**
+
+- The four patches apply cleanly and stack correctly on top of the existing
+  BT-1 patches (0001/0002), checked by applying all six in sequence to a
+  fresh checkout and diffing the result against the intended files.
+- The resulting `t7001-air2.dtsi`/`t7001.dtsi` were preprocessed
+  (`clang -E -nostdinc -undef -x assembler-with-cpp`) and compiled with the
+  real `dtc` before ever touching Nix, same practice as BT-1's original DTS
+  work -- compiles with only one pre-existing, unrelated warning
+  (`simple_bus_reg` on an unrelated `/soc/bus@` node, confirmed present on
+  the *unpatched* source too, not introduced here).
+- A full `nix build .#packages.x86_64-linux.hoolock-kernel` (the real
+  cross-compiler, not a syntax-only check) succeeded with these patches
+  applied. `System.map` confirms the new symbols actually compiled in:
+  `hdq_uart_probe`, `hdq_uart_driver_init`, `hdq_uart_driver`, and a real
+  `__initcall__kmod_bq27xxx_battery_hdq_uart__...` entry for
+  `serdev_device_set_stopbits`/`__ksymtab_serdev_device_set_stopbits`
+  (correctly exported, `EXPORT_SYMBOL_GPL` took effect) and
+  `ttyport_set_stopbits`.
+- Decompiling the built `t7001-j81.dtb` back with `dtc` confirms
+  `serial@20a0d4000`, `uart5-pins`, and the `ti,bq27540-hdq-uart` gauge child
+  are genuinely present in the final device tree, not just in the source
+  patches.
+- `nix build .#packages.x86_64-linux.m1n1-hoolock-control` (the full
+  PongoOS/m1n1/kernel/initramfs boot payload) also succeeds end to end with
+  these changes in place.
+
+**Not yet done: BAT-4, or any hardware boot with this kernel at all.** Every
+result above is a build-time/compile-time verification. Whether UART5
+actually probes, whether the gauge answers a real HDQ transaction, what its
+actual `DEVICE_TYPE` is, and whether the stop-bit/break timing survives real
+silicon are all genuinely open until this is flashed and tested on the iPad.
+
 ## Sources
 
 - [Real J81 evidence and execution log](../docs/plans/2026-09-08-j81-bluetooth-battery-adt.md)

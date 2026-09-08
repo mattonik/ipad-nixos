@@ -51,6 +51,39 @@ let
     # is much easier to review as a diff.
     patch -d "$out" -p1 < ${./patches/0001-t7001-add-uart3-node.patch}
     patch -d "$out" -p1 < ${./patches/0002-t7001-air2-enable-uart3.patch}
+
+    # BAT-1 (docs/plans/2026-09-08-j81-bluetooth-battery-adt.md,
+    # research/j81-battery-hdq.md): a later audit found the "Samsung UART
+    # has no serdev support" conclusion behind BT-1's transport-only DTS
+    # above was wrong -- uart_add_one_port() already registers a serdev
+    # controller through the common serial core whenever the UART's DT
+    # node has a child. TI HDQ needs 2 stop bits, which the generic
+    # serdev API has no way to request even though the underlying tty
+    # layer already honors CSTOPB; this adds that one missing operation,
+    # mirroring the existing set_parity op exactly (same three-file
+    # shape: enum + controller op + public helper in serdev.h, the
+    # helper's dispatch in core.c, the real ktermios-based
+    # assert-then-verify implementation in serdev-ttyport.c).
+    patch -d "$out" -p1 < ${./patches/0003-serdev-add-stop-bit-selection.patch}
+
+    # BAT-2: the HDQ-over-UART frontend driver itself, reusing the
+    # existing bq27xxx core (struct bq27xxx_device_info,
+    # bq27xxx_battery_setup/teardown) rather than duplicating its
+    # power-supply property handling. Identifies the real chip via a
+    # live TI Control() DEVICE_TYPE readback at probe rather than
+    # trusting the ADT's "bq27540" compatible string, which is a chip
+    # *family* hint, not a specific silicon revision.
+    patch -d "$out" -p1 < ${./patches/0004-add-bq27xxx-hdq-uart-frontend.patch}
+
+    # BAT-3: describe and enable UART5 and the gauge child. Register
+    # base, IRQ, clock gate and the single AP GPIO34 pinmux entry were
+    # decoded from the same real J81 ADT capture and the same
+    # byte-identical-to-uart5-function-tx cross-check as BT-1's UART3
+    # numbers. Unlike serial3, the gauge ships as a real serdev child
+    # from the start -- BAT-2's driver needs one to bind to, and the
+    # serdev correction above means it will actually probe.
+    patch -d "$out" -p1 < ${./patches/0005-t7001-add-uart5-node.patch}
+    patch -d "$out" -p1 < ${./patches/0006-t7001-air2-enable-uart5-battery.patch}
   '';
   buildArgs = builtins.removeAttrs args [ "source" "hoolockConfig" "runCommand" ];
 in
