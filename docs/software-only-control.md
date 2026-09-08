@@ -11,6 +11,16 @@ but a working way to send it input. See "Round 10" below for the full
 transcript, including two overnight-bundled drivers (RTC, backlight)
 also confirmed working on real hardware in the same session.
 
+**Follow-up, same day**: with a working network link, further hardware
+testing no longer needs one-off hand-typed telnet sessions. `boot/ipad_console.py`
+(`nix develop -c python3 boot/ipad_console.py`) is a small menu-driven
+console over that same telnet link -- numbered tests (kernel info,
+network stats, backlight, RTC, dmesg, uptime/memory) plus a raw-command
+escape hatch, so hardware checks don't require remembering sysfs paths
+or shell syntax. New tests are meant to be added to it over time as more
+subsystems come online (see the file's own docstring for the two-line
+extension pattern).
+
 **Prior state (2026-09-07): Round 8, hardware-tested.** The
 `m1n1-usb-diagnostic` payload ran on real hardware and settled the
 question Round 7 left open. The fault was **asymmetric, not total**: the
