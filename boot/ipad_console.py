@@ -214,6 +214,30 @@ def action_usb_dmesg(shell: IPadShell) -> None:
     print(shell.run("dmesg | grep -iE 'dwc2|usb|gadget|ecm' | tail -n 30"))
 
 
+def action_bt_dmesg(shell: IPadShell) -> None:
+    # 20a0cc000 is UART3's own register base (see
+    # docs/plans/2026-09-08-j81-bluetooth-battery-adt.md's "BT-1") --
+    # included explicitly so a probe failure for *this* UART instance
+    # doesn't get lost among unrelated serial/tty noise from the console
+    # UART or other subsystems.
+    print(shell.run(
+        "dmesg | grep -iE '20a0cc000|serial3|ttysac3|samsung-uart|bluetooth|hci|bcm43' "
+        "| tail -n 30"
+    ))
+
+
+def action_tty_devices(shell: IPadShell) -> None:
+    # Confirms whether the kernel actually created a tty node for UART3
+    # (independent of Bluetooth-specific concerns) -- the first thing to
+    # check before anything HCI-related can be attempted at all.
+    print(shell.run("ls -la /dev/tty[A-Z]* 2>&1"))  # covers ttySAC*, ttyS*, etc. -- no overlap
+    print()
+    # "s3c2410_serial" is drivers/tty/serial/samsung_tty.c's own
+    # registered driver_name (checked in the source, not guessed) --
+    # ttySAC is just the /dev/ node prefix, a separate field.
+    print(shell.run("cat /proc/tty/driver/s3c2410_serial 2>&1 || echo '(no s3c2410_serial entry)'"))
+
+
 def action_uptime_mem(shell: IPadShell) -> None:
     print(shell.run("uptime"))
     print(shell.run("free 2>&1 || head -5 /proc/meminfo"))
@@ -234,6 +258,8 @@ ACTIONS: list[tuple[str, Callable[["IPadShell"], None]]] = [
     ("RTC: show date/time", action_rtc_show),
     ("Kernel log: last 40 lines", action_dmesg_tail),
     ("Kernel log: USB/gadget only", action_usb_dmesg),
+    ("Kernel log: UART3/Bluetooth only", action_bt_dmesg),
+    ("Bluetooth: UART3 tty device check", action_tty_devices),
     ("Uptime & memory", action_uptime_mem),
     ("Run a raw shell command", action_raw_command),
 ]
