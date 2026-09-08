@@ -585,16 +585,16 @@ applies here too; kept as a safety net rather than assumed unnecessary.
 available without hardware passes. No hardware boot attempt yet -- that
 is the immediate next step.
 
-### Overnight, 2026-09-08: bundled two already-working drivers on this same kernel (RTC, backlight) -- unrelated to USB, does not change any of the above
+### Overnight, 2026-09-08: bundled build-ready RTC/backlight drivers on this same kernel -- unrelated to USB
 
 While waiting for a hardware window, the project owner authorized
 bundling any driver that's "already exists, needs to get bundled only or
 similar low level effort," explicitly excluding new driver development
 and anything that would disrupt this USB work. A full survey (see
 `research/driver-gap.md`'s 2026-09-08 update for the complete
-per-subsystem breakdown) found touch and WiFi both need genuinely new
-driver/controller work (out of scope), and Bluetooth needs a new DT node
-plus firmware extraction (more than bundling) -- but RTC and backlight,
+per-subsystem breakdown) found touch and WiFi both need genuine new
+driver/controller work, and Bluetooth needs a new DT node plus firmware
+extraction -- but RTC and backlight,
 both on the same Apple PMIC, were already fully wired (enabled DT node,
 matching in-tree driver) and only blocked by the exact same
 `-Werror=return-type` class of GCC build bug already fixed once tonight
@@ -613,5 +613,7 @@ and the framebuffer-rename/deviceinfo-override checks on the rebuilt DTB
 and initramfs still pass identically. This changes the kernel `Image`
 hash but touches nothing USB-related (backlight and RTC are unrelated
 PMIC peripherals, not on the USB/DTB/CPU code paths this investigation
-touches) -- the payload the user will actually boot tomorrow now also has
-working RTC and backlight, at no cost to the USB test it exists for.
+touches). The payload now includes RTC and backlight support at no cost to the
+USB test it exists for. Neither peripheral is reported as working until the
+payload is tested on the physical iPad. The broader driver work was authorized
+later on 2026-09-08 and now follows the dated plan in `docs/plans/`.

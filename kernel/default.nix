@@ -92,12 +92,12 @@ buildLinux (args // {
     IPV6 = yes;
     NETDEVICES = yes;
 
-    # --- WiFi (Broadcom BCM4354 via brcmfmac) ---
+    # --- WiFi endpoint (BCM4350 PCIe; T7000 host path still missing) ---
     WLAN = yes;
     CFG80211 = module;
     BRCMFMAC = module;
 
-    # --- Bluetooth (BCM4354 via btbcm) ---
+    # --- Bluetooth (BCM4350-family combo radio on UART3) ---
     BT = module;
     BT_HCIUART = module;
     BT_BCM = module;

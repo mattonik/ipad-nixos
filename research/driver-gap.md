@@ -1,777 +1,148 @@
-# Driver Gap Analysis: iPad Air 2 (A8X) Hardware
-
-Per-subsystem analysis of iPad Air 2 hardware chips and their Linux driver status.
-Research conducted February 2026 and revalidated against the project's Linux
-6.19.3 build on 2026-09-02.
-
-> **Current implementation note:** the historical detail below is useful
-> protocol and hardware research, but must not be read as proof that a driver
-> can probe on J81. The generated J81 DTB has no touch/SPI peripheral,
-> Wi-Fi/SDIO, Bluetooth, or USB-controller node, and the initramfs has no
-> module tree. In particular, upstream `apple_z2` is a Touch Bar driver with
-> only `apple,j293-touchbar` and `apple,j493-touchbar` bindings; it is a
-> BCM5976 protocol reference, not a direct iPad Air 2 driver.
-
-> **2026-09-08 update, verified directly against real kernel source** (the
-> historical 5.19-rc1 tree and the newer Hoolock 7.3-rc1 tree now being
-> evaluated for the T7001 USB bug -- see `research/t7001-usb-next.md`; the
-> built `t7001-j81.dtb` was decompiled and inspected, not assumed):
->
-> - **RTC and backlight, both Apple PMIC-integrated, are now confirmed
->   working** on the Hoolock kernel -- not listed as their own rows below
->   since they were folded into "Battery/Power" and weren't tracked
->   separately in the original February research, but worth calling out:
->   the DTB already has an enabled (`status="okay"`) `i2c@20a110000` node
->   with `pmic@3c` → `rtc@5c0` (`apple,arabela-pmic-rtc`) and
->   `backlight@600` (`apple,arabela-pmic-bl`) children, both matched by
->   in-tree drivers (`rtc-apple-pmic.c`, `apple_pmic_bl.c`).
->   `CONFIG_RTC_DRV_APPLE_PMIC` was already enabled in Hoolock's own
->   published config; `CONFIG_BACKLIGHT_APPLE_PMIC` was blocked only by a
->   one-file GCC build bug (`apple_pmic_bl_get_brightness()`'s `switch`
->   over its 2-value enum had no `default` case, tripping
->   `-Werror=return-type`) -- fixed with a 2-line `default: return
->   -EINVAL;` patch in `kernel/hoolock.nix`, not a workaround. Both are
->   genuine "already exists, just needed bundling" cases per the project
->   owner's 2026-09-08 authorization to pursue exactly that class of work
->   without touching the ongoing USB investigation.
-> - **Touch (row below) reconfirmed blocked, with a sharper reason than
->   "no DT/firmware"**: there is no SPI controller node anywhere in
->   `t7001.dtsi`/`t7001-air2.dtsi`/`t7001-j81.dts` in *either* kernel tree
->   (only PMGR power-domain placeholders `ps_spi0`-`ps_spi3`), and the one
->   in-tree SPI master driver (`spi-apple.c`) only matches
->   `apple,t8103-spi`/`apple,spi` (M-series Macs), not this SoC's
->   Samsung-derived SPI block. `apple_z2`'s match table is exactly as
->   this doc already said: Touch Bar bindings only. This needs real
->   reverse-engineering and driver work (SPI controller + touch driver +
->   firmware/calibration), not bundling.
-> - **WiFi reconfirmed blocked, and the gap is bigger than "needs
->   firmware+DT" implies**: no Apple SDIO/MMC host-controller driver
->   exists in `drivers/mmc/host/` in either tree at all (every
->   `sdhci-*`/`dw_mmc-*` file checked; none Apple-specific), and the DTB
->   has no `mmc@`/SDIO node. `brcmfmac` and the BCM4354 chip ID are both
->   present and correct, but getting there needs a brand-new host
->   controller driver first -- squarely the kind of new driver
->   development the owner's bundling authorization explicitly excludes.
-> - **Bluetooth (same BCM4354 combo chip, different interface) is
->   closer, but still real work, not bundling**: `CONFIG_BT_BCM`,
->   `CONFIG_BT_HCIUART`/`_SERDEV`/`_H4`/`_BCM` are already enabled in
->   Hoolock's config, and `hci_bcm.c` already has an exact match
->   (`brcm,bcm43540-bt` → `bcm4354_device_data`). But `t7001.dtsi` defines
->   only one UART node (the console); the other 8 UART power-domains in
->   `t7001-pmgr.dtsi` have no actual UART/serial DT node, so the BT UART
->   instance, reset/wake GPIOs, and power sequencing were never wired up,
->   and firmware still needs extracting from iOS. The Kconfig lift is
->   done and the chip-specific code match already exists, making this the
->   nearest of the three wireless/touch gaps -- but adding a whole new DT
->   node plus firmware extraction is integration work, not a bundle.
-> - **Battery** (row below): `CONFIG_BATTERY_BQ27XXX`,
->   `_BQ27XXX_HDQ`, `CONFIG_W1`, `CONFIG_W1_MASTER_UART` are already
->   enabled in Hoolock's config -- the full Kconfig chain for this
->   standard, public-datasheet TI part is done. Only a DT node (in
->   `t7001-air2.dtsi`) and the HDQ GPIO pin identification are missing.
->   Checked whether that data is actually available: a real Apple ADT
->   dump for the T7001-family board *is* present in this environment
->   (`/private/tmp/adt_collection/a8/J82.adt`, PongoOS's own `dt`-command
->   output format -- J82 is the cellular sibling of our J81 board, same
->   PMIC/battery circuit expected). It confirms the exact chip match:
->   `compatible = "gas-gauge,bq27540.gas-gauge,hdq"` (J82.adt:1475-1476),
->   with a `function-battery_swi` property carrying the HDQ single-wire
->   line's pin reference, encoded in Apple's proprietary
->   `function-*`/"OIPG" GPIO-descriptor binary format (J82.adt:1478).
->   Decoding that format correctly to get an exact, correct pin number is
->   real low-level reverse-engineering, not "already exists, needs
->   bundling," and a wrong guess would mean a boot-time DT node driving
->   the wrong physical pin with no way to catch that without a hardware
->   test -- so not attempted overnight without the user available to
->   review it. The concrete next step for whoever picks this up: decode
->   `function-battery_swi`'s payload (`19 00 00 00 4f 49 50 47 22 00 00
->   00 02 01 00 00`) against Apple's known GPIO function-descriptor
->   layout, cross-check against `t7001-air2.dtsi`'s existing GPIO
->   controller node, then add the fuel-gauge DT node and test on
->   hardware.
-
-## Summary Matrix
-
-| Subsystem | Chip | Linux Driver | Status | Effort |
-|-----------|------|-------------|--------|--------|
-| Display | LG LP097QX2 (eDP) | simplefb / simpledrm | Working -- Linux boots to a live interactive shell (2026-09-07) | Low |
-| RTC | Apple PMIC (arabela) | rtc-apple-pmic | **Bundled 2026-09-08**: driver + enabled DT node, already worked | Trivial |
-| Backlight | Apple PMIC (arabela) | apple_pmic_bl | **Bundled 2026-09-08**: driver + enabled DT node; fixed a GCC build bug | Trivial |
-| Touch | Broadcom BCM5976 | apple_z2 (reference only) | Blocked: no SPI controller node/driver on this SoC at all (confirmed against real kernel source, 2026-09-08) | High |
-| WiFi | Broadcom BCM4354 (Murata module) | brcmfmac | Blocked: no Apple SDIO/MMC host driver exists in-tree at all (confirmed 2026-09-08) | High |
-| GPU | PowerVR GXA6850 (Series 6XT) | pvr (Mesa) | Experimental | Very High |
-| Audio | Cirrus Logic 338S1213 | None known | None | High |
-| Battery/Power | Dialog 343S0675 PMIC + TI BQ27546 (HDQ) | bq27xxx_battery | Kconfig chain fully enabled (2026-09-08); needs a DT node + ADT-sourced HDQ pin ID | Low, once the pin is known |
-| USB | Synopsys DWC2 OTG | dwc2 | Working RX, TX-to-host bug under active investigation (Rounds 7-9) | Medium |
-| Bluetooth | Broadcom (in Murata module) | btbcm / hci_uart | Kconfig + exact chip match already done (2026-09-08); blocked on a new UART DT node + firmware extraction | Medium-High |
-| Sensors | Unknown (likely InvenSense/Bosch) | Unknown | Unidentified; no peripheral nodes | Medium |
-| Storage/NAND | Apple proprietary FTL | None | None | Very High |
-
----
-
-## 1. Display
-
-### Hardware
-
-- **Panel**: LG LP097QX2-SPAV
-- **Resolution**: 2048 x 1536 (264 PPI), 9.7 inch IPS LCD
-- **Interface**: eDP (embedded DisplayPort), not MIPI DSI
-- **Display controller**: Integrated into the A8X SoC, Apple proprietary
-- **Panel connector**: 42-pin eDP, 4 lanes
-
-### Linux Driver Status
-
-**Status: Working (basic framebuffer)**
-
-The display works via `simplefb` (simple framebuffer) or `simpledrm` (DRM simple display
-driver). This approach relies on iBoot (Apple's second-stage bootloader) having already
-initialized the display pipeline before pongoOS takes over. The framebuffer memory address,
-resolution, and pixel format are passed to Linux via the device tree.
-
-What works:
-- Static framebuffer output (console, basic GUI rendering)
-- Resolution and color depth as configured by iBoot
-
-What does not work:
-- No dynamic display mode switching
-- No power management (cannot turn display off/on programmatically)
-- No hardware acceleration (compositing, overlays, scaling)
-- Backlight control: device tree nodes for backlight are being added in Linux 6.15 patches
-
-### Native DRM Driver
-
-A proper DRM/KMS driver for the Apple display controller does not exist for A8X. Writing one
-requires reverse engineering Apple's proprietary display pipeline, including:
-- eDP PHY initialization
-- Display timing controller registers
-- Pixel pipeline configuration
-- DRAM framebuffer allocation and scanout
-
-Asahi Linux has done this work for M-series SoCs (the DCP driver), but the A8X display
-controller predates the DCP architecture and uses a different register interface.
-
-### Estimated Effort
-
-Low for simplefb (already working). Very High for a native DRM driver.
-
-### External Controller Option
-
-Third-party eDP controller boards exist that can drive the LP097QX2 panel from HDMI input,
-confirming the panel itself works with standard eDP signaling. This is relevant only for
-hardware testing, not for in-situ Linux use.
-
-Sources:
-- https://hackaday.com/2019/07/18/put-those-ipad-displays-to-work-with-this-edp-adapter/
-- https://www.phoronix.com/news/Apple-Silicon-DT-3-Linux-6.15
-- https://www.kernel.org/doc/Documentation/devicetree/bindings/display/simple-framebuffer.txt
-
----
-
-## 2. Touch
-
-### Hardware
-
-- **Controller**: Broadcom BCM5976 ("Cumulus")
-- **Board designation**: U4100/U4150 (iPad Air 2)
-- **Package**: 63-pin BGA
-- **Interface**: SPI (to application processor)
-- **Capabilities**: Multi-touch capacitive digitizer
-
-The BCM5976 is used across iPhone 5 through 6 Plus, iPad Air 1/2, iPad Mini 1-4, and iPad
-5th gen (2017). It is a proprietary Broadcom touch controller with no public datasheet.
-
-### Linux Driver Status
-
-**Status: no direct driver. `apple_z2` is a protocol reference, not a J81 binding.**
-
-No dedicated Linux driver exists for the BCM5976. However, the situation has improved
-dramatically since the initial research:
-
-- **apple_z2 kernel driver (Linux 6.15)**: Asahi Linux merged a driver for the Z2
-  protocol, but its current upstream match table is limited to the J293 and J493 Mac
-  Touch Bars. Its frame parsing, firmware-loading and calibration code are valuable
-  references; BCM5976 compatibility must be demonstrated on hardware before adding an
-  iPad binding.
-- **Project Sandcastle hx-touchd**: Corellium's userspace daemon for iPhone 7 uses Z2
-  commands (0xE1-0xEE range) consistent with the apple_z2 driver's command set. The touch
-  controller was described as "not very complex to interface with."
-- **lemonjesus iPad touch project**: A Raspberry Pi Pico-based project that successfully
-  drives an iPad 3 touchscreen by replaying captured Z2 initialization sequences. Confirms
-  the Z2 protocol name and approach for older iPad models.
-
-### Z2 Protocol Summary
-
-- 16-byte command frames with 2-byte checksum
-- Read interrupt command: 0xEB + counter + padding + checksum
-- Control commands: 0xE1-0xEE (firmware upload, status, wake)
-- Finger reports: 32 bytes per finger with abs_x/y, rel_x/y, tool_major/minor,
-  orientation, touch_major/minor, pressure (identical to BCM5974 format)
-- SPI max frequency: ~11.5 MHz
-- Firmware: Z2FW container format, uploaded during initialization
-- Calibration: per-device blob, loaded during firmware upload
-
-See research/touch-re.md for complete protocol documentation.
-
-### Path to Working
-
-1. **Analyze IPSW firmware** — extract AppleMultitouchSPI.kext and multitouch firmware from
-   iPad Air 2 IPSW using ipsw tool + Ghidra with ghidra_kernelcache framework
-2. **Verify protocol** — use lemonjesus Pico approach to capture and replay Z2 init sequence
-3. **Write A8X SPI driver** — Samsung-derived SPI controller (not the M-series apple,spi);
-   Corellium wrote one for A10 in linux-sandcastle
-4. **Adapt apple_z2 driver** — add iPad Air 2 device tree bindings, BCM5976-specific quirks
-5. **Extract firmware from IPSW** — adapt Asahi Linux multitouch.py extraction pipeline
-
-### Estimated Effort
-
-Medium-High (reduced from High). The Z2 protocol is now documented through three independent
-sources (apple_z2 kernel driver, hx-touchd, lemonjesus project). The remaining work is
-A8X SPI controller bring-up and BCM5976-specific adaptation.
-
-Sources:
-- https://patchwork.kernel.org/project/linux-arm-kernel/patch/20241128-z2-v2-2-76cc59bbf117@gmail.com/
-- https://github.com/corellium/projectsandcastle/tree/master/hx-touchd
-- https://github.com/lemonjesus/ipad-touch-screen
-- https://github.com/AsahiLinux/asahi-installer/blob/main/asahi_firmware/multitouch.py
-- https://github.com/torvalds/linux/blob/master/drivers/input/mouse/bcm5974.c
-
----
-
-## 3. WiFi
-
-### Hardware
-
-- **Module**: Murata 339S02541
-- **Chipset**: Broadcom BCM4354 (802.11ac, 2x2 MIMO)
-- **Interface**: SDIO (to application processor)
-- **Bands**: 2.4 GHz and 5 GHz
-- **Bluetooth**: Integrated (combo WiFi+BT module)
-
-The Murata module is a shielded package containing the Broadcom BCM4354 SoC, which handles
-both WiFi and Bluetooth. The WiFi portion connects via SDIO, the Bluetooth portion via UART.
-
-### Linux Driver Status
-
-**Status: the chip driver exists, but platform exposure and firmware are both blockers.**
-
-The `brcmfmac` driver in the Linux kernel supports the BCM4354 chipset. The driver was
-introduced in kernel 2.6.39 and has been continuously maintained.
-
-What exists:
-- `brcmfmac` kernel module: supports BCM4354 over SDIO
-- Basic driver infrastructure for initialization, scanning, association
-
-What is missing:
-- **SDIO host and board description**: The current J81 DTB has no SDIO host or Murata
-  module node, so `brcmfmac` cannot discover the chip. Its clocks, pins, reset and power
-  sequence must be identified before firmware work can be tested.
-- **Initramfs module closure**: `brcmfmac` and `cfg80211` are kernel modules, while the
-  current initramfs intentionally has no `/lib/modules` tree.
-- **Firmware**: The BCM4354 requires proprietary firmware blobs to operate. The specific
-  firmware variant for Apple's Murata module is not in the linux-firmware repository.
-  Apple-specific firmware files must be extracted from iOS.
-- **NVRAM**: Each BCM4354 variant requires a board-specific NVRAM configuration file that
-  specifies antenna configuration, regulatory domain, and calibration data. The Apple NVRAM
-  format may differ from standard Broadcom NVRAM.
-- **CLM blob**: Country Locale Map blob that defines regulatory limits. Tightly linked to each
-  model variant, making generic distribution impractical.
-
-### Reference: iPhone 7 WiFi
-
-Project Sandcastle and postmarketOS both achieved working WiFi on iPhone 7 (which uses a
-different Broadcom chip, BCM4355). The approach:
-1. Extract firmware from iOS IPSW
-2. Convert firmware to brcmfmac format
-3. Create appropriate NVRAM file
-4. Place files in `/lib/firmware/brcm/`
-
-The same approach should work for iPad Air 2 with BCM4354-specific firmware.
-
-### Path to Working
-
-1. Extract BCM4354 firmware from iPad Air 2 iOS firmware (IPSW)
-2. Identify the SDIO bus configuration in the A8X device tree
-3. Create the NVRAM configuration file for the Murata 339S02541 module
-4. Test with brcmfmac driver, debug any Apple-specific initialization quirks
-5. brcmfmac patches for Apple T2 and M1 platforms exist upstream and may contain relevant
-   Apple-specific code paths
-
-### Estimated Effort
-
-Medium. The driver exists and the chip is supported. The main work is firmware extraction
-and NVRAM configuration. Prior art from iPhone 7 and Apple T2 Mac Linux work demonstrates
-the process.
-
-Sources:
-- https://wireless.wiki.kernel.org/en/users/drivers/brcm80211
-- https://wiki.debian.org/brcmfmac
-- https://lwn.net/Articles/879910/
-- https://www.spinics.net/lists/linux-wireless/msg231113.html
-
----
-
-## 4. GPU
-
-### Hardware
-
-- **GPU**: Imagination Technologies PowerVR GXA6850
-- **Architecture**: Rogue, Series 6XT
-- **Configuration**: 8 clusters (two GX6450 halves), Apple-customized ("A" suffix)
-- **Shader cores**: 8 USC (Unified Shading Clusters)
-- **API support (iOS)**: OpenGL ES 3.0, Metal
-- **Manufacturing**: TSMC 20nm (integrated in A8X SoC)
-
-The "GXA6850" designation indicates Apple customization of the standard Imagination GX6450
-design, doubled to 8 clusters. This is the most powerful mobile GPU from late 2014.
-
-### Linux Driver Status
-
-**Status: Experimental (Mesa PVR driver exists for Rogue, GXA6850 not listed as supported)**
-
-Imagination Technologies has released an open-source Vulkan driver for PowerVR Rogue GPUs
-in Mesa. As of Mesa 25.3:
-
-**Actively supported GPUs:**
-- AXE-1-16M (A-Series)
-- BXM-4-64 (B-Series)
-- BXS-4-64 (B-Series) -- Vulkan 1.0 conformant
-
-**Partially supported:**
-- GX6250 (Series 6XT) -- various core-specific features unimplemented, instability expected
-
-**Unsupported (listed):**
-- GX6650 (Series 6XT)
-- Various Series 7XE, 8XE, B-Series variants
-
-**Not listed at all:**
-- GXA6850 -- Apple's custom variant is not mentioned in Mesa documentation
-
-The Mesa PVR Vulkan driver requires the environment variable
-`PVR_I_WANT_A_BROKEN_VULKAN_DRIVER=1` for non-conformant GPUs.
-
-### Kernel DRM Driver
-
-The PowerVR kernel-space DRM driver was merged in Linux 6.8. It provides:
-- GEM buffer management
-- Job submission
-- Power management for PowerVR GPUs
-
-However, the kernel driver targets specific SoC integrations. Apple's integration of the
-PowerVR GPU into the A8X is not supported by the upstream kernel driver, which targets
-platforms like MediaTek MT8173 and Texas Instruments AM62x.
-
-### Assessment
-
-The GXA6850 has three fundamental problems for Linux GPU acceleration:
-
-1. **Apple customization**: The "A" in GXA6850 means Apple made modifications to the standard
-   Imagination design. Register offsets, clock gating, power islands, or firmware interfaces
-   may differ from the reference design.
-
-2. **No kernel DRM support for Apple SoC**: The PowerVR kernel driver does not include an
-   Apple platform backend. Writing one requires reverse engineering the A8X's GPU MMIO
-   interface, power management, and memory management (IOMMU/DART) integration.
-
-3. **Mesa driver immaturity for Series 6XT**: Even the GX6250 (the most similar supported
-   GPU) is only partially supported with expected instability.
-
-### Realistic Expectations
-
-- **Software rendering (llvmpipe)**: The realistic near-term option. Mesa's llvmpipe provides
-  OpenGL via CPU rendering. Performance will be limited but functional for basic desktop use.
-- **Vulkan via Mesa PVR**: Theoretically possible but requires kernel DRM driver work for the
-  Apple A8X platform, plus Mesa PVR driver support for the GXA6850 variant. This is a large
-  undertaking.
-- **Proprietary blob**: Imagination previously provided binary-only GPU drivers for some
-  platforms. No such driver exists for the A8X Linux combination.
-
-### Estimated Effort
-
-Very High. GPU acceleration on iPad Air 2 Linux is the single hardest driver challenge.
-Software rendering is the pragmatic path. Hardware acceleration would require months of
-reverse engineering and driver development.
-
-Sources:
-- https://docs.mesa3d.org/drivers/powervr.html
-- https://www.notebookcheck.net/Imagination-PowerVR-GXA6850.128993.0.html
-- https://en.wikipedia.org/wiki/Apple_A8X
-- https://blog.imaginationtech.com/the-complete-guide-to-powervr-rogue-gpus-specifications-features-api-support/
-- https://www.phoronix.com/news/PowerVR-Mesa-More-GPUs
-
----
-
-## 5. Audio
-
-### Hardware
-
-- **Audio codec**: Cirrus Logic 338S1213
-- **Amplifier**: Maxim Integrated MAX98721BEWV (boosted class amplifier)
-- **Interface**: Likely I2S (audio data) + I2C/SPI (control)
-- **Speakers**: Stereo (dual speaker design in iPad Air 2)
-
-The 338S1213 is an Apple part number for a Cirrus Logic audio codec. Apple has used Cirrus
-Logic codecs across its entire product line for over a decade. The exact Cirrus Logic public
-model number corresponding to 338S1213 is not publicly documented.
-
-### Linux Driver Status
-
-**Status: None**
-
-No Linux driver exists for the 338S1213 audio codec. Key issues:
-
-- The internal Cirrus Logic model number is unknown, making it impossible to map to existing
-  ALSA/ASoC codec drivers
-- Apple uses proprietary register configurations for their Cirrus Logic codecs
-- Cirrus Logic has upstreamed Linux drivers for some of their codecs (CS42L42, CS42L51,
-  CS35L56, etc.), but the specific codec in iPad Air 2 is not covered
-- The audio path on Apple SoCs uses a custom audio DMA engine, not a standard I2S controller
-- On Apple Silicon Macs, Asahi Linux has done extensive work on Cirrus Logic codec drivers
-  (CS42L83, CS42L84), but these are newer chips with different register sets
-
-### Path to Working
-
-1. Identify the Cirrus Logic public model number for 338S1213 (possibly through iOS firmware
-   analysis or die photography)
-2. Reverse engineer the A8X audio DMA controller interface
-3. Write an ASoC machine driver that ties together: CPU DAI (A8X audio controller), codec
-   driver (338S1213), and platform DMA
-4. This is a three-layer driver stack with no existing components for the A8X
-
-### Estimated Effort
-
-High. Requires reverse engineering both the audio codec register set and the A8X audio DMA
-engine. No prior work exists for A8X audio specifically.
-
-Sources:
-- https://www.ifixit.com/Teardown/iPad+Air+2+Teardown/30592
-- https://www.eeherald.com/section/news/onws20141102003.html
-- https://github.com/CirrusLogic/linux-drivers
-
----
-
-## 6. Battery and Power Management
-
-### Hardware
-
-- **PMIC**: Apple 343S0675 (Dialog Semiconductor origin, U8100 board designation)
-  - WiFi model: 343S0675
-  - Cellular model: 343S0674
-- **Fuel gauge**: Texas Instruments BQ27546-G1 (single-cell Li-Ion battery gauge)
-- **Charging IC**: CBTL1610A2 "Tristar" (USB charging/identification IC)
-- **Battery**: 7340 mAh, 3.76V, single cell Li-polymer
-
-Apple acquired Dialog Semiconductor's PMIC division in 2018 ($600M deal), transferring 300+
-employees and the technology to Apple. The 343S0675 is a Dialog-designed chip with Apple
-part numbering.
-
-### Linux Driver Status
-
-**Status: None (PMIC), Partial potential (fuel gauge)**
-
-**PMIC (343S0675):**
-No Linux driver exists. The Dialog DA9xxx series has Linux kernel support (DA9052, DA9062,
-DA9063), but the Apple 343S0675 is a custom variant with unknown register compatibility.
-Without PMIC driver support:
-- No voltage regulation control
-- No power rail management
-- No thermal management
-- The device relies on iBoot's PMIC initialization (which persists until power cycle)
-
-**Fuel gauge (BQ27546-G1):**
-Texas Instruments fuel gauge drivers exist in the Linux kernel (`bq27xxx_battery` driver
-family). The BQ27546 is a standard TI part with a public datasheet. It communicates over
-I2C (or HDQ single-wire protocol). If the I2C bus is accessible from Linux, this chip
-could potentially report battery level and health.
-
-**Charging IC (Tristar CBTL1610A2):**
-The Tristar chip handles USB identification and charging negotiation. No Linux driver exists.
-Without it, the device cannot negotiate charging current with USB power sources. However,
-basic USB power delivery (500mA from USB 2.0) may work without Tristar driver support.
-
-### Estimated Effort
-
-High for PMIC (custom chip, no documentation). Low-Medium for fuel gauge (standard TI part
-with existing driver, if I2C bus is accessible). Medium for Tristar (would need reverse
-engineering).
-
-Sources:
-- https://microsolderingsupply.com/index.php?route=product/product&product_id=271
-- https://www.ti.com/product/BQ27546-G1
-- https://eepower.com/news/apple-acquires-pmic-technology-and-employees-from-dialog-semi/
-
----
-
-## 7. USB
-
-### Hardware
-
-- **Controller**: Synopsys DesignWare DWC2 OTG (USB 2.0)
-- **External connector**: Lightning (proprietary)
-- **Capabilities**: USB 2.0 High-Speed (480 Mbps), OTG (host + device modes)
-- **Authentication**: Lightning connector includes an authentication chip
-
-The Synopsys DWC2 OTG controller is used across all Apple SoCs from A-series through at
-least A11. It was identified through iOS BootROM reverse engineering (the BootROM's USB
-stack interfaces with the DWC2 registers directly).
-
-### Linux Driver Status
-
-**Status: Likely working (DWC2 driver exists, Apple platform glue needed)**
-
-The Linux kernel has a well-maintained `dwc2` driver (`drivers/usb/dwc2/`). Corellium's
-M1 Linux kernel fork included Synopsys DWC3 controller support for Apple platforms, and the
-DWC2 is the USB 2.0 predecessor with similar register conventions.
-
-What exists:
-- `CONFIG_USB_DWC2=y` kernel driver: comprehensive DWC2 OTG support
-- Device mode (USB gadget): device presents itself as a USB device to host
-- Host mode: device acts as a USB host (with Lightning-to-USB adapter)
-- OTG role switching
-
-What is needed:
-- Platform-specific initialization for the A8X (clock enable, PHY configuration)
-- Device tree integration (register addresses, interrupt mapping)
-- Lightning authentication may be needed for certain accessories (but not for basic USB
-  communication after checkm8 exploit)
-
-Project Sandcastle confirmed USB working on iPhone 7 (A10), which uses the same DWC2
-controller family. pongoOS itself uses the DWC2 controller for USB communication, confirming
-hardware functionality.
-
-### USB Gadget Mode (Important for iPad Linux)
-
-USB gadget mode is critical for iPad Linux because it enables:
-- USB Ethernet (RNDIS/ECM): network connectivity to host computer
-- USB serial (CDC ACM): serial console over USB
-- USB mass storage: expose ramdisk or block device to host
-
-This is likely the primary network interface for initial bring-up, since WiFi requires
-additional firmware work.
-
-### Estimated Effort
-
-Low-Medium. The driver exists and the hardware is known to work (pongoOS uses it). Main work
-is platform glue and device tree integration.
-
-Sources:
-- https://docs.kernel.org/driver-api/usb/dwc3.html
-- https://github.com/googleprojectzero/ktrw/blob/master/ktrw_gdb_stub/source/usb/synopsys_otg.c
-- https://github.com/corellium/linux-m1/commit/a3ae5f475cac7022dd8d55d321ccd631cc1535b1
-
----
-
-## 8. Bluetooth
-
-### Hardware
-
-- **Chip**: Broadcom BCM4354 (combo WiFi+BT in Murata 339S02541 module)
-- **Interface**: UART (to application processor)
-- **Bluetooth version**: 4.0 (with BLE support)
-
-The Bluetooth controller is integrated into the same Broadcom chip as WiFi. It connects
-to the application processor via a separate UART interface.
-
-### Linux Driver Status
-
-**Status: Partial (driver exists, firmware is the blocker)**
-
-The Linux kernel's `btbcm` and `hci_uart` drivers support Broadcom Bluetooth chipsets.
-For BCM4354-based Bluetooth:
-
-What exists:
-- `hci_bcm` UART driver in the Linux kernel
-- `btbcm` firmware loading framework
-- Bluetooth HCI protocol support
-
-What is missing:
-- **Firmware**: Proprietary Broadcom Bluetooth firmware must be extracted from iOS
-- **UART configuration**: The specific UART port, baud rate, and flow control settings for
-  the A8X Bluetooth path need to be identified
-- **WiFi co-dependency**: Some Broadcom combo chips require WiFi firmware to be loaded
-  before Bluetooth will initialize properly
-
-### Reference
-
-postmarketOS has Bluetooth working on iPhone 7 (different Broadcom chip, BCM4355). The
-approach involves extracting firmware and configuring the UART interface.
-
-### Estimated Effort
-
-Medium. Similar to WiFi: the driver infrastructure exists, but firmware extraction and
-platform-specific UART configuration are needed.
-
-Sources:
-- https://wiki.gentoo.org/wiki/Broadcom_Bluetooth
-- https://github.com/winterheart/broadcom-bt-firmware
-
----
-
-## 9. Sensors
-
-### Hardware
-
-The iPad Air 2 contains several sensors, though exact chip models are not fully documented
-in public teardowns:
-
-- **Accelerometer + Gyroscope**: Likely an InvenSense or Bosch 6-axis IMU
-  - Apple M8 motion coprocessor (NXP LPC18B1UK) aggregates sensor data
-  - The M8 communicates with the A8X over I2C or SPI
-- **Ambient Light Sensor (ALS)**: Unknown vendor, likely on I2C
-- **Barometer**: Unknown vendor
-- **Magnetometer**: Unknown vendor (if present)
-- **Touch ID**: Fingerprint sensor connected via SPI to the Secure Enclave (not accessible
-  from application processor without SEP cooperation)
-
-### Linux Driver Status
-
-**Status: Unknown**
-
-No specific driver work has been done for iPad Air 2 sensors. However:
-
-- If the sensors are standard InvenSense (MPU-6xxx) or Bosch (BMI160, BMG160) parts, Linux
-  IIO drivers exist for them
-- The M8 motion coprocessor adds a layer of abstraction: the A8X may not talk to sensors
-  directly, instead receiving processed data from the M8 via I2C/SPI
-- If the M8 is in the path, a driver for the M8's protocol is needed (proprietary, no
-  documentation)
-
-### Path to Working
-
-1. Identify exact sensor chips via die photography or iOS driver analysis
-2. Determine whether the A8X communicates with sensors directly or via the M8 coprocessor
-3. If direct: use existing IIO drivers for the identified chips
-4. If via M8: reverse engineer the M8 communication protocol
-
-### Estimated Effort
-
-Medium. If sensors are accessible directly on I2C with standard chip IDs, existing drivers
-may work with minimal effort. If the M8 coprocessor is in the path, effort increases
-significantly.
-
-Sources:
-- https://www.ifixit.com/Teardown/iPad+Air+2+Teardown/30592
-- https://www.eeherald.com/section/news/onws20141102003.html
-
----
-
-## 10. Storage / NAND
-
-### Hardware
-
-- **NAND flash**: SK Hynix (16/64/128GB depending on model)
-- **Controller**: Apple proprietary NAND controller (integrated in A8X)
-- **Flash Translation Layer**: Apple proprietary (derived from Samsung Whimory FTL)
-- **Encryption**: Hardware AES-256 encryption, UID-keyed, between NAND and DRAM
-- **File system**: APFS (on iOS 10.3+) or HFS+ (older iOS)
-
-### Linux Driver Status
-
-**Status: None**
-
-Apple's NAND storage subsystem is one of the most difficult components to support on Linux:
-
-**The FTL problem:**
-Apple uses a proprietary Flash Translation Layer originally based on Samsung's Whimory FTL
-(reverse engineered by the openiBoot project for much older devices). The FTL has two layers:
-- VFL (Virtual Flash Layer): remaps bad blocks, presents error-free view to upper layers
-- FTL proper: translates logical block addresses to physical NAND pages
-
-Modern Apple devices (A8X era) use an evolved version of this FTL. It is not NVMe or eMMC
-compliant. The A8X has a custom NAND controller with a proprietary register interface.
-
-**The encryption problem:**
-A hardware AES-256 engine sits in the DMA path between NAND and DRAM. Every block is
-encrypted with keys derived from the device's hardware-fused UID. Without the correct
-keys (which are not readable, only usable through the AES engine), the NAND contents
-are unreadable.
-
-Even if a Linux NAND driver were written, the data on the NAND would be encrypted and
-inaccessible without cooperation from the AES engine and knowledge of the key hierarchy.
-
-**The practical solution: Do not use internal NAND.**
-All existing Linux-on-iPhone/iPad projects avoid the NAND entirely:
-- Boot from initramfs (everything in RAM)
-- Use USB networking for file transfer
-- Use NFS root over USB Ethernet
-- On A11 devices, HoolockLinux has tools for internal storage access (but this appears to
-  be device-specific and not documented for A8X)
-
-### Estimated Effort
-
-Very High. Even with a working NAND driver, the encryption layer makes the existing iOS
-data inaccessible. For Linux use, the practical approach is to:
-1. Boot entirely from ramdisk (initramfs)
-2. Use USB Ethernet for network storage
-3. Possibly use raw NAND access (bypassing FTL) to create a Linux partition, but this
-   risks bricking the device if the FTL metadata is corrupted
-
-Sources:
-- https://www.theiphonewiki.com/wiki/NAND
-- https://news.ycombinator.com/item?id=12979195
-- http://esec-lab.sogeti.com/posts/2012/06/28/low-level-ios-forensics.html
-
----
-
-## Overall Assessment
-
-### What Works Today (with existing code)
-
-| Subsystem | Status | Notes |
-|-----------|--------|-------|
-| CPU (3x Typhoon cores) | Working | Mainline kernel supports A8X via device tree |
-| UART/serial | Working | Samsung S3C-compatible, mainline driver |
-| AIC (interrupt controller) | Working | Upstreamed driver (from Asahi Linux) |
-| GPIO/pinctrl | Working | Upstreamed driver |
-| Watchdog | Working | Upstreamed driver |
-| Display (framebuffer) | Working | simplefb, depends on iBoot initialization |
-| USB (basic) | Likely working | DWC2 driver exists, needs platform glue |
-
-### What Could Work with Moderate Effort
-
-| Subsystem | Status | Notes |
-|-----------|--------|-------|
-| WiFi | Needs firmware | brcmfmac driver exists, extract firmware from iOS |
-| Bluetooth | Needs firmware | hci_bcm driver exists, extract firmware from iOS |
-| Battery level | Needs testing | TI BQ27546 has Linux driver, if I2C accessible |
-| USB gadget | Needs testing | DWC2 gadget mode for USB networking |
-
-### What Requires Significant Reverse Engineering
-
-| Subsystem | Status | Notes |
-|-----------|--------|-------|
-| Touch | Z2 protocol documented | Adapt apple_z2 driver + A8X SPI controller |
-| Audio | No driver | Unknown Cirrus Logic codec, custom audio DMA |
-| PMIC | No driver | Custom Dialog chip 343S0675 |
-| Sensors | Unknown | May work if directly on I2C, problematic if via M8 |
-
-### What Is Effectively Blocked
-
-| Subsystem | Status | Notes |
-|-----------|--------|-------|
-| GPU acceleration | Experimental at best | PowerVR GXA6850 not supported in Mesa PVR |
-| Internal NAND storage | Proprietary + encrypted | Use ramdisk/NFS instead |
-| Camera | No driver | Not investigated, low priority for workstation use |
-| Cellular (LTE model) | No driver | Not investigated, low priority |
-| Touch ID | SEP-locked | Requires SEP cooperation, not feasible |
-
-### Recommended Priority Order
-
-For a functional Linux workstation on iPad Air 2:
-
-1. **Boot chain** (checkm8 -> pongoOS -> kernel): Proven to work
-2. **Display** (simplefb): Already functional
-3. **USB gadget networking**: First network interface, enables SSH/NFS
-4. **WiFi**: Broadcom driver exists, needs firmware extraction
-5. **Touch**: Required for standalone use, needs reverse engineering
-6. **Bluetooth**: Similar to WiFi, firmware extraction
-7. **Audio**: Nice to have, significant RE needed
-8. **Battery monitoring**: Quality of life, TI chip may be accessible
-9. **GPU**: Long-term goal, software rendering in the meantime
-
-Sources:
-- https://www.ifixit.com/Teardown/iPad+Air+2+Teardown/30592
-- https://www.eeherald.com/section/news/onws20141102003.html
-- https://electronics360.globalspec.com/article/4690/teardown-apple-ipad-air-2
-- https://projectsandcastle.org/status
-- https://github.com/asdfugil/linux-apple-resources
-- https://hackaday.com/2022/06/12/boot-mainline-linux-on-apple-a7-a8-and-a8x-devices/
+# Driver gap analysis: iPad Air 2 (J81 / T7001)
+
+Updated 2026-09-08 after reviewing the repository, the pinned Hoolock Linux
+source, current upstream Linux, Hoolock's test branches, Corellium's Sandcastle
+drivers, and the SoMainline J82 Apple Device Tree (ADT).
+
+The implementation sequence, exact hardware map, tests and source links are in
+[the current driver bring-up plan](../docs/plans/2026-09-08-ipad-air2-driver-bringup.md).
+
+## Evidence boundary
+
+The target is a Wi-Fi J81. The most complete public T7001 ADT inspected here is
+J82, its cellular sibling. Its bus addresses, GPIO descriptors and device names
+replace earlier teardown guesses, but every new J81 DT node must be checked
+against a live J81 ADT dump first. Apple firmware, calibration, NVRAM and device
+identifiers stay outside Git.
+
+## Current baseline
+
+- The historical Linux 5.19 route boots fully and reaches a visible shell.
+- Historical DWC2 gadget networking receives host packets but cannot transmit
+  them back through the bulk-IN endpoint.
+- Hoolock Linux 7.3-rc1 at `6831bc7` and the complete
+  `m1n1-hoolock-control` payload build successfully.
+- That Hoolock payload has not been booted on the physical iPad yet.
+- Buttons, Apple PMIC RTC and Apple PMIC backlight are DT-wired and built in;
+  they await hardware validation.
+
+## Corrected driver matrix
+
+| Subsystem | Hardware/interface | Linux status | Actual gap | Next action |
+| --- | --- | --- | --- | --- |
+| CPU/SMP | A8X / ARM64 | Boots all CPUs | None for current milestone | Preserve known boot path |
+| Interrupts | Apple AIC | Working during boot | None observed | Preserve |
+| GPIO/pinctrl | Apple GPIO | Working during boot | New peripheral pins absent | Add only from live ADT evidence |
+| Display | Bootloader framebuffer | Visible Linux console | No native A8X display/GPU stack | Retain simplefb |
+| USB gadget | T7001 PHY + DWC2 | Historical RX works; TX stalls | New Hoolock path untested | Boot existing Hoolock payload first |
+| Buttons | GPIO 0/1/92/93 | Driver/config/DT present | Physical test missing | Verify input events |
+| RTC | Apple D2207 PMIC child | Driver/config/DT present | Physical test missing | Read/set/read on Hoolock boot |
+| Backlight | Apple D2207 PMIC child | Driver/config/DT present; build bug fixed | Physical test missing | Exercise conservative brightness range |
+| Bluetooth | BCM4350-family radio over UART3 | `hci_bcm` and HCI UART BCM enabled | UART3 DT, wake, power and local firmware | First new peripheral after USB |
+| Battery | TI BQ27540-family over HDQ/UART5 | bq27xxx core exists | Generic W1-UART has the wrong signaling; no serdev transport/DT | Reuse core behind a small HDQ serdev frontend |
+| Touch | Apple `multi-touch,j82` / BCM Z2 family over SPI3 | Z2 parser/uploader exists for Mac Touch Bars | Old-SoC SPI variant, J81 binding, power, firmware and calibration | Prove SPI3 before adapting touch |
+| Wi-Fi | BCM4350 over T7000 PCIe port 1 | brcmfmac PCIe supports BCM4350 | T7000 PCIe host/DT/power path missing; wireless config disabled | Port/enumerate PCIe, then enable brcmfmac |
+| Sensors | Mostly behind the M8 coprocessor | No identified usable path | Inventory/protocol unknown | Defer |
+| Audio | Apple DMA/codec path | No complete A8X stack | Controller, codec and routing work | Defer |
+| GPU | PowerVR GXA6850 | No A8X platform integration | Major reverse engineering | Defer |
+| NAND/cameras/Touch ID | Apple proprietary paths | No usable stack | Large storage/ISP/SEP gaps | Outside RAM-only milestone |
+
+## What the kernel update changes
+
+The Hoolock branch is the right base because it already carries the T7001 USB
+PHY/DWC2 work, A8/A8X platform support, Apple PMIC RTC/backlight, Apple SPI
+framework code and the old-Apple DART variant. The pinned revision was the
+current `hoolock` tip at review time. Moving to a different generic Linux tag
+does not add J81 Bluetooth, battery, SPI/touch or T7000 PCIe wiring.
+
+Hoolock's `tests/spi` and `tests/kat-spi` branches contain useful old-controller
+SPI work. They are experimental and should be reduced to the S5L8960X register
+layout and quirks rather than merged wholesale. Its `tests/bluetooth` branch is
+for T8015/BCM4349; only its integration patterns are relevant to J81.
+
+## Bluetooth: closest new peripheral
+
+The J82 ADT identifies UART3 at `0x20a0cc000`, IRQ 161, TX GPIO14, RTS GPIO32,
+host-wake GPIO164, PMU power GPIO2 and 3 Mbaud. Current Hoolock config already
+enables `BT`, `BT_HCIUART`, and `BT_HCIUART_BCM`; upstream `hci_bcm` has the
+`brcm,bcm43540-bt` family match.
+
+Add UART3 and the serdev child first without a shutdown GPIO. The bootloader may
+leave the module powered, allowing the HCI path to be proven without guessing
+PMIC registers. If it is off, the real next dependency is a D2207 PMIC GPIO
+provider or narrowly scoped power sequence. Hoolock has a PMIC regmap parent but
+no GPIO provider. Corellium's PMIC GPIO code demonstrates the shape of such a
+driver for another PMIC; its register offsets are not portable to D2207.
+
+## Battery: use the right wire protocol
+
+The J82 ADT identifies a BQ27540-family gauge below UART5 at `0x20a0d4000`, IRQ
+163, with the battery SWI/HDQ line on GPIO34. This resolves the old “unknown
+pin” note.
+
+The enabled upstream `w1-uart` path cannot drive this device correctly: it
+generates standard 1-Wire timings. Corellium's public driver demonstrates the
+working HDQ-over-UART transport at 57,600 baud with two stop bits, break/pulse
+signaling, and `0xfe`/`0xc0` encoded bits. The maintainable implementation is a
+small serdev transport that reuses Linux's bq27xxx core rather than copying
+Corellium's standalone power-supply layer. Read `DEVICE_TYPE` on hardware
+before mapping ADT's `bq27540` name to an upstream bq27xxx chip table.
+
+## Touch: controller before protocol
+
+J82 places the multitouch device on SPI3 at `0x20a08c000`, IRQ 155. Its signals
+include chip select GPIO51, touch IRQ GPIO84, display sync GPIO55, reset GPIO82
+and LDO GPIO95. Analog power is a PMU resource whose D2207 programming is still
+unknown.
+
+Current `apple_z2` supplies a useful firmware uploader and frame parser, but its
+bindings cover Mac Touch Bars. Current Hoolock's normal branch lacks the
+S5L8960X SPI controller variant needed here. Clean and test that controller
+from the Hoolock SPI experiment first. Only after repeatable SPI transfers
+should the Z2 driver receive an iPad compatible, live-ADT calibration, locally
+extracted firmware and the verified power sequence.
+
+## Wi-Fi: PCIe host work precedes brcmfmac
+
+The J82 ADT calls the endpoint `wlan-pcie,bcm4350`. It is attached to T7000
+PCIe port 1 at 2.5 GT/s with wake GPIO165, CLKREQ GPIO174, PERST GPIO179 and a
+DART at `0x602002000`/IRQ216. UART2 is a control/sideband path, not an SDIO
+data bus. This invalidates the repository's previous BCM4354/SDIO plan.
+
+Upstream brcmfmac already maps BCM4350 PCIe firmware. The Hoolock tree also
+contains that source, but the current kernel config does not enable CFG80211,
+BRCMFMAC or BRCMFMAC_PCIE. Enabling them now would create no device because
+the T7000 PCIe host is missing.
+
+Port the host first, using the A8X ADT tunables. Upstream `pcie-apple.c` is the
+preferred integration point if its controller model fits. Corellium's older
+`pcie-hx.c` provides register and sequencing evidence, but its H9P hard-coded
+tunables cannot be reused on A8X. Add the DART and only port 1, prove stable
+PCI config-space enumeration, then enable brcmfmac and supply locally extracted
+`brcmfmac4350-pcie` firmware/NVRAM.
+
+## Implementation order
+
+1. Boot and measure the existing Hoolock ECM payload.
+2. Validate buttons, RTC and backlight.
+3. Add J81 UART3 Bluetooth DT and prove `hci0`; add PMIC control only if needed.
+4. Add the HDQ serdev transport and UART5 gauge node.
+5. Clean S5L8960X SPI support and prove SPI3; then adapt Z2 touch.
+6. Port T7000 PCIe/DART, enumerate BCM4350, then enable its wireless stack.
+
+Each phase has exact acceptance criteria and rollback guidance in the linked
+bring-up plan. Audio, native display/GPU, NAND, cameras, Touch ID and sensor-hub
+support remain outside this milestone.
+
+## Primary sources
+
+- [Hoolock A8/A8X features](https://github.com/HoolockLinux/docs/blob/master/features/A8.md)
+- [Hoolock Linux](https://github.com/HoolockLinux/linux/tree/hoolock)
+- [SoMainline J82 ADT](https://github.com/SoMainline/adt_collection/blob/master/a8/J82.adt)
+- [Linux brcmfmac PCIe](https://github.com/torvalds/linux/blob/master/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c)
+- [Linux Broadcom HCI UART](https://github.com/torvalds/linux/blob/master/drivers/bluetooth/hci_bcm.c)
+- [Linux Apple PCIe](https://github.com/torvalds/linux/blob/master/drivers/pci/controller/pcie-apple.c)
+- [Linux Apple Z2 touch](https://github.com/torvalds/linux/blob/master/drivers/input/touchscreen/apple_z2.c)
+- [Corellium HDQ-UART gauge](https://github.com/corellium/linux-sandcastle/blob/sandcastle-5.4/drivers/power/supply/bq27545-battery-hdquart.c)
+- [Corellium old-Apple PCIe](https://github.com/corellium/linux-sandcastle/blob/sandcastle-5.4/drivers/pci/controller/pcie-hx.c)
+- [Corellium old-Apple SPI](https://github.com/corellium/linux-sandcastle/blob/sandcastle-5.4/drivers/spi/spi-hx.c)

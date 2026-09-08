@@ -356,7 +356,7 @@ cost as every past one: a DFU cycle, a hardware round-trip, and a binary
 low-level mechanism, just DTB content), well-evidenced, and directly explains
 what's been observed. If it produces a visible Linux boot log or panic, that's
 the actual milestone this project has been chasing, and everything downstream
-(driver work, this project's own approval-gated bring-up plan) becomes
+(driver work, now covered by the 2026-09-08 bring-up plan) becomes
 meaningful. If it *also* produces the identical silent hang with no new
 information, that's a reasonable point to treat this as genuinely blocked on
 tooling rather than on undiscovered software bugs, and to either invest in a

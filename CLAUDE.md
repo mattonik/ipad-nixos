@@ -93,25 +93,26 @@ assumed.
 Full evidence and commands are in `docs/software-only-control.md`'s
 "Round 3" through "Round 8".
 
-**Driver bundling, 2026-09-08**: the user authorized bundling any driver
-that's "already exists, needs to get bundled only or similar low level
-effort," explicitly excluding new driver development and anything
-touching the USB work above. A full survey (`research/driver-gap.md`'s
-2026-09-08 update) found RTC and backlight (same Apple PMIC) were already
-fully wired -- driver + enabled DT node both present -- and blocked only
-by the same class of GCC build bug already fixed once for a different
-driver tonight. Fixed properly (a 2-line `default:` case, not a
-workaround) and both now build into the Hoolock kernel; verified the full
-`m1n1-hoolock-control` chain still builds and passes every static check
-after the change. Touch, WiFi, and Bluetooth were surveyed too and all
-need genuine new driver/controller work or DT+firmware integration --
-none qualified as "bundling," so none were touched.
+**Driver review and implementation plan, 2026-09-08**: the user authorized
+continued driver work. The complete source/ADT review and phased plan are in
+docs/plans/2026-09-08-ipad-air2-driver-bringup.md; the corrected compact
+matrix is in research/driver-gap.md.
 
-Driver work needing real implementation (touch, Wi-Fi, Bluetooth, GPU,
-audio, etc.) remains explicitly approval-gated -- booting Linux does not
-change that, and neither does the narrower bundling authorization above;
-wait for the user before starting any of it, per "Driver readiness and
-approval gate" in `docs/project-status.md`.
+Key corrections: J82's T7001-family ADT identifies BCM4350 Wi-Fi on PCIe port
+1, not BCM4354 over SDIO; Bluetooth is on UART3; the battery gauge uses HDQ on
+UART5/GPIO34; and touch is on SPI3. Treat J82 as sibling evidence and compare
+the live J81 ADT before committing board nodes.
+
+The current Hoolock tip is already pinned. Do not update kernels blindly or
+merge its test branches wholesale. First boot the existing
+m1n1-hoolock-control payload over the direct cable and test bidirectional ECM.
+Then hardware-validate the already-built buttons, RTC and backlight. New driver
+order is Bluetooth UART3, the battery HDQ serdev frontend, S5L8960X SPI then
+touch, and T7000 PCIe/DART then BCM4350 brcmfmac. Keep firmware, NVRAM,
+calibration data and per-device identifiers outside Git.
+
+RTC and backlight are build-ready and DT-wired, not proven on hardware. The
+backlight compiler fix and complete payload both pass their static/build checks.
 
 The historical-PongoOS control is a separate, lower-priority experiment,
 still blocked: `palera1n`'s stager rejects its 708,704-byte binary (limit
@@ -120,8 +121,8 @@ is 0x7fe00 = 523,776 bytes) -- unresolved, not needed now that m1n1 works.
 Do not resume blind changes to the modern PongoOS fork's direct-jump path;
 that specific mechanism has been tried seven ways and ruled out each time.
 A7–A8X Linux uses 4 KiB pages; older 16 KiB claims in historical logs are
-superseded. Touch and Wi-Fi work still requires explicit user approval after
-Linux boots.
+superseded. Touch and Wi-Fi work follows the evidence and staged hardware
+gates in the current driver plan.
 
 ## Target Hardware
 

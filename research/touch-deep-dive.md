@@ -3,7 +3,7 @@
 Exhaustive research on the Broadcom BCM5976 touch controller and all paths to
 Linux touch input on iPad Air 2. Research conducted February 2026.
 
-## Current implementation correction (2026-09-02)
+## Current implementation correction (updated 2026-09-08)
 
 The investigation below contains useful Z2-family references, but several
 earlier conclusions were too strong. The project's actual Linux 6.19.3 source
@@ -13,11 +13,17 @@ compatible. The generated J81 DTB has no SPI-controller or touch peripheral
 node. Therefore enabling `CONFIG_TOUCHSCREEN_APPLE_Z2=y` does not enable touch
 on this iPad.
 
+The public J82 ADT now identifies the T7001-family path as SPI3, chip select
+GPIO51, IRQ GPIO84, display sync GPIO55, reset GPIO82 and LDO GPIO95. Hoolock's
+`tests/spi` branches contain unfinished old-controller support. The current
+plan first cleans and proves SPI3, then adapts the Z2 driver using a live J81
+ADT dump and local firmware/calibration.
+
 Treat `apple_z2` as a protocol, firmware-loading and input-reporting reference
 only. A working BCM5976 path requires independently verified T7001 SPI, chip
 select, reset, attention IRQ, power, firmware and calibration data before an
-iPad-specific adaptation can be proposed. Do not implement that adaptation or
-commit Apple firmware/calibration material without explicit approval.
+iPad-specific adaptation can be proposed. That adaptation is now authorized
+under the staged driver plan; never commit Apple firmware/calibration material.
 
 ---
 

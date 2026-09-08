@@ -1,214 +1,127 @@
-# Feasibility Assessment: NixOS on iPad Air 2
+# Feasibility assessment: Linux/NixOS on iPad Air 2
 
-Synthesis of landscape, hardware, boot chain, and driver gap research.
-Assessment conducted February 2026.
+Updated 2026-09-08. This supersedes the February 2026 forecast with results
+from the physical J81 and the current source/ADT review.
 
-## Verdict: Feasible with Known Limitations
+## Verdict
 
-Booting NixOS on iPad Air 2 (A8X) is feasible. Linux has already booted on this exact
-hardware (Konrad Dybcio, June 2022, kernel 5.18). The boot chain is proven and actively
-maintained. The question is not "can it boot?" but "how usable can it be?"
+A tethered, framebuffer-based Linux tablet is feasible. The iPad Air 2 already
+boots Linux to a visible interactive shell. The immediate usability blocker is
+a bidirectional control channel: the historical USB gadget receives traffic
+from macOS but its device-to-host endpoint stalls. A newer Hoolock USB payload
+is built and is the next hardware test.
 
-## Milestone Assessment
+A practical standalone system still needs substantial peripheral work.
+Bluetooth and battery have short, evidence-backed paths. Touch needs the old
+T7001 SPI controller before the existing Z2 protocol code can be adapted.
+Wi-Fi uses BCM4350 over T7000 PCIe, so it requires a host-controller port before
+brcmfmac can help. Native display/GPU, audio and internal storage remain
+long-term work.
 
-### M1: Boot to Serial Console
-**Status: Achievable (proven)**
+The full implementation plan is
+[docs/plans/2026-09-08-ipad-air2-driver-bringup.md](../docs/plans/2026-09-08-ipad-air2-driver-bringup.md).
 
-All components exist:
-- checkm8 exploit: stable, A8X supported (gaster, Achilles)
-- pongoOS: actively maintained (palera1n fork, Jan 2026)
-- Linux kernel: device trees merging into mainline (Linux 6.13+, Nick Chan patches)
-- initramfs: standard Linux, no special work needed
+## Milestones
 
-Effort: Days. Primarily integration work — building kernel with correct config, compiling
-device tree, preparing initramfs, scripting the boot sequence.
+### Boot and visible console — achieved
 
-### M2: Framebuffer Display + USB Networking
-**Status: Achievable (proven)**
+The checkm8 → PongoOS `bootm` → m1n1 path boots the historical Linux kernel,
+all A8X cores and a postmarketOS initramfs to a visible `/ #` shell. The
+bootloader-initialized framebuffer is sufficient for software-rendered output.
 
-- simplefb/simpledrm: working, depends on iBoot display initialization (already set up
-  before pongoOS loads)
-- DWC2 USB gadget: driver exists in mainline, needs device tree integration
-- USB Ethernet (RNDIS/ECM): standard Linux gadget, enables SSH from host
+### USB control channel — partial
 
-Effort: Days to a week. The display works via simplefb. USB gadget mode needs platform
-glue and device tree nodes for the DWC2 controller.
+CDC-ECM enumerates natively on macOS. The iPad's `usb0` receives packets,
+updates RX counters and learns the Mac's ARP entry. Its bulk-IN endpoint fails
+to place a queued reply in the physical FIFO. Hoolock's newer DWC2/PHY path and
+ECM payload build successfully but have not been booted on the iPad.
 
-### M3: WiFi Networking
-**Status: Achievable with firmware extraction**
+### Buttons, RTC and backlight — build-ready
 
-- BCM4354: brcmfmac driver in mainline, chip ID supported
-- Firmware: must extract from iOS IPSW (documented process, done for iPhone 7)
-- NVRAM: board-specific calibration file needed (Murata 339S02541 module)
-- SDIO bus: needs device tree configuration
+The GPIO keys and Apple PMIC RTC/backlight nodes and drivers are present in the
+Hoolock artifact. A compiler error in the backlight driver was fixed. These
+features are not counted as working until tested on hardware.
 
-Effort: 1-2 weeks. The driver works. Firmware extraction is documented. Main unknowns
-are NVRAM format and any Apple-specific SDIO quirks.
+### Bluetooth — achievable with targeted DT/power work
 
-### M4: Touch Input
-**Status: Requires reverse engineering**
+The T7001-family ADT maps the combo radio to UART3 at 3 Mbaud. Hoolock already
+enables Broadcom HCI UART support. Add the UART and serdev DT nodes first and
+test the power state inherited from iBoot. If the module is off, derive D2207
+PMIC GPIO2 control; Hoolock currently has no PMIC GPIO provider. Firmware must
+be extracted locally and kept outside Git.
 
-- BCM5976 over SPI: no Linux driver, no public protocol documentation
-- Reference: bcm5974 USB driver (MacBook trackpads) documents report format for related
-  chips, but uses different transport
-- Reference: hx-touchd from Project Sandcastle handles iPhone 7 touch (different chip)
-- SPI bus identification needed from iOS device tree or RE
+### Battery — achievable with a small transport driver
 
-Effort: 2-6 weeks. Requires logic analyzer captures or iOS kernel instrumentation to
-decode the SPI protocol. The BCM5976 is used across many Apple devices (2012-2017), so
-a driver would have broad impact.
+The ADT identifies a BQ27540-family gauge on UART5/HDQ GPIO34. Linux's enabled
+generic W1-UART path uses the wrong signaling. Corellium published a working TI
+HDQ-over-UART algorithm. A minimal serdev frontend can reuse the upstream
+bq27xxx core, avoiding a second power-supply driver.
 
-### M5: GPU Acceleration
-**Status: Blocked (long-term research)**
+### Touch — feasible, requires two stages
 
-- PowerVR GXA6850: Apple-customized 8-cluster Series 6XT
-- Mesa PVR Vulkan driver: exists but only partially supports GX6250 (smaller variant)
-- GXA6850 not listed in Mesa, no kernel DRM backend for Apple A8X
-- Three separate problems: kernel DRM driver, Mesa compiler backend, Apple platform glue
+The touch controller is on SPI3 with known AP GPIOs. Hoolock's test branches
+contain unfinished S5L8960X SPI support, while current `apple_z2` contains a
+firmware uploader and frame parser for related Mac Touch Bars. First clean and
+prove the SPI controller. Then add the J81 binding, live-ADT calibration,
+locally extracted firmware and verified PMIC power sequence.
 
-Effort: Months to years. Software rendering (llvmpipe) is the practical alternative.
-A usable desktop is possible with llvmpipe at the native 2048x1536 resolution, though
-performance will be limited to basic window management and text-based applications.
+### Wi-Fi — feasible but high effort
 
-### M6: Audio
-**Status: Requires significant RE**
+The ADT identifies BCM4350 on T7000 PCIe port 1, not BCM4354 on SDIO. Upstream
+brcmfmac supports BCM4350 PCIe firmware, but J81 lacks the PCIe host and port
+description. Hoolock already carries the old-Apple DART variant. Port the
+T7000 PCIe host using live A8X tunables, prove endpoint enumeration, then enable
+CFG80211/BRCMFMAC/BRCMFMAC_PCIE and provide local firmware/NVRAM.
 
-- Cirrus Logic 338S1213: unknown public model, no Linux driver
-- MAX98721 amplifier: no upstream driver
-- A8X audio DMA engine: proprietary, undocumented
-- Three-layer driver stack with no existing components
+### Native GPU, audio and internal storage — deferred
 
-Effort: 4-8 weeks minimum. Audio is a quality-of-life feature, not critical for a
-workstation use case (USB audio adapters are an alternative via USB host mode).
+No complete A8X PowerVR platform stack, native display pipeline, audio stack or
+Apple NAND/FTL stack is available. The usable milestone should use simplefb,
+software rendering, USB or network storage, and external audio if needed.
 
-## Critical Path
+## Dependency path
 
+```text
+working boot
+    └─ Hoolock USB test ─ bidirectional debug channel
+           ├─ validate buttons / RTC / backlight
+           ├─ UART3 ─ Bluetooth ─ optional D2207 GPIO power
+           ├─ UART5 HDQ ─ battery gauge
+           ├─ S5L8960X SPI3 ─ Z2 touch
+           └─ DART + T7000 PCIe ─ BCM4350 Wi-Fi
 ```
-M1 (serial console) ──► M2 (display + USB net) ──► M3 (WiFi) ──► M4 (touch)
-       ▼                        ▼
-  NixOS rootfs              SSH access
-  generation                from host
-```
 
-M1 through M3 are achievable with existing drivers and documented techniques.
-M4 (touch) is the gate for standalone use without an external keyboard.
+Wi-Fi no longer sits on the shortest path to useful hardware feedback.
+Bluetooth is the first new peripheral because its bus driver and HCI support
+already exist. USB remains first because every later driver benefits from a
+reliable log and shell.
 
-## Risk Matrix
+## Main risks and controls
 
-| Risk | Likelihood | Impact | Mitigation |
-|------|-----------|--------|------------|
-| Boot chain breaks with iOS update | Low | Low | checkm8 is iOS-version-independent |
-| Device tree patches rejected from mainline | Medium | Low | Maintain out-of-tree patches |
-| BCM4354 firmware extraction fails | Low | High | Use USB networking as fallback |
-| BCM5976 touch protocol too complex to RE | Medium | High | Use USB keyboard/mouse via OTG |
-| Kernel panics during bring-up | High | Low | Expected; iterative debugging via serial |
-| PMIC misconfiguration damages hardware | Low | Critical | Rely on iBoot initialization, do not touch PMIC |
-| 2GB RAM insufficient for NixOS | Medium | Medium | Minimal NixOS config, swap over USB, use lightweight DE |
+| Risk | Effect | Control |
+| --- | --- | --- |
+| New Hoolock payload does not boot | No newer USB result | Preserve and compare with the known historical control artifact |
+| J82 wiring differs from J81 | Wrong GPIO/resource assignment | Dump live J81 ADT before committing each board node |
+| D2207 PMIC GPIO registers remain unknown | Bluetooth/touch cold-power failure | Test retained bootloader power first; derive registers before driving them |
+| Wrong radio/touch firmware | Probe or calibration failure | Use exact local IPSW/device artifacts and record requested filenames; do not commit blobs |
+| PCIe PHY tunables copied from another SoC | Link failure or unstable hardware | Use A8X ADT values, start with port 1 at 2.5 GT/s, and test DART faults |
+| USB remains asymmetric | Slow hardware iteration | Add focused Hoolock DWC2 endpoint diagnostics before unrelated driver changes |
 
-## Honest Assessment
+## Recommended development order
 
-**What is realistic:**
-- Boot NixOS to a graphical login with framebuffer display
-- SSH access over USB and WiFi
-- Lightweight desktop environment (sway, i3, or similar) with software rendering
-- Web browsing via text-based browser or lightweight GUI browser
-- Terminal workstation use (development, writing, SSH client)
+1. Boot the existing Hoolock payload over the direct cable and record ECM
+   enumeration, ping/telnet, screen and logs.
+2. Test buttons, RTC and backlight without changing the kernel.
+3. Add Bluetooth UART3 DT and local firmware; add PMIC power only if required.
+4. Implement and test the battery HDQ serdev frontend on UART5/GPIO34.
+5. Port and prove S5L8960X SPI3, then adapt touch.
+6. Port T7000 PCIe/DART, enumerate BCM4350, then enable brcmfmac.
+7. Build the minimal NixOS userspace after the input/network hardware has a
+   stable interface.
 
-**What is unlikely without major RE effort:**
-- Touch input (needed for standalone tablet use)
-- Hardware-accelerated graphics
-- Audio output (without USB audio adapter)
-- Internal storage access
+## Practical target
 
-**What is not feasible:**
-- Untethered boot (checkm8 is permanently tethered)
-- Touch ID / biometric authentication
-- Camera
-- Cellular data (LTE model)
-
-## NixOS-Specific Considerations
-
-### Cross-Compilation
-
-NixOS supports aarch64 cross-compilation. The flake can target `aarch64-linux` from an
-`x86_64-linux` host. Key considerations:
-
-- 4 KiB page size: the canonical A7–A8X bring-up requires
-  `CONFIG_ARM64_4K_PAGES=y`; 16 KiB is for A9 and newer in that guide. The
-  kernel still needs a custom package for the Apple platform and device-tree work.
-- initramfs generation: NixOS can generate a complete system image as an initramfs using
-  `config.system.build.initialRamdisk` or a custom derivation.
-- Binary cache: standard 4 KiB aarch64-linux userspace is compatible with the
-  target page size; Apple-specific kernel and image artifacts still build locally.
-
-### System Image Strategy
-
-Since internal NAND is inaccessible, the entire NixOS system runs from RAM:
-
-**Option A: Fat initramfs**
-- Pack the complete NixOS closure into an initramfs (cpio archive)
-- Simple, self-contained, but limited by 2GB RAM
-- A minimal NixOS system with sway and basic tools: ~500MB compressed, ~1.5GB uncompressed
-- Leaves ~500MB for runtime use — tight but workable
-
-**Option B: NFS root**
-- Minimal initramfs with networking, mount NixOS root over NFS from host machine
-- More storage available, but requires network connection
-- USB Ethernet or WiFi must work
-
-**Option C: USB storage root**
-- Boot from initramfs, pivot root to USB flash drive via Lightning OTG adapter
-- Best of both: full storage, no network dependency
-- Requires working USB host mode and Lightning-to-USB adapter
-
-Recommended: Start with Option A (fat initramfs) for initial bring-up, transition to
-Option C (USB storage) for daily use.
-
-### Declarative Configuration Value
-
-NixOS's declarative model is well-suited to this project:
-- Reproducible builds: the exact system image is defined by the flake
-- Iterative development: change config, rebuild, re-flash — fast feedback loop
-- Version control: entire system configuration lives in git
-- Rollback: previous system images are trivially reproducible
-
-## Recommended Roadmap
-
-### Phase 1: First Boot (1-2 weeks)
-- Build kernel with A8X device tree and correct config
-- Generate minimal NixOS initramfs
-- Script the full boot sequence (checkm8 → pongoOS → load_linux.py)
-- Achieve serial console output
-- Achieve framebuffer display output
-
-### Phase 2: Networking (1-2 weeks)
-- USB gadget Ethernet (RNDIS/ECM) for SSH access
-- WiFi via brcmfmac with extracted firmware
-- NFS root or USB storage root for expanded filesystem
-
-### Phase 3: Usable Desktop (2-4 weeks)
-- Lightweight window manager (sway or cage) with llvmpipe
-- On-screen keyboard (if touch is not yet working)
-- External keyboard/mouse via USB OTG
-- Basic applications (terminal, browser, editor)
-
-### Phase 4: Touch + Polish (4-8 weeks)
-- BCM5976 touch controller reverse engineering
-- Bluetooth via btbcm
-- Battery monitoring via BQ27546
-- Power management improvements
-
-### Phase 5: Long-term (ongoing)
-- GPU acceleration investigation (Mesa PVR)
-- Audio codec RE
-- Upstream contributions (device tree improvements, drivers)
-
-## References
-
-- Konrad Dybcio iPad Air 2 Linux boot: https://hackaday.com/2022/06/12/boot-mainline-linux-on-apple-a7-a8-and-a8x-devices/
-- Nick Chan device tree patches: https://lore.kernel.org/lkml/20240925071939.6107-3-towinchenmi@gmail.com/T/
-- pongoOS: https://github.com/checkra1n/PongoOS
-- Project Sandcastle: https://github.com/corellium/projectsandcastle
-- HoolockLinux: https://github.com/HoolockLinux
-- Mesa PVR driver: https://docs.mesa3d.org/drivers/powervr.html
-- postmarketOS iPhone 7: https://wiki.postmarketos.org/wiki/Device:iPhone_7/7+
+The credible medium-term system is RAM- or network-rooted Linux with simplefb,
+software rendering, USB debug access, Bluetooth input, battery reporting,
+touch, and eventually Wi-Fi. Native GPU acceleration, internal NAND boot,
+cameras, Touch ID and polished suspend are separate research projects.

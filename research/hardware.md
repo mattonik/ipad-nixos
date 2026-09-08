@@ -4,6 +4,10 @@ Detailed hardware identification for the iPad Air 2, targeting Linux bringup.
 Model numbers: A1566 (Wi-Fi), A1567 (Wi-Fi + Cellular).
 Apple internal identifiers: iPad5,3 (j81, Wi-Fi) and iPad5,4 (j82, Cellular).
 
+Updated 2026-09-08 with the public J82 Apple Device Tree. J82 is the cellular
+T7001 sibling; compare its peripheral data with a live J81 dump before writing
+the Wi-Fi board DT.
+
 ## 1. Apple A8X SoC (APL1012 / T7001 "Capri")
 
 ### CPU
@@ -119,24 +123,28 @@ Apple internal identifiers: iPad5,3 (j81, Wi-Fi) and iPad5,4 (j82, Cellular).
 ### WiFi Module
 
 - **Module**: Murata 339S02541 (Murata-packaged module containing Broadcom silicon)
-- **Broadcom SoC inside**: BCM4354 (based on teardown cross-referencing and Caltech v. Apple lawsuit filings)
+- **Broadcom SoC**: BCM4350 according to the T7001-family J82 Apple Device Tree
 - **WiFi standard**: 802.11a/b/g/n/ac (Wi-Fi 5)
 - **MIMO**: 2x2 MIMO (two spatial streams)
 - **Channel bandwidth**: Up to 80 MHz
 - **PHY rate**: Up to 867 Mbps
 - **Bands**: 2.4 GHz and 5 GHz
-- **Bluetooth**: 4.0 (spec from Apple; BCM4354 silicon supports up to BT 4.1)
-- **Interface to SoC**: Likely SDIO (for WiFi) and UART (for Bluetooth), consistent with Broadcom combo chips in mobile devices
+- **Bluetooth**: 4.0 as advertised by Apple
+- **Interface to SoC**: T7000 PCIe port 1 for Wi-Fi; UART3 for Bluetooth
+- **Wi-Fi control UART**: UART2, named `wlan-pcie-uart,bcm4350` in the ADT
 
 ### Linux Driver Status
 
-- **WiFi driver**: `brcmfmac` (Broadcom FullMAC SDIO/USB driver, in mainline Linux kernel)
-  - BCM4354 is listed as a supported chip ID in the brcmfmac driver
-  - Requires proprietary firmware blob: `brcm/brcmfmac4354-sdio.bin`
-  - Requires NVRAM calibration file: `brcm/brcmfmac4354-sdio.txt` (device-specific)
+- **WiFi endpoint driver**: `brcmfmac` PCIe support exists in mainline and maps BCM4350
+  - Expected firmware base name: `brcm/brcmfmac4350-pcie`
+  - Requires board NVRAM/calibration extracted locally from Apple firmware
+  - The missing prerequisite is the T7000 PCIe host/port description, not SDIO
 - **Bluetooth driver**: `btbcm` / `hci_uart` (Broadcom Bluetooth over UART)
-  - Requires firmware file for initialization
-- **Key challenge**: Obtaining the correct firmware files. Apple ships Broadcom firmware in iOS, but it must be extracted and converted. NVRAM calibration data is board-specific and may need to be extracted from the device's NVRAM partition or reverse-engineered.
+  - J82 maps it to UART3 at 3 Mbaud with host-wake AP GPIO164
+  - Power enable is D2207 PMIC GPIO2, whose Linux GPIO provider is missing
+  - Requires the exact locally extracted firmware requested by `hci_bcm`
+- **Evidence limit**: J82 is the cellular T7001 sibling. Compare these nodes
+  with the live Wi-Fi J81 ADT before committing a board description.
 
 ### NFC
 
@@ -176,10 +184,13 @@ Apple internal identifiers: iPad5,3 (j81, Wi-Fi) and iPad5,4 (j82, Cellular).
 ### Main PMIC
 
 - **Chip**: Dialog Semiconductor 343S0675 (Wi-Fi model) / 343S0674 (Cellular model)
+- **ADT/driver family**: D2207 / Arabela
 - **Board position**: U8100
 - **Function**: Main power management IC; generates all voltage rails for the SoC, memory, peripherals
-- **Interface**: Likely SPI or proprietary Apple serial bus ("SPMI" or similar)
-- **Linux relevance**: Critical for proper power management, sleep states, and battery charging. No public Linux driver exists. Asahi Linux has reverse-engineered Dialog PMICs for Apple Silicon Macs, but those are newer generations.
+- **Interface**: I2C0 at address `0x3c` in the Hoolock J81 DT
+- **Linux relevance**: Hoolock has an I2C regmap/MFD parent and buildable
+  drivers for the RTC and backlight children. It does not have the D2207 regulator,
+  GPIO, charger or full power-management support needed by other peripherals.
 
 ### USB/Charging Controller
 
@@ -203,6 +214,10 @@ Apple internal identifiers: iPad5,3 (j81, Wi-Fi) and iPad5,4 (j82, Cellular).
 - **Part number**: A1547 (020-8558)
 - **Chemistry**: Lithium-ion polymer
 - **Charging**: Via Lightning port, up to ~12W (5V/2.4A)
+- **Fuel gauge**: BQ27540-family device using TI HDQ over UART5
+- **Gauge signal**: AP GPIO34, decoded from J82's `function-battery_swi`
+- **Linux gap**: the bq27xxx core exists, but generic W1-UART uses the wrong
+  signaling; add a TI HDQ serdev transport before the DT node
 
 ## 7. USB / Lightning
 
@@ -340,17 +355,20 @@ Based on the A8 (t7000) dtsi as a reference (the A8X t7001 dtsi follows the same
 | `/soc/pinctrl` | GPIO/pin control |
 | `/timer` | ARM architected timer |
 
-### What is NOT Yet in the Device Trees
+### What the current Hoolock J81 device tree still lacks
 
-- Display (eDP/framebuffer pipeline)
-- Touch controller (BCM5976 on SPI)
-- WiFi/Bluetooth (BCM4354 on SDIO)
+- Native display pipeline (simplefb is present)
+- Touch controller and T7001 SPI3 node
+- Bluetooth UART3 and Wi-Fi PCIe/DART nodes
+- Battery gauge UART5/HDQ node
 - Audio (Cirrus Logic codec, Maxim amp)
 - NAND storage controller
-- USB (DWC2)
 - Sensors (accelerometer, gyroscope, barometer)
-- PMIC (Dialog Semiconductor)
 - Cameras / ISP
+
+Hoolock already supplies the USB2 device path, PMGR/I2C, GPIO buttons, and
+Apple PMIC RTC/backlight nodes. Those last three peripheral groups still need
+physical validation on this J81.
 
 ### Asahi Linux Relationship
 
@@ -382,13 +400,14 @@ The iPhone Wiki documents the device tree format. iOS device trees use a propert
 | UART/serial | Apple S5L UART | apple-s5l-uart | Works (upstream) |
 | Framebuffer | (pongoOS-initialized) | simplefb / efifb | Works (basic, no acceleration) |
 | Display (native) | Parade DP675 + eDP | None | No driver; needs reverse engineering |
-| Touch | BCM5976 (SPI) | None | No driver; major gap |
-| WiFi | BCM4354 (SDIO) | brcmfmac | Driver exists; needs firmware + DT |
-| Bluetooth | BCM4354 (UART) | btbcm | Driver exists; needs firmware + DT |
+| Touch | Z2/BCM5976 family (SPI3) | apple_z2 reference | T7001 SPI variant, J81 binding, power, firmware and calibration are missing |
+| WiFi | BCM4350 (PCIe) | brcmfmac PCIe | Endpoint driver exists; T7000 PCIe host, DT and local firmware are missing |
+| Bluetooth | BCM4350 family (UART3) | btbcm / hci_uart | HCI support exists; UART/power DT and local firmware are missing |
 | Audio codec | Cirrus Logic 338S1213 | None | No driver; needs RE |
 | Audio amp | MAX98721 | None | No upstream driver |
-| PMIC | Dialog 343S0675 | None | No driver; critical gap |
-| USB | DWC2 OTG | dwc2 | Driver exists; needs DT integration |
+| PMIC | D2207 / Dialog 343S0675 | simple MFD + RTC/backlight | Partial; GPIO/regulator/charger support is missing |
+| Battery gauge | BQ27540 family (HDQ/UART5) | bq27xxx core | Needs an HDQ serdev transport and DT node |
+| USB | DWC2 OTG | dwc2 | Historical path has asymmetric TX failure; Hoolock path awaits hardware test |
 | NAND storage | Apple proprietary | None | No driver; use ramdisk/USB storage |
 | Accelerometer | Bosch BMA280 | bma180 (IIO) | Driver exists; needs DT |
 | Barometer | Bosch BMP280 | bmp280 (IIO) | Driver exists; needs DT |

@@ -4,7 +4,7 @@ Run Linux on old iPads (2011–2017) via the checkm8 bootrom exploit, turning e-
 
 ## What This Is
 
-A reproducible build system that cross-compiles a Linux kernel and minimal NixOS userland for iPad hardware. The iPad Air 2 boots through PongoOS `bootm` and Hoolock m1n1 to a postmarketOS shell using the historical Linux 5.19-rc1 kernel. macOS recognizes its USB Ethernet gadget, but receives no packets even with a direct cable. A display diagnostic image is built and awaiting hardware testing. See [the live project status](docs/project-status.md) and [USB diagnostics, research and next steps](research/t7001-usb-next.md).
+A reproducible build system that cross-compiles a Linux kernel and minimal NixOS userland for iPad hardware. The iPad Air 2 boots through PongoOS `bootm` and Hoolock m1n1 to a postmarketOS shell using the historical Linux 5.19-rc1 kernel. Its USB gadget receives traffic from macOS but cannot transmit replies. A Hoolock Linux 7.3-rc1 replacement payload is built and is the next direct-cable hardware test. See [the live project status](docs/project-status.md), [USB research](research/t7001-usb-next.md), and [the driver bring-up plan](docs/plans/2026-09-08-ipad-air2-driver-bringup.md).
 
 **Primary target:** iPad Air 2 (A8X, 2014) — 3-core ARM64, 2GB RAM, 2048x1536 Retina display.
 
@@ -19,7 +19,7 @@ checkm8 exploit → PongoOS `bootm` → m1n1 → Linux → initramfs (in RAM)
 1. **checkm8** — permanent, unpatchable bootrom exploit ([CVE-2019-8900](https://nvd.nist.gov/vuln/detail/CVE-2019-8900)) for Apple A5–A11 SoCs
 2. **pongoOS** — pre-boot environment loaded via checkm8, provides USB protocol for uploading payloads
 3. **m1n1** — Hoolock's iDevice fork prepares the device tree and performs the working T7001 Linux handoff
-4. **Linux kernel** — cross-compiled for aarch64 with 4 KiB pages on A7–A8X and Apple-specific drivers (touch, SPI, USB, framebuffer)
+4. **Linux kernel** — cross-compiled for aarch64 with 4 KiB pages on A7–A8X and Apple platform/driver work
 5. **NixOS initramfs** — minimal root filesystem running entirely from RAM; archive-verified, but not yet substituted into the newly working m1n1 boot path
 
 The boot is **tethered** — the iPad must be connected to a host computer via USB and re-flashed on every power cycle (~30 seconds).
@@ -65,13 +65,18 @@ nix build .#packages.x86_64-linux.m1n1-control \
   -o result-m1n1-control -L
 ```
 
-The black-screen issue is resolved, and the payload now uses the patched
-historical DTB with its USB controller node. CDC-ECM enumeration works, but
-ARP, ping and telnet receive no response. The separate `m1n1-usb-diagnostic`
-target keeps the proven boot components and displays device-side USB state
-and counters. See its [build/run instructions and kernel-upgrade research](research/t7001-usb-next.md).
-The modern kernel and Nix-built initramfs above remain separate build targets,
-not hardware-validated replacements for this working control.
+The black-screen issue is resolved, and the historical payload uses its matched
+DTB with the USB controller. CDC-ECM receives host traffic but its bulk-IN path
+does not transmit replies. A newer replacement is now built:
+
+```bash
+nix build .#packages.x86_64-linux.m1n1-hoolock-control \
+  -o result-hoolock-control -L
+```
+
+This Hoolock Linux 7.3-rc1 payload has the newer T7001 DWC2/PHY path and a
+configfs ECM override. It awaits its first physical boot. Keep the historical
+payload as the control and follow the [dated driver plan](docs/plans/2026-09-08-ipad-air2-driver-bringup.md).
 
 ## Project Structure
 
@@ -125,20 +130,23 @@ All ARM64 iPads with A7–A11 chips. See [research/compatibility-matrix.md](rese
 
 ## Kernel Configuration
 
-Linux 6.19.3 with key options for Apple hardware:
+The original `kernel` target remains Linux 6.19.3. The active USB/driver
+baseline is the separately pinned Hoolock Linux 7.3-rc1 target. This table
+describes the original config; an enabled symbol alone does not mean the J81
+bus or peripheral can probe.
 
 | Feature | Config | Purpose |
 |---------|--------|---------|
 | 4 KiB pages | `ARM64_4K_PAGES` | Required by the documented A7–A8X bring-up |
 | Apple drivers | `COMPILE_TEST` | Unlocks drivers gated on `ARCH_APPLE` |
-| Touch | `TOUCHSCREEN_APPLE_Z2` | BCM5976 via Z2 protocol over SPI |
-| SPI | `SPI_APPLE` | Apple SPI controller (same A7–M4) |
+| Touch | `TOUCHSCREEN_APPLE_Z2` | Z2 protocol reference; J81 binding/firmware work remains |
+| SPI | `SPI_APPLE` | M-series path exists; T7001 variant still needs a clean port |
 | Display | `DRM_SIMPLEDRM` | Framebuffer initialized by pongoOS |
 | USB | `USB_DWC2` | Synopsys DWC2 OTG (Lightning port) |
 | USB Ethernet | `USB_CONFIGFS_ECM` | Host communication via USB gadget |
 | Serial | `SERIAL_SAMSUNG` | Apple UART (Samsung S3C compatible) |
-| WiFi | `BRCMFMAC` | Broadcom BCM4354 (needs firmware) |
-| Bluetooth | `BT_BCM` | Broadcom BCM4354 (needs firmware) |
+| WiFi | `BRCMFMAC` | BCM4350 PCIe endpoint; T7000 host and local firmware remain |
+| Bluetooth | `BT_BCM` | BCM4350-family UART3 radio; DT/power and local firmware remain |
 
 Full config in [kernel/default.nix](kernel/default.nix).
 
@@ -189,7 +197,9 @@ Provides:
 
 ## Firmware Extraction
 
-WiFi (BCM4354) and touch (BCM5976) require firmware blobs extracted from an iPad IPSW file. These cannot be redistributed.
+BCM4350 Wi-Fi, Bluetooth, and Z2 touch require exact firmware and board/device
+data extracted locally from the iPad or its IPSW. These cannot be redistributed
+and must not be committed.
 
 ```bash
 # Download IPSW from https://ipsw.me/iPad5,3
@@ -217,6 +227,7 @@ The `research/` directory contains detailed analysis of every subsystem:
 - **[boot-chain.md](research/boot-chain.md)** — 12-step boot sequence documentation
 - **[driver-gap.md](research/driver-gap.md)** — Per-subsystem driver status and effort estimates
 - **[feasibility.md](research/feasibility.md)** — Go/no-go assessment and roadmap
+- **[driver bring-up plan](docs/plans/2026-09-08-ipad-air2-driver-bringup.md)** — Current evidence, implementation phases and acceptance tests
 - **[touch-deep-dive.md](research/touch-deep-dive.md)** — BCM5976 Z2 protocol analysis across 5 independent implementations
 - **[compatibility-matrix.md](research/compatibility-matrix.md)** — All 40 checkm8-vulnerable iPad models
 
@@ -227,8 +238,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 Areas where help is needed:
 - **Hardware testing** — boot on different iPad models and report results
 - **Device trees** — improve/fix DTBs for specific board IDs
-- **Touch driver** — test and debug `apple_z2` on real hardware
-- **WiFi firmware** — document extraction process for different iPad models
+- **Touch driver** — port the T7001 SPI controller, then adapt and test `apple_z2`
+- **WiFi** — port T7000 PCIe/DART, then document exact BCM4350 firmware extraction
 - **GPU** — PowerVR GXA6850 has no open-source driver; any Mesa/PVR work is valuable
 - **NixOS modules** — build out the userland (GUI, networking, power management)
 - **Documentation** — improve guides, add troubleshooting

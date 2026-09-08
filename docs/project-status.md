@@ -1,6 +1,13 @@
 # iPad Linux Project Status
 
-Status date: 2026-09-07
+Status date: 2026-09-08
+
+**Driver review, 2026-09-08:** the current kernel/ADT/source research and
+implementation sequence are recorded in
+[the iPad Air 2 driver bring-up plan](plans/2026-09-08-ipad-air2-driver-bringup.md).
+The main correction is BCM4350 Wi-Fi over T7000 PCIe rather than the previous
+BCM4354/SDIO assumption. The immediate hardware step remains the already-built
+Hoolock USB payload over the direct cable.
 
 **USB follow-up, Round 8 (hardware-tested):** the display diagnostic ran on
 real hardware and found the fault is asymmetric, not total. The iPad's
@@ -108,8 +115,8 @@ live on hardware:
   forced-PIO (DMA hardcoded off) historical fork. **Real progress, not yet
   fully resolved** as of 2026-09-07. Full evidence for every step is in
   `docs/software-only-control.md`'s "Round 3" through "Round 8" and
-  `research/t7001-usb-next.md`. Touch/Wi-Fi/etc. remain approval-gated regardless: do not start
-  driver work without the user's explicit approval.
+  `research/t7001-usb-next.md`. **2026-09-08 update:** driver work is now
+  authorized and follows the dated plan linked below.
 
 The historical PongoOS control (found the same day, a separate experiment)
 could not be attempted this round -- `palera1n`'s stager rejects its
@@ -1172,7 +1179,8 @@ tests pass. **Not yet run on hardware.**
    fix + strobe). A confirmed-correct color test removes one whole
    category of explanation for why the strobe hasn't been seen yet.
 4. Only after a visible Linux log, resume the console, touch, and Wi-Fi work
-   already recorded below. The current driver approval gate remains in force.
+   already recorded below. This historical instruction is now satisfied; the
+   2026-09-08 driver plan is the current authority.
 
 ### v5 hardware run — colors confirmed correct; real handoff still fails (2026-09-03)
 
@@ -1737,12 +1745,9 @@ crash dump -- anything at all. Treat this as the actual milestone:
      that names the next subsystem to investigate.
    - **The entry marker but nothing further** -- see "Reading the result this
      time" above.
-3. Once any of the above is confirmed, this project's own **"Driver readiness
-   and approval gate"** section (below) applies as written: it requires
-   explicit user approval before implementing or fixing any specific driver
-   (touch, Wi-Fi, etc.), even though the primary PongoOS→Linux gate that
-   section was written behind has now been cleared. Don't start driver work
-   without that approval just because boot succeeded.
+3. Once any of the above is confirmed, continue with the current driver plan.
+   The approval required when this historical step was written was granted on
+   2026-09-08.
 4. Worth fixing now that iteration is real again: the `/chosen/framebuffer`
    placement mismatch noted in Step 5 (needed for a working framebuffer
    console), and the `linux_dtree_init()` dead-path footgun noted in Round 3
@@ -1794,8 +1799,7 @@ tried:
    reasoning.
 
 Only after a visible Linux log, resume the console, touch, and Wi-Fi work
-recorded below. The current driver approval gate remains in force regardless
-of which branch above applies.
+recorded below. That prerequisite has been met; use the 2026-09-08 driver plan.
 
 ## Step 7: kernel copy moved into the marker itself — a watchdog hypothesis (2026-09-04)
 
@@ -2139,76 +2143,58 @@ the marker/kernel jump, instead of inferring from PongoOS's state before
 and after. That's the first genuinely new class of information this
 investigation will have had access to since it began.
 
-## Driver readiness and approval gate (2026-09-02)
+## Driver bring-up plan (2026-09-08)
 
-This is an evidence-based planning record, not authorization to change a
-touch, Wi-Fi, Bluetooth or other end-device driver or proprietary firmware.
-**Wait for explicit approval before implementing or fixing those items.** The
-boot chain and inherited framebuffer have now produced a Linux log; the
-remaining subsystem rows are still untested unless explicitly marked otherwise.
+The user authorized the next driver phase on 2026-09-08. The source and ADT
+review is complete; implementation no longer has a separate approval gate.
+Use [the dated driver bring-up plan](plans/2026-09-08-ipad-air2-driver-bringup.md)
+for the evidence, exact wiring, acceptance criteria and primary sources.
 
-**2026-09-08 update**: the user separately authorized bundling any driver
-that already exists and just needs enabling (no new driver code, nothing
-touching the concurrent USB investigation). A full survey found RTC and
-backlight (row below) already fully wired and blocked only by a trivial
-GCC build bug, now fixed -- see `research/driver-gap.md`'s 2026-09-08
-update and `research/t7001-usb-next.md`'s "Overnight" section. Every
-other row below still needs real driver/DT/firmware work and remains
-gated exactly as stated above.
+The new evidence corrects two earlier conclusions:
 
-The current 6.19.3 kernel configuration is useful infrastructure, but it is
-not a hardware-support claim. The generated `t7001-j81.dtb` contains the
-basic AIC, UART, watchdog, pinctrl, PMGR/I2C, simple framebuffer and GPIO-key
-nodes. It contains no USB controller, touch/SPI peripheral, Wi-Fi/SDIO, or
-Bluetooth peripheral node. The initramfs packages `kmod` programs but no
-`/lib/modules` tree, so configured modules cannot currently be loaded there.
+- Wi-Fi is BCM4350 on T7000 PCIe port 1, not BCM4354 over SDIO. brcmfmac has
+  the endpoint support, but the missing T7000 PCIe host path must be ported
+  before that driver can probe.
+- The battery's GPIO is known (UART5/HDQ on AP GPIO34), but generic w1-uart
+  uses the wrong signaling. It needs a small TI HDQ serdev frontend modeled on
+  Corellium's proven transport and backed by the upstream bq27xxx core.
 
-| Subsystem | Current state | Missing or broken prerequisite | Planned work after approval |
-| --- | --- | --- | --- |
-| PongoOS → Linux | **Working** | `bootm`→m1n1 reaches Linux and real driver initialization on this iPad Air 2. | Freeze this route while userspace/console is isolated. |
-| Console / USB gadget | **Software path identified** | The legacy initramfs hides output; the selected mainline DTB has no T7001 USB controller, although the historical DTB and kernel contain a matched node/driver. | Add `PMOS_NO_OUTPUT_REDIRECT`, then use a minimal visible initramfs; restore the patched historical DT before testing USB. |
-| Display | **Inherited framebuffer works briefly** | Linux kernel text is visible, then the legacy initramfs paints an almost-black Xperia splash. Native display, backlight and acceleration support remain absent. | Prove PID 1 with a visible marker; keep native DRM out of the near-term scope. |
-| Touchscreen (BCM5976) | **Blocked; priority 1** | Confirmed 2026-09-08 against real kernel source (historical and Hoolock trees): no SPI-controller *driver* exists for this SoC's Samsung-derived SPI block at all (the one in-tree SPI master driver only matches M-series Macs), not just a missing DT node. Upstream `apple_z2` currently binds only two Mac Touch Bar compatibles, not an iPad. | Establish the Air 2 wiring and protocol first, then make an iPad-specific adaptation only if the evidence supports it. |
-| Wi-Fi (BCM4354) | **Blocked; priority 2** | Confirmed 2026-09-08: no Apple SDIO/MMC host-controller *driver* exists in either kernel tree at all (checked every file in `drivers/mmc/host/`), not just a missing DT node -- `brcmfmac`/BCM4354 support itself is fine. | Identify and expose the SDIO host, then integrate the required local firmware/NVRAM and modules. |
-| Bluetooth (BCM4354 combo) | **Blocked** | `hci_uart`/`btbcm` infrastructure exists, but its UART, flow control, power sequencing, firmware and DT node are unknown; its modules are also absent from the initramfs. | Defer until Wi-Fi has identified the Murata module's power and board wiring. |
-| Audio | **No known T7001 stack** | Audio DMA, codec identity/register map, machine description and power routing are absent. | Defer. |
-| RTC / Backlight (Apple PMIC) | **Bundled and working, 2026-09-08** | None -- driver and enabled DT node both already present; a GCC build bug blocking backlight is now fixed. | Done; no further work needed. |
-| Battery / PMIC (fuel gauge) | **Kconfig chain fully enabled, 2026-09-08** | The BQ27xxx/HDQ Kconfig chain is on, but no fuel-gauge DT node exists and the HDQ GPIO pin is unidentified. | Add the DT node once the pin is found from an Apple ADT dump; low effort once that data is in hand. |
-| Sensors | **Unknown** | Generic IIO drivers exist, but the sensor chips and their I2C/SPI/M8 path are unidentified and no nodes exist. | Inventory from an Apple device tree before selecting a driver. |
-| GPU | **No Apple A8X integration** | No supported PowerVR A8X DRM/platform backend. | Use framebuffer/software rendering only; defer acceleration. |
-| NAND / cameras / Touch ID | **Unsupported** | Apple storage FTL/encryption, camera ISP paths and Secure Enclave interfaces have no usable Linux path. | Out of scope for the RAM-only milestone. |
+J82, the cellular T7001 sibling, is the public ADT evidence for UART/SPI/PCIe
+resources. Dump and compare the live J81 ADT before committing board nodes.
+Never commit Apple firmware, NVRAM, touch calibration or device identifiers.
 
-### Priority bring-up plan
+| Subsystem | Current state | Next concrete step |
+| --- | --- | --- |
+| PongoOS → Linux | **Working** on the historical route | Preserve it as the control image. |
+| Console / USB gadget | Historical ECM RX works but device TX stalls; Hoolock replacement payload is built and untested | Boot result-hoolock-control, then test ping/telnet in both directions. |
+| Display | Inherited framebuffer produces a visible shell | Keep simplefb; defer native display/GPU. |
+| Buttons | GPIO driver, config and DT are present | Verify Home, Power and both volume input events on Hoolock. |
+| RTC / backlight | Drivers, config and DT are built; backlight compiler bug fixed | Hardware-test read/set/read and brightness/blanking. These are not yet proven working. |
+| Bluetooth | BCM HCI UART support is enabled; J82 maps radio to UART3 | Add UART3/pinctrl/serdev DT, initially relying on retained bootloader power. |
+| Battery | J82 maps BQ27540-family HDQ to UART5/GPIO34 | Implement minimal HDQ serdev transport using bq27xxx core, then add DT. |
+| Touch | Z2 protocol code exists; old-SoC SPI support is experimental | Clean Hoolock's S5L8960X SPI variant and prove SPI3 before adapting touch. |
+| Wi-Fi | BCM4350 brcmfmac PCIe endpoint code exists; wireless config is disabled | Port T7000 PCIe/DART and enumerate port 1 before enabling brcmfmac. |
+| Audio / GPU / NAND / cameras / Touch ID | No complete A8X stack | Defer beyond the interactive-tablet milestone. |
 
-1. **Prove PID 1 visibly.** Keep the working boot chain unchanged and add only
-   `PMOS_NO_OUTPUT_REDIRECT`; if its Xperia splash still obscures output, swap
-   only the initramfs for the minimal BusyBox marker described in
-   `docs/software-only-control.md`.
-2. **Restore the matched USB path.** Patch the historical DTB's CPU cells and
-   framebuffer placeholder while retaining its T7001 USB controller node and
-   matched historical kernel driver. Test enumeration before adding network
-   services. Use the pinned Hoolock kernel plus HoolockRD if macOS needs USB
-   ACM/NCM rather than the historical RNDIS setup.
-3. **Touch evidence phase.** From a user-supplied iPad Air 2 IPSW and Apple
-   device tree, record the actual SPI controller, chip select, reset, IRQ,
-   power sequence, firmware name and calibration source. Compare the observed
-   initialization and report frames with `apple_z2`; its protocol code is a
-   reference, not a drop-in BCM5976 binding. Do not commit Apple firmware or
-   per-device calibration material.
-4. **Wi-Fi evidence phase.** Identify the BCM4354 SDIO host, pins, reset and
-   power sequencing from the same board data. First prove that Linux enumerates
-   an SDIO function. Only then package the minimum module closure plus the
-   user-provided firmware, board NVRAM and regulatory data locally; do not add
-   proprietary blobs to Git.
-5. **Approval checkpoint.** Present the extracted hardware facts, proposed
-   DT changes and test image for review. Start touch or Wi-Fi implementation
-   only after the user explicitly approves it.
+### Priority bring-up sequence
 
-Authoritative source checks: the [6.19.3 `apple_z2` match table](https://github.com/torvalds/linux/blob/v6.19.3/drivers/input/touchscreen/apple_z2.c)
-contains only `apple,j293-touchbar` and `apple,j493-touchbar`; the
-[brcmfmac chip table](https://github.com/torvalds/linux/blob/v6.19.3/drivers/net/wireless/broadcom/brcm80211/brcmfmac/chip.c)
-does include BCM4354. The current upstream [J81 device tree](https://github.com/torvalds/linux/blob/v6.19.3/arch/arm64/boot/dts/apple/t7001-j81.dts)
-is the reference for the intentionally minimal board description.
+1. **Hoolock USB hardware gate.** Boot the complete payload already built from
+   the current Hoolock tip. Capture Pongo output, the iPad screen, macOS USB
+   enumeration, interface configuration and packet counters. Do not change
+   another driver until the result is recorded.
+2. **Validate bundled basics.** Test buttons, RTC and backlight on the same
+   kernel so their status reflects hardware rather than a successful build.
+3. **Bluetooth.** Add the J81 UART3 node, BCM serdev child, 3 Mbaud flow control
+   and AP wake GPIO164. If the bootloader did not retain radio power, derive the
+   D2207 PMU GPIO2 control instead of guessing its register offsets.
+4. **Battery.** Add a small 57,600-baud TI HDQ serdev transport and UART5/GPIO34
+   DT node. Read DEVICE_TYPE before selecting the bq27xxx chip table.
+5. **SPI and touch.** Reduce the Hoolock SPI experiment to a clean S5L8960X
+   controller port, verify bounded SPI3 transfers, then add firmware,
+   calibration and touch input.
+6. **PCIe and Wi-Fi.** Add the existing old-Apple DART node, port the T7000 PCIe
+   host using live A8X tunables, enumerate BCM4350, then enable the wireless
+   Kconfig closure and load local firmware/NVRAM.
 
 ## Current state at a glance
 
@@ -2230,7 +2216,8 @@ is the reference for the intentionally minimal board description.
 | Guarded T7001 diagnostic PongoOS | ✅ Matched-toolchain Pongo, USB, aligned Image/DTB/initrd ranges, Linux register contract, and no-jump guard are proven on T7001 |
 | Linux kernel boot | ✅✅ Achieved in full, 2026-09-07, via `bootm`→m1n1: reaches a live, interactive postmarketOS `/ #` shell prompt (`pd_ignore_unused`/`clk_ignore_unused` fixed a power-domain auto-shutdown that was killing the display). See docs/software-only-control.md. |
 | USB networking to the debug shell | ⚠️ Partial, 2026-09-07 (Rounds 3-8): historical-DTB swap + `cpu-release-addr` DTB fix + CDC-ECM kernel-config fix together get a real, correctly-configured network interface on both the iPad (`usb0`, `172.16.42.1`) and the Mac (`en10`, native macOS driver, no third-party kext). A device-side diagnostic (Round 8) found the fault is asymmetric, not total: RX (host→device) is proven working (304 clean `rx_packets`, complete ARP entry for the Mac's real MAC); TX (device→host) fails — a packet is programmed into the bulk IN endpoint's transfer-size register but never reaches the physical FIFO, despite normal CDC-ECM control-channel negotiation. Narrowed but not yet fixed; leading hypothesis is a PIO fill/re-arm bug in this forced-PIO historical fork. See docs/software-only-control.md's "Round 3"–"Round 8" and research/t7001-usb-next.md. |
-| Display/touch/Wi‑Fi/Bluetooth validation | ❌ Not started |
+| Hoolock payload / buttons / RTC / backlight validation | ❌ Artifact built; physical test not started |
+| Touch / Wi‑Fi / Bluetooth implementation | ❌ Planned from source and ADT evidence; not started |
 | Usable tethered Linux tablet | ❌ Future milestone |
 
 ## Safety boundaries

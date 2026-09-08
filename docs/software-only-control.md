@@ -204,7 +204,8 @@ undocumented flag or an alternate stager path without this limit.
 - If it fails identically, stop software-only handoff patching. Without UART or
   JTAG there is no independent signal left at the failing boundary, and more
   blind variants would be poor-value speculation.
-- Touch and Wi-Fi remain approval-gated and are out of scope until Linux runs.
+- Touch and Wi-Fi were out of scope at this historical decision point. Linux
+  now runs and the 2026-09-08 driver plan governs that work.
 
 ## A second, architecturally different route: PongoOS's own `bootm` -> m1n1
 
