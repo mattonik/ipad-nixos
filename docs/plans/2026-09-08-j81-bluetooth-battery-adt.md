@@ -416,20 +416,178 @@ the sysfs/HCI gate passes; the kernel log and sysfs are enough for BT-1.
 
 ### BT-3: add wake and power control only when required
 
-If UART3 probes but the controller never replies, first confirm pinmux and
-traffic. Then determine whether PMU GPIO2 is low. Do not copy Corellium's D2333
-PMU GPIO offsets onto this D2207/Arabela PMIC.
+The hardware attach attempt above supplied the "only when required" trigger
+this section was waiting on. This section is a **scope**, written 2026-09-08
+by reading the real driver/DT/ADT evidence rather than guessing -- no PMU
+register has been written yet, no DTS has changed. Confirming the plan
+before touching hardware again, per this document's own stop condition.
 
-Once D2207 GPIO access is evidence-backed:
+#### What the evidence already shows (no new measurement needed for this part)
 
-- describe PMU GPIO2 as `shutdown-gpios` with confirmed polarity;
-- describe AP GPIO164 as `interrupts` plus
-  `interrupt-names = "host-wakeup"`, using the observed polarity/trigger;
-- add `device-wakeup-gpios` only if the J81 ADT exposes a distinct BT_WAKE
-  output from the AP;
-- extend m1n1's Bluetooth ADT path only for calibration properties the running
-  controller proves it needs. Current m1n1 looks at `/arm-io/bluetooth`, while
-  the J82 child is `/arm-io/uart3/bluetooth`.
+Re-decoding `function-power_enable`'s raw bytes against m1n1's own `Function`
+struct (`proxyclient/m1n1/adt.py`: phandle `u32`, name `FourCC`, args
+`u32[]`) rather than my earlier informal byte-offset read:
+
+```
+function-power_enable   4e 00 00 00 4f 49 50 47 02 00 00 00 01 01 00 00
+                         └─ phandle ─┘└── "OIPG" ──┘└── args: [2, 0x101] ──┘
+```
+
+Phandle `0x4e` is not a loose "resource-type tag" (my BT-1-result wording
+undersold it) -- it is a literal ADT phandle, and the *same* J81 ADT has a
+node with `AAPL,phandle = 0x0000004e`, `name = "pmu"`,
+`compatible = "pmu,d2207"`, `reg = <0x3c 0x9c4>` (I2C address `0x3c`,
+matching this board's already-working `pmic@3c` exactly), `device_type =
+"interrupt-controller"`. So `power_enable`'s target is unambiguous:
+resource **2** ("PMU GPIO2", args[0]) on the `pmu,d2207` chip at I2C
+address `0x3c` -- the identical physical PMIC this board's kernel already
+talks to for RTC and backlight. `args[1] = 0x101` doesn't have a confirmed
+meaning: it's identical on `bt_wake` (AP GPIO164) and on an unrelated
+`function-keepact` (AP GPIO87) property elsewhere on the `pmu` node, so it
+can't be a per-pin polarity encoding -- more likely a generic "plain GPIO
+resource" tag. (By contrast, `function-tx`/`function-rts`'s args both carry
+`0x102`/`0x002`, sharing a low byte of `0x02` that matches the
+`APPLE_PINMUX(pin, 2)` alt-function-2 already used in `kernel/patches/`;
+worth a small corrective note in the BT-1 section since it contradicts that
+section's claim that alt-function isn't ADT-encoded, but doesn't change
+anything already implemented.) **This confirms the resource number and the
+exact chip, but not polarity** -- consistent with, and not overriding, this
+section's original stop condition.
+
+#### Where PMU GPIO2 sits in the Linux binding this board already uses
+
+`t7001-air2.dtsi`'s `pmic@3c` (`compatible = "apple,arabela-pmic",
+"apple,i2c-pmic"`) is bound by `drivers/mfd/simple-mfd-i2c.c` -- a fully
+generic MFD driver (matches plain `"apple,i2c-pmic"`, no board-specific
+code) that auto-populates whatever register-offset child nodes are present
+(`rtc@5c0`, `backlight@600`, `nvmem@4000` today) as their own regmap-backed
+platform devices. A `gpio@<offset>` sibling of those three, once the offset
+is known, is an additive change to an already-working I2C path -- no new
+transport code, same pattern already proven twice on this exact chip.
+
+`drivers/gpio/gpio-regmap.c` is present in this kernel tree: a generic,
+already-upstream `gpio_chip` implementation driven entirely by a
+`struct gpio_regmap_config` (register address, bit width, optional
+separate set/direction registers) supplied by a small glue driver. Standard
+polarity handling (`GPIO_ACTIVE_HIGH`/`_LOW` in the consumer's DT cell) is
+gpiolib's job, not this driver's -- the glue driver only needs to report
+the pin's *raw* electrical state faithfully.
+
+**Checked and ruled out, so this isn't reinvented later:** no driver
+anywhere in this kernel tree (all Apple boards, not just T7001) implements
+GPIO control for any `apple,i2c-pmic`-compatible chip -- confirmed by
+grepping `drivers/gpio`, `drivers/mfd`, `drivers/regulator` and every Apple
+DTS/DTSI in the tree. m1n1 upstream's own Python tooling
+(`proxyclient/m1n1/hw/pmu.py`, `proxyclient/experiments/i2c_pmu_rtc.py`)
+already has real, working D2207-family register knowledge -- RTC at
+`0x5c6`, NVMEM at `0x4004`, panic-counter at `0x4002`, shared across the
+`d2045`/`d2089`/`d2186`/`d2207` chip family -- but *no* GPIO register at
+all. Corellium's own linux-sandcastle tree (searched directly via GitHub's
+tree API, and via full-text code search across all of GitHub for "d2333")
+has no findable D2333 PMU GPIO source either; this document's warning not
+to copy Corellium's offsets is sound caution, not a reference to a
+specific file that could be consulted instead. **There is no shortcut here
+-- the register has to be measured, exactly as the stop condition says.**
+
+#### A real complication found while checking how `hci_bcm` would actually consume this
+
+The original bullet list ("describe PMU GPIO2 as `shutdown-gpios`...")
+assumed the standard `hci_bcm` DT binding would just pick this up. Reading
+`drivers/bluetooth/hci_bcm.c` closely shows that's not automatic on this
+platform:
+
+- `shutdown-gpios`/`device-wakeup-gpios`/`host-wakeup-gpios` are read in
+  `bcm_get_resources()`, called from **two** probe paths: `bcm_serdev_probe()`
+  (a `serdev_device_driver`) and `bcm_probe()` (a plain `platform_driver`).
+- The plain `platform_driver` (`bcm_driver`) has **no `of_match_table` at
+  all** -- only `acpi_match_table`. Its own source comment says why: "we
+  need to keep both platform device driver (ACPI generated) and serdev
+  driver (DT)" -- i.e. mainline deliberately restricts DT boards to the
+  serdev path only; the platform-device path exists solely for
+  ACPI-described x86 Macs. `bcm_bluetooth_of_match` (which lists
+  `"brcm,bcm43540-bt"`) is wired to the *serdev* driver only.
+- We already know from BT-1 that `apple,s5l-uart` has no serdev support.
+  So neither existing `hci_bcm` probe path can ever fire on this board,
+  no matter how the DTS describes the Bluetooth node -- the
+  `shutdown-gpios` binding is currently unreachable here, independent of
+  the register-measurement question.
+- One structural detail worth keeping for later, though: `bcm_open()` (the
+  path `btattach`'s manual ldisc attach actually takes, `!hu->serdev`)
+  *does* still look for a matching `struct bcm_device` by comparing
+  `hu->tty->dev->parent == dev->dev->parent` -- i.e. `hci_bcm` was written
+  to support GPIO/clock resources on a manually-attached tty too, provided
+  some driver has already populated a `bcm_device` for a platform device
+  sharing the tty's parent. That's *how* ACPI Mac laptops get GPIO-managed
+  power on a plain USB-attached ldisc. It just needs a probe path that can
+  reach it via DT, which doesn't exist upstream today.
+
+Three implementation options follow from this, independent of the
+measurement step below (which is required no matter which is chosen):
+
+1. **Add minimal serdev support to `samsung_tty.c`.** Reuses `hci_bcm`'s
+   existing, standard, already-correct `shutdown-gpios` DT binding exactly
+   as the original bullet list assumed, with zero changes to `hci_bcm.c`.
+   Real driver work (a `serdev_controller` needs `.write_buf` and flow
+   control wired through the existing UART TX path) but self-contained to
+   one driver, and benefits every other serdev-shaped peripheral on this
+   SoC too (this board's own HDQ/BAT-1 section already wants serdev on
+   UART5).
+2. **Teach `bcm_driver` a DT match table.** A few lines in `hci_bcm.c`
+   (add `.of_match_table = bcm_bluetooth_of_match` to `bcm_driver`) plus a
+   plain sibling `platform_device` node (child of `/soc`, which is
+   `compatible = "simple-bus"` and auto-populates its children -- checked)
+   rather than a child of `&serial3`. Smaller kernel diff than option 1,
+   but rides on `bcm_open()`'s parent-pointer matching as an
+   implementation detail mainline's own comment frames as legacy/ACPI-only
+   -- more opportunistic, could break on an unrelated `hci_bcm` refactor.
+3. **Userspace-only: no kernel GPIO driver at all.** Bundle one more small
+   static tool (same pattern as `btattach` itself) that pokes the measured
+   I2C register/bit for PMU GPIO2 directly via `/dev/i2c-N`, run once
+   before `btattach`. No DTS change, no new kernel driver, nothing for
+   `hci_bcm`'s own resource management to get wrong -- it already runs
+   today with `bcm->dev == NULL` and silently skips all power management,
+   which is consistent with the observed hardware failure. Loses
+   `hci_bcm`'s own suspend/resume power sequencing, which doesn't matter
+   yet since nothing here is suspend-aware.
+
+No recommendation is being locked in yet -- (3) fits this project's
+demonstrated preference (this session's own `btattach` work) for a small
+bundled userspace tool over new driver code, and needs no DTS or driver
+change until BT-3 is proven working at all, but that's a judgment call
+worth revisiting once the measurement below actually says what register
+and polarity are involved.
+
+#### The measurement itself (not yet done -- needs the device back on the bench)
+
+Read-only, at the PongoOS/m1n1 stage, before Linux boots -- doesn't touch
+the proven boot chain, doesn't write anything irreversible:
+
+```python
+# via m1n1's own proxyclient (proxyclient/m1n1/hw/i2c.py), same I2C class
+# experiments/i2c_pmu_rtc.py already uses successfully against this exact
+# pmu,d2207 chip for RTC/NVMEM -- known-working transport, new target.
+from m1n1.setup import *
+from m1n1.hw.i2c import I2C
+
+reg = u.adt["/arm-io/i2c0/pmu"].reg[0]   # == 0x3c, cross-checked above
+i2c0 = I2C(u, "/arm-io/i2c0")
+# broad, read-only scan of low register space (Dialog-derived PMIC GPIO
+# blocks are typically a compact bank near the base of the address space,
+# distinct from the 0x4000/0x5000 NVMEM/RTC banks already known) plus
+# anything nearby resource number 2 might plausibly index into.
+```
+
+Stage A: dump broadly, read-only, to find candidate GPIO2 register(s) --
+no hypothesis about the layout is assumed going in, since none of the
+prior art checked above has one either. Stage B: once a candidate is
+found, correlate it with the known-bad state (chip totally silent,
+`-ETIMEDOUT` on a plain HCI Reset) as the falsifiable test -- write the
+candidate bit via the same read-only-proven m1n1 I2C class (reversible,
+scoped to this one chip's own power rail, not the shared PMIC control
+path RTC/backlight depend on), then re-run `btattach` from Linux and see
+if the chip answers. Only once that succeeds repeatably does Stage C
+(pick one of the three implementation options above and actually write
+DTS/driver/tool code) start.
 
 BT completion criteria: cold-boot repeatability, firmware loaded, controller
 address stable, scan works, and three minutes of connect/disconnect activity

@@ -182,6 +182,26 @@ hardware-facing work, not more bundling, so it needs its own go-ahead.
 Full detail in `docs/plans/2026-09-08-j81-bluetooth-battery-adt.md`'s
 "Hardware attach attempt, 2026-09-08".
 
+**BT-3 scoped, 2026-09-08 (no hardware touched).** Byte-exact ADT decode
+confirms `power_enable`'s phandle points at the real `pmu,d2207` node
+(I2C `0x3c`, same chip already backing RTC/backlight) requesting its
+resource 2. `t7001-air2.dtsi`'s `pmic@3c` uses the generic
+`simple-mfd-i2c.c` MFD driver, so a new `gpio@` child is additive, not new
+transport plumbing -- but no driver anywhere in this kernel tree (or in
+m1n1 upstream's own D2207-aware Python tooling) implements PMU-GPIO
+control for this chip family, confirming real measurement is unavoidable.
+Found a real complication first: `hci_bcm`'s standard `shutdown-gpios`
+binding is DT-reachable only via `serdev` (confirmed no serdev support,
+per BT-1) -- its plain `platform_driver` path is ACPI-only by mainline's
+own design, so the original "just add shutdown-gpios" bullet needed
+correction. Three implementation options scoped (serdev support in
+`samsung_tty.c`; a small DT-match patch to `hci_bcm.c`'s platform driver;
+or a userspace-only I2C-poke tool bundled like `btattach`, no kernel
+change at all) -- no register write attempted yet, no DTS changed. Full
+scope in `docs/plans/2026-09-08-j81-bluetooth-battery-adt.md`'s "BT-3:
+add wake and power control only when required". Needs the device back on
+the bench for the actual (read-only, m1n1-proxy-based) measurement step.
+
 The historical-PongoOS control is a separate, lower-priority experiment,
 still blocked: `palera1n`'s stager rejects its 708,704-byte binary (limit
 is 0x7fe00 = 523,776 bytes) -- unresolved, not needed now that m1n1 works.
