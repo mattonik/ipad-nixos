@@ -18,6 +18,7 @@ connection) that prints whatever it wants, then add
 ("Menu label", your_function) to ACTIONS below. That's the whole
 extension point -- no other wiring needed.
 """
+import os
 import re
 import socket
 import sys
@@ -27,11 +28,27 @@ from collections.abc import Callable
 HOST = "172.16.42.1"
 PORT = 23
 
-GREEN = "\033[32m"
-RED = "\033[31m"
-BOLD = "\033[1m"
-RESET = "\033[0m"
-CLEAR = "\033[2J\033[H"
+# https://no-color.org/, plus the --no-color flag the article below also
+# calls out: https://evilmartians.com/chronicles/cli-ux-best-practices-3-patterns-for-improving-progress-displays
+# Screen-clearing is gated on isatty() alone (unrelated to color), since
+# emitting it into a pipe or redirected file would just be garbage bytes.
+_IS_TTY = sys.stdout.isatty()
+_COLOR = _IS_TTY and "NO_COLOR" not in os.environ and "--no-color" not in sys.argv
+
+
+def _c(code: str) -> str:
+    return code if _COLOR else ""
+
+
+GREEN = _c("\033[32m")
+RED = _c("\033[31m")
+BOLD = _c("\033[1m")
+RESET = _c("\033[0m")
+CLEAR = "\033[2J\033[H" if _IS_TTY else ""
+CLEAR_LINE = "\r\033[K" if _IS_TTY else "\r"  # overwrite in place regardless of old/new length
+CHECK = "✓"  # only ASCII/BMP glyphs; keep it usable over a plain telnet-era terminal
+CROSS = "✗"
+_SPINNER_FRAMES = "|/-\\"
 
 BACKLIGHT = "/sys/class/backlight/20a110000.i2c:pmic@3c:backlight@600"
 RTC = "/sys/class/rtc/rtc0"
@@ -93,19 +110,38 @@ class IPadShell:
             self.sock.close()
             self.sock = None
 
-    def _read_until(self, marker: str | None, deadline: float) -> str:
+    def _read_until(self, marker: str | None, deadline: float, spin_label: str | None = None) -> str:
+        """Read until `marker` appears or `deadline` elapses. When
+        `spin_label` is given, animate a spinner in place while waiting
+        (each recv() naturally ticks it every ~0.5s via the socket
+        timeout) so a slow or hung command is visibly still "alive"
+        rather than leaving a frozen terminal -- the CLI-UX anti-pattern
+        of silent output for anything that isn't instant.
+        """
         buf = b""
         end = time.time() + deadline
+        frame = 0
+        spinning = spin_label is not None and _IS_TTY
+        if spinning:
+            sys.stdout.write(f"{GREEN}{_SPINNER_FRAMES[frame]} {spin_label}{RESET}")
+            sys.stdout.flush()
         while time.time() < end:
             try:
                 chunk = self.sock.recv(4096)
             except socket.timeout:
+                if spinning:
+                    frame = (frame + 1) % len(_SPINNER_FRAMES)
+                    sys.stdout.write(f"{CLEAR_LINE}{GREEN}{_SPINNER_FRAMES[frame]} {spin_label}{RESET}")
+                    sys.stdout.flush()
                 continue
             if not chunk:
                 break
             buf += chunk
             if marker and marker.encode() in buf:
                 break
+        if spinning:
+            sys.stdout.write(CLEAR_LINE)
+            sys.stdout.flush()
         return _clean(buf)
 
     def run(self, cmd: str, timeout: float = 10) -> str:
@@ -118,7 +154,7 @@ class IPadShell:
         marker = f"__done_{time.time_ns()}__"
         self.sock.sendall(cmd.encode() + b"\n")
         self.sock.sendall(f"echo {marker}\n".encode())
-        raw = self._read_until(marker, deadline=timeout)
+        raw = self._read_until(marker, deadline=timeout, spin_label="waiting for device...")
         body = raw.split(marker)[0]
         # The shell prints its "/ # " prompt with no trailing newline, so
         # a command's first output line often lands right after it on the
@@ -239,9 +275,9 @@ def main_menu(shell: IPadShell) -> None:
             try:
                 shell.close()
                 shell.connect()
-                print("Reconnected.")
+                print(f"{GREEN}{CHECK} Reconnected.{RESET}")
             except OSError as exc:
-                print(f"{RED}Reconnect failed: {exc}{RESET}")
+                print(f"{RED}{CROSS} Reconnect failed: {exc}{RESET}")
             _pause()
             continue
 
@@ -272,11 +308,16 @@ def main_menu(shell: IPadShell) -> None:
 def main() -> int:
     shell = IPadShell()
     print(CLEAR, end="")
-    print(GREEN + "Connecting to iPad debug shell..." + RESET)
+    # Gerund while working, past tense (with a clear pass/fail marker) once
+    # settled, overwriting the same line rather than leaving a stale
+    # "...ing" message behind once the outcome is known.
+    sys.stdout.write(f"{GREEN}Connecting to iPad debug shell...{RESET}")
+    sys.stdout.flush()
     try:
         shell.connect()
+        sys.stdout.write(f"{CLEAR_LINE}{GREEN}{CHECK} Connected to iPad debug shell.{RESET}\n")
     except OSError as exc:
-        print(f"{RED}Could not connect: {exc}{RESET}")
+        sys.stdout.write(f"{CLEAR_LINE}{RED}{CROSS} Could not connect: {exc}{RESET}\n")
         print("Check the USB link is up (networksetup -setmanual ... 172.16.42.2/24),")
         print("and that the iPad is sitting at the postmarketOS debug shell.")
         print("You can retry from the menu's [r] Reconnect option.")
