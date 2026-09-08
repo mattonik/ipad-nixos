@@ -217,6 +217,21 @@ one candidate over another yet; that's a real decision needing its own
 go-ahead, not a mechanical next step. Full writeup in
 `docs/plans/2026-09-08-j81-bluetooth-battery-adt.md`'s "Stage A result".
 
+**Why Stage B needs its own go-ahead, recorded 2026-09-08 before any
+write is attempted**: a PMU register write is a different risk category
+from everything else in this project, not because the byte itself is
+hard to revert (the full dump means any prior value is on record), but
+because a wrong write's *live effect* -- a fault latch, a one-shot
+command register, an adjacent bit in the same byte controlling something
+else -- can land before anything gets a chance to undo it, and there's
+no datasheet to rule that out ahead of time. checkm8 bounds the worst
+case (a hang/reset is always DFU-recoverable), but doesn't make the
+write itself risk-free. Full reasoning and the process to follow when
+this is actually attempted (read-modify-write one bit, verify by
+readback, test immediately, revert immediately, one candidate at a time)
+in `docs/plans/2026-09-08-j81-bluetooth-battery-adt.md`'s "Why Stage B
+is a different category of risk".
+
 The historical-PongoOS control is a separate, lower-priority experiment,
 still blocked: `palera1n`'s stager rejects its 708,704-byte binary (limit
 is 0x7fe00 = 523,776 bytes) -- unresolved, not needed now that m1n1 works.

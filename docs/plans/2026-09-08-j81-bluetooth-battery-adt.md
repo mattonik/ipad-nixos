@@ -639,6 +639,127 @@ this document's own stop condition is exactly about not doing PMU GPIO
 work on inferred-not-measured evidence. Flagging back rather than
 guessing.
 
+#### Why Stage B is a different category of risk than everything above it, 2026-09-08
+
+Written before any register write is attempted, so the reasoning is on
+the record independent of how the actual attempt goes later. This is not
+a restatement of the stop condition (which already says "don't write
+without measuring") -- it's the reasoning for *why* that condition
+exists here specifically, since "measure first" alone doesn't explain
+what could actually go wrong or how to bound it.
+
+**What makes this different in kind, not just degree, from everything
+else done in this project so far.** Every action up to this point --
+reading ADT/FDT data, dumping PMU registers read-only, building and
+bundling static tools, flipping kernel config options for buses that
+were already proven working, even patching DTS to add new (disabled by
+default, or additive) nodes -- has a bounded failure mode: "it doesn't
+work" or "the build breaks", fixed by editing code and reflashing.
+Nothing physical happens to the hardware if any of that is wrong. A
+register write to a live PMIC is not in that category, because the
+write's *effect* happens in real hardware the instant it lands, before
+any script can inspect the result and decide whether to undo it.
+
+**The write itself is trivially reversible; the reasoning below is about
+what a wrong write can trigger before it's reversed, not about the byte
+value.** The full `0x0000`-`0x0400` dump above means for any candidate
+register there's already a known-good prior value on record, and writing
+it back takes one more `i2ctransfer` call. That's not in question.
+
+**Why "the prior byte value is known" isn't the same as "the risk is
+bounded":**
+
+1. **No datasheet exists for this exact chip.** Checked directly (this
+   document's own earlier research, plus a live web search this session)
+   -- nothing public documents `pmu,d2207`'s register map. Every
+   candidate register's meaning is inferred from a byte pattern (the
+   `0x0300`-`0x03a0` table looking regulator-shaped) or from a resource
+   *number* (`2`) whose relationship to any specific register address is
+   not established at all yet. "Plausible" is not "known."
+
+2. **A byte write touches every bit in that byte, not just the one bit
+   believed relevant.** If a candidate register packs multiple unrelated
+   controls into one byte (common in compact PMIC register maps -- the
+   `0x0300` table's own row shape, e.g. `14 14 00 20 00 02 00 00`,
+   already shows multiple distinct-looking fields packed together), a
+   write aimed at "the GPIO2 bit" that doesn't first read-modify-write
+   around the other bits could change something else in the same byte
+   without that being the intent, even if the byte is later restored.
+
+3. **Fault-latching is a real, common PMIC behavior that a follow-up
+   write doesn't necessarily clear.** Overcurrent/overvoltage/undervoltage
+   protection circuits on a rail typically *latch* into a fault state
+   once tripped, requiring an actual power-on-reset (not just "write a
+   different value to the same register") to clear. If a wrong write
+   trips a protection latch on some rail, writing the original byte back
+   fixes the register's *stored* value, not necessarily the *live*
+   fault state the hardware is already sitting in.
+
+4. **Some PMIC registers are commands, not persistent state.** A write
+   might not set a bit that stays set until changed again -- it might
+   trigger a one-shot action (a reset pulse, a sequencer step, an NVM
+   commit) the instant it lands. If that's what a candidate register
+   turns out to be, "write the old value back" doesn't undo anything,
+   because the action already happened and there was never a persistent
+   bit to restore.
+
+5. **The PMU supplies real power rails, and resource-number indexing
+   into it is not yet cross-validated against a second data point.** The
+   OIPG decode gives exactly one PMU resource number seen so far (`2`,
+   from `power_enable`) -- there's no second, independently-confirmed
+   PMU resource number to check the indexing scheme against. If the
+   *addressing scheme itself* is misunderstood (not just "which specific
+   register is GPIO2" but "how resource numbers map to registers at
+   all"), a write aimed at "resource 2" could land somewhere entirely
+   unrelated to any GPIO, peripheral-adjacent or otherwise.
+
+**What bounds the risk, and why this is worth doing carefully rather
+than not at all:**
+
+- checkm8 is a permanent, unpatchable bootrom exploit (the whole reason
+  this project's boot chain is possible at all) -- even a full hang or
+  unexpected reset is recoverable via a DFU cycle, which this session
+  alone has done more than a dozen times. The device cannot be
+  soft-bricked out of checkm8's reach by anything done from a booted
+  Linux userspace.
+- Every PMU interaction confirmed working so far (RTC, backlight, and
+  this session's own read-only scan) has stayed entirely within
+  peripheral-adjacent functionality -- nothing so far suggests this PMIC
+  exposes SoC-core or DRAM rail control to this register space at all.
+- The specific candidate this document has evidence for (the `0x0300`
+  table) is a small, bounded region, not an unconstrained sweep of the
+  full address space.
+
+**The process this project will follow whenever Stage B actually
+happens** (recorded now, before it happens, so it isn't improvised under
+time pressure with the device already in a modified state):
+
+1. Take a fresh, complete read-only dump of the target register (and
+   ideally its whole surrounding page) immediately before writing
+   anything -- not relying on this session's dump, which may be stale by
+   then.
+2. Change exactly one bit via read-modify-write (read the current byte,
+   flip one bit, write the modified byte) rather than writing a new
+   full byte from assumption.
+3. Read the register back immediately after the write to confirm what
+   was actually stored, rather than trusting that the write command
+   exiting cleanly means it landed as intended.
+4. Test the hypothesis immediately (attempt `btattach`) rather than
+   leaving the device in a modified, unverified state for any length of
+   time.
+5. Revert the byte immediately after testing, regardless of outcome, and
+   read it back again to confirm the revert actually took.
+6. One candidate register at a time -- never a sweep -- so that any bad
+   outcome can be attributed to a specific, known cause rather than
+   requiring a search after the fact.
+7. Confirm the DFU/checkm8 recovery path is available and uncomplicated
+   by anything else in progress before starting, so recovery is never
+   competing with some other unrelated mid-flight experiment.
+
+Not a blocker on doing this work -- a record of why it needs its own
+explicit go-ahead and a deliberate process, rather than being treated as
+a natural continuation of the read-only work above it.
+
 BT completion criteria: cold-boot repeatability, firmware loaded, controller
 address stable, scan works, and three minutes of connect/disconnect activity
 produces no UART overruns or HCI timeouts.
