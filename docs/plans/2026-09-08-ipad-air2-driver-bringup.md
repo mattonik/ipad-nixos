@@ -171,7 +171,8 @@ blocker.
 | Touch | `multi-touch,j82` on SPI3 | `apple_z2` exists but only for Mac Touch Bars; S5L SPI work is on test branches | Clean the old-controller SPI variant first, prove SPI3, then adapt Z2 firmware/calibration and protocol | Two-stage port |
 | Wi-Fi | BCM4350 on T7000 PCIe port 1 through DART | brcmfmac PCIe source exists but CFG80211/BRCMFMAC are disabled; T7000 PCIe host is absent | Port T7000 PCIe host, add DART/port DT, enumerate endpoint, then enable brcmfmac and local firmware/NVRAM | Largest near-term driver task |
 | Display | Bootloader framebuffer | simplefb works | Keep simplefb; native display/GPU is separate research | Usable baseline |
-| Audio/GPU/NAND/cameras/Touch ID | Apple-specific blocks | No complete A8X stack | Defer until interactive tablet inputs/networking work | Out of current milestone |
+| Internal storage | ANS1/ASP coprocessor | Matching Hoolock Linux/m1n1 `ans1` branches exist as WIP | Integrate a separate payload, remove write unlock and expose every namespace read-only before testing | Experimental path available |
+| Audio/GPU/cameras/Touch ID | Apple-specific blocks | No complete A8X stack | Follow the [long-term subsystem plan](../../research/j81-long-term-subsystems.md) after interactive tablet inputs/networking work | Out of current milestone |
 
 ### Kernel update assessment
 

@@ -1,11 +1,14 @@
 # Driver gap analysis: iPad Air 2 (J81 / T7001)
 
-Updated 2026-09-08 after reviewing the repository, the pinned Hoolock Linux
+Updated 2026-09-09 after reviewing the repository, the pinned Hoolock Linux
 source, current upstream Linux, Hoolock's test branches, Corellium's Sandcastle
 drivers, and the SoMainline J82 Apple Device Tree (ADT).
 
 The implementation sequence, exact hardware map, tests and source links are in
 [the current driver bring-up plan](../docs/plans/2026-09-08-ipad-air2-driver-bringup.md).
+Native GPU, audio, suspend, charging control and the new ANS1 storage path are
+covered in the
+[long-term subsystem plan](j81-long-term-subsystems.md).
 
 ## Evidence boundary
 
@@ -50,7 +53,8 @@ identifiers stay outside Git.
 | Sensors | Mostly behind the M8 coprocessor | No identified usable path | Inventory/protocol unknown | Defer |
 | Audio | Apple DMA/codec path | No complete A8X stack | Controller, codec and routing work | Defer |
 | GPU | PowerVR GXA6850 | No A8X platform integration | Major reverse engineering | Defer |
-| NAND/cameras/Touch ID | Apple proprietary paths | No usable stack | Large storage/ISP/SEP gaps | Outside RAM-only milestone |
+| Internal storage | ANS1/ASP coprocessor | Hoolock Linux and m1n1 `ans1` branches are WIP | Integration, read-only hardening and recovery | Build a separate observation-only payload |
+| Cameras/Touch ID | Apple proprietary paths | No usable stack | Large ISP/SEP gaps | Outside RAM-only milestone |
 
 ## What the kernel update changes
 
@@ -64,6 +68,14 @@ Hoolock's `tests/spi` and `tests/kat-spi` branches contain useful old-controller
 SPI work. They are experimental and should be reduced to the S5L8960X register
 layout and quirks rather than merged wholesale. Its `tests/bluetooth` branch is
 for T8015/BCM4349; only its integration patterns are relevant to J81.
+
+Hoolock's Linux `ans1` branch is a direct descendant of this project's pinned
+kernel base and contains the matching old-RTKit, AKF mailbox, T7001 DT and ASP
+block work. Hoolock's m1n1 `ans1` branch also passes the iBoot-loaded firmware
+region to Linux. This makes internal storage a real WIP port rather than a
+from-scratch driver, but the current block driver enables user-area writes and
+lacks usable timeout recovery. Force all namespaces read-only before its first
+local hardware test.
 
 ## Bluetooth: closest new peripheral
 

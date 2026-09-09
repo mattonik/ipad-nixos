@@ -231,6 +231,7 @@ The `research/` directory contains detailed analysis of every subsystem:
 - **[driver bring-up plan](docs/plans/2026-09-08-ipad-air2-driver-bringup.md)** — Current evidence, implementation phases and acceptance tests
 - **[Bluetooth, battery and ADT plan](docs/plans/2026-09-08-j81-bluetooth-battery-adt.md)** — Live J81 baseline, safe ADT capture and commit-sized UART3/UART5 implementation gates
 - **[J81 battery/HDQ research](research/j81-battery-hdq.md)** — Real wiring, TI timing, serdev correction and the concrete minimal driver plan
+- **[J81 GPU/audio/suspend/charging/storage plan](research/j81-long-term-subsystems.md)** — Exact remaining driver layers, ANS1 WIP path, safety gates and dependency order
 - **[touch-deep-dive.md](research/touch-deep-dive.md)** — BCM5976 Z2 protocol analysis across 5 independent implementations
 - **[compatibility-matrix.md](research/compatibility-matrix.md)** — All 40 checkm8-vulnerable iPad models
 

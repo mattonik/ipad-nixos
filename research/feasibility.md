@@ -13,8 +13,11 @@ A practical standalone system still needs substantial peripheral work.
 Bluetooth and battery have short, evidence-backed paths. Touch needs the old
 T7001 SPI controller before the existing Z2 protocol code can be adapted.
 Wi-Fi uses BCM4350 over T7000 PCIe, so it requires a host-controller port before
-brcmfmac can help. Native display/GPU, audio and internal storage remain
-long-term work.
+brcmfmac can help. Native display/GPU and audio remain long-term work. Internal
+storage now has a concrete Hoolock ANS1 WIP branch and is the closest of those
+previously deferred subsystems, but its first local build must be forced
+read-only. See the
+[long-term subsystem plan](j81-long-term-subsystems.md).
 
 The full implementation plan is
 [docs/plans/2026-09-08-ipad-air2-driver-bringup.md](../docs/plans/2026-09-08-ipad-air2-driver-bringup.md).
@@ -65,11 +68,16 @@ description. Hoolock already carries the old-Apple DART variant. Port the
 T7000 PCIe host using live A8X tunables, prove endpoint enumeration, then enable
 CFG80211/BRCMFMAC/BRCMFMAC_PCIE and provide local firmware/NVRAM.
 
-### Native GPU, audio and internal storage — deferred
+### Native GPU and audio deferred; internal storage now WIP
 
-No complete A8X PowerVR platform stack, native display pipeline, audio stack or
-Apple NAND/FTL stack is available. The usable milestone should use simplefb,
-software rendering, USB or network storage, and external audio if needed.
+No complete A8X PowerVR platform stack, native display pipeline or audio stack
+is available. Hoolock's experimental ANS1 Linux and m1n1 branches now provide a
+specific internal-storage path, including the T7001 mailbox/RTKit support, ASP
+block driver and iBoot-loaded firmware handoff. The driver is unsafe to test
+unchanged because it enables user-area writes and lacks recovery; the first
+payload must remove write unlock and expose every namespace read-only. Until
+that gate passes, the usable milestone should continue to use simplefb,
+software rendering, and RAM, USB or network storage.
 
 ## Dependency path
 

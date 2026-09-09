@@ -2267,6 +2267,8 @@ Never commit Apple firmware, NVRAM, touch calibration or device identifiers.
 | Battery | 🟡 Reviewed UART5/HDQ implementation compiles in the full payload; hardware test remains |
 | Touch | 🟡 Reviewed SPI3 controller/DTS groundwork is staged; cross-build and hardware test remain |
 | Wi‑Fi implementation | ❌ Real J81 resources confirmed; T7000 PCIe/DART host work has not started |
+| Internal storage | 🟡 Hoolock now has matching Linux/m1n1 ANS1 WIP branches; local integration has not started and the first payload must be forced read-only. See the [long-term subsystem plan](../research/j81-long-term-subsystems.md). |
+| Native GPU / audio / suspend / charging control | ❌ Sanitized J81 hardware paths and dependency-ordered implementation gates are documented in the [long-term subsystem plan](../research/j81-long-term-subsystems.md); no driver implementation has started. |
 | Usable tethered Linux tablet | ❌ Future milestone |
 
 ## Safety boundaries
