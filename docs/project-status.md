@@ -24,8 +24,13 @@ check finds UART0 and UART3 present, with no UART5 or power supply yet.
 The battery source audit found that Samsung UART already supports serdev
 children through the common serial core. Commit `863d2e4` now implements the
 tty-serdev stop-bit operation, HDQ-UART frontend using bq27xxx, and UART5/J81
-device-tree nodes. The kernel and full payload compile; no hardware boot has
-yet tested the gauge. Wiring, TI timing, driver scope, and hardware gates are in
+device-tree nodes. A 2026-09-09 pre-hardware review fixed the missing serdev
+`write_wakeup` callback, armed one combined echo/response receive before
+transmit, and matched Corellium's tolerant response-bit threshold. The kernel
+and full payload compile; the ready payload's `m1n1-linux.bin` SHA-256 is
+`2c7bc155a66947f144b85e116dd0c0b9272f5f0f8418474896134bac86a892ba`.
+The iPad was offline during the review, so no hardware boot has yet tested the
+gauge. Wiring, TI timing, driver scope, and hardware gates are in
 [the dedicated J81 battery research](../research/j81-battery-hdq.md).
 
 **Next-subsystem priority:** after the battery hardware gate, bring up SPI3 and

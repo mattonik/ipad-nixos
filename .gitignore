@@ -33,4 +33,4 @@ keys/
 *.img
 vzvm.json
 .DS_Store
-boot/__pycache__/
+__pycache__/

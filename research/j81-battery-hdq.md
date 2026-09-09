@@ -341,6 +341,41 @@ BAT-1, BAT-2 and BAT-3 are implemented as four kernel patches applied from
   PongoOS/m1n1/kernel/initramfs boot payload) also succeeds end to end with
   these changes in place.
 
+### Pre-hardware transport review, 2026-09-09
+
+A review against the exact serdev core and Corellium transport found and fixed
+three issues before the first iPad boot:
+
+- `serdev_device_write()` requires the client's `write_wakeup` callback and
+  otherwise returns `-EINVAL`; the frontend now supplies
+  `serdev_device_write_wakeup`.
+- Arming separate echo and response waits after transmit could miss immediate
+  loopback bytes or strand a gauge response delivered with the echo. The
+  frontend now arms one combined receive buffer before transmit, synchronizes
+  on the eight-byte command echo, collects echo and response in the same
+  callback, and waits once.
+- A gauge-generated pulse need not decode to the exact transmitted `0xfe` or
+  `0xc0` byte. The decoder now follows Corellium's proven `>= 0xf0` threshold
+  for one and treats lower samples as zero.
+
+The same change checks break-control errors and waits for TX drain. The small
+`kernel/test_hdq_uart_patch.py` guard covers the required serdev callback,
+receive-before-write ordering, combined delivery, noise synchronization,
+threshold decoding, and all 256 byte round trips.
+
+A fresh full build after these fixes succeeded:
+
+- kernel: `/nix/store/4hh8kzchb653s2kcnsdmlfvjlci53cz1-linux-aarch64-unknown-linux-gnu-7.3.0-rc1`;
+- boot payload: `/nix/store/b0cdibg23h6swvanqn4wlis8gw1xrrm7-ipad-air2-m1n1-hoolock-control`;
+- `m1n1-linux.bin` SHA-256:
+  `2c7bc155a66947f144b85e116dd0c0b9272f5f0f8418474896134bac86a892ba`.
+
+`System.map` contains `hdq_uart_probe`, `serdev_device_set_stopbits`, and
+`ttyport_set_stopbits`; the final DTB contains `serial@20a0d4000`,
+`uart5-pins`, and `ti,bq27540-hdq-uart`. The iPad did not answer the USB-shell
+connection at `172.16.42.1:23` during this review, so this corrected payload
+still has no BAT-4 hardware result.
+
 **Not yet done: BAT-4, or any hardware boot with this kernel at all.** Every
 result above is a build-time/compile-time verification. Whether UART5
 actually probes, whether the gauge answers a real HDQ transaction, what its

@@ -767,6 +767,12 @@ hardware-tested** (BAT-4): nothing has been flashed to the iPad since
 this was written. Full detail, including exactly what was verified and
 what wasn't, in that document's "Implementation result, 2026-09-08".
 
+**Pre-hardware review, 2026-09-09:** fixed the frontend's required serdev
+`write_wakeup` callback, receive-before-transmit ordering, combined
+echo/response collection, response-pulse threshold, break error handling, and
+TX drain. These were caught before BAT-4; see the dedicated research document
+and `kernel/test_hdq_uart_patch.py`.
+
 ### BAT-1: add an HDQ-over-serdev frontend
 
 Add one focused driver,

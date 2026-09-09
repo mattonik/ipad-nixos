@@ -174,6 +174,16 @@ hardware-tested yet** -- nothing has been flashed to the device with
 this kernel. Full detail in `research/j81-battery-hdq.md`'s
 "Implementation result, 2026-09-08".
 
+**Battery pre-hardware review, 2026-09-09.** Fixed three transport bugs before
+the first device boot: `serdev_device_write()` requires a client
+`write_wakeup` callback or returns `-EINVAL`; separate echo and response waits
+could strand bytes delivered together by tty; and gauge pulses must use
+Corellium's `>= 0xf0` one-bit threshold instead of exact UART-byte equality.
+The receiver is now armed before transmit for one combined echo/response
+buffer, consumes noise while synchronizing on the command echo, checks break
+errors, and waits for TX drain. `kernel/test_hdq_uart_patch.py` guards these
+invariants and all 256 byte round trips.
+
 **`btattach` built and bundled, 2026-09-08.** `boot/btattach.nix` compiles
 just `tools/btattach.c` and the handful of `src/shared/*.c` files it
 actually needs, directly with `$CC` -- bypassing BlueZ's autotools, whose

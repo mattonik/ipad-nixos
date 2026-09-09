@@ -31,7 +31,7 @@
  obj-$(CONFIG_CHARGER_DA9150)	+= da9150-charger.o
 --- /dev/null	2026-09-08 17:03:25
 +++ b/drivers/power/supply/bq27xxx_battery_hdq_uart.c	2026-09-08 17:03:03
-@@ -0,0 +1,397 @@
+@@ -0,0 +1,441 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * TI HDQ battery gauge over Apple UART5, bit-banged via serdev
@@ -84,6 +84,7 @@
 +
 +#define HDQ_UART_ONE			0xfe
 +#define HDQ_UART_ZERO			0xc0
++#define HDQ_UART_ONE_MIN		0xf0
 +#define HDQ_UART_BYTE_LEN		8
 +
 +#define BQ27XXX_REG_CONTROL		0x00
@@ -100,6 +101,7 @@
 +	 */
 +	spinlock_t rx_lock;
 +	struct completion rx_done;
++	u8 rx_start[HDQ_UART_BYTE_LEN];
 +	u8 *rx_buf;
 +	int rx_want;
 +	int rx_count;
@@ -118,12 +120,9 @@
 +	u8 val = 0;
 +	int i;
 +
-+	for (i = 0; i < HDQ_UART_BYTE_LEN; i++) {
-+		if (in[i] == HDQ_UART_ONE)
++	for (i = 0; i < HDQ_UART_BYTE_LEN; i++)
++		if (in[i] >= HDQ_UART_ONE_MIN)
 +			val |= (1 << i);
-+		else if (in[i] != HDQ_UART_ZERO)
-+			return -EIO;
-+	}
 +	*byte = val;
 +	return 0;
 +}
@@ -136,10 +135,26 @@
 +	size_t consumed = 0;
 +
 +	spin_lock_irqsave(&hdq->rx_lock, flags);
-+	while (consumed < count && hdq->rx_count < hdq->rx_want)
-+		hdq->rx_buf[hdq->rx_count++] = data[consumed++];
-+	if (hdq->rx_want && hdq->rx_count >= hdq->rx_want)
-+		complete(&hdq->rx_done);
++	while (consumed < count) {
++		if (!hdq->rx_want) {
++			consumed = count;
++			break;
++		}
++
++		/* Ignore noise until the eight-byte command echo matches. */
++		if (hdq->rx_count < HDQ_UART_BYTE_LEN &&
++		    data[consumed] != hdq->rx_start[hdq->rx_count]) {
++			consumed++;
++			continue;
++		}
++
++		if (hdq->rx_count < hdq->rx_want)
++			hdq->rx_buf[hdq->rx_count++] = data[consumed];
++		consumed++;
++
++		if (hdq->rx_count >= hdq->rx_want)
++			complete(&hdq->rx_done);
++	}
 +	spin_unlock_irqrestore(&hdq->rx_lock, flags);
 +
 +	return consumed;
@@ -147,30 +162,44 @@
 +
 +static const struct serdev_device_ops hdq_uart_serdev_ops = {
 +	.receive_buf = hdq_uart_receive_buf,
++	.write_wakeup = serdev_device_write_wakeup,
 +};
 +
-+/* Arms the receiver for exactly `n` bytes into `buf`, then blocks (may
-+ * sleep -- caller must hold xfer_lock, not rx_lock) until they arrive
-+ * or HDQ_XFER_TIMEOUT_MS elapses.
-+ */
-+static int hdq_wait_bytes(struct hdq_uart *hdq, u8 *buf, int n)
++static void hdq_arm_receive(struct hdq_uart *hdq, u8 *buf, int n,
++			    const u8 *start)
 +{
 +	unsigned long flags;
-+	long ret;
 +
 +	spin_lock_irqsave(&hdq->rx_lock, flags);
++	memcpy(hdq->rx_start, start, HDQ_UART_BYTE_LEN);
 +	hdq->rx_buf = buf;
 +	hdq->rx_count = 0;
 +	hdq->rx_want = n;
 +	reinit_completion(&hdq->rx_done);
 +	spin_unlock_irqrestore(&hdq->rx_lock, flags);
++}
++
++static void hdq_disarm_receive(struct hdq_uart *hdq)
++{
++	unsigned long flags;
++
++	spin_lock_irqsave(&hdq->rx_lock, flags);
++	hdq->rx_buf = NULL;
++	hdq->rx_want = 0;
++	spin_unlock_irqrestore(&hdq->rx_lock, flags);
++}
++
++/* The receiver is armed before transmit so an immediate loopback echo or
++ * gauge response cannot race ahead of the waiter. Echo and response use one
++ * buffer and one completion because the tty layer may deliver both together.
++ */
++static int hdq_wait_receive(struct hdq_uart *hdq)
++{
++	long ret;
 +
 +	ret = wait_for_completion_timeout(&hdq->rx_done,
 +					  msecs_to_jiffies(HDQ_XFER_TIMEOUT_MS));
-+
-+	spin_lock_irqsave(&hdq->rx_lock, flags);
-+	hdq->rx_want = 0;
-+	spin_unlock_irqrestore(&hdq->rx_lock, flags);
++	hdq_disarm_receive(hdq);
 +
 +	return ret ? 0 : -ETIMEDOUT;
 +}
@@ -180,12 +209,20 @@
 + * own jiffies-granularity timing, so this drives it manually instead of
 + * trusting a fixed-duration break request.
 + */
-+static void hdq_send_break(struct hdq_uart *hdq)
++static int hdq_send_break(struct hdq_uart *hdq)
 +{
-+	serdev_device_break_ctl(hdq->serdev, -1);
++	int ret;
++
++	ret = serdev_device_break_ctl(hdq->serdev, -1);
++	if (ret)
++		return ret;
 +	usleep_range(HDQ_BREAK_US_MIN, HDQ_BREAK_US_MAX);
-+	serdev_device_break_ctl(hdq->serdev, 0);
++	ret = serdev_device_break_ctl(hdq->serdev, 0);
++	if (ret)
++		return ret;
 +	usleep_range(HDQ_RECOVERY_US_MIN, HDQ_RECOVERY_US_MAX);
++
++	return 0;
 +}
 +
 +/* One full HDQ byte transaction: break, send `n_tx` encoded UART bytes
@@ -196,30 +233,37 @@
 +static int hdq_transact(struct hdq_uart *hdq, const u8 *tx, int n_tx,
 +			u8 *resp)
 +{
-+	u8 echo[2 * HDQ_UART_BYTE_LEN];
++	u8 rx[3 * HDQ_UART_BYTE_LEN];
 +	ssize_t written;
-+	int ret;
++	int ret, rx_want = n_tx + (resp ? HDQ_UART_BYTE_LEN : 0);
 +
-+	if (n_tx > ARRAY_SIZE(echo))
++	if (rx_want > ARRAY_SIZE(rx))
 +		return -EINVAL;
 +
-+	hdq_send_break(hdq);
-+
-+	written = serdev_device_write(hdq->serdev, tx, n_tx,
-+				      msecs_to_jiffies(HDQ_XFER_TIMEOUT_MS));
-+	if (written != n_tx)
-+		return written < 0 ? (int)written : -EIO;
-+
-+	ret = hdq_wait_bytes(hdq, echo, n_tx);
++	ret = hdq_send_break(hdq);
 +	if (ret)
 +		return ret;
-+	if (memcmp(tx, echo, n_tx) != 0)
++
++	hdq_arm_receive(hdq, rx, rx_want, tx);
++	written = serdev_device_write(hdq->serdev, tx, n_tx,
++				      msecs_to_jiffies(HDQ_XFER_TIMEOUT_MS));
++	if (written != n_tx) {
++		hdq_disarm_receive(hdq);
++		return written < 0 ? (int)written : -EIO;
++	}
++
++	serdev_device_wait_until_sent(hdq->serdev,
++				      msecs_to_jiffies(HDQ_XFER_TIMEOUT_MS));
++	ret = hdq_wait_receive(hdq);
++	if (ret)
++		return ret;
++	if (memcmp(tx, rx, n_tx) != 0)
 +		return -EIO;
 +
-+	if (!resp)
-+		return 0;
++	if (resp)
++		memcpy(resp, rx + n_tx, HDQ_UART_BYTE_LEN);
 +
-+	return hdq_wait_bytes(hdq, resp, HDQ_UART_BYTE_LEN);
++	return 0;
 +}
 +
 +static int hdq_read_byte(struct hdq_uart *hdq, u8 reg, u8 *val)
