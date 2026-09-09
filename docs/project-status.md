@@ -1,6 +1,6 @@
 # iPad Linux Project Status
 
-Status date: 2026-09-08
+Status date: 2026-09-09
 
 ## 🎉 USB networking resolved -- real remote shell access to the device (2026-09-08)
 
@@ -32,6 +32,16 @@ and full payload compile; the ready payload's `m1n1-linux.bin` SHA-256 is
 The iPad was offline during the review, so no hardware boot has yet tested the
 gauge. Wiring, TI timing, driver scope, and hardware gates are in
 [the dedicated J81 battery research](../research/j81-battery-hdq.md).
+
+**Touch groundwork, 2026-09-09:** patches `0007`–`0009` port the older Apple
+SPI controller path and describe/enable J81 SPI3 from the real ADT. A pre-build
+review fixed reversed bit-order handling, an `IRQ_NONE` completion path, an IRQ
+enable/completion race, and an uninitialized RX count; the patch sequence and
+`kernel/test_spi_s5l_patch.py` pass. These patches remain outside
+`kernel/hoolock.nix`, so the current battery-ready payload is unchanged. The
+next TOUCH-1 gate is one real cross-build before any hardware test. TOUCH-2
+still needs the child `reg`, `Lump` PMU resource, and `KLCT` clock descriptor
+decoded; see [the focused touch plan](plans/2026-09-09-j81-touch-spi3.md).
 
 **Next-subsystem priority:** after the battery hardware gate, bring up SPI3 and
 touch first. The real J81 ADT confirms the controller and GPIO resources, Linux

@@ -195,8 +195,11 @@ unconditionally. `0008`/`0009` add and enable the SPI3 DTS node
 including a real correction, not an assumption: the CS0 pinmux alt-function
 is `1`, not `2` like UART3/UART5's pins, confirmed by pulling every
 `function-tx`/`function-rts` pair across every UART instance in the ADT
-first (the field genuinely varies per pin). All four patches individually
-apply cleanly and the DTS compiles with the real `dtc`. **Not yet wired
+first (the field genuinely varies per pin). All three patches individually
+apply cleanly and the DTS compiles with the real `dtc`. A pre-build review
+fixed reversed MC/S5L bit-order selection, a completion IRQ returned as
+`IRQ_NONE`, completion reinitialization after IRQ enable, and an uninitialized
+S5L RX count; `kernel/test_spi_s5l_patch.py` guards them. **Not yet wired
 into `kernel/hoolock.nix` or built with the real cross-compiler** -- that's
 the concrete next step, deliberately left undone rather than rushed. Full
 detail in `docs/plans/2026-09-09-j81-touch-spi3.md`.
