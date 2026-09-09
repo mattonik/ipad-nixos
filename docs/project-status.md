@@ -2216,18 +2216,19 @@ Never commit Apple firmware, NVRAM, touch calibration or device identifiers.
 | Buttons | GPIO driver, config and DT are present | Verify Home, Power and both volume input events on Hoolock. |
 | RTC / backlight | Both hardware-verified over the USB shell | Preserve their current nodes and drivers. |
 | Bluetooth | Real J81 UART3 and manual `hci0` attach are hardware-confirmed | Implement measured D2207 PMU GPIO2 control, then use the standard `hci_bcm` serdev child. |
-| Battery | Stop-bit API, HDQ-UART frontend and UART5/GPIO34 DT compile | Run BAT-4 on hardware and identify the gauge. |
-| Touch | Z2 protocol code exists; old-SoC SPI support is experimental | Clean Hoolock's S5L8960X SPI variant and prove SPI3 before adapting touch. |
+| Battery | Stop-bit API, reviewed HDQ-UART frontend and UART5/GPIO34 DT compile in the full payload | Run BAT-4 on hardware and identify the gauge. |
+| Touch | Reviewed S5L8960X SPI3 and J81 DT patches are staged outside the active build | Cross-build TOUCH-1, then prove SPI3 before adapting touch. |
 | Wi-Fi | BCM4350 brcmfmac PCIe endpoint code exists; wireless config is disabled | Port T7000 PCIe/DART and enumerate port 1 before enabling brcmfmac. |
 | Audio / GPU / NAND / cameras / Touch ID | No complete A8X stack | Defer beyond the interactive-tablet milestone. |
 
 ### Priority bring-up sequence
 
-1. **Battery hardware gate.** Boot `863d2e4`, verify stable `DEVICE_TYPE` and
-   power-supply readings, and preserve the exact failure signature if it does
-   not probe.
-2. **Touch.** Port only the S5L SPI controller differences, prove SPI3, then
-   adapt the existing `apple_z2` driver with private local firmware/calibration.
+1. **Battery hardware gate.** Boot the reviewed payload documented above,
+   verify stable `DEVICE_TYPE` and power-supply readings, and preserve the exact
+   failure signature if it does not probe.
+2. **Touch.** Cross-build the staged S5L SPI3 patches, prove the controller,
+   then adapt the existing `apple_z2` driver with private local
+   firmware/calibration.
 3. **Bluetooth power.** Finish the measured D2207 PMU GPIO2 work, then add the
    standard `hci_bcm` serdev child and its power/wake GPIOs. UART3 and manual
    HCI attachment are already hardware-confirmed.
@@ -2263,8 +2264,9 @@ Never commit Apple firmware, NVRAM, touch calibration or device identifiers.
 | Hoolock payload / RTC / backlight validation | ✅✅ Hardware-verified; buttons remain untested |
 | J81 ADT capture | ✅ Real raw ADT captured privately; UART, battery, touch and Wi-Fi/PCIe resources sanitized and documented |
 | Bluetooth | 🟡 UART3 and `hci0` registration hardware-confirmed; radio needs measured D2207 PMU GPIO2 power control |
-| Battery | 🟡 UART5 DT, serdev stop-bit API and HDQ frontend compile; hardware test remains |
-| Touch / Wi‑Fi implementation | ❌ Real J81 resources confirmed and prioritized; implementation not started |
+| Battery | 🟡 Reviewed UART5/HDQ implementation compiles in the full payload; hardware test remains |
+| Touch | 🟡 Reviewed SPI3 controller/DTS groundwork is staged; cross-build and hardware test remain |
+| Wi‑Fi implementation | ❌ Real J81 resources confirmed; T7000 PCIe/DART host work has not started |
 | Usable tethered Linux tablet | ❌ Future milestone |
 
 ## Safety boundaries
