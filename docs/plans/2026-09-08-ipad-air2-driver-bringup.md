@@ -24,6 +24,15 @@ patches and complete payload compile, but BAT-4 has not yet been booted on the
 iPad. Finish that hardware gate before stacking another peripheral change into
 the same test image.
 
+Touch (SPI3 + `apple_z2`) now has its own focused plan, same reason the
+Bluetooth/battery split happened:
+[J81 touch over SPI3](2026-09-09-j81-touch-spi3.md). That document also
+corrects this one's "Priority review" section below: checked both Hoolock
+SPI branches directly rather than trusting the summary here, and
+`tests/spi` (`0019398`) is *not* the better reference -- `tests/kat-spi`
+(`c065201`) is, matching this document's own earlier "Three Hoolock
+branches" note, not the "Priority review" section's citation.
+
 ## Decision
 
 Keep the new Hoolock kernel and its boot payload as the development baseline.
@@ -70,7 +79,17 @@ mainly from J82:
 | 3 | Native graphics | No implementation work yet | Simplefb supplies a usable display. Hoolock marks the A8X display pipe and GPU TBA, and current PowerVR kernel/Mesa support does not list GXA6850. |
 
 For touch, port only the `APPLE_SPI_S5L` register-layout and FIFO/IRQ differences
-from Hoolock's `0019398` experiment into the pinned `spi-apple.c`. Add the SPI3
+from Hoolock's `tests/kat-spi` experiment (`c065201`) into the pinned
+`spi-apple.c` -- checked both `0019398` and `c065201` directly (2026-09-09):
+`c065201` is the more complete one (770 vs. 645 lines, real
+`APPLE_S5L_SPI_CFG_*` bitfield definitions `0019398` lacks), matching this
+document's own earlier "Three Hoolock branches" characterization, not this
+paragraph's original citation. `c065201` needs real cleanup before use: it
+prints `dev_info()` on every transfer/poll, and its `apple_spi_probe()` has a
+bare global `bool defered` hack that forces every probe to defer
+unconditionally on its first call. See
+[the dedicated touch plan](2026-09-09-j81-touch-spi3.md) for the full
+evidence and the current implementation stage. Add the SPI3
 controller and pinctrl first and require a stable `/sys/class/spi_master/`
 entry. Then add the J81 touch child and the smallest `apple_z2` match needed to
 observe reset IRQ and the exact firmware request. Reuse `apple_z2`; do not add a

@@ -184,6 +184,23 @@ buffer, consumes noise while synchronizing on the command echo, checks break
 errors, and waits for TX drain. `kernel/test_hdq_uart_patch.py` guards these
 invariants and all 256 byte round trips.
 
+**Touch (SPI3) groundwork started, 2026-09-09 -- not wired into the
+build.** `kernel/patches/0007` ports and cleans Hoolock's `tests/kat-spi`
+(`c065201`, confirmed the more complete of the two referenced branches,
+correcting a doc citation of the less-complete `0019398`) into
+`drivers/spi/spi-apple.c`: drops a `dev_info()`-per-transfer spam and a
+global `bool defered` hack that forced every probe to defer once
+unconditionally. `0008`/`0009` add and enable the SPI3 DTS node
+(`apple,s5l8960x-spi`, register/IRQ/clock-gate real-ADT-confirmed) --
+including a real correction, not an assumption: the CS0 pinmux alt-function
+is `1`, not `2` like UART3/UART5's pins, confirmed by pulling every
+`function-tx`/`function-rts` pair across every UART instance in the ADT
+first (the field genuinely varies per pin). All four patches individually
+apply cleanly and the DTS compiles with the real `dtc`. **Not yet wired
+into `kernel/hoolock.nix` or built with the real cross-compiler** -- that's
+the concrete next step, deliberately left undone rather than rushed. Full
+detail in `docs/plans/2026-09-09-j81-touch-spi3.md`.
+
 **`btattach` built and bundled, 2026-09-08.** `boot/btattach.nix` compiles
 just `tools/btattach.c` and the handful of `src/shared/*.c` files it
 actually needs, directly with `$CC` -- bypassing BlueZ's autotools, whose
