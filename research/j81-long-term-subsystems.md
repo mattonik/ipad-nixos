@@ -263,6 +263,17 @@ remain hardware test work. The existing battery path is unchanged, and no
 PMIC register was written during implementation, build validation or payload
 packaging.
 
+Validation commands were:
+
+- `nix build .#packages.x86_64-linux.hoolock-kernel -o result-hoolock-kernel -L`
+- `nix build .#packages.x86_64-linux.m1n1-hoolock-control -o result-hoolock-charger-payload -L`
+- the inline D2207 conversion assertions recorded above
+
+Both builds passed on the remote Linux builder. The build logs included the
+known cache-DNS retry warning and the existing Hoolock DT decompile warnings
+(simple-bus unit formatting and placeholder phandle checks); neither stopped
+the build or came from the new charger driver.
+
 ### What is needed
 
 1. Boot this read-only child and confirm its two sysfs values match the raw
