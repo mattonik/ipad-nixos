@@ -14,7 +14,7 @@ RTC and backlight (bundled overnight, see below) were also confirmed
 working on real hardware in the same session. Full transcript in
 `docs/software-only-control.md`'s "Round 10."
 
-**Bluetooth/battery progress, 2026-09-08:** the real J81 ADT is captured
+**Bluetooth/battery progress, 2026-09-08 and 2026-09-10:** the real J81 ADT is captured
 privately and its UART3/UART5 resources are sanitized in
 [the focused plan](plans/2026-09-08-j81-bluetooth-battery-adt.md). UART3 now
 registers on hardware and bundled `btattach` reaches `hci0`; the radio remains
@@ -76,6 +76,13 @@ active, while SPI3, PCIe and GPU are off; there is no block device, HCI device,
 rfkill entry, IIO device or exposed regulator. This is the baseline for the
 next driver payload, not evidence of additional hidden devices. See the
 [long-term subsystem plan](../research/j81-long-term-subsystems.md#charging-policy).
+
+The same live session then reran the safe Bluetooth transport probe.
+`btattach` registered `/sys/class/bluetooth/hci0` and transmitted 14 bytes on
+UART3, but received none; Broadcom baud-rate and reset commands timed out with
+`-110`. The D2207 GPIO2 reads stayed at configuration `0x00 0x00` and data
+`0x20`, so the radio power state was not changed. Private before/after captures
+and hashes are recorded in the [Bluetooth plan](plans/2026-09-08-j81-bluetooth-battery-adt.md#bt-5-transport-only-attach-result-2026-09-10).
 
 **Touch groundwork, 2026-09-09:** patches `0007`–`0009` port the older Apple
 SPI controller path and describe/enable J81 SPI3 from the real ADT. A pre-build

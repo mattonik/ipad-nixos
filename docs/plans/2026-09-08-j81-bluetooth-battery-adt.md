@@ -617,11 +617,51 @@ interrupts` and `kernel-log` sections. This keeps the current GPIO2 write
 gate untouched while still showing whether the UART, HCI class, interrupt
 count or PMIC state changes.
 
-The current host could not run the live collection: `172.16.42.1:23` timed
-out and the route selected the normal LAN (`en5`); the USB network interface
-was inactive. No command reached the iPad. Offline validation passed with
-`python3 -m py_compile boot/bt_probe.py boot/ipad_console.py` and
+The first host attempt could not run the live collection: `172.16.42.1:23`
+timed out and the route selected the normal LAN (`en5`); the USB network
+interface was inactive. No command reached the iPad. Offline validation passed
+with `python3 -m py_compile boot/bt_probe.py boot/ipad_console.py` and
 `python3 boot/test_bt_probe.py`.
+
+#### BT-5 transport-only attach result, 2026-09-10
+
+The iPad was subsequently booted into the same postmarketOS image and became
+reachable at `172.16.42.1` over USB networking. A three-sample read-only
+baseline was saved privately as
+`artifacts/live/20260910T182540Z-j81-bt-before.txt`
+(`sha256=1b7bd41e90ba3932cd6bb033ffc2f8388635ec1a89bc65cf091c3a4aa55c7395`).
+It confirmed J81/T7001, UART3 at `ttySAC1`, no HCI class device, and D2207
+GPIO2 configuration/data reads of `0x00 0x00` and `0x20` (bit 2 low).
+
+The already-bundled transport tool was then launched without changing any
+PMIC or GPIO register:
+
+```sh
+btattach -B /dev/ttySAC1 -P bcm -S 3000000 >/tmp/btattach.log 2>&1 &
+```
+
+The shell does not provide `disown`, so that suffix printed `disown: not
+found`; the background process still started and was cleaned up after the
+capture. The post-attach snapshot is private at
+`artifacts/live/20260910T182540Z-j81-bt-after-attach.txt`
+(`sha256=d2d40bc60af31376740ed761b372185f2b2e67fca516b7aa8699de36b241b5e2`).
+
+The result is the same transport boundary seen on 2026-09-08, now with a
+before/after trace from the live session:
+
+- `/sys/class/bluetooth/hci0` registered and linked to UART3, proving that
+  `btattach`, the H4/Broadcom line discipline and the UART3 path all work.
+- UART3 counters changed from `tx:0 rx:0` to `tx:14 rx:0`; the controller sent
+  no byte back. The partial `hci0` sysfs link exposed no address or name.
+- The kernel reported `command 0xfc18 tx timeout`, `BCM: failed to write
+  update baudrate (-110)`, then `BCM: Reset failed (-110)`.
+- PMIC GPIO2 remained `0x00 0x00` / `0x20` in every after sample, and no PMIC
+  write was issued. The event/status reads only changed from transient event
+  bytes to zeroed event bytes; the charger/status block stayed stable.
+- No firmware or BlueZ scan was attempted because the controller did not
+  answer the first Broadcom command. The next experiment remains the single,
+  supervised GPIO2 A/B test documented in BT-3, with immediate read-back and
+  restore.
 
 #### Historical Stage A result, 2026-09-08: read-only scan before the GPIO map was recovered
 
