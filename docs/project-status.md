@@ -48,6 +48,15 @@ the later SN2400 charger-mux design. The permanent DTS patch now uses function
 Full evidence is in
 [the dedicated J81 battery research](../research/j81-battery-hdq.md).
 
+**First reboot attempt:** the live DT reported pinmux value `0x00020022`,
+proving that the stale GPIO34-function-2 payload was uploaded. It reproduced
+the expected `got 0/16 bytes` timeout and registered no battery. This is not a
+failure of the permanent fix. The local `result` symlink has been rebuilt and
+now matches `result-bat4-func1` byte-for-byte; use its payload with SHA-256
+`0681c720ec632fc6fad88f562cdc57a74ac31e2ec58e29cbd4cedec2aa7f3e27`.
+The next boot must expose pinmux `0x00010022` and register the battery without
+a runtime override.
+
 **Live-session research, 2026-09-10:** before rebooting the permanent battery
 payload, the working USB/telnet session was captured as a private, ignored
 snapshot: `artifacts/live/20260910T154818Z-j81-linux-session.txt`, mode 0600,

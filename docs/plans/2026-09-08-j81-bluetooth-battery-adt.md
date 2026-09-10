@@ -929,8 +929,9 @@ backlight baseline. Record the Git commit, payload SHA-256, full subsystem
 
 ## Primary references
 
-The `AppleD2207PMU` and `AppleBluetooth` binaries used for the symbol and
-disassembly cross-check remain local research artifacts and are not committed.
+The working copies of `AppleD2207PMU` and `AppleBluetooth` used for the symbol
+and disassembly cross-check remain local research artifacts and are not
+committed; their public source artifacts are linked below.
 
 - [PongoOS command sender](https://github.com/checkra1n/PongoOS/blob/master/scripts/issue_cmd.py)
 - [PongoOS stdout reader](https://github.com/checkra1n/PongoOS/blob/master/scripts/fetch_stdout.py)
@@ -939,6 +940,9 @@ disassembly cross-check remain local research artifacts and are not committed.
 - [Hoolock Linux T7001 tree](https://github.com/HoolockLinux/linux/tree/6831bc701a6ce059e71e5aaa9488c9195bea6927)
 - [Linux Broadcom Bluetooth binding](https://github.com/torvalds/linux/blob/master/Documentation/devicetree/bindings/net/bluetooth/brcm%2Cbluetooth.yaml)
 - [Linux Broadcom HCI UART driver](https://github.com/torvalds/linux/blob/master/drivers/bluetooth/hci_bcm.c)
+- [Unstripped iOS 10.3 s8000 AppleD2207PMU kext](https://github.com/userlandkernel/ios-unstripped-kexts/tree/master/kexts/10.3/s8000/AppleD2207PMU.kext)
+- [Unstripped iOS 10.0 T8010 AppleD2207PMU kext](https://github.com/userlandkernel/ios-unstripped-kexts/tree/master/kexts/10.0/T8010/AppleD2207PMU.kext)
+- [Unstripped iOS 10.3 s8000 AppleBluetooth kext](https://github.com/userlandkernel/ios-unstripped-kexts/tree/master/kexts/10.3/s8000/AppleBluetooth.kext)
 - [Linux bq27xxx core interface](https://github.com/torvalds/linux/blob/master/include/linux/power/bq27xxx_battery.h)
 - [Linux bq27xxx HDQ frontend](https://github.com/torvalds/linux/blob/master/drivers/power/supply/bq27xxx_battery_hdq.c)
 - [Corellium's Apple HDQ-UART implementation](https://github.com/corellium/linux-sandcastle/blob/sandcastle-5.4/drivers/power/supply/bq27545-battery-hdquart.c)

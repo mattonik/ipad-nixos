@@ -507,6 +507,38 @@ Decompiling that DTB confirms `serial@20a0d4000` is enabled with its gauge
 child and `uart5-pins` contains pinmux value `0x10022`, the encoded GPIO34
 function-1 selection.
 
+### First reboot attempt used the stale function-2 payload
+
+The first reboot attempt on 2026-09-10 does not count as the permanent-fix
+test. The newly booted system exposed this live DT value:
+
+```text
+/sys/firmware/devicetree/base/soc/pinctrl@20e300000/uart5-pins/pinmux
+    00 02 00 22    # 0x00020022: GPIO34 function 2
+```
+
+Boot dmesg then reproduced the expected old failure:
+
+```text
+bq27xxx-hdq-uart serial0-0: HDQ transact timeout: got 0/16 bytes
+bq27xxx-hdq-uart serial0-0: error -ETIMEDOUT: HDQ device identification failed
+```
+
+`/sys/class/power_supply` was empty. This proves a stale payload was uploaded;
+it is not a regression in the function-1 fix. The local generic `result`
+symlink was also still pointing at that old build. Re-running the current Nix
+target refreshed `result` to the function-1 store output and byte-compared it
+with `result-bat4-func1` successfully:
+
+```text
+result/m1n1-linux.bin  sha256 0681c720ec632fc6fad88f562cdc57a74ac31e2ec58e29cbd4cedec2aa7f3e27
+result/t7001-j81.dtb   sha256 dde0c168a703f036faec44e30cdb193354b440c10669c12ec6c508b880ba0005
+```
+
+On the next reboot, verify the live pinmux bytes are `00 01 00 22` before
+judging battery behavior. A successful boot must then register
+`bq27545-battery` without a runtime pinmux override.
+
 The OIPG record still proves the resource is AP GPIO34 and that
 `function-battery_swi` and UART5 `function-tx` are identical. Its flags word
 `0x102` does not directly encode the Apple GPIO peripheral selector. This live

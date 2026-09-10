@@ -329,8 +329,9 @@ from the previous boot stage.
 
 ## Primary sources
 
-The two `AppleD2207PMU` binaries used for the symbol and disassembly cross-check
-remain local research artifacts and are not committed.
+The working copies of the two `AppleD2207PMU` binaries used for the symbol and
+disassembly cross-check remain local research artifacts and are not committed;
+their public source artifacts are linked below.
 
 - [Hoolock A8/A8X support matrix](https://github.com/HoolockLinux/docs/blob/master/features/A8.md)
 - [Hoolock Linux ANS1 branch](https://github.com/HoolockLinux/linux/tree/ans1)
@@ -343,6 +344,8 @@ remain local research artifacts and are not committed.
 - [PowerVR DT binding](https://github.com/torvalds/linux/blob/master/Documentation/devicetree/bindings/gpu/img,powervr-rogue.yaml)
 - [Linux device power-management model](https://github.com/torvalds/linux/blob/master/Documentation/driver-api/pm/devices.rst)
 - [Linux power-supply class and units](https://docs.kernel.org/power/power_supply_class.html)
+- [Unstripped iOS 10.3 s8000 AppleD2207PMU kext](https://github.com/userlandkernel/ios-unstripped-kexts/tree/master/kexts/10.3/s8000/AppleD2207PMU.kext)
+- [Unstripped iOS 10.0 T8010 AppleD2207PMU kext](https://github.com/userlandkernel/ios-unstripped-kexts/tree/master/kexts/10.0/T8010/AppleD2207PMU.kext)
 - [Asahi userspace audio and speaker-safety model](https://github.com/AsahiLinux/asahi-audio)
 - [Corellium SN2400 charger prior art](https://github.com/corellium/linux-sandcastle/blob/sandcastle-5.4/drivers/power/supply/sn2400-charger.c)
 - [Corellium mobile NVMe prior art](https://github.com/corellium/linux-sandcastle/blob/sandcastle-5.4/drivers/nvme/host/hx.c)
