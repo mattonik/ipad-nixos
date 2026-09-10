@@ -1,6 +1,6 @@
 # Feasibility assessment: Linux/NixOS on iPad Air 2
 
-Updated 2026-09-08. This supersedes the February 2026 forecast with results
+Updated 2026-09-10. This supersedes the February 2026 forecast with results
 from the physical J81 and the current source/ADT review.
 
 ## Verdict
@@ -46,11 +46,12 @@ silent because D2207 PMU GPIO2 power control is missing. Implement and measure
 that provider before adding the standard `hci_bcm` serdev child. Firmware must
 be extracted locally and kept outside Git.
 
-### Battery — implemented, awaiting hardware test
+### Battery — working live; permanent-DT reboot remains
 
-The repository now has the serdev stop-bit operation, an HDQ-UART frontend that
-reuses bq27xxx, and the UART5/GPIO34 J81 DT nodes. The kernel and full payload
-compile; the gauge response and device type remain unverified on hardware.
+The HDQ-UART frontend identifies a BQ27545 and exposes stable bq27xxx readings
+on the live J81 after correcting GPIO34 to peripheral function 1. Ten driver
+rebinds returned the same device ID without errors. The rebuilt DT must still
+be booted and reproduced across warm and cold boots.
 
 ### Touch — feasible, requires two stages
 
@@ -109,7 +110,7 @@ reliable log and shell.
 
 ## Recommended development order
 
-1. Hardware-test the implemented battery HDQ frontend on UART5/GPIO34.
+1. Boot and reproduce the hardware-proven GPIO34 function-1 battery fix.
 2. Port and prove S5L8960X SPI3, then adapt touch.
 3. Finish Bluetooth's measured D2207 PMU GPIO2 power path.
 4. Port T7000 PCIe/DART, enumerate BCM4350, then enable brcmfmac.

@@ -31,7 +31,7 @@
  obj-$(CONFIG_CHARGER_DA9150)	+= da9150-charger.o
 --- /dev/null	2026-09-08 17:03:25
 +++ b/drivers/power/supply/bq27xxx_battery_hdq_uart.c	2026-09-10 07:00:00
-@@ -0,0 +1,458 @@
+@@ -0,0 +1,456 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * TI HDQ battery gauge over Apple UART5, bit-banged via serdev
@@ -259,18 +259,16 @@
 +		unsigned long flags;
 +		int got;
 +
-+		/* Temporary BAT-4 hardware diagnostic: distinguishes total RX
-+		 * silence (0 bytes -- not even our own loopback echo) from a
-+		 * partial catch (our echo arrived but the gauge never replied)
-+		 * before touching any protocol constant. See research/
-+		 * j81-battery-hdq.md's BAT-4 hardware-gate process.
++		/* BAT-4 diagnostic: rx_count starts only after the command echo
++		 * prefix matches, so describe it as matched data rather than all
++		 * raw RX traffic. See research/j81-battery-hdq.md.
 +		 */
 +		spin_lock_irqsave(&hdq->rx_lock, flags);
 +		got = hdq->rx_count;
 +		spin_unlock_irqrestore(&hdq->rx_lock, flags);
 +
 +		dev_info(&hdq->serdev->dev,
-+			 "HDQ transact timeout: got %d/%d bytes: %*ph\n",
++			 "HDQ transact timeout: matched %d/%d bytes: %*ph\n",
 +			 got, rx_want, got, rx);
 +		return ret;
 +	}

@@ -19,10 +19,11 @@ the more precise
 That focused plan supersedes this document for those two subsystems.
 
 Later work captured the real J81 ADT, hardware-validated UART3 and manual
-`hci0` registration, and implemented BAT-1/2/3 at commit `863d2e4`. The battery
-patches and complete payload compile, but BAT-4 has not yet been booted on the
-iPad. Finish that hardware gate before stacking another peripheral change into
-the same test image.
+`hci0` registration, and implemented BAT-1/2/3 at commit `863d2e4`. BAT-4 then
+identified the BQ27545 on real hardware and found the DTS bug: AP GPIO34 needs
+peripheral function 1. Ten live driver rebinds returned the same device ID and
+stable measurements. The rebuilt permanent DT still needs one boot plus
+warm/cold reproduction before battery bring-up is closed.
 
 Touch (SPI3 + `apple_z2`) now has its own focused plan, same reason the
 Bluetooth/battery split happened:
@@ -43,8 +44,8 @@ be ported selectively after the USB payload is tested on the iPad.
 
 The implementation order is now:
 
-1. Hardware-test the implemented battery transport and keep the resulting
-   failure signature isolated.
+1. Boot the permanent GPIO34 function-1 battery fix and verify warm/cold
+   reproduction.
 2. Clean up the old-SoC SPI controller support, prove SPI3, then adapt touch.
 3. Finish Bluetooth power control through the D2207 PMU GPIO path.
 4. Research and port the T7000 PCIe host, then enumerate and enable BCM4350
@@ -167,7 +168,7 @@ blocker.
 | RTC | D2207 PMIC child | Driver, DT and config built-in | Preserve the working hardware clock path | Hardware-verified |
 | Backlight | D2207 PMIC child | Driver and DT built; compiler bug fixed | Preserve the working brightness path | Hardware-verified |
 | Bluetooth | BCM4350-family radio on UART3 | UART3 and manual `hci0` registration work | Implement measured PMU GPIO2 power control, then add the standard `hci_bcm` serdev child | Transport proven |
-| Battery | BQ27540-family gauge on UART5/HDQ | Stop-bit API, HDQ frontend and DT compile | Run BAT-4 and identify the real gauge on hardware | Hardware test next |
+| Battery | BQ27545 gauge on UART5/HDQ | Live identification and power-supply reads work after the GPIO34 function-1 correction | Boot the rebuilt permanent DT and repeat warm/cold | Working live; permanence gate next |
 | Touch | `multi-touch,j82` on SPI3 | `apple_z2` exists but only for Mac Touch Bars; S5L SPI work is on test branches | Clean the old-controller SPI variant first, prove SPI3, then adapt Z2 firmware/calibration and protocol | Two-stage port |
 | Wi-Fi | BCM4350 on T7000 PCIe port 1 through DART | brcmfmac PCIe source exists but CFG80211/BRCMFMAC are disabled; T7000 PCIe host is absent | Port T7000 PCIe host, add DART/port DT, enumerate endpoint, then enable brcmfmac and local firmware/NVRAM | Largest near-term driver task |
 | Display | Bootloader framebuffer | simplefb works | Keep simplefb; native display/GPU is separate research | Usable baseline |
@@ -198,7 +199,7 @@ PCIe host code is the limiting factor for Wi-Fi, not the kernel version.
 | Device | Bus/resources | Signals |
 | --- | --- | --- |
 | Bluetooth | UART3 at `0x20a0cc000`, IRQ 161, 3,000,000 baud | TX GPIO14 alt2, RTS GPIO32 alt2, host wake GPIO164, power enable PMU GPIO2 |
-| Battery gauge | UART5 at `0x20a0d4000`, IRQ 163, HDQ child | HDQ/battery SWI GPIO34 alt2 |
+| Battery gauge | UART5 at `0x20a0d4000`, IRQ 163, HDQ child | HDQ/battery SWI GPIO34, hardware-verified peripheral function 1 |
 | Touch | SPI3 at `0x20a08c000`, IRQ 155, CS0 | CS GPIO51, IRQ GPIO84, display sync GPIO55, reset GPIO82, LDO GPIO95, analog power PMU resource `0x20e` |
 | Wi-Fi control | UART2 at `0x20a0c8000`, IRQ 160 | TX GPIO136 alt2, RTS GPIO138 alt2, radio enable PMU GPIO3 |
 | Wi-Fi data | PCIe port 1, max link speed 1 | wake GPIO165, CLKREQ GPIO174, PERST GPIO179; DART at `0x602002000`, IRQ 216 |
@@ -285,8 +286,9 @@ Acceptance criteria:
 
 ## Phase 3: battery over HDQ/UART5
 
-Status: implemented and compile-verified at `863d2e4`; run the hardware
-acceptance tests below before changing the transport.
+Status: implemented, compile-verified and working live. BAT-4 identified a
+BQ27545 and corrected GPIO34 to peripheral function 1; boot the rebuilt DT and
+repeat warm/cold before changing the transport.
 
 Do not use the currently enabled `w1-uart` master. It generates standard
 1-Wire slots at 9600/115200 baud, while this board uses TI HDQ signaling through
@@ -301,10 +303,10 @@ Implement one serdev transport that:
    core rather than copying a second power-supply implementation;
 4. times out cleanly and never loops forever when the gauge is absent.
 
-Add UART5 and GPIO34 pinctrl to the board DT, then attach the gauge child. The
-ADT says `bq27540`; upstream lacks that exact enum, so read the gauge
-`DEVICE_TYPE` control response on hardware before selecting the closest
-BQ27541/BQ27545 register layout.
+UART5 and GPIO34 pinctrl are now in the board DT with the gauge child attached.
+The live gauge returned `DEVICE_TYPE = 0x0545`, selecting the upstream BQ27545
+layout. The initial function-2 DT route produced zero bytes; switching only
+GPIO34 to peripheral function 1 made the existing transport work.
 
 Acceptance criteria:
 

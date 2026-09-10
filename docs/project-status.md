@@ -1,6 +1,6 @@
 # iPad Linux Project Status
 
-Status date: 2026-09-09
+Status date: 2026-09-10
 
 ## 🎉 USB networking resolved -- real remote shell access to the device (2026-09-08)
 
@@ -27,18 +27,21 @@ tty-serdev stop-bit operation, HDQ-UART frontend using bq27xxx, and UART5/J81
 device-tree nodes. A 2026-09-09 pre-hardware review fixed the missing serdev
 `write_wakeup` callback, armed one combined echo/response receive before
 transmit, and matched Corellium's tolerant response-bit threshold. The kernel
-and full payload compile; the ready payload's `m1n1-linux.bin` SHA-256 is
-`2c7bc155a66947f144b85e116dd0c0b9272f5f0f8418474896134bac86a892ba`.
-**BAT-4, 2026-09-10:** first real hardware result. UART5 registers correctly
-and its pinmux/power-domain/IRQ/register wiring are all independently
-confirmed against the live device and the real ADT -- but HDQ identification
-gets zero bytes back, not even the master's own transmitted command looping
-back on RX, which the protocol's single-wire design depends on. Likely
-cause: a hardware HDQ mux on the charger chip that Corellium's own reference
-driver explicitly switches around every transaction and this frontend never
-does; J81's ADT `charger,k48` node is a candidate but no mux-control
-property has been found on it yet. Wiring, TI timing, driver scope, and
-hardware gates are in
+and full payload compile. The rebuilt function-1 payload's `m1n1-linux.bin`
+SHA-256 is
+`0681c720ec632fc6fad88f562cdc57a74ac31e2ec58e29cbd4cedec2aa7f3e27`.
+**BAT-4, 2026-09-10:** the battery works on real J81 hardware. A live
+internal-loopback test proved the UART/IRQ/serdev/HDQ stack, then a direct A/B
+pinmux test found the root cause: GPIO34 must use Apple peripheral function 1,
+while the ADT OIPG flags value `0x102` had been incorrectly treated as
+function 2. With only those mux bits changed, the driver identified
+`DEVICE_TYPE = 0x0545`, registered `bq27545-battery`, and returned stable,
+plausible readings (4.239 V, about -0.32 A, 94%, 31.9 C, 341 cycles) without
+new errors. Ten consecutive driver rebinds all returned the same device ID and
+valid readings. Apple's own J81-era HDQ, UART, and D2207 drivers also rule out
+the later SN2400 charger-mux design. The permanent DTS patch now uses function
+1; the remaining gate is one boot of the rebuilt DT plus warm/cold reproduction.
+Full evidence is in
 [the dedicated J81 battery research](../research/j81-battery-hdq.md).
 
 **Touch groundwork, 2026-09-09:** patches `0007`–`0009` port the older Apple
@@ -51,8 +54,9 @@ next TOUCH-1 gate is one real cross-build before any hardware test. TOUCH-2
 still needs the child `reg`, `Lump` PMU resource, and `KLCT` clock descriptor
 decoded; see [the focused touch plan](plans/2026-09-09-j81-touch-spi3.md).
 
-**Next-subsystem priority:** after the battery hardware gate, bring up SPI3 and
-touch first. The real J81 ADT confirms the controller and GPIO resources, Linux
+**Next-subsystem priority:** after the permanent battery reboot gate, bring up
+SPI3 and touch first. The real J81 ADT confirms the controller and GPIO
+resources, Linux
 already has the Z2 protocol/input driver, and Hoolock has a focused old-SPI
 experiment. Research T7000 PCIe for Wi-Fi in parallel, but defer implementation
 until its host sequence is understood. Keep native graphics deferred; simplefb
@@ -2212,8 +2216,9 @@ The new evidence corrects two earlier conclusions:
 - Wi-Fi is BCM4350 on T7000 PCIe port 1, not BCM4354 over SDIO. brcmfmac has
   the endpoint support, but the missing T7000 PCIe host path must be ported
   before that driver can probe.
-- The battery's UART5/HDQ frontend and DT are compile-verified. Hardware must
-  still identify the gauge and validate timing and readings.
+- The battery's UART5/HDQ frontend identifies the BQ27545 and returns stable
+  readings on hardware after correcting GPIO34 to peripheral function 1. The
+  rebuilt permanent DT still needs reboot reproduction.
 
 J82 remains the public cross-check for UART/SPI/PCIe resources. The private J81
 capture now confirms those resource mappings; only sanitized values belong in
@@ -2228,16 +2233,15 @@ Never commit Apple firmware, NVRAM, touch calibration or device identifiers.
 | Buttons | GPIO driver, config and DT are present | Verify Home, Power and both volume input events on Hoolock. |
 | RTC / backlight | Both hardware-verified over the USB shell | Preserve their current nodes and drivers. |
 | Bluetooth | Real J81 UART3 and manual `hci0` attach are hardware-confirmed | Implement measured D2207 PMU GPIO2 control, then use the standard `hci_bcm` serdev child. |
-| Battery | Stop-bit API, reviewed HDQ-UART frontend and UART5/GPIO34 DT compile in the full payload | Run BAT-4 on hardware and identify the gauge. |
+| Battery | **Working live:** BQ27545 identified; stable voltage/current/capacity/temperature/cycle reads after GPIO34 function-1 correction | Boot the rebuilt permanent DT and reproduce across warm/cold boots. |
 | Touch | Reviewed S5L8960X SPI3 and J81 DT patches are staged outside the active build | Cross-build TOUCH-1, then prove SPI3 before adapting touch. |
 | Wi-Fi | BCM4350 brcmfmac PCIe endpoint code exists; wireless config is disabled | Port T7000 PCIe/DART and enumerate port 1 before enabling brcmfmac. |
 | Audio / GPU / NAND / cameras / Touch ID | No complete A8X stack | Defer beyond the interactive-tablet milestone. |
 
 ### Priority bring-up sequence
 
-1. **Battery hardware gate.** Boot the reviewed payload documented above,
-   verify stable `DEVICE_TYPE` and power-supply readings, and preserve the exact
-   failure signature if it does not probe.
+1. **Battery permanence gate.** Boot the rebuilt function-1 DT, repeat ten
+   power-supply reads, compare with iPadOS, and reproduce on warm and cold boots.
 2. **Touch.** Cross-build the staged S5L SPI3 patches, prove the controller,
    then adapt the existing `apple_z2` driver with private local
    firmware/calibration.
@@ -2276,7 +2280,7 @@ Never commit Apple firmware, NVRAM, touch calibration or device identifiers.
 | Hoolock payload / RTC / backlight validation | ✅✅ Hardware-verified; buttons remain untested |
 | J81 ADT capture | ✅ Real raw ADT captured privately; UART, battery, touch and Wi-Fi/PCIe resources sanitized and documented |
 | Bluetooth | 🟡 UART3 and `hci0` registration hardware-confirmed; radio needs measured D2207 PMU GPIO2 power control |
-| Battery | 🟡 Reviewed UART5/HDQ implementation compiles in the full payload; hardware test remains |
+| Battery | ✅ **Working live, 2026-09-10:** BQ27545 identified and stable standard power-supply readings verified after correcting GPIO34 to peripheral function 1; rebuilt-DT reboot reproduction remains |
 | Touch | 🟡 Reviewed SPI3 controller/DTS groundwork is staged; cross-build and hardware test remain |
 | Wi‑Fi implementation | ❌ Real J81 resources confirmed; T7000 PCIe/DART host work has not started |
 | Internal storage | 🟡 Hoolock now has matching Linux/m1n1 ANS1 WIP branches; local integration has not started and the first payload must be forced read-only. See the [long-term subsystem plan](../research/j81-long-term-subsystems.md). |

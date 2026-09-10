@@ -29,22 +29,26 @@
  		i2c0: i2c@20a110000 {
  			compatible = "apple,t7000-i2c", "apple,i2c";
  			reg = <0x2 0x0a110000 0x0 0x1000>;
-@@ -370,6 +392,19 @@
+@@ -370,6 +392,23 @@
  				pinmux = <APPLE_PINMUX(14, 2)>,
  					 <APPLE_PINMUX(32, 2)>;
  			};
 +
 +			/*
-+			 * AP GPIO 34, function 2 (UART): the gauge's
++			 * AP GPIO 34, function 1 (UART5 TX/HDQ): the gauge's
 +			 * function-battery_swi OIPG descriptor in the real
 +			 * J81 ADT is byte-identical to UART5's own
 +			 * function-tx, independently confirming HDQ rides
-+			 * UART5 TX on this single pin -- see the plan doc's
++			 * UART5 TX on this single pin. Hardware testing proved
++			 * that Apple's OIPG flags word is not the pin-function
++			 * selector: function 2 leaves the pad high, while function
++			 * 1 identifies the BQ27545 and returns stable measurements.
++			 * See research/j81-battery-hdq.md.
 +			 * "BT-1 result" (the same decode pass covered both
 +			 * UART3 and this pin).
 +			 */
 +			uart5_pins: uart5-pins {
-+				pinmux = <APPLE_PINMUX(34, 2)>;
++				pinmux = <APPLE_PINMUX(34, 1)>;
 +			};
  		};
  	};

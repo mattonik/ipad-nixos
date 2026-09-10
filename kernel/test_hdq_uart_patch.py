@@ -7,6 +7,9 @@ from pathlib import Path
 patch = Path(__file__).with_name("patches").joinpath(
     "0004-add-bq27xxx-hdq-uart-frontend.patch"
 ).read_text()
+uart5_patch = Path(__file__).with_name("patches").joinpath(
+    "0005-t7001-add-uart5-node.patch"
+).read_text()
 transact = patch[patch.index("+static int hdq_transact") : patch.index("+static int hdq_read_byte")]
 
 assert "+\t.write_wakeup = serdev_device_write_wakeup," in patch
@@ -14,6 +17,7 @@ assert transact.index("+\thdq_arm_receive") < transact.index("+\twritten = serde
 assert "+\tint ret, rx_want = n_tx + (resp ? HDQ_UART_BYTE_LEN : 0);" in transact
 assert "+\t\tmemcpy(resp, rx + n_tx, HDQ_UART_BYTE_LEN);" in transact
 assert "+\t\tif (in[i] >= HDQ_UART_ONE_MIN)" in patch
+assert "APPLE_PINMUX(34, 1)" in uart5_patch
 
 
 def encode(value: int) -> list[int]:

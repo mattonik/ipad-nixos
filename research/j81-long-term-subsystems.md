@@ -1,6 +1,6 @@
 # J81 native GPU, audio, suspend, charging and storage plan
 
-Updated 2026-09-09. Target: iPad Air 2 Wi-Fi, J81 / T7001 (A8X).
+Updated 2026-09-10. Target: iPad Air 2 Wi-Fi, J81 / T7001 (A8X).
 
 ## Answer at a glance
 
@@ -35,8 +35,8 @@ inspection confirms these relevant nodes and compatible strings:
   T7001 I2S switch and routes for codec, speaker, voice and Bluetooth voice;
 - internal storage is an `ans` storage coprocessor with an ANS nub and its own
   power gate;
-- charging exposes `charger,k48`, a PMU `function-set_charger` operation and a
-  device-specific charge curve.
+- charging exposes `charger,k48`, a `function-set_charger` callback to the
+  D2207 PMU and a device-specific charge curve.
 
 Those names prove that the hardware paths exist. They do not define safe
 register programming. Per-device calibration, identifiers, firmware and the
@@ -177,19 +177,20 @@ are globally pinned on.
 
 ### Current state
 
-The repository's battery work is a read-only fuel-gauge path and still awaits
-its first hardware response. It cannot enable, limit or terminate charging.
-The ADT compatible `charger,k48` appears to name Apple's older charger-policy
-interface, not a sufficiently identified charger IC. The PMU callback and
-charge curve are strong leads, but writing them without knowing units, limits
-and state transitions would be unsafe.
+The read-only fuel-gauge path now works: the BQ27545 reports stable voltage,
+current, temperature, capacity and cycle count through UART5/HDQ. It cannot
+enable, limit or terminate charging. The ADT compatible `charger,k48` names an
+older Apple charger-policy interface; its `function-set_charger` phandle
+resolves to the D2207 PMU at I2C address `0x3c`, rather than a separate charger
+IC or HDQ mux. The callback and charge curve are strong leads, but their
+registers, units, limits and state transitions remain unidentified.
 
 ### What is needed
 
-1. Finish the BAT-4 hardware test. Log voltage, current sign, temperature,
-   state of charge and flags with the cable disconnected and connected. This
-   determines whether iBoot leaves charging active and gives an independent
-   measurement for every charger experiment.
+1. Boot the permanent BAT-4 pinmux fix and log voltage, current sign,
+   temperature, state of charge and flags with the cable disconnected and
+   connected. This determines whether iBoot leaves charging active and gives
+   an independent measurement for every charger experiment.
 2. Identify the charger backend and protocol from the J81 ADT, matching iOS
    kernel code and read-only register/status observations. Determine how USB
    cable presence and available input current reach the charger. Corellium's
@@ -281,8 +282,8 @@ from the previous boot stage.
 
 ## Dependency-ordered execution plan
 
-1. Complete the pending battery hardware test; it is also the measurement
-   instrument for charging and suspend work.
+1. Boot and reproduce the permanent battery fix; the live gauge is now the
+   measurement instrument for charging and suspend work.
 2. Build the ANS1 experimental payload with the read-only hardening patch and
    test enumeration from the RAM-root system.
 3. Reverse engineer charger status, then implement read-only reporting and one

@@ -53,7 +53,7 @@ The private ADT says:
 | Clock gate | `0x55` | bootloader reference clocks for now |
 | Power domain | UART5 | existing `ps_uart5` in `t7001-pmgr.dtsi` |
 | Flow control | `no-flow-control` | no `uart-has-rtscts` |
-| Data pin | AP GPIO34, function 2 | `APPLE_PINMUX(34, 2)` |
+| Data pin | AP GPIO34, hardware-verified function 1 | `APPLE_PINMUX(34, 1)` |
 | Gauge identity hint | `gas-gauge,bq27540`, `gas-gauge,hdq` | identify through TI `DEVICE_TYPE` before choosing a core table |
 
 The gauge is a child of UART5. Its `function-battery_swi` OIPG payload is
@@ -63,16 +63,16 @@ phandle is present on the gauge child.
 
 TI specifies an open-drain HDQ pin. Hoolock's Apple GPIO driver has no generic
 open-drain pin configuration; its mux operation selects the peripheral, enables
-input, and preserves the other GPIO register fields. Corellium's related Apple
-UART5 implementation also works without an open-drain DT property. Use the
-confirmed `APPLE_PINMUX(34, 2)` setting and do not invent an unsupported
-`drive-open-drain` property. If the first probe gets no reply, compare GPIO34
-and UART register state before and after Linux configures the pin; the remaining
-electrical mode may be implemented by UART5 or inherited from the bootloader.
+input, and preserves the other GPIO register fields. Live hardware testing
+proved that GPIO34 peripheral function 1 supplies the required UART5 TX/HDQ
+route. The ADT OIPG flags value `0x102` is not a Linux pin-function selector;
+using its low byte as function 2 was the BAT-4 root cause.
 
-J81 also has a separate `charger,k48` node, but the gauge has no property that
-routes HDQ through it. Corellium's optional `sn2400_charger_hdq_mux()` path is
-therefore not part of the J81 implementation.
+J81's `charger,k48` is a logical charger-policy node whose `function-set_charger`
+target resolves to the D2207/Arabela PMU. Apple's own J81-era HDQ driver talks
+directly through AppleSamsungSerial and does not switch a charger mux. The
+SN2400 mux in Corellium's later-device implementation is therefore not part of
+the J81 data path.
 
 The raw ADT contains battery calibration and per-device data. It remains
 ignored and must not be committed. The table above is sufficient board data
@@ -231,8 +231,8 @@ completion state. The test must prove `0xfe`/`0xc0` round trips LSB first.
 ### BAT-3: describe UART5 and the gauge
 
 Add `serial5` to `t7001.dtsi` from the already-proven UART0/UART3 pattern, with
-the J81 register, IRQ, clocks, and `ps_uart5`. Add an AP GPIO34 function-2
-pinctrl group. Enable UART5 in `t7001-air2.dtsi` without RTS/CTS and add the
+the J81 register, IRQ, clocks, and `ps_uart5`. Add the hardware-verified AP
+GPIO34 function-1 pinctrl group. Enable UART5 in `t7001-air2.dtsi` without RTS/CTS and add the
 gauge as its only serdev child.
 
 Keep the SoC node, board node, and driver changes as reviewable kernel patches
@@ -261,7 +261,7 @@ The pass condition is a registered Linux battery with stable, plausible
 readings while USB networking, RTC, backlight, and the existing UART3 work
 continue to function.
 
-## Implementation result, 2026-09-08: BAT-1/2/3 written and compile-verified; BAT-4 (hardware) not yet run
+## Implementation result: BAT-1/2/3 complete; BAT-4 hardware root cause fixed
 
 BAT-1, BAT-2 and BAT-3 are implemented as four kernel patches applied from
 `kernel/hoolock.nix`, following this document's plan closely:
@@ -305,7 +305,7 @@ BAT-1, BAT-2 and BAT-3 are implemented as four kernel patches applied from
 - `kernel/patches/0005-t7001-add-uart5-node.patch` and
   `0006-t7001-air2-enable-uart5-battery.patch` (BAT-3): `serial5` (register
   `0x20a0d4000`, IRQ 163, clock gate context, `power-domains = <&ps_uart5>`)
-  and the `uart5_pins` AP-GPIO34-function-2 pinmux group added to
+  and the `uart5_pins` AP-GPIO34-function-1 pinmux group added to
   `t7001.dtsi`; `&serial5` enabled with the gauge as a real serdev child
   (`compatible = "ti,bq27540-hdq-uart"`, matching BAT-2's `of_device_id`) in
   `t7001-air2.dtsi`. Unlike `serial3` (BT-1), the gauge child ships from the
@@ -372,109 +372,151 @@ A fresh full build after these fixes succeeded:
 
 `System.map` contains `hdq_uart_probe`, `serdev_device_set_stopbits`, and
 `ttyport_set_stopbits`; the final DTB contains `serial@20a0d4000`,
-`uart5-pins`, and `ti,bq27540-hdq-uart`. The iPad did not answer the USB-shell
-connection at `172.16.42.1:23` during this review, so this corrected payload
-still has no BAT-4 hardware result.
+`uart5-pins`, and `ti,bq27540-hdq-uart`. The iPad did not answer the USB-shell connection during that compile review.
+That historical pre-hardware state is superseded by the BAT-4 result below.
 
-**Not yet done: BAT-4, or any hardware boot with this kernel at all.** Every
-result above is a build-time/compile-time verification. Whether UART5
-actually probes, whether the gauge answers a real HDQ transaction, what its
-actual `DEVICE_TYPE` is, and whether the stop-bit/break timing survives real
-silicon are all genuinely open until this is flashed and tested on the iPad.
+## BAT-4 result, 2026-09-10: battery works; GPIO34 must use function 1
 
-## BAT-4 result, 2026-09-10: UART5 wiring confirmed correct, HDQ is total RX silence
+The first hardware boot reached the iPad over the working USB network. UART5
+registered at `0x20a0d4000`, IRQ 48 (AIC hwirq 163), and the serdev child
+probed, but identification initially timed out. The initial DTS selected
+`APPLE_PINMUX(34, 2)` because the final OIPG argument is `0x102`.
 
-First real hardware boot of the battery-ready payload. `dmesg` on the device:
+### Reference-driver result: no J81 charger mux
+
+The real J81 ADT resolves `charger,k48`'s `function-set_charger` phandle
+`0x4e` to `pmu,d2207` at I2C address `0x3c`. It is a charger-policy callback,
+not a second physical charger IC.
+
+The unstripped iOS 10.3 `s8000` kexts provide a board-generation-matched
+reference:
+
+- `AppleHDQGasGaugeControl` matches `gas-gauge,hdq`, opens the serial provider,
+  flushes both FIFOs, configures 57,600 baud/8N2/no flow control, sends a 200 us
+  break, and reads the encoded command bytes back before the gauge response;
+- `AppleSamsungSerial` implements those operations with the same UART register
+  block used by Linux. Its normal UART programming does not set internal
+  loopback or a hidden single-wire mode;
+- `function-battery_swi_request` is optional and absent from J81. Where present,
+  it arbitrates the line between clients; it is not called around each HDQ
+  transaction;
+- `AppleD2207PMU` creates the charger power-source provider, but exposes no HDQ
+  mux operation.
+
+Corellium's `sn2400_charger_hdq_mux()` is real, but belongs to later hardware
+with a separate SN2400/Tigris charger. Applying that design to J81 was the
+wrong inference.
+
+The reference binaries came from `userlandkernel/ios-unstripped-kexts` commit
+`96ca2b7f012ab20cf0274ea593d0e9a03f576764`. They were inspected outside the
+repository and were not committed. Relevant SHA-256 values are:
+
+| Binary | SHA-256 |
+| --- | --- |
+| `AppleHDQGasGaugeControl` | `90575af7fe95148197e03d4c04de97eaa9bb81d2e0b40b10efc23e9644c0e31f` |
+| `AppleSamsungSerial` | `61f37e69f53e51de0a195bc4463afd8a71a54fab43f0084c1fadd93ae3493648` |
+| `AppleOnboardSerial` | `40c931f9203edcc9896f9ad65f20c98f482933e9b80fcab3c36a26fa2fccda91` |
+| `AppleD2207PMU` | `dca7ed9726c555655ccaa05410fd4006bc9adbf9d0b9224ab17889c8f943b0e8` |
+
+### Live isolation tests
+
+All register diagnostics were read-only except the explicitly reversible UART
+loopback, break, and GPIO peripheral-function bits. No PMU register was written.
+Temporary out-of-tree modules were transferred to `/tmp` on the RAM-backed
+initramfs; the loaded kernel was already tainted by those diagnostics, and a
+reboot removes them.
+
+With GPIO34 on function 2, the live state during the failed transaction was:
 
 ```
-20a0d4000.serial: ttySAC2 MMIO32:0x000000020a0d4000 (irq = 48, base_baud = 0) is a APPLE S5L
-serial serial0: tty port ttySAC2 registered
-bq27xxx-hdq-uart serial0-0: error -ETIMEDOUT: HDQ device identification failed
-bq27xxx-hdq-uart serial0-0: probe with driver bq27xxx-hdq-uart failed with error -110
+ULCON=00000007   # 8N2
+UCON=00001885   # RX enabled; threshold/legacy-timeout IRQs enabled
+UFCON=00000031  # FIFO enabled, RX trigger 8
+UTRSTAT=00000026 # TX empty/FIFO empty/TX threshold
+UFSTAT=00000000 # no RX or TX bytes queued
+UBRDIV=00000019
+IRQ 48 count: 0
+GPIO34 raw: 0x00072641 (peripheral function 2, input enabled, line high)
 ```
 
-UART5 registers cleanly and the serdev child probes -- the DTS/driver wiring
-itself is not in question. Independently cross-checked against both the live
-kernel and the real ADT before touching anything else:
+The command left the TX FIFO, while the RX FIFO and interrupt count stayed at
+zero. The old `got 0/16` log counted only bytes after the expected echo prefix
+matched, so `kernel/patches/0004` now calls that value `matched`. The independent
+IRQ/FIFO trace supplies the actual raw-silence evidence.
 
-- pin 34's pinmux: live `/sys/kernel/debug/pinctrl/*/pinmux-pins` on the
-  device shows `pin 34 (PIN34): device 20a0d4000.serial function periph2` --
-  exactly what `0005-t7001-add-uart5-node.patch`'s `APPLE_PINMUX(34, 2)`
-  requests. The gas-gauge child's own `function-battery_swi` OIPG property
-  in the ADT is byte-identical to `serial@20a0d4000`'s own `function-tx`
-  (phandle `0x1f`, pin `34`, alt-function `2`) -- the child referencing the
-  exact same physical resource as its UART parent, not a separate,
-  unimplemented GPIO.
-- power-domain: the decompiled DTB's `power-domains = <0x09>` resolves to a
-  real, distinct `power-controller@201c8` node labelled `"uart5"` (not an
-  aliasing bug reusing UART3's), matching the same
-  `apple,t7000-pmgr-pwrstate` mechanism UART3 already proves works for BT.
-- register base, IRQ 163, and clocks all match the ADT's `uart5` node
-  exactly.
-
-None of that is the problem. `error -110` is `-ETIMEDOUT`, and the driver's
-own `hdq_transact()` cannot by itself distinguish "we received our own
-loopback echo but the gauge never replied" from "we received nothing at
-all" -- both produce the identical error path. A temporary, purely additive
-diagnostic (`kernel/patches/0004`, a `dev_info()` logging `hdq->rx_count`
-and the raw bytes captured before the timeout, no protocol change) resolved
-this precisely:
+Enabling UART internal loopback for one probe produced seven IRQs and the exact
+command echo:
 
 ```
-bq27xxx-hdq-uart serial0-0: HDQ transact timeout: got 0/16 bytes:
+HDQ transact timeout: got 8/16 bytes: fe c0 c0 c0 c0 c0 c0 c0
 ```
 
-**Zero bytes.** Not a partial catch, not our own 8-byte command echo, nothing
-at all arrived on RX within 500 ms. This is significant because HDQ's whole
-single-wire design depends on the master's own transmitted bytes looping
-back to its own RX before the gauge's response bytes do -- this driver's own
-architecture explicitly relies on that loopback (`hdq_uart.c`'s top comment:
-"the bus is a single wire, so our own transmitted bytes loop back on RX
-before the gauge's response bytes do"). Getting nothing back at all, on a
-pin independently confirmed correctly muxed to the UART peripheral, means
-that loopback assumption itself is not holding on real silicon -- not a
-protocol-constant or timing problem to tune.
+That proves Linux TX, RX, IRQ delivery, 57,600 baud/8N2 framing, serdev, and the
+HDQ echo matcher all work. Holding the UART break bit with function 2 left
+GPIO34 high (`0x00072641`) and generated no RX data, isolating the failure to
+the UART-to-pad route.
 
-### The likely mechanism: a hardware HDQ mux, not yet driven
+Changing only GPIO34's two-bit peripheral field from function 2 to function 1
+changed its raw register from `0x00072641` to `0x00072621`. The existing driver
+then bound without any other change:
 
-Corellium's own reference HDQ-UART driver (already cited below) does not
-just bit-bang the protocol -- every transaction is wrapped in
-`sn2400_charger_hdq_mux(bbq->charger, &bbq->serdev->dev, 1)` before and
-`..., 0)` after, with the driver's own comment: "those are in
-sn2400-charger.c, which acts as a HDQ mux". That is, on Corellium's target
-hardware, the UART's TX/RX pair is not simply wired straight to the gauge --
-it is routed through a charger-IC-controlled multiplexer that must be
-explicitly switched on before any HDQ transaction, and switched off after.
-If J81 has the same arrangement and this frontend never touches it, the
-UART's own loopback would never reach the gauge (or even itself) at all --
-exactly matching the observed 0-byte result.
+```
+bq27xxx-hdq-uart serial0-0: HDQ DEVICE_TYPE = 0x0545
+```
 
-**Not yet resolved:** the real J81 ADT does have a charger node
-(`compatible = "charger,k48"`, `name = "charger"`), but its visible
-properties are all charge-curve/current-limit/penalty-box parameters --
-`usb-input-limit-max`, `charge-currents`, `charge-limits`,
-`penalty-box-soc-uth`, etc. No `reg` (i2c address) or mux-control property
-was found on it in this pass, and its `function-dock_parent` /
-`function-set_charger` properties use two ADT resource-descriptor markers
-not seen elsewhere in this project's decoding so far (`"Pcca"` and `"grhc"`
--- likely references to a *property name* on the target node rather than a
-pin/GPIO descriptor, unlike OIPG/Lump/KLCT, but not confirmed). Whether J81
-routes the gauge through this same charger chip, through the PMU
-(`pmu,d2207`) instead, or some other path entirely is genuinely open.
+Linux selected the existing BQ27545 table and registered
+`/sys/class/power_supply/bq27545-battery`. Five consecutive reads were stable,
+and a full uevent read completed without a timeout:
 
-**Next steps, in order:**
+| Property | Live result |
+| --- | ---: |
+| `present` | `1` |
+| `health` | `Good` |
+| `voltage_now` | `4239000` uV |
+| `current_now` | `-316000` to `-350000` uA |
+| `capacity` | `94`% |
+| `temp` | `319` (31.9 C) |
+| `charge_now` | `6694000` uAh |
+| `charge_full` | `6801000` uAh |
+| `cycle_count` | `341` |
+| `time_to_empty_now` | `71700` s |
 
-1. Decode the `charger,k48` node's remaining properties fully (there may be
-   more beyond what this pass looked at) and check whether it has its own
-   `reg`/i2c address at all -- if it doesn't, it's likely a logical/boot-
-   parameter node, not the physical mux chip, and the search moves to the
-   PMU or a node not yet found.
-2. Decode the `"Pcca"`/`"grhc"` resource marker format (a new type, not
-   OIPG/Lump/KLCT) -- these may themselves be the mux-control mechanism.
-3. Only once a real candidate register/mechanism is identified, extend
-   `hdq_uart_probe()`/`hdq_transact()` to drive it, following this
-   project's established process: one candidate change, verify by readback
-   or by re-running this same diagnostic, not a batch of guesses.
+The UART IRQ count reached 647 during these reads and dmesg contained no new
+HDQ, UART, or power-supply error. The live device remains on function 1 with
+the battery registered; rebooting returns control to the DT.
+
+Ten consecutive driver unbind/rebind cycles then returned
+`DEVICE_TYPE = 0x0545` every time. Each cycle reported the battery present,
+4.230-4.233 V and 93% capacity, with no timeout, error, failure or UART overrun
+in dmesg. The final binding remained active on function 1.
+
+### Permanent fix and remaining validation
+
+`kernel/patches/0005-t7001-add-uart5-node.patch` now uses
+`APPLE_PINMUX(34, 1)`. Patch `0008`'s context was updated so the staged touch
+patch still applies after the battery correction. The host-side patch guard
+checks the hardware-proven selector.
+
+A full distributed Nix build of
+`packages.x86_64-linux.m1n1-hoolock-control` succeeded after the correction.
+The resulting `m1n1-linux.bin` SHA-256 is
+`0681c720ec632fc6fad88f562cdc57a74ac31e2ec58e29cbd4cedec2aa7f3e27`; the
+J81 DTB SHA-256 is
+`dde0c168a703f036faec44e30cdb193354b440c10669c12ec6c508b880ba0005`.
+Decompiling that DTB confirms `serial@20a0d4000` is enabled with its gauge
+child and `uart5-pins` contains pinmux value `0x10022`, the encoded GPIO34
+function-1 selection.
+
+The OIPG record still proves the resource is AP GPIO34 and that
+`function-battery_swi` and UART5 `function-tx` are identical. Its flags word
+`0x102` does not directly encode the Apple GPIO peripheral selector. This live
+A/B result supersedes the earlier low-byte inference and should be used when
+decoding other old-A-series OIPG records.
+
+Remaining BAT-4 gates are one boot of the rebuilt permanent DT, comparison
+with iPadOS, and warm/cold reboot reproduction. No charger or PMU mux work
+belongs on that path. Charging policy remains a separate D2207/`charger,k48`
+project after read-only battery reporting is locked down.
 
 ## Sources
 
@@ -484,6 +526,11 @@ routes the gauge through this same charger chip, through the PMU
 - [Linux bq27xxx core](https://github.com/torvalds/linux/blob/master/drivers/power/supply/bq27xxx_battery.c)
 - [Linux tty-backed serdev registration](https://github.com/torvalds/linux/blob/master/drivers/tty/tty_port.c)
 - [Corellium Apple HDQ-UART transport](https://github.com/corellium/linux-sandcastle/blob/sandcastle-5.4/drivers/power/supply/bq27545-battery-hdquart.c)
+- [Corellium SN2400 charger/mux implementation (later hardware)](https://github.com/corellium/linux-sandcastle/blob/sandcastle-5.4/drivers/power/supply/sn2400-charger.c)
+- [Unstripped iOS 10.3 s8000 AppleHDQGasGaugeControl kext](https://github.com/userlandkernel/ios-unstripped-kexts/tree/master/kexts/10.3/s8000/AppleHDQGasGaugeControl.kext)
+- [Unstripped iOS 10.3 s8000 AppleSamsungSerial kext](https://github.com/userlandkernel/ios-unstripped-kexts/tree/master/kexts/10.3/s8000/AppleSamsungSerial.kext)
+- [Unstripped iOS 10.3 s8000 AppleOnboardSerial kext](https://github.com/userlandkernel/ios-unstripped-kexts/tree/master/kexts/10.3/s8000/AppleOnboardSerial.kext)
+- [Unstripped iOS 10.3 s8000 AppleD2207PMU kext](https://github.com/userlandkernel/ios-unstripped-kexts/tree/master/kexts/10.3/s8000/AppleD2207PMU.kext)
 - [TI bq27545-G1 datasheet, including HDQ timing and DEVICE_TYPE](https://www.ti.com/lit/ds/symlink/bq27545-g1.pdf)
 - [TI-hosted bq27541-V200 datasheet](https://e2e.ti.com/cfs-file/__key/communityserver-discussions-components-files/196/bq27541_5F00_V200_5F00_DS.pdf)
 - [2019 Linux serdev stop-bit proposal](https://marc.info/?l=linux-serial&m=155651925923098)

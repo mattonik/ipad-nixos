@@ -1,10 +1,10 @@
 # J81 Bluetooth, battery and ADT development plan
 
 Status: UART3 is hardware-confirmed and the bundled `btattach` reaches `hci0`,
-although the unpowered radio does not answer HCI commands. Battery research
-has also corrected an earlier source-reading error: Samsung UART ports do
-support DT serdev children through the common serial core. The remaining
-battery-specific API gap is two-stop-bit selection. See
+although the unpowered radio does not answer HCI commands. The battery path is
+also hardware-confirmed: with AP GPIO34 on peripheral function 1, UART5/HDQ
+identifies the BQ27545 and exposes stable Linux power-supply readings. The
+permanent-DT reboot gate remains. See
 [`research/j81-battery-hdq.md`](../../research/j81-battery-hdq.md).
 
 Target: iPad Air 2 Wi-Fi, J81/J81AP, A8X/T7001, A1566
@@ -66,7 +66,7 @@ The public J82 ADT reports:
 | Bluetooth | UART3 | base `0x20a0cc000`, IRQ 161, clock gate `0x53`, TX AP GPIO14 alt2, RTS AP GPIO32 alt2 |
 | Bluetooth child | `bluetooth,n88` | 3,000,000 baud, host wake AP GPIO164, PMU power-enable GPIO2, Apple vendor ID `0x05ac`, product ID `0x12a0` |
 | Battery | UART5 | base `0x20a0d4000`, IRQ 163, clock gate `0x55`, no flow control |
-| Fuel-gauge child | `gas-gauge,bq27540`, `gas-gauge,hdq` | battery SWI AP GPIO34 alt2 |
+| Fuel-gauge child | `gas-gauge,bq27540`, `gas-gauge,hdq` | battery SWI AP GPIO34; J81 hardware requires peripheral function 1 |
 
 The Hoolock defconfig already enables `BT`, `BT_BCM`, `BT_HCIUART`,
 `BT_HCIUART_BCM`, `SERIAL_SAMSUNG`, `SERIAL_DEV_BUS`, `POWER_SUPPLY`,
@@ -251,12 +251,11 @@ serdev conclusion that accompanied it.**
    "PMU power-enable GPIO2" description, decoded independently from a
    different, more structural signal in the data. Every one of these
    independently-decoded numbers matches this section's original
-   J82-sourced numbers exactly, which is real confirmatory evidence for
-   both the decode method and J81/J82 pin-compatibility -- not just an
-   assumption carried over from the sibling board. The low byte of the raw
-   UART function flags is `0x02`, which independently corroborates the
-   `APPLE_PINMUX(pin, 2)` alt-function setting. The meaning of the upper
-   `0x100` flag remains unknown and is not needed for the pinmux entry.
+   J82-sourced numbers exactly, which confirms the resource-number decode and
+   J81/J82 pin compatibility. Later BAT-4 hardware A/B testing proved the
+   OIPG flags word is not a direct Apple pinmux selector: GPIO34 carries
+   `0x102`, but its working UART5/HDQ route is peripheral function 1. UART3's
+   function-2 setting remains valid because UART3 itself probed on hardware.
 
 2. **Correction, 2026-09-08: Samsung UART does get a serdev controller.**
    `drivers/tty/serial/samsung_tty.c` calls `uart_add_one_port()`. The common
@@ -445,11 +444,11 @@ resource **2** ("PMU GPIO2", args[0]) on the `pmu,d2207` chip at I2C
 address `0x3c` -- the identical physical PMIC this board's kernel already
 talks to for RTC and backlight. `args[1] = 0x101` doesn't have a confirmed
 meaning: it's identical on `bt_wake` (AP GPIO164) and on an unrelated
-`function-keepact` (AP GPIO87) property elsewhere on the `pmu` node, so it
-can't be a per-pin polarity encoding -- more likely a generic "plain GPIO
-resource" tag. (By contrast, `function-tx`/`function-rts`'s args both carry
-`0x102`/`0x002`, sharing a low byte of `0x02` that matches the
-`APPLE_PINMUX(pin, 2)` alt-function-2 already used in `kernel/patches/`.)
+   `function-keepact` (AP GPIO87) property elsewhere on the `pmu` node, so it
+   can't be a per-pin polarity encoding -- more likely a generic "plain GPIO
+   resource" tag. BAT-4 later proved that the `0x102`/`0x002` OIPG flags on
+   UART resources do not directly encode the Apple pinmux selector; each route
+   still needs hardware or driver evidence.
 **This confirms the resource number and the
 exact chip, but not polarity** -- consistent with, and not overriding, this
 section's original stop condition.
@@ -757,15 +756,15 @@ The complete source audit, timing analysis, and commit-level plan are in
 [`research/j81-battery-hdq.md`](../../research/j81-battery-hdq.md). It
 supersedes this section where the details differ.
 
-**Implemented and compile-verified, 2026-09-08** (BAT-1/2/3 in that
-document's own numbering: the serdev stop-bit API, the
-`bq27xxx_battery_hdq_uart.c` frontend, and the UART5/gauge DTS) -- four
-kernel patches, a real `nix build` of the kernel and the full boot
-payload both succeed, and the built kernel's `System.map`/DTB both
-confirm the new code and DT nodes actually compiled in. **Not yet
-hardware-tested** (BAT-4): nothing has been flashed to the iPad since
-this was written. Full detail, including exactly what was verified and
-what wasn't, in that document's "Implementation result, 2026-09-08".
+**Implemented, compile-verified and hardware-confirmed, 2026-09-10.** BAT-1/2/3
+added the serdev stop-bit API, the `bq27xxx_battery_hdq_uart.c` frontend and
+the UART5/gauge DTS. BAT-4 found the DTS pinmux bug: AP GPIO34 must use
+peripheral function 1, not the low byte of its `0x102` OIPG flags. With that
+single live change, the driver reports `DEVICE_TYPE = 0x0545`, registers
+`bq27545-battery`, and returns stable voltage, current, capacity, temperature
+and cycle count. Ten unbind/rebind cycles repeated the same device ID and
+plausible readings without an error. The remaining gate is booting the rebuilt
+permanent DT and repeating across warm and cold boots.
 
 **Pre-hardware review, 2026-09-09:** fixed the frontend's required serdev
 `write_wakeup` callback, receive-before-transmit ordering, combined
@@ -826,11 +825,11 @@ In `t7001.dtsi`, add `serial5` from the UART0 template:
 - `power-domains = <&ps_uart5>`;
 - disabled at SoC level.
 
-In J81, add the confirmed AP GPIO34 alt2 pinmux, enable UART5 without flow
+In J81, add the hardware-confirmed AP GPIO34 function-1 pinmux, enable UART5 without flow
 control, and add the gauge as its serdev child. Keep this patch separate from
 Bluetooth so either subsystem can be reverted independently.
 
-BAT-2 passes first when `DEVICE_TYPE` is stable across ten reads. After mapping
+BAT-2 passed with `DEVICE_TYPE = 0x0545` across ten live rebinds. After mapping
 the correct bq27xxx core layout, these files must report plausible values:
 
 ```sh
