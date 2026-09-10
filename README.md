@@ -140,14 +140,14 @@ bus or peripheral can probe.
 |---------|--------|---------|
 | 4 KiB pages | `ARM64_4K_PAGES` | Required by the documented A7–A8X bring-up |
 | Apple drivers | `COMPILE_TEST` | Unlocks drivers gated on `ARCH_APPLE` |
-| Touch | `TOUCHSCREEN_APPLE_Z2` | Z2 protocol reference; J81 binding/firmware work remains |
+| Touch | `TOUCHSCREEN_APPLE_Z2` | Z2 protocol reference; SPI proof, J81 binding/firmware work remain; power rail decoded |
 | SPI | `SPI_APPLE` | M-series path exists; T7001 variant still needs a clean port |
 | Display | `DRM_SIMPLEDRM` | Framebuffer initialized by pongoOS |
 | USB | `USB_DWC2` | Synopsys DWC2 OTG (Lightning port) |
 | USB Ethernet | `USB_CONFIGFS_ECM` | Host communication via USB gadget |
 | Serial | `SERIAL_SAMSUNG` | Apple UART (Samsung S3C compatible) |
 | WiFi | `BRCMFMAC` | BCM4350 PCIe endpoint; T7000 host and local firmware remain |
-| Bluetooth | `BT_BCM` | BCM4350-family UART3 radio; DT/power and local firmware remain |
+| Bluetooth | `BT_BCM` | BCM4350-family UART3 radio; exact PMU power test, serdev child and local firmware remain |
 
 Full config in [kernel/default.nix](kernel/default.nix).
 

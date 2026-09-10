@@ -46,8 +46,9 @@ The implementation order is now:
 
 1. Boot the permanent GPIO34 function-1 battery fix and verify warm/cold
    reproduction.
-2. Clean up the old-SoC SPI controller support, prove SPI3, then adapt touch.
-3. Finish Bluetooth power control through the D2207 PMU GPIO path.
+2. Run the exact reversible Bluetooth GPIO2 power test, then add serdev if the
+   radio responds.
+3. Clean up the old-SoC SPI controller support, prove SPI3, then adapt touch.
 4. Research and port the T7000 PCIe host, then enumerate and enable BCM4350
    Wi-Fi.
 5. Keep the working simple framebuffer; defer native display/GPU work.
@@ -55,10 +56,11 @@ The implementation order is now:
 This order follows the dependencies actually present on J81. Wi-Fi is PCIe,
 not SDIO. Touch depends on a missing old-Apple SPI controller variant. The
 battery needs TI's HDQ-over-UART encoding, not Linux's generic 1-Wire UART
-timings. Bluetooth is already past its UART transport gate. Touch is now the
-highest-value new subsystem because Linux already contains the Z2 protocol,
-firmware loader and input reporting code; only the old SPI controller and J81
-board integration stand in front of it.
+timings. Bluetooth is already past its UART transport gate and now has an exact
+one-register power experiment, making it the shortest next peripheral test.
+Touch follows because Linux already contains the Z2 protocol, firmware loader
+and input reporting code; the old SPI controller and J81 board integration
+stand in front of it.
 
 ## Priority review: touch, Wi-Fi and graphics
 
@@ -126,8 +128,11 @@ struct oipg {
 };
 ```
 
-That makes the AP GPIO numbers below evidence-backed. PMU GPIO register details
-remain unknown because Hoolock has no D2207/Arabela PMIC GPIO provider.
+That makes the AP GPIO numbers below evidence-backed. The 2026-09-10 Apple
+driver review also maps D2207 GPIO2 to active-high configuration register
+`0x03e6` and the touch analog resource to LDO14 at 6.0 V. Hoolock still has no
+D2207/Arabela GPIO or regulator provider, so those controls need Linux glue
+after their bounded live tests pass.
 
 Do not commit Apple firmware, radio NVRAM, touch calibration, or per-device
 identifiers. Extract them locally from the device or a user-supplied IPSW and
@@ -167,9 +172,9 @@ blocker.
 | Buttons | AP GPIO 0/1/92/93 | DT nodes and `KEYBOARD_GPIO=y` | Verify all four input events | Ready for hardware test |
 | RTC | D2207 PMIC child | Driver, DT and config built-in | Preserve the working hardware clock path | Hardware-verified |
 | Backlight | D2207 PMIC child | Driver and DT built; compiler bug fixed | Preserve the working brightness path | Hardware-verified |
-| Bluetooth | BCM4350-family radio on UART3 | UART3 and manual `hci0` registration work | Implement measured PMU GPIO2 power control, then add the standard `hci_bcm` serdev child | Transport proven |
+| Bluetooth | BCM4350-family radio on UART3 | UART3 and manual `hci0` registration work; GPIO2 at `0x03e6` is read low | Run the exact reversible PMU test, then add the standard `hci_bcm` serdev child | Transport proven; power test ready |
 | Battery | BQ27545 gauge on UART5/HDQ | Live identification and power-supply reads work after the GPIO34 function-1 correction | Boot the rebuilt permanent DT and repeat warm/cold | Working live; permanence gate next |
-| Touch | `multi-touch,j82` on SPI3 | `apple_z2` exists but only for Mac Touch Bars; S5L SPI work is on test branches | Clean the old-controller SPI variant first, prove SPI3, then adapt Z2 firmware/calibration and protocol | Two-stage port |
+| Touch | `multi-touch,j82` on SPI3 | `apple_z2` exists; S5L SPI patches are staged; D2207 6 V rail is decoded | Cross-build and prove SPI3, decode the child `reg`/PMGR clock args, then adapt Z2 firmware/calibration | Two-stage port |
 | Wi-Fi | BCM4350 on T7000 PCIe port 1 through DART | brcmfmac PCIe source exists but CFG80211/BRCMFMAC are disabled; T7000 PCIe host is absent | Port T7000 PCIe host, add DART/port DT, enumerate endpoint, then enable brcmfmac and local firmware/NVRAM | Largest near-term driver task |
 | Display | Bootloader framebuffer | simplefb works | Keep simplefb; native display/GPU is separate research | Usable baseline |
 | Internal storage | ANS1/ASP coprocessor | Matching Hoolock Linux/m1n1 `ans1` branches exist as WIP | Integrate a separate payload, remove write unlock and expose every namespace read-only before testing | Experimental path available |
@@ -198,9 +203,9 @@ PCIe host code is the limiting factor for Wi-Fi, not the kernel version.
 
 | Device | Bus/resources | Signals |
 | --- | --- | --- |
-| Bluetooth | UART3 at `0x20a0cc000`, IRQ 161, 3,000,000 baud | TX GPIO14 alt2, RTS GPIO32 alt2, host wake GPIO164, power enable PMU GPIO2 |
+| Bluetooth | UART3 at `0x20a0cc000`, IRQ 161, 3,000,000 baud | TX GPIO14 alt2, RTS GPIO32 alt2, host wake GPIO164, active-high PMU GPIO2 at `0x03e6` |
 | Battery gauge | UART5 at `0x20a0d4000`, IRQ 163, HDQ child | HDQ/battery SWI GPIO34, hardware-verified peripheral function 1 |
-| Touch | SPI3 at `0x20a08c000`, IRQ 155, CS0 | CS GPIO51, IRQ GPIO84, display sync GPIO55, reset GPIO82, LDO GPIO95, analog power PMU resource `0x20e` |
+| Touch | SPI3 at `0x20a08c000`, IRQ 155, CS0 | CS GPIO51, IRQ GPIO84, display sync GPIO55, reset GPIO82, GPIO95, D2207 LDO14 analog rail at 6.0 V |
 | Wi-Fi control | UART2 at `0x20a0c8000`, IRQ 160 | TX GPIO136 alt2, RTS GPIO138 alt2, radio enable PMU GPIO3 |
 | Wi-Fi data | PCIe port 1, max link speed 1 | wake GPIO165, CLKREQ GPIO174, PERST GPIO179; DART at `0x602002000`, IRQ 216 |
 
@@ -252,7 +257,8 @@ device. A successful kernel build is not a passing hardware test.
 ## Phase 2: Bluetooth on UART3
 
 Status: UART3 and manual `hci0` registration are hardware-confirmed. The radio
-does not answer until its D2207 PMU GPIO2 power path is implemented.
+does not answer because D2207 PMU GPIO2 is low. Its active-high register is now
+identified as `0x03e6`; no PMIC write has been attempted.
 
 Add the smallest J81 DT patch:
 
@@ -261,17 +267,13 @@ Add the smallest J81 DT patch:
 - a `brcm,bcm43540-bt` serdev child with 3,000,000 maximum speed.
 - host-wake GPIO164 and a `bluetooth0` alias.
 
-Start without `shutdown-gpios`. iBoot/m1n1 may leave the combo module powered,
-which lets the UART/HCI path be proven without guessing D2207 PMIC registers.
-m1n1 already copies `/chosen/mac-address-bluetooth0` to the aliased node. Extend
-its ADT lookup from `/arm-io/bluetooth` to `/arm-io/uart3/bluetooth` only if the
-live J81 ADT confirms that path and the kernel requires its calibration data.
-
-If no HCI response occurs and the UART signals are correct, implement the
-missing D2207 GPIO provider or a narrowly scoped radio-power child after the
-PMU GPIO register offsets are derived from Apple behavior. Then describe PMU
-GPIO2 as `shutdown-gpios`. Corellium's `gpio-hx-pmu-i2c.c` is a register-map
-pattern, but its D2333 register offsets must not be copied onto D2207.
+The transport-only test is complete. Next, use the existing `i2ctransfer` tool
+to read/save `0x03e6`, write `0x02`, require data register `0x0063` bit 2 to
+rise, wait 100--120 ms, and retry the existing `btattach` action. Restore
+`0x03e6` to `0x00` and verify the data bit clears after the test. If the radio
+answers, implement the smallest D2207 GPIO provider and describe GPIO2 as
+`shutdown-gpios` on the serdev child. m1n1 already copies
+`/chosen/mac-address-bluetooth0` to the aliased node.
 
 On the first successful probe, record the exact firmware filename requested by
 `hci_bcm`, extract the matching `.hcd` from a local IPSW, and load it outside

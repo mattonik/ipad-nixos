@@ -18,8 +18,12 @@ working on real hardware in the same session. Full transcript in
 privately and its UART3/UART5 resources are sanitized in
 [the focused plan](plans/2026-09-08-j81-bluetooth-battery-adt.md). UART3 now
 registers on hardware and bundled `btattach` reaches `hci0`; the radio remains
-silent because PMU GPIO2 power control is not implemented. A fresh USB-shell
-check finds UART0 and UART3 present, with no UART5 or power supply yet.
+silent because PMU GPIO2 is low. The 2026-09-10 Apple-driver review resolves
+its exact control: GPIO2 configuration register `0x03e6`, data bit 2 at
+`0x0063`, active high. Live read-only values are `0x00` and `0x20`
+respectively, proving the radio power enable is currently low. The next test is
+a single reversible `0x03e6: 0x00 -> 0x02 -> 0x00` A/B run followed by the
+existing `btattach` action; no PMIC write has occurred yet.
 
 The battery source audit found that Samsung UART already supports serdev
 children through the common serial core. Commit `863d2e4` now implements the
@@ -44,6 +48,21 @@ the later SN2400 charger-mux design. The permanent DTS patch now uses function
 Full evidence is in
 [the dedicated J81 battery research](../research/j81-battery-hdq.md).
 
+**Live-session research, 2026-09-10:** before rebooting the permanent battery
+payload, the working USB/telnet session was captured as a private, ignored
+snapshot: `artifacts/live/20260910T154818Z-j81-linux-session.txt`, mode 0600,
+SHA-256 `749c196845a189a7fc02e7038f0d120951f8c5986f415b566f070980339a34b9`.
+The battery remained stable at 85%, 4.148 V, about -0.322 A, 32.0 C and 341
+cycles. Apple D2207 power-source code identifies the charger status
+block and current-limit registers; the live PMIC is configured for a 100 mA
+USB input limit and a 3,000 mA charge-current ceiling, explaining why the
+system can keep its data link while still discharging. No charger register was
+written. The same snapshot confirms UART0/UART3 and the display/USB domains are
+active, while SPI3, PCIe and GPU are off; there is no block device, HCI device,
+rfkill entry, IIO device or exposed regulator. This is the baseline for the
+next driver payload, not evidence of additional hidden devices. See the
+[long-term subsystem plan](../research/j81-long-term-subsystems.md#charging-policy).
+
 **Touch groundwork, 2026-09-09:** patches `0007`–`0009` port the older Apple
 SPI controller path and describe/enable J81 SPI3 from the real ADT. A pre-build
 review fixed reversed bit-order handling, an `IRQ_NONE` completion path, an IRQ
@@ -51,17 +70,20 @@ enable/completion race, and an uninitialized RX count; the patch sequence and
 `kernel/test_spi_s5l_patch.py` pass. These patches remain outside
 `kernel/hoolock.nix`, so the current battery-ready payload is unchanged. The
 next TOUCH-1 gate is one real cross-build before any hardware test. TOUCH-2
-still needs the child `reg`, `Lump` PMU resource, and `KLCT` clock descriptor
-decoded; see [the focused touch plan](plans/2026-09-09-j81-touch-spi3.md).
+still needs the child `reg` and exact `KLCT` clock arguments decoded. The
+`Lump` blocker is resolved: it is D2207 LDO14, configured for 6.0 V at
+`0x0398` and enabled by `0x0084` bit 2. Live reads show that rail is currently
+off. ADT phandle `0x1a` is confirmed as PMGR, and Apple's power order is now
+documented in the [focused touch plan](plans/2026-09-09-j81-touch-spi3.md).
 
-**Next-subsystem priority:** after the permanent battery reboot gate, bring up
-SPI3 and touch first. The real J81 ADT confirms the controller and GPIO
-resources, Linux
-already has the Z2 protocol/input driver, and Hoolock has a focused old-SPI
-experiment. Research T7000 PCIe for Wi-Fi in parallel, but defer implementation
-until its host sequence is understood. Keep native graphics deferred; simplefb
-works while the A8X display pipe, GPU platform integration and GXA6850 support
-remain unavailable. See the
+**Next-subsystem priority:** after the permanent battery reboot gate, run the
+now-exact Bluetooth GPIO2 A/B test because it is one register and uses the
+already-working UART3/`btattach` path. Then cross-build and prove SPI3 before
+adding touch. The real J81 ADT confirms the touch controller and GPIO resources,
+Linux already has the Z2 protocol/input driver, and Hoolock has a focused
+old-SPI experiment. Keep native graphics deferred; simplefb works while the
+A8X display pipe, GPU platform integration and GXA6850 support remain
+unavailable. See the
 [updated bring-up plan](plans/2026-09-08-ipad-air2-driver-bringup.md#priority-review-touch-wi-fi-and-graphics).
 
 **USB follow-up, Round 8 (hardware-tested):** the display diagnostic ran on
@@ -2232,9 +2254,10 @@ Never commit Apple firmware, NVRAM, touch calibration or device identifiers.
 | Display | Inherited framebuffer produces a visible shell | Keep simplefb; defer native display/GPU. |
 | Buttons | GPIO driver, config and DT are present | Verify Home, Power and both volume input events on Hoolock. |
 | RTC / backlight | Both hardware-verified over the USB shell | Preserve their current nodes and drivers. |
-| Bluetooth | Real J81 UART3 and manual `hci0` attach are hardware-confirmed | Implement measured D2207 PMU GPIO2 control, then use the standard `hci_bcm` serdev child. |
+| Bluetooth | Real J81 UART3 and manual `hci0` attach are hardware-confirmed; Apple driver and live PMIC reads identify GPIO2 at `0x03e6`, active high, currently low | Run the reversible `0x00 -> 0x02 -> 0x00` A/B test, then use the standard `hci_bcm` serdev child. |
 | Battery | **Working live:** BQ27545 identified; stable voltage/current/capacity/temperature/cycle reads after GPIO34 function-1 correction | Boot the rebuilt permanent DT and reproduce across warm/cold boots. |
-| Touch | Reviewed S5L8960X SPI3 and J81 DT patches are staged outside the active build | Cross-build TOUCH-1, then prove SPI3 before adapting touch. |
+| Charging | Read-only D2207 status/current registers identified; live USB input setting is 100 mA while the battery discharges | Reproduce with a USB meter across disconnected, data-host and charger cases; then add a read-only power-supply child. |
+| Touch | Reviewed S5L8960X SPI3 and J81 DT patches are staged; the 6 V analog rail and Apple power order are identified | Cross-build TOUCH-1, prove SPI3, then decode the child `reg` and PMGR clock args. |
 | Wi-Fi | BCM4350 brcmfmac PCIe endpoint code exists; wireless config is disabled | Port T7000 PCIe/DART and enumerate port 1 before enabling brcmfmac. |
 | Audio / GPU / NAND / cameras / Touch ID | No complete A8X stack | Defer beyond the interactive-tablet milestone. |
 
@@ -2242,12 +2265,12 @@ Never commit Apple firmware, NVRAM, touch calibration or device identifiers.
 
 1. **Battery permanence gate.** Boot the rebuilt function-1 DT, repeat ten
    power-supply reads, compare with iPadOS, and reproduce on warm and cold boots.
-2. **Touch.** Cross-build the staged S5L SPI3 patches, prove the controller,
+2. **Bluetooth power.** Run the exact D2207 GPIO2 A/B test, then add the
+   standard `hci_bcm` serdev child and its power/wake GPIOs if the radio
+   responds. UART3 and manual HCI attachment are already hardware-confirmed.
+3. **Touch.** Cross-build the staged S5L SPI3 patches, prove the controller,
    then adapt the existing `apple_z2` driver with private local
-   firmware/calibration.
-3. **Bluetooth power.** Finish the measured D2207 PMU GPIO2 work, then add the
-   standard `hci_bcm` serdev child and its power/wake GPIOs. UART3 and manual
-   HCI attachment are already hardware-confirmed.
+   firmware/calibration and the identified power sequence.
 4. **Buttons.** Validate Home, Power and both volume inputs through the USB
    shell.
 5. **PCIe and Wi-Fi.** Add the existing old-Apple DART node, port the T7000 PCIe
@@ -2279,12 +2302,13 @@ Never commit Apple firmware, NVRAM, touch calibration or device identifiers.
 | RTC / Backlight (Apple PMIC) | ✅✅ **Hardware-verified, 2026-09-08**: connected over the newly-working USB network link and confirmed both live on real hardware — RTC set the system clock from real PMIC time (`rtc-apple-pmic ... registered as rtc0`); backlight physically dimmed the screen on command, visually confirmed by the user, then restored. |
 | Hoolock payload / RTC / backlight validation | ✅✅ Hardware-verified; buttons remain untested |
 | J81 ADT capture | ✅ Real raw ADT captured privately; UART, battery, touch and Wi-Fi/PCIe resources sanitized and documented |
-| Bluetooth | 🟡 UART3 and `hci0` registration hardware-confirmed; radio needs measured D2207 PMU GPIO2 power control |
+| Bluetooth | 🟡 UART3 and `hci0` registration hardware-confirmed; exact active-high D2207 GPIO2 register identified and read low; reversible power A/B test remains |
 | Battery | ✅ **Working live, 2026-09-10:** BQ27545 identified and stable standard power-supply readings verified after correcting GPIO34 to peripheral function 1; rebuilt-DT reboot reproduction remains |
-| Touch | 🟡 Reviewed SPI3 controller/DTS groundwork is staged; cross-build and hardware test remain |
+| Touch | 🟡 Reviewed SPI3 controller/DTS groundwork is staged; D2207 6 V analog rail and Apple power order identified; cross-build and hardware test remain |
 | Wi‑Fi implementation | ❌ Real J81 resources confirmed; T7000 PCIe/DART host work has not started |
 | Internal storage | 🟡 Hoolock now has matching Linux/m1n1 ANS1 WIP branches; local integration has not started and the first payload must be forced read-only. See the [long-term subsystem plan](../research/j81-long-term-subsystems.md). |
-| Native GPU / audio / suspend / charging control | ❌ Sanitized J81 hardware paths and dependency-ordered implementation gates are documented in the [long-term subsystem plan](../research/j81-long-term-subsystems.md); no driver implementation has started. |
+| Native GPU / audio / suspend | ❌ Sanitized J81 hardware paths and dependency-ordered implementation gates are documented in the [long-term subsystem plan](../research/j81-long-term-subsystems.md); no driver implementation has started. |
+| Charging control | 🟡 Read-only D2207 status/current register map recovered and live settings captured; cable A/B semantics and a Linux driver remain. |
 | Usable tethered Linux tablet | ❌ Future milestone |
 
 ## Safety boundaries

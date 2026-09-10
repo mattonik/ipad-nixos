@@ -400,14 +400,14 @@ The iPhone Wiki documents the device tree format. iOS device trees use a propert
 | UART/serial | Apple S5L UART | apple-s5l-uart | Works (upstream) |
 | Framebuffer | (pongoOS-initialized) | simplefb / efifb | Works (basic, no acceleration) |
 | Display (native) | Parade DP675 + eDP | None | No driver; needs reverse engineering |
-| Touch | Z2/BCM5976 family (SPI3) | apple_z2 reference | T7001 SPI variant, J81 binding, power, firmware and calibration are missing |
+| Touch | Z2/BCM5976 family (SPI3) | apple_z2 reference | T7001 SPI proof, J81 binding, PMGR clock decode, firmware and calibration remain; 6 V analog rail is identified |
 | WiFi | BCM4350 (PCIe) | brcmfmac PCIe | Endpoint driver exists; T7000 PCIe host, DT and local firmware are missing |
-| Bluetooth | BCM4350 family (UART3) | btbcm / hci_uart | HCI support exists; UART/power DT and local firmware are missing |
+| Bluetooth | BCM4350 family (UART3) | btbcm / hci_uart | UART and manual `hci0` proven; exact active-high PMU GPIO2 test, serdev child and local firmware remain |
 | Audio codec | Cirrus Logic 338S1213 | None | No driver; needs RE |
 | Audio amp | MAX98721 | None | No upstream driver |
 | PMIC | D2207 / Dialog 343S0675 | simple MFD + RTC/backlight | Partial; GPIO/regulator/charger support is missing |
-| Battery gauge | BQ27540 family (HDQ/UART5) | bq27xxx core | Needs an HDQ serdev transport and DT node |
-| USB | DWC2 OTG | dwc2 | Historical path has asymmetric TX failure; Hoolock path awaits hardware test |
+| Battery gauge | BQ27545 (HDQ/UART5) | bq27xxx core + J81 HDQ serdev | Working live; permanent-DT warm/cold reproduction remains |
+| USB | DWC2 OTG | dwc2 | Working bidirectionally on the Hoolock kernel; historical kernel has asymmetric TX failure |
 | NAND storage | Apple proprietary | None | No driver; use ramdisk/USB storage |
 | Accelerometer | Bosch BMA280 | bma180 (IIO) | Driver exists; needs DT |
 | Barometer | Bosch BMP280 | bmp280 (IIO) | Driver exists; needs DT |

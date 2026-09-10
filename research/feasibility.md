@@ -39,12 +39,14 @@ traffic. Ping and the telnet shell work over the direct cable.
 
 RTC and backlight are hardware-verified. The GPIO keys remain untested.
 
-### Bluetooth — UART proven, power control remains
+### Bluetooth — UART proven, exact power test remains
 
 UART3 and manual `hci0` registration are hardware-confirmed. The chip stays
-silent because D2207 PMU GPIO2 power control is missing. Implement and measure
-that provider before adding the standard `hci_bcm` serdev child. Firmware must
-be extracted locally and kept outside Git.
+silent because D2207 PMU GPIO2 is low. Apple driver analysis identifies its
+active-high configuration register as `0x03e6`; live reads confirm `0x00` and
+a low data bit. Run the reversible `0x00 -> 0x02 -> 0x00` power test before
+adding the standard `hci_bcm` serdev child. Firmware must be extracted locally
+and kept outside Git.
 
 ### Battery — working live; permanent-DT reboot remains
 
@@ -103,16 +105,16 @@ reliable log and shell.
 | --- | --- | --- |
 | New peripheral patch breaks boot | Slow hardware iteration | Keep each bus/DT change separately revertible and compare with the working Hoolock payload |
 | Private ADT data leaks | Device identifiers or calibration enter Git | Commit only sanitized resources; keep the captured J81 ADT ignored |
-| D2207 PMIC GPIO registers remain unknown | Bluetooth/touch cold-power failure | Test retained bootloader power first; derive registers before driving them |
+| A decoded PMIC control behaves differently on J81 | Bluetooth/touch cold-power failure | Prove the exact GPIO2 and LDO14 controls one at a time, read back, test immediately and restore |
 | Wrong radio/touch firmware | Probe or calibration failure | Use exact local IPSW/device artifacts and record requested filenames; do not commit blobs |
 | PCIe PHY tunables copied from another SoC | Link failure or unstable hardware | Use A8X ADT values, start with port 1 at 2.5 GT/s, and test DART faults |
-| USB remains asymmetric | Slow hardware iteration | Add focused Hoolock DWC2 endpoint diagnostics before unrelated driver changes |
+| USB control-channel regression | Slow hardware iteration | Preserve and smoke-test the working Hoolock CDC-ECM payload after each peripheral change |
 
 ## Recommended development order
 
 1. Boot and reproduce the hardware-proven GPIO34 function-1 battery fix.
-2. Port and prove S5L8960X SPI3, then adapt touch.
-3. Finish Bluetooth's measured D2207 PMU GPIO2 power path.
+2. Prove Bluetooth's exact D2207 PMU GPIO2 power path, then add serdev.
+3. Port and prove S5L8960X SPI3, then adapt touch.
 4. Port T7000 PCIe/DART, enumerate BCM4350, then enable brcmfmac.
 5. Build the minimal NixOS userspace after the input/network hardware has a
    stable interface.

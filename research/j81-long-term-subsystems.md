@@ -182,23 +182,53 @@ current, temperature, capacity and cycle count through UART5/HDQ. It cannot
 enable, limit or terminate charging. The ADT compatible `charger,k48` names an
 older Apple charger-policy interface; its `function-set_charger` phandle
 resolves to the D2207 PMU at I2C address `0x3c`, rather than a separate charger
-IC or HDQ mux. The callback and charge curve are strong leads, but their
-registers, units, limits and state transitions remain unidentified.
+IC or HDQ mux.
+
+The 2026-09-10 Apple-driver review identifies the first useful register set,
+independently matched in iOS 10.3 s8000 and T8010 `AppleD2207PMU` builds:
+
+| Register | Apple-driver meaning | Live J81 value |
+| --- | --- | --- |
+| `0x0050`--`0x005d` | 14-byte event block | Captured privately; bits still need semantic names. |
+| `0x0060`--`0x006c` | 13-byte status block | `0f 03 42 20 7e 00 00 00 00 00 00 00 03` across repeated reads. |
+| `0x0010` bit 2 | USB input-current suspend | Clear (`0x00`), so the input is not explicitly suspended. |
+| `0x04c0` | USB input-current setting | `0x02`, decoded by Apple's own conversion as 100 mA. |
+| `0x04c6` | Charge-current setting, 50 mA/count | `0x3c`, or 3,000 mA configured. |
+| `0x04c7[5:0]` | Hardware charge-current ceiling | `0x3f`, or 3,150 mA. |
+| `0x04cf[5:0]` | Configured maximum charge current | `0x3c`, or 3,000 mA. |
+| `0x04c8` bit 3 | Charge-timer reset control | Identified; no write attempted. |
+
+The same driver exposes ADC channels for VBUS voltage (19), VBUS current (9),
+battery voltage (4), battery temperature (2), and system voltage (0). Its
+reported maximum USB input current is 3,262 mA. Charge-voltage programming is
+explicitly unsupported in this implementation.
+
+The live direct USB network session is internally consistent with those
+values: the battery remains healthy at 85%, 4.148 V and 32.0 C, but net current
+is about -0.322 A and status is `Discharging`. The 100 mA input setting is less
+than the running system load, so the cable can sustain networking while the
+battery still drains. This is an inference from the two measurements; a USB
+power meter and cable A/B run remain the acceptance test.
+
+No charger register was written. The PMIC is bound to the existing
+`arabela-pmic` regmap; direct non-forced I2C access correctly reports the
+address busy. Exact read-only follow-up values and the full session snapshot
+are kept under ignored `artifacts/live/`, not committed.
 
 ### What is needed
 
-1. Boot the permanent BAT-4 pinmux fix and log voltage, current sign,
-   temperature, state of charge and flags with the cable disconnected and
-   connected. This determines whether iBoot leaves charging active and gives
-   an independent measurement for every charger experiment.
-2. Identify the charger backend and protocol from the J81 ADT, matching iOS
-   kernel code and read-only register/status observations. Determine how USB
-   cable presence and available input current reach the charger. Corellium's
-   SN2400 driver is useful prior art for Linux power-supply semantics, current
-   limits and cable-droop testing, but it is not a drop-in J81 driver.
-3. Implement a J81 `power_supply` charger driver in read-only mode first:
-   `ONLINE`, `STATUS`, present input limit and fault/thermal state. Cross-check
-   every value against the gauge and a USB power meter.
+1. Boot the permanent BAT-4 pinmux fix and reproduce the gauge across warm and
+   cold boots.
+2. With the user and a USB power meter present, record the D2207 status block,
+   input-current setting, gauge current and VBUS measurements for disconnected,
+   Mac data, and known charger cases. This assigns semantic names to the status
+   bits without guessing and shows who changes `0x04c0`.
+3. Implement a small regmap-backed J81 charger child in read-only mode first.
+   Expose only independently verified properties: present USB input limit and
+   charge-current ceilings first, then `ONLINE`, `STATUS` and fault/thermal
+   state after the cable A/B table identifies their bits. Use Linux's standard
+   power-supply units (microamps and microvolts) and cross-check every value
+   against the gauge and meter.
 4. Add one conservative write at a time: disable charging, low input-current
    limit, low charge-current limit, termination voltage, then enable. Encode
    hard maximums in the kernel from verified hardware data; do not accept
@@ -299,6 +329,9 @@ from the previous boot stage.
 
 ## Primary sources
 
+The two `AppleD2207PMU` binaries used for the symbol and disassembly cross-check
+remain local research artifacts and are not committed.
+
 - [Hoolock A8/A8X support matrix](https://github.com/HoolockLinux/docs/blob/master/features/A8.md)
 - [Hoolock Linux ANS1 branch](https://github.com/HoolockLinux/linux/tree/ans1)
 - [Hoolock ANS1 block driver](https://github.com/HoolockLinux/linux/blob/ans1/drivers/block/asp.c)
@@ -309,6 +342,7 @@ from the previous boot stage.
 - [Mesa PowerVR hardware status and BVNC requirement](https://docs.mesa3d.org/drivers/powervr.html)
 - [PowerVR DT binding](https://github.com/torvalds/linux/blob/master/Documentation/devicetree/bindings/gpu/img,powervr-rogue.yaml)
 - [Linux device power-management model](https://github.com/torvalds/linux/blob/master/Documentation/driver-api/pm/devices.rst)
+- [Linux power-supply class and units](https://docs.kernel.org/power/power_supply_class.html)
 - [Asahi userspace audio and speaker-safety model](https://github.com/AsahiLinux/asahi-audio)
 - [Corellium SN2400 charger prior art](https://github.com/corellium/linux-sandcastle/blob/sandcastle-5.4/drivers/power/supply/sn2400-charger.c)
 - [Corellium mobile NVMe prior art](https://github.com/corellium/linux-sandcastle/blob/sandcastle-5.4/drivers/nvme/host/hx.c)

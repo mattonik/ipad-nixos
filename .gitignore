@@ -15,6 +15,7 @@ firmware/
 # Raw Apple Device Tree/FDT captures contain per-device identifiers
 artifacts/adt/
 artifacts/i2c/
+artifacts/live/
 
 # Nix / devenv
 .devenv/

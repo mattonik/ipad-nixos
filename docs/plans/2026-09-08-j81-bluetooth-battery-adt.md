@@ -418,10 +418,59 @@ the sysfs/HCI gate passes; the kernel log and sysfs are enough for BT-1.
 ### BT-3: add wake and power control only when required
 
 The hardware attach attempt above supplied the "only when required" trigger
-this section was waiting on. This section is a **scope**, written 2026-09-08
-by reading the real driver/DT/ADT evidence rather than guessing -- no PMU
-register has been written yet, no DTS has changed. Confirming the plan
-before touching hardware again, per this document's own stop condition.
+this section was waiting on. No PMU register has been written yet and no
+Bluetooth power DTS has changed.
+
+#### BT-3 register and polarity result, 2026-09-10
+
+The register is now identified without a write. Disassembly of the unstripped
+iOS 10.3 s8000 `AppleD2207PMU` driver, independently checked against a T8010
+build of the same driver, gives the complete GPIO map:
+
+- PMU GPIO indices 0 through 16 use configuration register
+  `0x03e0 + 3 * index`; GPIO2 is therefore `0x03e6`.
+- GPIO indices 17 through 20 use registers `0x0411` through `0x0414`.
+- GPIO data is read at `0x0063 + index / 8`, using bit
+  `1 << (index % 8)`; GPIO2 is bit 2 of `0x0063`.
+- For this descriptor, function value 0 produces GPIO2 configuration `0x00`;
+  value 1 produces `0x02` and drives the data bit high.
+
+The separate Apple Bluetooth driver removes the last polarity ambiguity. Its
+`BTReset::start()` obtains `function-bt_reset`, `function-bt_wake`, and
+`function-power_enable`, then calls `function-power_enable` with value 1. Its
+power character-device callbacks use value 0 for the power-off operation and
+value 1 for power-on. The J81 descriptor `[2, 0x101]` therefore names PMU
+GPIO2 as an active-high radio power enable.
+
+The live Linux session matched that decode exactly:
+
+```text
+D2207 0x03e6 = 0x00       GPIO2 configured low
+D2207 0x0063 = 0x20       GPIO2 data bit 2 is clear
+/sys/class/bluetooth      empty
+```
+
+This explains the earlier HCI timeouts: UART3 and the HCI line discipline are
+working, but the radio is electrically off. It also supersedes the historical
+Stage A conclusion below that no GPIO register had been identified.
+
+The next hardware test is one bounded A/B test, with the user present:
+
+1. Read and save `0x03e6` and `0x0063`; require the observed baseline
+   `0x00` and GPIO2 low.
+2. Write only `0x02` to `0x03e6`, read both registers back, and require GPIO2
+   data bit 2 to become high.
+3. Wait 100--120 ms, matching Linux `hci_bcm`, then run the existing
+   `btattach` action and record the first controller response or firmware
+   filename.
+4. Restore `0x03e6` to `0x00` and verify GPIO2 low, regardless of the HCI
+   result.
+
+Do this direct one-register test before writing a GPIO driver. If the radio
+answers, add the smallest D2207 GPIO child needed by `hci_bcm`, describe the
+Bluetooth serdev child with `shutdown-gpios`, and keep firmware local. If the
+GPIO rises but HCI stays silent, investigate reset/wake sequencing and the
+exact local firmware before changing any other PMIC register.
 
 #### What the evidence already shows (no new measurement needed for this part)
 
@@ -449,9 +498,9 @@ meaning: it's identical on `bt_wake` (AP GPIO164) and on an unrelated
    resource" tag. BAT-4 later proved that the `0x102`/`0x002` OIPG flags on
    UART resources do not directly encode the Apple pinmux selector; each route
    still needs hardware or driver evidence.
-**This confirms the resource number and the
-exact chip, but not polarity** -- consistent with, and not overriding, this
-section's original stop condition.
+At the 2026-09-08 stage, this confirmed the resource number and exact chip but
+not polarity. The later Apple Bluetooth driver cross-check documented above
+resolves that final ambiguity as active high.
 
 #### Where PMU GPIO2 sits in the Linux binding this board already uses
 
@@ -485,8 +534,9 @@ all. Corellium's own linux-sandcastle tree (searched directly via GitHub's
 tree API, and via full-text code search across all of GitHub for "d2333")
 has no findable D2333 PMU GPIO source either; this document's warning not
 to copy Corellium's offsets is sound caution, not a reference to a
-specific file that could be consulted instead. **There is no shortcut here
--- the register has to be measured, exactly as the stop condition says.**
+specific file that could be consulted instead. This was the state on
+2026-09-08. The later Apple-driver disassembly above is the missing
+independent evidence and supplies the exact mapping.
 
 #### A real complication found while checking how `hci_bcm` would actually consume this
 
@@ -536,14 +586,11 @@ The corrected implementation choices are:
    `hci_bcm`'s own suspend/resume power sequencing, which doesn't matter
    yet since nothing here is suspend-aware.
 
-No recommendation is being locked in yet -- (3) fits this project's
-demonstrated preference (this session's own `btattach` work) for a small
-bundled userspace tool over new driver code, and needs no DTS or driver
-change until BT-3 is proven working at all, but that's a judgment call
-worth revisiting once the measurement below actually says what register
-and polarity are involved.
+The 2026-09-10 result locks in the shortest order: use the existing
+`i2ctransfer` binary for the single reversible proof, then implement the
+kernel GPIO/serdev path only after the radio responds.
 
-#### Stage A result, 2026-09-08: read-only scan done, protocol confirmed, no GPIO2 register identified with confidence yet
+#### Historical Stage A result, 2026-09-08: read-only scan before the GPIO map was recovered
 
 The original plan was to do this via m1n1's own USB proxy mode, before
 Linux boots at all. **That channel doesn't work on this hardware**: m1n1
@@ -861,8 +908,8 @@ Implement and hardware-test one gate at a time:
    firmware committed.
 5. `feat: add bq27xxx HDQ UART transport` — driver and binding.
 6. `feat: describe J81 UART5 battery gauge` — DT only.
-7. Add Bluetooth wake/power or m1n1 calibration patches only if a recorded
-   failure demands them.
+7. Prove Bluetooth PMU GPIO2 with the exact `0x03e6` A/B test, then add the
+   standard serdev power/wake description if the radio responds.
 
 For every hardware commit, preserve the current working USB network, RTC and
 backlight baseline. Record the Git commit, payload SHA-256, full subsystem
@@ -873,13 +920,17 @@ backlight baseline. Record the Git commit, payload SHA-256, full subsystem
 
 - Do not write a J81 GPIO or peripheral resource from J82 alone.
 - Do not commit raw ADT/FDT, firmware, MAC addresses, serials or calibration.
-- Do not add D2207 PMU GPIO control until its register layout and polarity are
-  measured.
+- Do not add D2207 PMU GPIO control beyond the identified GPIO2 path until the
+  exact `0x03e6` mapping and active-high polarity are reproduced by the bounded
+  live A/B test.
 - Do not select a bq27xxx chip layout from the ADT string alone.
 - Do not combine Bluetooth and battery into one kernel patch or hardware run
   until each independent transport gate passes.
 
 ## Primary references
+
+The `AppleD2207PMU` and `AppleBluetooth` binaries used for the symbol and
+disassembly cross-check remain local research artifacts and are not committed.
 
 - [PongoOS command sender](https://github.com/checkra1n/PongoOS/blob/master/scripts/issue_cmd.py)
 - [PongoOS stdout reader](https://github.com/checkra1n/PongoOS/blob/master/scripts/fetch_stdout.py)

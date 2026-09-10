@@ -1,6 +1,6 @@
 # Driver gap analysis: iPad Air 2 (J81 / T7001)
 
-Updated 2026-09-09 after reviewing the repository, the pinned Hoolock Linux
+Updated 2026-09-10 after reviewing the repository, the pinned Hoolock Linux
 source, current upstream Linux, Hoolock's test branches, Corellium's Sandcastle
 drivers, and the SoMainline J82 Apple Device Tree (ADT).
 
@@ -46,9 +46,9 @@ identifiers stay outside Git.
 | Buttons | GPIO 0/1/92/93 | Driver/config/DT present | Physical test missing | Verify input events |
 | RTC | Apple D2207 PMIC child | **Hardware-verified 2026-09-08** | None | `rtc-apple-pmic` registered as `rtc0`, set system clock from real hardware time (`hwclock -r` matched actual date), confirmed live over the newly-working USB network link |
 | Backlight | Apple D2207 PMIC child | **Hardware-verified 2026-09-08** | None | `echo 200 > brightness` physically dimmed the screen, visually confirmed by the user, then restored to 1627/2047; confirmed live over the USB network link |
-| Bluetooth | BCM4350-family radio over UART3 | `hci_bcm` and HCI UART BCM enabled | UART3 DT, wake, power and local firmware | First new peripheral after USB |
-| Battery | TI BQ27540-family over HDQ/UART5 | bq27xxx core exists | Generic W1-UART has the wrong signaling; no serdev transport/DT | Reuse core behind a small HDQ serdev frontend |
-| Touch | Apple `multi-touch,j82` / BCM Z2 family over SPI3 | Z2 parser/uploader exists for Mac Touch Bars | Old-SoC SPI variant, J81 binding, power, firmware and calibration | Prove SPI3 before adapting touch |
+| Bluetooth | BCM4350-family radio over UART3 | UART3 and manual `hci0` registration hardware-confirmed | Exact GPIO2 power A/B test, serdev child and local firmware | Toggle identified `0x03e6` control, then retry HCI |
+| Battery | TI BQ27545 over HDQ/UART5 | **Working live** through bq27xxx and the new HDQ serdev frontend | Permanent-DT warm/cold reproduction | Boot the rebuilt GPIO34 function-1 payload |
+| Touch | Apple `multi-touch,j82` / BCM Z2 family over SPI3 | Z2 parser/uploader exists; S5L SPI patches staged; analog rail decoded | Cross-build, SPI proof, child `reg`, PMGR clock args, firmware and calibration | Prove SPI3 before adapting touch |
 | Wi-Fi | BCM4350 over T7000 PCIe port 1 | brcmfmac PCIe supports BCM4350 | T7000 PCIe host/DT/power path missing; wireless config disabled | Port/enumerate PCIe, then enable brcmfmac |
 | Sensors | Mostly behind the M8 coprocessor | No identified usable path | Inventory/protocol unknown | Defer |
 | Audio | Apple DMA/codec path | No complete A8X stack | Controller, codec and routing work | Defer |
@@ -84,12 +84,14 @@ host-wake GPIO164, PMU power GPIO2 and 3 Mbaud. Current Hoolock config already
 enables `BT`, `BT_HCIUART`, and `BT_HCIUART_BCM`; upstream `hci_bcm` has the
 `brcm,bcm43540-bt` family match.
 
-Add UART3 and the serdev child first without a shutdown GPIO. The bootloader may
-leave the module powered, allowing the HCI path to be proven without guessing
-PMIC registers. If it is off, the real next dependency is a D2207 PMIC GPIO
-provider or narrowly scoped power sequence. Hoolock has a PMIC regmap parent but
-no GPIO provider. Corellium's PMIC GPIO code demonstrates the shape of such a
-driver for another PMIC; its register offsets are not portable to D2207.
+UART3 and manual HCI registration are proven; HCI commands time out because the
+radio is off. iOS 10.3 s8000 and T8010 Apple D2207 drivers independently map
+PMU GPIO2 to configuration register `0x03e6`, data register `0x0063` bit 2,
+active high.
+Live values are `0x00` and low. Prove `0x03e6: 0x00 -> 0x02 -> 0x00` with the
+existing `i2ctransfer` and `btattach` tools. If HCI answers, add the D2207 GPIO
+provider and standard serdev child; if it does not, inspect reset/wake and local
+firmware before touching another PMIC register.
 
 ## Battery: use the right wire protocol
 
@@ -97,20 +99,21 @@ The J82 ADT identifies a BQ27540-family gauge below UART5 at `0x20a0d4000`, IRQ
 163, with the battery SWI/HDQ line on GPIO34. This resolves the old “unknown
 pin” note.
 
-The enabled upstream `w1-uart` path cannot drive this device correctly: it
-generates standard 1-Wire timings. Corellium's public driver demonstrates the
-working HDQ-over-UART transport at 57,600 baud with two stop bits, break/pulse
-signaling, and `0xfe`/`0xc0` encoded bits. The maintainable implementation is a
-small serdev transport that reuses Linux's bq27xxx core rather than copying
-Corellium's standalone power-supply layer. Read `DEVICE_TYPE` on hardware
-before mapping ADT's `bq27540` name to an upstream bq27xxx chip table.
+The implemented HDQ-over-UART serdev transport uses 57,600 baud, two stop bits,
+break/pulse signaling and `0xfe`/`0xc0` encoded bits while reusing Linux's
+bq27xxx core. GPIO34 must use Apple peripheral function 1. The live gauge
+identifies as BQ27545 (`DEVICE_TYPE = 0x0545`) and survives ten rebinds with
+stable readings; boot the permanent DT and repeat warm/cold before changing it.
 
 ## Touch: controller before protocol
 
 J82 places the multitouch device on SPI3 at `0x20a08c000`, IRQ 155. Its signals
 include chip select GPIO51, touch IRQ GPIO84, display sync GPIO55, reset GPIO82
 and LDO GPIO95. Analog power is a PMU resource whose D2207 programming is still
-unknown.
+identified as LDO14: 6.0 V at `0x0398`, enabled by `0x0084` bit 2. It is
+currently off. The Apple power order is LDO14 followed by GPIO95; shutdown is
+the reverse. The remaining ADT decode gaps are the child `reg` fields and PMGR
+clock arguments.
 
 Current `apple_z2` supplies a useful firmware uploader and frame parser, but its
 bindings cover Mac Touch Bars. Current Hoolock's normal branch lacks the
@@ -142,8 +145,8 @@ PCI config-space enumeration, then enable brcmfmac and supply locally extracted
 
 1. Boot and measure the existing Hoolock ECM payload.
 2. Validate buttons, RTC and backlight.
-3. Add J81 UART3 Bluetooth DT and prove `hci0`; add PMIC control only if needed.
-4. Add the HDQ serdev transport and UART5 gauge node.
+3. Boot and reproduce the permanent battery DT fix.
+4. Prove the identified Bluetooth GPIO2 control, then add the serdev child.
 5. Clean S5L8960X SPI support and prove SPI3; then adapt Z2 touch.
 6. Port T7000 PCIe/DART, enumerate BCM4350, then enable its wireless stack.
 
