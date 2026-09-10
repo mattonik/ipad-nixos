@@ -79,6 +79,27 @@ CDC-ECM works in both directions at `172.16.42.1`; the postmarketOS debug shell
 is reachable by telnet on port 23. Keep the historical payload as a control.
 Bluetooth and battery work follows the [focused dated plan](docs/plans/2026-09-08-j81-bluetooth-battery-adt.md), including a safe private ADT capture tool.
 
+The current J81 hardware recipe uses the generic `result` link so the payload
+selected for DFU testing is unambiguous:
+
+```bash
+nix build .#packages.x86_64-linux.m1n1-hoolock-control -o result -L
+shasum -a 256 result/m1n1-linux.bin
+# Expected for the BAT-4 function-1 build:
+# 0681c720ec632fc6fad88f562cdc57a74ac31e2ec58e29cbd4cedec2aa7f3e27
+
+sudo /tmp/palera1n-arm64 --pongo-shell \
+  --override-pongo "$PWD/result/Pongo.bin" --debug-logging
+```
+
+On Apple Silicon, reconnect the direct USB cable once after `Checkmate!` at the
+download-mode prompt and once when the PongoOS logo appears. Then upload the
+payload from a second terminal:
+
+```bash
+nix develop -c python3 boot/load_m1n1.py result/m1n1-linux.bin
+```
+
 ## Project Structure
 
 ```
