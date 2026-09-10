@@ -2270,14 +2270,15 @@ Never commit Apple firmware, NVRAM, touch calibration or device identifiers.
 | RTC / backlight | Both hardware-verified over the USB shell | Preserve their current nodes and drivers. |
 | Bluetooth | Real J81 UART3 and manual `hci0` attach are hardware-confirmed; Apple driver and live PMIC reads identify GPIO2 at `0x03e6`, active high, currently low | Run the reversible `0x00 -> 0x02 -> 0x00` A/B test, then use the standard `hci_bcm` serdev child. |
 | Battery | **Working across reboot:** BQ27545 identified automatically; stable voltage/current/capacity/temperature/cycle reads after GPIO34 function-1 correction | Compare with iPadOS and reproduce across warm/cold boots. |
-| Charging | Read-only D2207 status/current registers identified; live USB input setting is 100 mA while the battery discharges; Apple input-limit conversion is decoded | Reproduce with a USB meter across disconnected, data-host and charger cases; then add a read-only power-supply child. |
+| Charging | Read-only D2207 status/current registers identified; a J81 power-supply child now reports the verified input and charge limits without a write path; the integrated Hoolock control payload builds with it; live USB input setting is 100 mA while the battery discharges | Boot the child and compare its sysfs values with raw PMIC reads, then reproduce disconnected, data-host and charger cases with a USB meter before considering any write support. |
 | Touch | Reviewed S5L8960X SPI3 and J81 DT patches are staged; the 6 V analog rail and Apple power order are identified | Cross-build TOUCH-1, prove SPI3, then decode the child `reg` and PMGR clock args. |
 | Wi-Fi | BCM4350 brcmfmac PCIe endpoint code exists; wireless config is disabled | Port T7000 PCIe/DART and enumerate port 1 before enabling brcmfmac. |
 | Audio / GPU / NAND / cameras / Touch ID | No complete A8X stack | Defer beyond the interactive-tablet milestone. |
 
 ### Priority bring-up sequence
 
-1. **Charging observation.** With a USB power meter, compare disconnected,
+1. **Charging observation.** Boot the read-only D2207 child, compare its sysfs
+   values with raw PMIC reads, then use a USB power meter across disconnected,
    data-host and known charger cases; record D2207 status, VBUS ADCs, input
    code and gauge current before writing any PMIC register.
 2. **Bluetooth power.** Run the exact D2207 GPIO2 A/B test, then add the
@@ -2323,7 +2324,7 @@ Never commit Apple firmware, NVRAM, touch calibration or device identifiers.
 | Wi‑Fi implementation | ❌ Real J81 resources confirmed; T7000 PCIe/DART host work has not started |
 | Internal storage | 🟡 Hoolock now has matching Linux/m1n1 ANS1 WIP branches; local integration has not started and the first payload must be forced read-only. See the [long-term subsystem plan](../research/j81-long-term-subsystems.md). |
 | Native GPU / audio / suspend | ❌ Sanitized J81 hardware paths and dependency-ordered implementation gates are documented in the [long-term subsystem plan](../research/j81-long-term-subsystems.md); no driver implementation has started. |
-| Charging control | 🟡 Read-only D2207 status/current register map recovered and live settings captured; cable A/B semantics and a Linux driver remain. |
+| Charging control | 🟡 Read-only D2207 status/current register map recovered; the reporting driver is implemented and build-validated, but J81 sysfs and cable A/B behavior remain to be tested. |
 | Usable tethered Linux tablet | ❌ Future milestone |
 
 ## Safety boundaries

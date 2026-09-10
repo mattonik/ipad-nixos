@@ -232,18 +232,48 @@ No charger register was written. The PMIC is bound to the existing
 address busy. Exact read-only follow-up values and the full session snapshot
 are kept under ignored `artifacts/live/`, not committed.
 
+#### CHG-1 implementation checkpoint (2026-09-10)
+
+The tree now contains a J81-specific, read-only `apple,j81-d2207-charger`
+power-supply child. It reuses the PMIC's existing regmap and exposes only
+`input_current_limit` from `0x04c0` and
+`constant_charge_current_max` from `0x04cf`, using microamp units and the
+Apple conversion above. There is no `set_property` callback, so this child
+cannot write the PMIC. The DT child, Kconfig, Makefile entry and driver are
+kept in `kernel/patches/0010-j81-d2207-readonly-charger.patch` and enabled in
+the Hoolock kernel configuration.
+
+The patch applies cleanly in the full Nix kernel build. The resulting Nix
+kernel output is `/nix/store/2jbq34ia5rjyrwq5hsrr3z76yk534vq3-linux-aarch64-unknown-linux-gnu-7.3.0-rc1`;
+the J81 `Image` SHA-256 is
+`3a40e7a2ff4bcb20e5109a82df7524f72c28f76ad5e2b1a978b3bda210bbbe9c` and the
+J81 DTB SHA-256 is
+`8bfa7958053ec54c941eb294c97731231e0bc6eea6d553a0e1250d5cc7ccdc09`.
+The conversion self-check passed for 100 mA, 500 mA, 3,000 mA and 3,150 mA.
+The integrated Hoolock control payload also built successfully at
+`/nix/store/zbha9gnq18agj6apl5sni1m8gwiqxyym-ipad-air2-m1n1-hoolock-control`;
+its `Image.gz` SHA-256 is
+`7354e8a9e98d4ff9a5d0246ea03bbe5773ace0d4b54b17658d95b43604b24df2`, its
+J81 DTB SHA-256 is
+`bc94c94222dd967f345a4d7d18f6ae4e036d6b54339db551ff9d240e703fcd01`, and
+the packaged `m1n1-linux.bin` SHA-256 is
+`b8d7a2e99c568277947d9f219bff92c2476e532956302ae63806c9de8611f271`.
+It has not yet been booted on J81, so sysfs registration and cable behavior
+remain hardware test work. The existing battery path is unchanged, and no
+PMIC register was written during implementation, build validation or payload
+packaging.
+
 ### What is needed
 
-1. With the user and a USB power meter present, record the D2207 status block,
+1. Boot this read-only child and confirm its two sysfs values match the raw
+   PMIC reads, then use a USB power meter to record the D2207 status block,
    input-current setting, gauge current and VBUS measurements for disconnected,
    Mac data, and known charger cases. This assigns semantic names to the status
    bits without guessing and shows who changes `0x04c0`.
-2. Implement a small regmap-backed J81 charger child in read-only mode first.
-   Expose only independently verified properties: present USB input limit and
-   charge-current ceilings first, then `ONLINE`, `STATUS` and fault/thermal
-   state after the cable A/B table identifies their bits. Use Linux's standard
-   power-supply units (microamps and microvolts) and cross-check every value
-   against the gauge and meter.
+2. Extend the child only with independently verified properties: `ONLINE`,
+   `STATUS` and fault/thermal state after the cable A/B table identifies their
+   bits. Use Linux's standard power-supply units (microamps and microvolts)
+   and cross-check every value against the gauge and meter.
 3. Add one conservative write at a time: disable charging, low input-current
    limit, low charge-current limit, termination voltage, then enable. Encode
    hard maximums in the kernel from verified hardware data; do not accept

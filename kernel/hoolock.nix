@@ -84,6 +84,11 @@ let
     # serdev correction above means it will actually probe.
     patch -d "$out" -p1 < ${./patches/0005-t7001-add-uart5-node.patch}
     patch -d "$out" -p1 < ${./patches/0006-t7001-air2-enable-uart5-battery.patch}
+
+    # CHG-1: expose the D2207's already-decoded charger settings through the
+    # standard power-supply class. This is read-only until an external meter
+    # and a controlled write test establish the safe charging path.
+    patch -d "$out" -p1 < ${./patches/0010-j81-d2207-readonly-charger.patch}
   '';
   buildArgs = builtins.removeAttrs args [ "source" "hoolockConfig" "runCommand" ];
 in

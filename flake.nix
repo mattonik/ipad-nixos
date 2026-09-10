@@ -177,6 +177,11 @@
             # CONFIG_SERIAL_DEV_CTRL_TTYPORT (its real dependencies) are
             # already =y in the base config -- checked, not assumed.
             echo 'CONFIG_BATTERY_BQ27XXX_HDQ_UART=y' >> "$out"
+
+            # CHG-1: the J81 D2207 child only reports verified PMIC charger
+            # settings. It has no write callback; safe charging control stays
+            # gated on a physical meter and a later explicit test.
+            echo 'CONFIG_CHARGER_J81_D2207=y' >> "$out"
           '';
           hoolockKernel = pkgsCross.callPackage ./kernel/hoolock.nix {
             source = inputs.hoolockLinux;
