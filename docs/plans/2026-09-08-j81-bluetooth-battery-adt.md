@@ -590,6 +590,39 @@ The 2026-09-10 result locks in the shortest order: use the existing
 `i2ctransfer` binary for the single reversible proof, then implement the
 kernel GPIO/serdev path only after the radio responds.
 
+#### BT-4 safe live probe tool, 2026-09-10
+
+`boot/bt_probe.py` adds a host-side, bounded snapshot for the working telnet
+channel. It runs only fixed reads for kernel/DT identity, UART3/serdev state,
+Bluetooth class and HCI processes, D2207 GPIO2 (`0x03e6` and `0x0063`), the
+charger/event status blocks, GPIO/pinctrl ownership, power domains, IRQs and
+focused kernel messages. Its `i2ctransfer` calls use the PMIC register address
+as the read transaction's address phase (`w2 ... rN`); no register data is
+written. There is no arbitrary-command option, attach operation or reboot
+operation. Bluetooth addresses are redacted from reports, and `--output`
+accepts only a new file under ignored `artifacts/live/` with mode `0600`.
+
+The existing `boot/ipad_console.py` menu now has the same probe as
+“Bluetooth: safe read-only snapshot”. Repeated host-side captures are useful
+for before/after comparison around the existing manual `btattach` action:
+
+```sh
+python3 boot/bt_probe.py --repeat 3 --interval 2 \
+  --output artifacts/live/$(date -u +%Y%m%dT%H%M%SZ)-j81-bt-before.txt
+```
+
+After any explicitly supervised `btattach` attempt, run it again with an
+`-after` filename and compare the `bluetooth`, `pmic-gpio2`, `power-and-
+interrupts` and `kernel-log` sections. This keeps the current GPIO2 write
+gate untouched while still showing whether the UART, HCI class, interrupt
+count or PMIC state changes.
+
+The current host could not run the live collection: `172.16.42.1:23` timed
+out and the route selected the normal LAN (`en5`); the USB network interface
+was inactive. No command reached the iPad. Offline validation passed with
+`python3 -m py_compile boot/bt_probe.py boot/ipad_console.py` and
+`python3 boot/test_bt_probe.py`.
+
 #### Historical Stage A result, 2026-09-08: read-only scan before the GPIO map was recovered
 
 The original plan was to do this via m1n1's own USB proxy mode, before

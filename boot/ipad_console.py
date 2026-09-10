@@ -248,6 +248,14 @@ def action_bt_status(shell: IPadShell) -> None:
     print(shell.run("ls -la /sys/class/bluetooth/ 2>&1"))
 
 
+def action_bt_probe(shell: IPadShell) -> None:
+    # Keep this import lazy so the existing console remains usable as a single
+    # file, while the standalone probe can also be run from a shell.
+    from bt_probe import collect_snapshot
+
+    print(collect_snapshot(shell), end="")
+
+
 def action_bt_attach(shell: IPadShell) -> None:
     # btattach (BlueZ tools/btattach.c) has no daemonize flag -- it blocks
     # in its own event loop until killed, so it has to be launched
@@ -328,6 +336,7 @@ ACTIONS: list[tuple[str, Callable[["IPadShell"], None]]] = [
     ("Kernel log: UART3/Bluetooth only", action_bt_dmesg),
     ("Bluetooth: UART3 tty device check", action_tty_devices),
     ("Bluetooth: hci0 status", action_bt_status),
+    ("Bluetooth: safe read-only snapshot", action_bt_probe),
     ("Bluetooth: attach HCI UART (btattach)", action_bt_attach),
     ("PMU: read I2C register (pmu,d2207 @ 0x3c)", action_pmu_read),
     ("Uptime & memory", action_uptime_mem),
