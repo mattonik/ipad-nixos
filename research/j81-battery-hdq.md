@@ -539,16 +539,46 @@ On the next reboot, verify the live pinmux bytes are `00 01 00 22` before
 judging battery behavior. A successful boot must then register
 `bq27545-battery` without a runtime pinmux override.
 
+### Permanent function-1 boot passed
+
+The corrected payload passed that test on 2026-09-10. No runtime pinmux or
+driver override was applied after boot. The live DT contained:
+
+```text
+00 01 00 22    # 0x00010022: GPIO34 function 1
+```
+
+Boot dmesg showed the successful probe instead of the earlier timeout:
+
+```text
+serial serial0: tty port ttySAC2 registered
+bq27xxx-hdq-uart serial0-0: HDQ DEVICE_TYPE = 0x0545
+```
+
+`/sys/class/power_supply/bq27545-battery` was present automatically. At about
+two minutes uptime its standard power-supply properties reported:
+
+```text
+status=Discharging  health=Good  present=1
+capacity=82%        voltage=4.104 V
+current=-0.625 A    temperature=32.1 C
+cycle_count=341     charge_now=5.872 Ah
+charge_full=6.817 Ah
+```
+
+This closes the permanent-DT portion of BAT-4: the function-1 result is now
+proven across a reboot, not only through the live A/B override.
+
 The OIPG record still proves the resource is AP GPIO34 and that
 `function-battery_swi` and UART5 `function-tx` are identical. Its flags word
 `0x102` does not directly encode the Apple GPIO peripheral selector. This live
 A/B result supersedes the earlier low-byte inference and should be used when
 decoding other old-A-series OIPG records.
 
-Remaining BAT-4 gates are one boot of the rebuilt permanent DT, comparison
-with iPadOS, and warm/cold reboot reproduction. No charger or PMU mux work
-belongs on that path. Charging policy remains a separate D2207/`charger,k48`
-project after read-only battery reporting is locked down.
+Remaining BAT-4 gates are comparison with iPadOS and warm/cold reboot
+reproduction. No charger or PMU mux work belongs on that path. Charging policy
+remains a separate D2207/`charger,k48` project after read-only battery reporting
+is locked down.
 
 ## Sources
 

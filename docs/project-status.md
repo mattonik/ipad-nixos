@@ -44,7 +44,10 @@ plausible readings (4.239 V, about -0.32 A, 94%, 31.9 C, 341 cycles) without
 new errors. Ten consecutive driver rebinds all returned the same device ID and
 valid readings. Apple's own J81-era HDQ, UART, and D2207 drivers also rule out
 the later SN2400 charger-mux design. The permanent DTS patch now uses function
-1; the remaining gate is one boot of the rebuilt DT plus warm/cold reproduction.
+1. The corrected payload then passed a fresh permanent boot with no runtime
+override: the live DT exposed `0x00010022`, boot dmesg identified
+`HDQ DEVICE_TYPE = 0x0545`, and `bq27545-battery` registered automatically.
+The remaining gate is warm/cold reproduction.
 Full evidence is in
 [the dedicated J81 battery research](../research/j81-battery-hdq.md).
 
@@ -54,8 +57,10 @@ the expected `got 0/16 bytes` timeout and registered no battery. This is not a
 failure of the permanent fix. The local `result` symlink has been rebuilt and
 now matches `result-bat4-func1` byte-for-byte; use its payload with SHA-256
 `0681c720ec632fc6fad88f562cdc57a74ac31e2ec58e29cbd4cedec2aa7f3e27`.
-The next boot must expose pinmux `0x00010022` and register the battery without
-a runtime override.
+The corrected next boot did expose pinmux `0x00010022` and registered the
+battery without a runtime override. At roughly two minutes uptime it reported
+healthy/present, 82%, 4.104 V, about -0.625 A, 32.1 C and 341 cycles; the boot
+log contained the successful device ID and no HDQ timeout.
 
 **Live-session research, 2026-09-10:** before rebooting the permanent battery
 payload, the working USB/telnet session was captured as a private, ignored
