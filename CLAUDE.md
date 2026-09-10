@@ -204,6 +204,20 @@ into `kernel/hoolock.nix` or built with the real cross-compiler** -- that's
 the concrete next step, deliberately left undone rather than rushed. Full
 detail in `docs/plans/2026-09-09-j81-touch-spi3.md`.
 
+**BAT-4 hardware gate: first real result, 2026-09-10.** UART5 (`ttySAC2`)
+registers cleanly on hardware, and independent cross-checks (live pinctrl
+debugfs, the real ADT, the decompiled DTB) confirm pinmux, power-domain,
+IRQ and register wiring are all correct -- but HDQ identification hard
+-ETIMEDOUTs. A raw-byte-count diagnostic (dev_info-only, no protocol change)
+was added to `kernel/patches/0004` to distinguish "gauge silent" from "RX
+not receiving our own echo at all" before touching any protocol constant;
+rebuild in progress. Also found and fixed along the way: the macOS Linux
+builder VM was being started wrong (a plausible-looking `nix run
+nixpkgs#darwin.linux-builder-vz` silently created a different, tiny,
+wrong-directory VM instead of reattaching the real 40 GB one) -- now a
+documented, git-tracked flake output (`packages.aarch64-darwin.linux-builder`,
+see `docs/build-infrastructure.md`).
+
 **`btattach` built and bundled, 2026-09-08.** `boot/btattach.nix` compiles
 just `tools/btattach.c` and the handful of `src/shared/*.c` files it
 actually needs, directly with `$CC` -- bypassing BlueZ's autotools, whose

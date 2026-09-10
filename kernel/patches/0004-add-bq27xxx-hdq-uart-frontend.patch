@@ -30,8 +30,8 @@
  obj-$(CONFIG_BATTERY_DA9052)	+= da9052-battery.o
  obj-$(CONFIG_CHARGER_DA9150)	+= da9150-charger.o
 --- /dev/null	2026-09-08 17:03:25
-+++ b/drivers/power/supply/bq27xxx_battery_hdq_uart.c	2026-09-08 17:03:03
-@@ -0,0 +1,441 @@
++++ b/drivers/power/supply/bq27xxx_battery_hdq_uart.c	2026-09-10 07:00:00
+@@ -0,0 +1,458 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * TI HDQ battery gauge over Apple UART5, bit-banged via serdev
@@ -255,8 +255,25 @@
 +	serdev_device_wait_until_sent(hdq->serdev,
 +				      msecs_to_jiffies(HDQ_XFER_TIMEOUT_MS));
 +	ret = hdq_wait_receive(hdq);
-+	if (ret)
++	if (ret) {
++		unsigned long flags;
++		int got;
++
++		/* Temporary BAT-4 hardware diagnostic: distinguishes total RX
++		 * silence (0 bytes -- not even our own loopback echo) from a
++		 * partial catch (our echo arrived but the gauge never replied)
++		 * before touching any protocol constant. See research/
++		 * j81-battery-hdq.md's BAT-4 hardware-gate process.
++		 */
++		spin_lock_irqsave(&hdq->rx_lock, flags);
++		got = hdq->rx_count;
++		spin_unlock_irqrestore(&hdq->rx_lock, flags);
++
++		dev_info(&hdq->serdev->dev,
++			 "HDQ transact timeout: got %d/%d bytes: %*ph\n",
++			 got, rx_want, got, rx);
 +		return ret;
++	}
 +	if (memcmp(tx, rx, n_tx) != 0)
 +		return -EIO;
 +

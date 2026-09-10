@@ -323,6 +323,22 @@
         "type": "github"
       }
     },
+    "nixpkgsBuilder": {
+      "locked": {
+        "lastModified": 1788179007,
+        "narHash": "sha256-hn1oU2rue2SYK8dAr8+WNZWtbsz1S2W5mnHlSEuh3bo=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "34ab99075ac4f7e40cf037eef32cb1c360bb85e9",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "34ab99075ac4f7e40cf037eef32cb1c360bb85e9",
+        "type": "github"
+      }
+    },
     "root": {
       "inputs": {
         "devenv": "devenv",
@@ -331,7 +347,8 @@
         "hoolockM1n1": "hoolockM1n1",
         "linuxApple519": "linuxApple519",
         "linuxAppleResources": "linuxAppleResources",
-        "nixpkgs": "nixpkgs"
+        "nixpkgs": "nixpkgs",
+        "nixpkgsBuilder": "nixpkgsBuilder"
       }
     },
     "treefmt-nix": {

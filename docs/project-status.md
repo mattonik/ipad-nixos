@@ -246,10 +246,14 @@ USB Ethernet, console and SSH
 
 ### Build infrastructure
 
-- Host: Apple Silicon M1 Mac running macOS 26.5.
+- Host: Apple Silicon M1 Mac running macOS 26.5, 16 GB RAM.
 - Nix: Determinate Nix 3.22.2 / Nix 2.35.2.
 - Linux builder: `darwin.linux-builder-vz`, reachable through the configured
-  Nix remote builder.
+  Nix remote builder. Now a git-tracked flake output
+  (`packages.aarch64-darwin.linux-builder`) instead of an undocumented ad-hoc
+  command -- see `docs/build-infrastructure.md` for the full setup, the exact
+  resource-sizing rationale, and the critical "run it from the directory
+  holding the real disk" gotcha that cost real debugging time on 2026-09-10.
 - Builder allocation: 4 CPUs, 8 GB RAM, 40 GB disk.
 - The original platform mismatch was fixed so Linux packages build through the
   Linux builder rather than trying to build Linux-only derivations directly on

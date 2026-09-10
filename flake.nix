@@ -3,6 +3,11 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    # Separately pinned, newer nixpkgs used only for the macOS Linux-builder
+    # VM package (darwin.linux-builder-vz) -- the main `nixpkgs` input above
+    # predates that package's addition to nixpkgs. Kept independent so
+    # bumping it can't disturb the kernel/initramfs build pins above.
+    nixpkgsBuilder.url = "github:NixOS/nixpkgs/34ab99075ac4f7e40cf037eef32cb1c360bb85e9";
     devenv = {
       url = "github:cachix/devenv";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -40,7 +45,7 @@
     };
   };
 
-  outputs = { self, nixpkgs, devenv, ... }@inputs:
+  outputs = { self, nixpkgs, nixpkgsBuilder, devenv, ... }@inputs:
     let
       linuxBuildSystem = "x86_64-linux";
       pkgs = nixpkgs.legacyPackages.${linuxBuildSystem};
@@ -499,5 +504,20 @@
       };
 
       packages.aarch64-darwin.gaster = darwinGaster;
+
+      # macOS remote Linux builder used for every x86_64-linux/aarch64-linux
+      # build in this flake (aarch64-darwin cannot build Linux derivations
+      # directly). See docs/build-infrastructure.md for the full story of
+      # why this exists as a flake output instead of a one-off shell
+      # command, and how to run it.
+      packages.aarch64-darwin.linux-builder = (import nixpkgsBuilder {
+        system = "aarch64-darwin";
+      }).darwin.linux-builder-vz.override {
+        modules = [{
+          virtualisation.cores = 4;
+          virtualisation.darwin-builder.memorySize = 8 * 1024;
+          virtualisation.darwin-builder.diskSize = 40 * 1024;
+        }];
+      };
     };
 }
