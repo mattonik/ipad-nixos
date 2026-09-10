@@ -4,7 +4,7 @@ Status: UART3 is hardware-confirmed and the bundled `btattach` reaches `hci0`,
 although the unpowered radio does not answer HCI commands. The battery path is
 also hardware-confirmed: with AP GPIO34 on peripheral function 1, UART5/HDQ
 identifies the BQ27545 and exposes stable Linux power-supply readings. The
-permanent-DT reboot gate remains. See
+permanent-DT reboot gate has passed; warm/cold reproduction remains. See
 [`research/j81-battery-hdq.md`](../../research/j81-battery-hdq.md).
 
 Target: iPad Air 2 Wi-Fi, J81/J81AP, A8X/T7001, A1566
