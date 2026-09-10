@@ -177,12 +177,12 @@ are globally pinned on.
 
 ### Current state
 
-The read-only fuel-gauge path now works: the BQ27545 reports stable voltage,
-current, temperature, capacity and cycle count through UART5/HDQ. It cannot
-enable, limit or terminate charging. The ADT compatible `charger,k48` names an
-older Apple charger-policy interface; its `function-set_charger` phandle
-resolves to the D2207 PMU at I2C address `0x3c`, rather than a separate charger
-IC or HDQ mux.
+The read-only fuel-gauge path now works across a permanent reboot: the BQ27545
+reports stable voltage, current, temperature, capacity and cycle count through
+UART5/HDQ. It cannot enable, limit or terminate charging. The ADT compatible
+`charger,k48` names an older Apple charger-policy interface; its
+`function-set_charger` phandle resolves to the D2207 PMU at I2C address `0x3c`,
+rather than a separate charger IC or HDQ mux.
 
 The 2026-09-10 Apple-driver review identifies the first useful register set,
 independently matched in iOS 10.3 s8000 and T8010 `AppleD2207PMU` builds:
@@ -203,12 +203,29 @@ battery voltage (4), battery temperature (2), and system voltage (0). Its
 reported maximum USB input current is 3,262 mA. Charge-voltage programming is
 explicitly unsupported in this implementation.
 
-The live direct USB network session is internally consistent with those
-values: the battery remains healthy at 85%, 4.148 V and 32.0 C, but net current
-is about -0.322 A and status is `Discharging`. The 100 mA input setting is less
-than the running system load, so the cable can sustain networking while the
-battery still drains. This is an inference from the two measurements; a USB
-power meter and cable A/B run remain the acceptance test.
+The permanent-boot direct USB network session shows the same behavior: the
+battery is healthy and present, but net current is about -0.63 A and status is
+`Discharging`. The PMIC still reports input code `0x02` (100 mA), while the
+charge-current ceiling remains 3,000 mA. The low input limit is consistent with
+the running system load exceeding what the PMIC permits, so the cable sustains
+networking while the battery drains. This is an inference from the two
+measurements; a USB power meter and cable A/B run remain the acceptance test.
+
+The Apple D2207 power-source disassembly also makes the input-limit conversion
+precise. For non-suspended targets from 75 mA through 3,261 mA it selects the
+raw code `floor((8 * target_mA - 600) / 100)`, and the reverse readback is
+`75 + floor((100 * code + 7) / 8)`; the PMIC status register `0x0010` bit 2 is
+set when the requested target is below 75 mA. The reference maximum is 3,262
+mA. Therefore 500 mA would be raw code `0x22`, not `0x0a`. The reference setter
+writes the status bit and `0x04c0` as one operation, which gives us a safe
+implementation contract but does not yet prove that the current Mac cable or
+wall charger can supply the requested current.
+
+The same disassembly identifies read-only charger state inputs: the 13-byte
+status block at `0x0060`--`0x006c`, VBUS voltage ADC channel 19 and VBUS current
+ADC channel 9. On the current data-host boot, status byte `0x0062` is `0x42`;
+its USB-power-limited bit (bit 5) is clear, and the event/status blocks are
+stable across repeated reads.
 
 No charger register was written. The PMIC is bound to the existing
 `arabela-pmic` regmap; direct non-forced I2C access correctly reports the
@@ -217,27 +234,25 @@ are kept under ignored `artifacts/live/`, not committed.
 
 ### What is needed
 
-1. Boot the permanent BAT-4 pinmux fix and reproduce the gauge across warm and
-   cold boots.
-2. With the user and a USB power meter present, record the D2207 status block,
+1. With the user and a USB power meter present, record the D2207 status block,
    input-current setting, gauge current and VBUS measurements for disconnected,
    Mac data, and known charger cases. This assigns semantic names to the status
    bits without guessing and shows who changes `0x04c0`.
-3. Implement a small regmap-backed J81 charger child in read-only mode first.
+2. Implement a small regmap-backed J81 charger child in read-only mode first.
    Expose only independently verified properties: present USB input limit and
    charge-current ceilings first, then `ONLINE`, `STATUS` and fault/thermal
    state after the cable A/B table identifies their bits. Use Linux's standard
    power-supply units (microamps and microvolts) and cross-check every value
    against the gauge and meter.
-4. Add one conservative write at a time: disable charging, low input-current
+3. Add one conservative write at a time: disable charging, low input-current
    limit, low charge-current limit, termination voltage, then enable. Encode
    hard maximums in the kernel from verified hardware data; do not accept
    arbitrary raw register values from userspace.
-5. Connect USB/Lightning current capability, gauge temperature/SOC and thermal
+4. Connect USB/Lightning current capability, gauge temperature/SOC and thermal
    limits. Loss of communication, over-temperature, over-voltage or an
    unknown cable state must disable charging or fall back to the verified safe
    hardware state.
-6. Add optional userspace policy, such as an 80% charge target, only after the
+5. Add optional userspace policy, such as an 80% charge target, only after the
    kernel driver safely owns the hardware. Kernel code remains responsible for
    electrical and thermal safety; userspace chooses targets within those
    limits.
@@ -312,8 +327,8 @@ from the previous boot stage.
 
 ## Dependency-ordered execution plan
 
-1. Boot and reproduce the permanent battery fix; the live gauge is now the
-   measurement instrument for charging and suspend work.
+1. Keep the permanent battery fix as the measurement baseline for charging and
+   suspend work; complete warm/cold and iPadOS comparison when convenient.
 2. Build the ANS1 experimental payload with the read-only hardening patch and
    test enumeration from the RAM-root system.
 3. Reverse engineer charger status, then implement read-only reporting and one

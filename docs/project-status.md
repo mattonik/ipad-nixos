@@ -2269,16 +2269,17 @@ Never commit Apple firmware, NVRAM, touch calibration or device identifiers.
 | Buttons | GPIO driver, config and DT are present | Verify Home, Power and both volume input events on Hoolock. |
 | RTC / backlight | Both hardware-verified over the USB shell | Preserve their current nodes and drivers. |
 | Bluetooth | Real J81 UART3 and manual `hci0` attach are hardware-confirmed; Apple driver and live PMIC reads identify GPIO2 at `0x03e6`, active high, currently low | Run the reversible `0x00 -> 0x02 -> 0x00` A/B test, then use the standard `hci_bcm` serdev child. |
-| Battery | **Working live:** BQ27545 identified; stable voltage/current/capacity/temperature/cycle reads after GPIO34 function-1 correction | Boot the rebuilt permanent DT and reproduce across warm/cold boots. |
-| Charging | Read-only D2207 status/current registers identified; live USB input setting is 100 mA while the battery discharges | Reproduce with a USB meter across disconnected, data-host and charger cases; then add a read-only power-supply child. |
+| Battery | **Working across reboot:** BQ27545 identified automatically; stable voltage/current/capacity/temperature/cycle reads after GPIO34 function-1 correction | Compare with iPadOS and reproduce across warm/cold boots. |
+| Charging | Read-only D2207 status/current registers identified; live USB input setting is 100 mA while the battery discharges; Apple input-limit conversion is decoded | Reproduce with a USB meter across disconnected, data-host and charger cases; then add a read-only power-supply child. |
 | Touch | Reviewed S5L8960X SPI3 and J81 DT patches are staged; the 6 V analog rail and Apple power order are identified | Cross-build TOUCH-1, prove SPI3, then decode the child `reg` and PMGR clock args. |
 | Wi-Fi | BCM4350 brcmfmac PCIe endpoint code exists; wireless config is disabled | Port T7000 PCIe/DART and enumerate port 1 before enabling brcmfmac. |
 | Audio / GPU / NAND / cameras / Touch ID | No complete A8X stack | Defer beyond the interactive-tablet milestone. |
 
 ### Priority bring-up sequence
 
-1. **Battery permanence gate.** Boot the rebuilt function-1 DT, repeat ten
-   power-supply reads, compare with iPadOS, and reproduce on warm and cold boots.
+1. **Charging observation.** With a USB power meter, compare disconnected,
+   data-host and known charger cases; record D2207 status, VBUS ADCs, input
+   code and gauge current before writing any PMIC register.
 2. **Bluetooth power.** Run the exact D2207 GPIO2 A/B test, then add the
    standard `hci_bcm` serdev child and its power/wake GPIOs if the radio
    responds. UART3 and manual HCI attachment are already hardware-confirmed.
