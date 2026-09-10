@@ -204,19 +204,33 @@ into `kernel/hoolock.nix` or built with the real cross-compiler** -- that's
 the concrete next step, deliberately left undone rather than rushed. Full
 detail in `docs/plans/2026-09-09-j81-touch-spi3.md`.
 
-**BAT-4 hardware gate: first real result, 2026-09-10.** UART5 (`ttySAC2`)
-registers cleanly on hardware, and independent cross-checks (live pinctrl
-debugfs, the real ADT, the decompiled DTB) confirm pinmux, power-domain,
-IRQ and register wiring are all correct -- but HDQ identification hard
--ETIMEDOUTs. A raw-byte-count diagnostic (dev_info-only, no protocol change)
-was added to `kernel/patches/0004` to distinguish "gauge silent" from "RX
-not receiving our own echo at all" before touching any protocol constant;
-rebuild in progress. Also found and fixed along the way: the macOS Linux
-builder VM was being started wrong (a plausible-looking `nix run
-nixpkgs#darwin.linux-builder-vz` silently created a different, tiny,
-wrong-directory VM instead of reattaching the real 40 GB one) -- now a
-documented, git-tracked flake output (`packages.aarch64-darwin.linux-builder`,
-see `docs/build-infrastructure.md`).
+**BAT-4 hardware gate: real result, 2026-09-10.** UART5 (`ttySAC2`) registers
+cleanly on hardware, and independent cross-checks (live pinctrl debugfs, the
+real ADT, the decompiled DTB) confirm pinmux, power-domain, IRQ and register
+wiring are all correct -- but HDQ identification hard-ETIMEDOUTs. A
+raw-byte-count diagnostic (`kernel/patches/0004`, dev_info-only, no protocol
+change) pinned the failure precisely: **`got 0/16 bytes`** -- total RX
+silence, not even our own transmitted command looping back. Since HDQ's
+single-wire design depends on exactly that loopback, this points at a
+hardware mux, not a protocol/timing bug: Corellium's own reference driver
+explicitly switches a charger-IC-controlled HDQ mux on/off around every
+transaction, which this frontend never does. J81's ADT does have a
+`charger,k48` node, but no i2c address or mux-control property was found on
+it yet -- next research target, not yet resolved. Full detail in
+`research/j81-battery-hdq.md`'s "BAT-4 result, 2026-09-10" section.
+
+Also found and fixed along the way: the macOS Linux builder VM was being
+started wrong twice over (a plausible-looking `nix run
+nixpkgs#darwin.linux-builder-vz` creates a different, wrong-directory VM;
+then a fresh from-scratch disk -- rather than the real, warm, in-repo one --
+produced three consecutive segfaults before that was understood) -- now a
+documented, git-tracked flake output
+(`packages.aarch64-darwin.linux-builder`, run from inside this repo, see
+`docs/build-infrastructure.md`). Also found the kernel config had
+`CONFIG_DEBUG_INFO=y`, whose DWARF sections were what actually exhausted the
+builder's disk during the final kallsyms/link step even on a warm,
+just-garbage-collected 40 GB disk -- disabled, not needed for this
+project's goal.
 
 **`btattach` built and bundled, 2026-09-08.** `boot/btattach.nix` compiles
 just `tools/btattach.c` and the handful of `src/shared/*.c` files it

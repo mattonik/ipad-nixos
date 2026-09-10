@@ -382,6 +382,100 @@ actually probes, whether the gauge answers a real HDQ transaction, what its
 actual `DEVICE_TYPE` is, and whether the stop-bit/break timing survives real
 silicon are all genuinely open until this is flashed and tested on the iPad.
 
+## BAT-4 result, 2026-09-10: UART5 wiring confirmed correct, HDQ is total RX silence
+
+First real hardware boot of the battery-ready payload. `dmesg` on the device:
+
+```
+20a0d4000.serial: ttySAC2 MMIO32:0x000000020a0d4000 (irq = 48, base_baud = 0) is a APPLE S5L
+serial serial0: tty port ttySAC2 registered
+bq27xxx-hdq-uart serial0-0: error -ETIMEDOUT: HDQ device identification failed
+bq27xxx-hdq-uart serial0-0: probe with driver bq27xxx-hdq-uart failed with error -110
+```
+
+UART5 registers cleanly and the serdev child probes -- the DTS/driver wiring
+itself is not in question. Independently cross-checked against both the live
+kernel and the real ADT before touching anything else:
+
+- pin 34's pinmux: live `/sys/kernel/debug/pinctrl/*/pinmux-pins` on the
+  device shows `pin 34 (PIN34): device 20a0d4000.serial function periph2` --
+  exactly what `0005-t7001-add-uart5-node.patch`'s `APPLE_PINMUX(34, 2)`
+  requests. The gas-gauge child's own `function-battery_swi` OIPG property
+  in the ADT is byte-identical to `serial@20a0d4000`'s own `function-tx`
+  (phandle `0x1f`, pin `34`, alt-function `2`) -- the child referencing the
+  exact same physical resource as its UART parent, not a separate,
+  unimplemented GPIO.
+- power-domain: the decompiled DTB's `power-domains = <0x09>` resolves to a
+  real, distinct `power-controller@201c8` node labelled `"uart5"` (not an
+  aliasing bug reusing UART3's), matching the same
+  `apple,t7000-pmgr-pwrstate` mechanism UART3 already proves works for BT.
+- register base, IRQ 163, and clocks all match the ADT's `uart5` node
+  exactly.
+
+None of that is the problem. `error -110` is `-ETIMEDOUT`, and the driver's
+own `hdq_transact()` cannot by itself distinguish "we received our own
+loopback echo but the gauge never replied" from "we received nothing at
+all" -- both produce the identical error path. A temporary, purely additive
+diagnostic (`kernel/patches/0004`, a `dev_info()` logging `hdq->rx_count`
+and the raw bytes captured before the timeout, no protocol change) resolved
+this precisely:
+
+```
+bq27xxx-hdq-uart serial0-0: HDQ transact timeout: got 0/16 bytes:
+```
+
+**Zero bytes.** Not a partial catch, not our own 8-byte command echo, nothing
+at all arrived on RX within 500 ms. This is significant because HDQ's whole
+single-wire design depends on the master's own transmitted bytes looping
+back to its own RX before the gauge's response bytes do -- this driver's own
+architecture explicitly relies on that loopback (`hdq_uart.c`'s top comment:
+"the bus is a single wire, so our own transmitted bytes loop back on RX
+before the gauge's response bytes do"). Getting nothing back at all, on a
+pin independently confirmed correctly muxed to the UART peripheral, means
+that loopback assumption itself is not holding on real silicon -- not a
+protocol-constant or timing problem to tune.
+
+### The likely mechanism: a hardware HDQ mux, not yet driven
+
+Corellium's own reference HDQ-UART driver (already cited below) does not
+just bit-bang the protocol -- every transaction is wrapped in
+`sn2400_charger_hdq_mux(bbq->charger, &bbq->serdev->dev, 1)` before and
+`..., 0)` after, with the driver's own comment: "those are in
+sn2400-charger.c, which acts as a HDQ mux". That is, on Corellium's target
+hardware, the UART's TX/RX pair is not simply wired straight to the gauge --
+it is routed through a charger-IC-controlled multiplexer that must be
+explicitly switched on before any HDQ transaction, and switched off after.
+If J81 has the same arrangement and this frontend never touches it, the
+UART's own loopback would never reach the gauge (or even itself) at all --
+exactly matching the observed 0-byte result.
+
+**Not yet resolved:** the real J81 ADT does have a charger node
+(`compatible = "charger,k48"`, `name = "charger"`), but its visible
+properties are all charge-curve/current-limit/penalty-box parameters --
+`usb-input-limit-max`, `charge-currents`, `charge-limits`,
+`penalty-box-soc-uth`, etc. No `reg` (i2c address) or mux-control property
+was found on it in this pass, and its `function-dock_parent` /
+`function-set_charger` properties use two ADT resource-descriptor markers
+not seen elsewhere in this project's decoding so far (`"Pcca"` and `"grhc"`
+-- likely references to a *property name* on the target node rather than a
+pin/GPIO descriptor, unlike OIPG/Lump/KLCT, but not confirmed). Whether J81
+routes the gauge through this same charger chip, through the PMU
+(`pmu,d2207`) instead, or some other path entirely is genuinely open.
+
+**Next steps, in order:**
+
+1. Decode the `charger,k48` node's remaining properties fully (there may be
+   more beyond what this pass looked at) and check whether it has its own
+   `reg`/i2c address at all -- if it doesn't, it's likely a logical/boot-
+   parameter node, not the physical mux chip, and the search moves to the
+   PMU or a node not yet found.
+2. Decode the `"Pcca"`/`"grhc"` resource marker format (a new type, not
+   OIPG/Lump/KLCT) -- these may themselves be the mux-control mechanism.
+3. Only once a real candidate register/mechanism is identified, extend
+   `hdq_uart_probe()`/`hdq_transact()` to drive it, following this
+   project's established process: one candidate change, verify by readback
+   or by re-running this same diagnostic, not a batch of guesses.
+
 ## Sources
 
 - [Real J81 evidence and execution log](../docs/plans/2026-09-08-j81-bluetooth-battery-adt.md)

@@ -153,7 +153,19 @@
               -e 's/^# CONFIG_ARM64_4K_PAGES is not set$/CONFIG_ARM64_4K_PAGES=y/' \
               -e 's/^CONFIG_ARM64_16K_PAGES=y$/# CONFIG_ARM64_16K_PAGES is not set/' \
               -e 's/^# CONFIG_I2C_CHARDEV is not set$/CONFIG_I2C_CHARDEV=y/' \
+              -e 's/^CONFIG_DEBUG_INFO=y$/# CONFIG_DEBUG_INFO is not set/' \
+              -e 's/^CONFIG_DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT=y$/# CONFIG_DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT is not set/' \
+              -e 's/^CONFIG_DEBUG_INFO_COMPRESSED_NONE=y$/# CONFIG_DEBUG_INFO_COMPRESSED_NONE is not set/' \
               ${inputs.hoolockDocs}/config_16k > "$out"
+
+            # Not needed for this project's goal (booting Linux on the iPad,
+            # not kernel-level debugging with gdb/kgdb) -- and DWARF debug
+            # sections in every temporary vmlinux copy during the final
+            # kallsyms/link pass are what exhausted the builder VM's disk
+            # at that exact step, 2026-09-10, twice, even with 40GB and a
+            # freshly garbage-collected store. Also shrinks the final
+            # payload, relevant given this project's known m1n1/PongoOS
+            # payload-size sensitivity (see docs/software-only-control.md).
 
             # BAT-1/BAT-2 (docs/plans/2026-09-08-j81-bluetooth-battery-adt.md,
             # research/j81-battery-hdq.md): CONFIG_BATTERY_BQ27XXX_HDQ_UART

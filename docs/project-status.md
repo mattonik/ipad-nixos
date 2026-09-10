@@ -29,8 +29,16 @@ device-tree nodes. A 2026-09-09 pre-hardware review fixed the missing serdev
 transmit, and matched Corellium's tolerant response-bit threshold. The kernel
 and full payload compile; the ready payload's `m1n1-linux.bin` SHA-256 is
 `2c7bc155a66947f144b85e116dd0c0b9272f5f0f8418474896134bac86a892ba`.
-The iPad was offline during the review, so no hardware boot has yet tested the
-gauge. Wiring, TI timing, driver scope, and hardware gates are in
+**BAT-4, 2026-09-10:** first real hardware result. UART5 registers correctly
+and its pinmux/power-domain/IRQ/register wiring are all independently
+confirmed against the live device and the real ADT -- but HDQ identification
+gets zero bytes back, not even the master's own transmitted command looping
+back on RX, which the protocol's single-wire design depends on. Likely
+cause: a hardware HDQ mux on the charger chip that Corellium's own reference
+driver explicitly switches around every transaction and this frontend never
+does; J81's ADT `charger,k48` node is a candidate but no mux-control
+property has been found on it yet. Wiring, TI timing, driver scope, and
+hardware gates are in
 [the dedicated J81 battery research](../research/j81-battery-hdq.md).
 
 **Touch groundwork, 2026-09-09:** patches `0007`–`0009` port the older Apple
