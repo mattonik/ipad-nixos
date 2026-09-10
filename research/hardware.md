@@ -409,9 +409,9 @@ The iPhone Wiki documents the device tree format. iOS device trees use a propert
 | Battery gauge | BQ27545 (HDQ/UART5) | bq27xxx core + J81 HDQ serdev | Working live; permanent-DT warm/cold reproduction remains |
 | USB | DWC2 OTG | dwc2 | Working bidirectionally on the Hoolock kernel; historical kernel has asymmetric TX failure |
 | NAND storage | Apple proprietary | None | No driver; use ramdisk/USB storage |
-| Accelerometer | Bosch BMA280 | bma180 (IIO) | Driver exists; needs DT |
-| Barometer | Bosch BMP280 | bmp280 (IIO) | Driver exists; needs DT |
-| Gyroscope | Unknown (likely Bosch) | Likely exists | Needs chip ID + DT |
+| Accelerometer | Bosch BMA280 | bma180 (IIO) | **Harder than a bare IIO node:** the real ADT puts the sensors behind the `oscar` CoreMotion coprocessor -- see [j81-touch-id-mesa.md](j81-touch-id-mesa.md#side-result-the-motion-sensors-are-behind-a-firmware-loaded-coprocessor) |
+| Barometer | Bosch BMP280 | bmp280 (IIO) | Same `oscar` caveat as above |
+| Gyroscope | Unknown (likely Bosch) | Likely exists | Same `oscar` caveat; calibration lives in the ADT, per-device |
 | GPU | PowerVR GXA6850 | pvr (Mesa, experimental) | Series 6XT partial; GXA6850 not listed |
 | NFC | NXP 65V10 | nfcmrvl / nxp-nci? | Low priority |
 | Camera | Sony (likely) + Apple ISP | None | No ISP driver; low priority |
