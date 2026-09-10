@@ -89,6 +89,41 @@ let
     # standard power-supply class. This is read-only until an external meter
     # and a controlled write test establish the safe charging path.
     patch -d "$out" -p1 < ${./patches/0010-j81-d2207-readonly-charger.patch}
+
+    # TOUCH-1 (docs/plans/2026-09-09-j81-touch-spi3.md): the older Apple SPI
+    # controller variant this SoC uses, ported from Hoolock's tests/kat-spi
+    # (c065201) -- the more complete of that repository's two SPI branches,
+    # checked directly rather than taken from the bring-up plan's citation of
+    # the thinner tests/spi. Two real defects were dropped rather than
+    # carried: a dev_info() on every transfer completion and poll iteration,
+    # and a bare global `bool defered` that forced the first probe of the
+    # module's life to return -EPROBE_DEFER unconditionally. A later review
+    # fixed four more: reversed MC/S5L bit-order selection, a normal
+    # completion IRQ returning IRQ_NONE, completion reinitialization after
+    # IRQ enable, and an uninitialized S5L RX word count.
+    # kernel/test_spi_s5l_patch.py guards those invariants.
+    #
+    # CONFIG_SPI_APPLE is already =y in the pinned upstream config_16k, so
+    # unlike BAT-2 this needs no patchedHoolockConfig entry.
+    patch -d "$out" -p1 < ${./patches/0007-spi-apple-add-s5l8960x-support.patch}
+
+    # TOUCH-1's DTS half: describe SPI3 (0008, added disabled) and enable it
+    # on J81 (0009). Register window, IRQ 155, clock gate and the CS0 pin
+    # were decoded byte-exact from the same real J81 ADT capture as BT-1's
+    # and BAT-3's numbers. `power-domains = <&ps_spi3>` was confirmed against
+    # the built DTB to resolve to a real, distinct PMGR power-controller
+    # (@20198, label "spi3"), not an alias of another peripheral's domain --
+    # this matters because genpd powers the domain before probe, and an
+    # Apple SoC faults or hangs on register access to an unpowered block.
+    #
+    # No touch child node yet: the child's packed multi-word `reg` and its
+    # "KLCT" PMGR clock arguments are still undecoded, and TOUCH-2 owns them.
+    # The CS0 pinmux APPLE_PINMUX(51, 1) is still provisional -- BAT-4
+    # disproved the ADT-flags-low-byte theory that first suggested it,
+    # without contradicting function 1 itself -- so a bounded live A/B test
+    # remains a TOUCH-1 hardware gate.
+    patch -d "$out" -p1 < ${./patches/0008-t7001-add-spi3-node.patch}
+    patch -d "$out" -p1 < ${./patches/0009-t7001-air2-enable-spi3.patch}
   '';
   buildArgs = builtins.removeAttrs args [ "source" "hoolockConfig" "runCommand" ];
 in

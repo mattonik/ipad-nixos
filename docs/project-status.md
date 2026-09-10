@@ -88,10 +88,25 @@ and hashes are recorded in the [Bluetooth plan](plans/2026-09-08-j81-bluetooth-b
 SPI controller path and describe/enable J81 SPI3 from the real ADT. A pre-build
 review fixed reversed bit-order handling, an `IRQ_NONE` completion path, an IRQ
 enable/completion race, and an uninitialized RX count; the patch sequence and
-`kernel/test_spi_s5l_patch.py` pass. These patches remain outside
-`kernel/hoolock.nix`, so the current battery-ready payload is unchanged. The
-next TOUCH-1 gate is one real cross-build before any hardware test. TOUCH-2
-still needs the child `reg` and exact `KLCT` clock arguments decoded. The
+`kernel/test_spi_s5l_patch.py` pass. **TOUCH-1's software gate passed on 2026-09-10:** the three patches are now
+wired into `kernel/hoolock.nix` and the full payload cross-builds, with
+`apple_s5l_spi_irq` in the built `System.map` and an enabled
+`spi@20a08c000` in the DTB whose power domain resolves to the distinct
+`power-controller@20198` ("spi3") and whose pinmux is `0x10033`
+(pin 51, function 1 -- the same encoding form BAT-4 proved on GPIO34).
+Payload `m1n1-linux.bin` SHA-256 `a363dda168e961a3aa81d810ff301b5e08c74e1656fb9bb68784288d144ac24a`.
+What remains for TOUCH-1 is the hardware gate: whether the controller probes
+and whether the provisional CS0 pinmux is right. Since nothing is flashed,
+booting the previous payload restores the known-good battery state.
+
+TOUCH-2's child `reg` question is **resolved**: the parent's
+`#address-cells = 1` makes the child's packed 32-byte ADT `reg` parse as
+chip select **0** followed by seven Apple-private cells that Linux never
+reads, and the mainline binding's own example uses `reg = <0>`. `KLCT` and
+the required `touchscreen-size-x/y` values remain open, and a concrete
+crash-on-probe gotcha is now documented (`apple_z2_probe()` dereferences
+`spi_get_device_id()` unchecked, so a J81 compatible must be added to the
+`spi_device_id` table, not only to `of_match`). The
 `Lump` blocker is resolved: it is D2207 LDO14, configured for 6.0 V at
 `0x0398` and enabled by `0x0084` bit 2. Live reads show that rail is currently
 off. ADT phandle `0x1a` is confirmed as PMGR, and Apple's power order is now

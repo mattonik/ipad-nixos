@@ -199,10 +199,35 @@ first (the field genuinely varies per pin). All three patches individually
 apply cleanly and the DTS compiles with the real `dtc`. A pre-build review
 fixed reversed MC/S5L bit-order selection, a completion IRQ returned as
 `IRQ_NONE`, completion reinitialization after IRQ enable, and an uninitialized
-S5L RX count; `kernel/test_spi_s5l_patch.py` guards them. **Not yet wired
-into `kernel/hoolock.nix` or built with the real cross-compiler** -- that's
-the concrete next step, deliberately left undone rather than rushed. Full
-detail in `docs/plans/2026-09-09-j81-touch-spi3.md`.
+S5L RX count; `kernel/test_spi_s5l_patch.py` guards them.
+
+**TOUCH-1 software gate passed, 2026-09-10.** All three patches are wired
+into `kernel/hoolock.nix` and the full payload cross-builds. Verified rather
+than inferred from exit status: `apple_s5l_spi_irq` is in the built
+`System.map` (so the ported code is genuinely compiled in, not merely
+patched into a file), the DTB carries an enabled `spi@20a08c000` with the
+right register window and IRQ 155, its `power-domains` resolves to the
+distinct `power-controller@20198` labelled `"spi3"`, and its pinmux is
+`0x10033` -- `(function 1 << 16) | pin 51`, the same encoding form BAT-4
+proved correct on GPIO34's `0x10022`. `CONFIG_SPI_APPLE` was already `=y`
+upstream, so no config change was needed. Remaining for TOUCH-1 is the
+hardware gate only; the CS0 function is still provisional and wants the
+bounded live A/B test. Nothing is flashed, so the previous payload restores
+the known-good battery state.
+
+**TOUCH-2 research, 2026-09-10.** The child `reg` blocker is **resolved by
+reading the mainline binding rather than by decoding Apple's packing**: the
+parent's `#address-cells = 1` makes the 32-byte ADT `reg` parse as chip
+select `0` plus seven Apple-private cells Linux never reads, and
+`apple,z2-multitouch.yaml`'s own example uses `reg = <0>`. Also found a
+concrete crash to avoid: `apple_z2_probe()` dereferences
+`spi_get_device_id(spi)->driver_data` unchecked, and DT-probed SPI devices
+match that table by modalias, so a J81 compatible must be added to
+`apple_z2_of_id[]` as well as `apple_z2_of_match[]` or probe NULL-derefs.
+Still open: `KLCT`'s argument layout, and the binding-required
+`touchscreen-size-x/y` (no `spi-frequency` exists on the `multi-touch` node
+at all -- only `mesa` has one). Full detail in
+`docs/plans/2026-09-09-j81-touch-spi3.md`.
 
 **BAT-4 hardware gate: real result, 2026-09-10.** UART5 (`ttySAC2`) registers
 cleanly on hardware, and independent cross-checks (live pinctrl debugfs, the
