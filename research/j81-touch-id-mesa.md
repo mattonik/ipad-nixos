@@ -198,15 +198,75 @@ RTKit/rtbuddy mailbox family the existing plan assumes. `SIO` is the
 DMA/serial-IO coprocessor referenced by the `dma-parent` properties on the
 UART and SPI nodes.
 
+## Addendum, 2026-09-12: the "Omarchy M" Touch ID claim, and why it's architecturally *closer* to J81 than t1bridge
+
+A 2026-09 [omarchy.org announcement](https://omarchy.org/news/2026/09/introducing-omarchy-m/)
+claims a contributor named Dj "got Touch ID working by talking directly to the
+Secure Enclave" on Apple Silicon Macs, alongside GPU driver work, an
+independent reverse-engineering of Apple's M5-era "N1" wireless chip
+(Miguel Cruz), and other M-series bring-up. Worth a real look, because unlike
+the T1 case above, **this one does not fail on architecture alone**:
+
+| | T1 MacBook Pro | Apple Silicon Mac (M1-M5) | iPad Air 2 (J81) |
+| --- | --- | --- | --- |
+| SEP location | separate T1 SoC, its own EmbeddedOS | **on-die in the M-series SoC** | **on-die in the A8X SoC** |
+| Host-to-SEP link | USB service interfaces | **on-die IOP mailbox** | **on-die IOP mailbox (`iop-nub,sep`)** |
+| CPU running Linux | separate x86 host | the AP itself, same as SEP's die | the AP itself, same as SEP's die |
+
+An M-series Mac's SEP is the *same architectural family* as J81's -- on-die,
+IOP-mailbox-based, with Linux running on the very AP that would be the
+mailbox's other end. If Dj's claim is real and general (not just "unlocked
+this one already-provisioned key"), it is a genuinely different, more
+relevant data point than t1bridge, and the reasoning above ("Linux has
+displaced iOS on the client processor, no vendor-provided service interface")
+would need re-examination rather than automatic dismissal.
+
+**But the claim does not hold up to the same scrutiny t1bridge got.** Checked
+before writing anything further:
+
+- **No repository, commit, or technical writeup exists for this specific
+  claim.** Contrast with the same announcement's USB-C display work, credited
+  to Jaidip Subedi with a linked repo
+  (`github.com/subedijaidip/dp-altmode-t8112`) that can be read directly.
+  Every search result for the SEP/Touch-ID claim traces back to the same
+  single marketing sentence, restated.
+- **Asahi Linux's own progress reports don't mention it.** Asahi Linux is the
+  established, technically rigorous project for exactly this hardware class,
+  publishes detailed progress reports on a roughly bimonthly cadence, and a
+  SEP break would be major news there. Checked the most recent one available
+  ([Progress Report: Linux 7.2](https://asahilinux.org/2026/08/progress-report-7-2/),
+  2026-08) directly: no mention of Touch ID, SEP, or Omarchy.
+- **The GPU-driver claim itself looks like relabeled existing work.** A
+  companion Omarchy repository, `omarchy-mx-mac`, describes its own graphics
+  support as "hardware-accelerated Apple GPU graphics through **the Mesa
+  vulkan-asahi driver**" -- Asahi Linux's own existing, upstream AGX driver.
+  That is at minimum an announcement leaning on a well-established project's
+  output while presenting it as new work by named individuals, which is
+  reason to read the rest of the same announcement (including the SEP claim)
+  as promotional copy rather than as a verified engineering report.
+
+**Conclusion: no change to the verdict above, for a reinforced reason.**
+Touch ID on J81 remains not a near-term target -- checkm8 is a bootrom
+exploit, not a SEP break, and that has not changed. But the additional reason
+is now: even the trigger for reconsidering it does not currently survive
+verification. Worth revisiting *if* real evidence (a repo, a technical
+writeup, or Asahi's own progress reports) ever substantiates the M-series
+claim specifically -- at which point the architectural closeness above would
+make it worth reading in real detail, not dismissing on the T1 template.
+
 ## What to watch
 
-The single item that could later matter is whether the "regenerate the
-coprocessor's own provisioning data from Linux" technique lands in t1bridge
-as a real, described mechanism. If a coprocessor can be induced to
-self-provision without the vendor OS, the same question becomes askable
-about SEP/xART on A-series -- not as a Touch ID path, but as evidence about
-how much of Apple's provisioning is genuinely device-side. A watcher on the
-repository is set up for this; see `research/watchers.md`.
+Two narrow items, both tracked in `research/watchers.md`:
+
+1. Whether the "regenerate the coprocessor's own provisioning data from
+   Linux" technique lands in t1bridge as a real, described mechanism (see
+   above).
+2. Whether Asahi Linux's own progress reports -- the high-signal source, not
+   the omarchy.org announcement -- ever report real SEP/Touch-ID progress on
+   M-series. Added 2026-09-12 after the Omarchy M claim above failed to
+   independently verify; per the architecture table in that addendum, a
+   *real* M-series result would be worth reading in detail specifically
+   because it is architecturally closer to J81 than t1bridge was.
 
 ## Sources
 
@@ -214,3 +274,7 @@ repository is set up for this; see `research/watchers.md`.
 - [standardagents/t1bridge](https://github.com/standardagents/t1bridge)
 - Private J81 ADT capture under ignored `artifacts/adt/` (board facts only, reproduced above)
 - [J81 touch/SPI3 plan](../docs/plans/2026-09-09-j81-touch-spi3.md), which owns the `Lump` decoding work
+- [Introducing Omarchy M](https://omarchy.org/news/2026/09/introducing-omarchy-m/) -- the 2026-09-12 addendum's trigger; treat its driver claims as promotional copy, not verified reports (see addendum)
+- [Asahi Linux SEP documentation](https://asahilinux.org/docs/hw/soc/sep/) -- M-series-specific (T8112/M2 addresses); confirms the on-die IOP-mailbox architecture, not A-series coverage
+- [Asahi Linux Progress Report: Linux 7.2](https://asahilinux.org/2026/08/progress-report-7-2/) (2026-08) -- checked directly, no SEP/Touch-ID/Omarchy mention
+- [omarchy-mx-mac](https://github.com/maralcbr/omarchy-mx-mac) -- describes its GPU acceleration as running through Asahi's own Mesa `vulkan-asahi` driver, not a new one

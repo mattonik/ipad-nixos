@@ -9,6 +9,7 @@ changes the build or the device.
 | Task ID | Schedule | Watches | Why |
 | --- | --- | --- | --- |
 | `t1bridge-machine-data-watch` | Mondays ~09:17 local (`17 9 * * 1`, small jitter applied) | [`standardagents/t1bridge`](https://github.com/standardagents/t1bridge) commits, PRs, releases, issues | Whether the "coprocessor regenerates its own provisioning data from Linux" technique lands as a described mechanism. See [j81-touch-id-mesa.md](j81-touch-id-mesa.md). |
+| `asahi-sep-touchid-watch` | 3rd of the month, ~09:00 local (`0 9 3 * *`) | [Asahi Linux's blog](https://asahilinux.org/blog/) (progress reports, roughly bimonthly) and a quick web search, for real SEP/Touch-ID evidence | A 2026-09 Omarchy announcement claimed Touch-ID-via-Secure-Enclave on M-series Macs but has no repo/commit/writeup behind it and no mention in Asahi's own progress reports. Architecturally closer to J81 than t1bridge (on-die SEP + IOP mailbox, same family), so worth watching Asahi's high-signal channel specifically rather than the marketing announcement. See [j81-touch-id-mesa.md](j81-touch-id-mesa.md)'s 2026-09-12 addendum. |
 
 ## On the t1bridge watcher specifically
 
@@ -28,3 +29,19 @@ overclaim transferability.
 
 Retire it if the technique lands and turns out to be Apple-firmware-dependent
 (the likely outcome), or if it has not appeared after a couple of months.
+
+## On the Asahi/Omarchy SEP watcher specifically
+
+Also a low-priority research signal, not a blocker. Unlike the t1bridge case,
+this one starts from an *unverified* claim (no repo, commit, or writeup, and
+silence from Asahi's own progress reports as of the check that created this
+watcher) -- so most runs should find nothing new to report, and that is the
+expected, healthy outcome, not a sign the watcher is useless. It exists
+because the underlying architecture (on-die SEP, IOP mailbox) genuinely is
+the closer analog to J81, so *if* real evidence ever appears, it is worth
+reading in detail rather than dismissed on the T1 template.
+
+Retire it if a real technical result is published and turns out to depend on
+M-series-specific SEP firmware/hardware in a way that clearly does not
+inform A8X's much older SEP generation (the likely outcome even if the claim
+is eventually substantiated), or if nothing has surfaced after a few months.
