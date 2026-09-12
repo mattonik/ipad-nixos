@@ -90,6 +90,58 @@ the hardware or recovered from Apple's driver data.
 This work does not block a useful tablet: llvmpipe plus the existing
 framebuffer can run a lightweight UI first.
 
+### Wide ecosystem check, 2026-09-12: nothing to leverage yet
+
+Checked directly (not from memory) whether anything in the broader
+PowerVR/Apple-Linux ecosystem has moved since this section was last written,
+specifically looking for anything reusable for GXA6850:
+
+- **Mesa 25.3 added device-info/firmware entries for more Series6XT
+  variants**, including `GX6650` (the official 6-cluster part closest to our
+  8-cluster custom `GXA6850`) and a second `GX6250` BVNC. This is scaffolding,
+  not usable support: Mesa's own docs (checked live) still list `GX6650` as
+  "unsupported and not under active development", and even the
+  *better*-supported `GX6250` BVNC (`4.40.2.51`) carries an explicit warning
+  that "instability and corruption are to be expected." Confirms this
+  section's existing point that even the closest official relative is not a
+  working reference yet -- it just now also has a firmware/device-info
+  placeholder, which is a real but small step (it means the pattern for
+  *adding* a new BVNC is now demonstrated twice, which will matter once
+  GXA6850's own BVNC is identified).
+- **`drm/imagination`'s own upstream activity in 2026** (MT8173/`GX6250`
+  support patches, July 2026) is the same story: incremental BVNC additions,
+  none Apple-related, all still gated at "experimental."
+- **Imagination's own vendor roadmap has moved away from this hardware
+  generation entirely**, not toward it -- their official open-source driver
+  page is now talking about their newer "Volcanic" architecture, with no
+  stated interest in broader legacy Rogue/Series6XT support. Nothing to wait
+  for from the vendor side.
+- **The A7-A11 device tree patches already cited above are unchanged** --
+  confirmed directly they are the same 2024-era posting (still "out for
+  review," never merged), and confirmed they explicitly do not touch
+  GPU/display at all, only SMP/UART/framebuffer/watchdog/timer/pinctrl/AIC.
+- **No project anywhere targets `GXA6850` or Apple's PowerVR-era A-series
+  GPUs specifically.** All serious Apple-GPU reverse-engineering (Asahi
+  Linux) targets AGX, Apple's own in-house architecture that *succeeded*
+  PowerVR licensing starting around A11/M1 -- a different vendor's IP than
+  our Imagination-licensed GXA6850, despite occasional noted conceptual
+  lineage (tiler-based rendering, general command-stream shape) between the
+  two. That lineage is not a code-reuse path; it wasn't one for Asahi either,
+  which still had to reverse-engineer AGX's actual ISA from nothing.
+- **Project Cascadia** (A5 -> A6 -> A12/A13, a different community effort
+  from Hoolock) is still in Phase 1 (kernel output/panic diagnosis, no
+  framebuffer yet) and targets the A5's `SGX543MP2` -- PowerVR's older SGX
+  family, not Rogue/Series6XT. No overlap with GXA6850 even if it matures.
+
+**Conclusion: no update to this section's plan or its "Highest" distance
+rating.** The concrete next step is still BVNC identification (this doc's
+step 2 above), and there is still nothing published anywhere to compare that
+BVNC against once found, beyond the same four production-quality reference
+BVNCs and the two now-scaffolded-but-unstable Series6XT ones. Given how
+slowly this specific niche moves and that the vendor itself has
+deprioritized it, a good re-check cadence is "alongside major Mesa/kernel
+release cycles" (roughly every few months) rather than more often.
+
 ## Audio
 
 ### Current state
