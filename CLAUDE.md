@@ -215,6 +215,17 @@ hardware gate only; the CS0 function is still provisional and wants the
 bounded live A/B test. Nothing is flashed, so the previous payload restores
 the known-good battery state.
 
+**TOUCH-1 hardware gate passed, 2026-09-12.** Booted on real J81 hardware.
+The controller registered a working `spi_master` -- as `spi0`, not `spi3`,
+because `apple_spi_probe()` doesn't consult the DT alias for bus numbering
+and this is the only SPI controller in the system; confirmed it's genuinely
+our node via `readlink -f /sys/class/spi_master/spi0` resolving to
+`.../20a08c000.spi/spi_master/spi0`. Power domain and pinctrl suppliers both
+resolved before probe (visible as reverse-dependency links in sysfs), no new
+dmesg errors, battery driver unaffected, 4 minutes stable uptime. TOUCH-1 is
+complete. CS0 itself is still untested -- no real transaction has happened
+without a child device, which is TOUCH-2's job.
+
 **TOUCH-2 research, 2026-09-10.** The child `reg` blocker is **resolved by
 reading the mainline binding rather than by decoding Apple's packing**: the
 parent's `#address-cells = 1` makes the 32-byte ADT `reg` parse as chip

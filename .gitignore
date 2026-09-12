@@ -33,5 +33,12 @@ keys/
 *.qcow2
 *.img
 vzvm.json
+
+# Third-party binary tools kept locally so they survive /tmp being cleared
+# (bit us 2026-09-12: palera1n was in /tmp, lost on a Mac reboot). Not
+# redistributed -- see boot/vendor/README.md (tracked despite the dir being
+# otherwise ignored) for the source and version.
+boot/vendor/*
+!boot/vendor/README.md
 .DS_Store
 __pycache__/

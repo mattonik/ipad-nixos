@@ -95,9 +95,18 @@ wired into `kernel/hoolock.nix` and the full payload cross-builds, with
 `power-controller@20198` ("spi3") and whose pinmux is `0x10033`
 (pin 51, function 1 -- the same encoding form BAT-4 proved on GPIO34).
 Payload `m1n1-linux.bin` SHA-256 `a363dda168e961a3aa81d810ff301b5e08c74e1656fb9bb68784288d144ac24a`.
-What remains for TOUCH-1 is the hardware gate: whether the controller probes
-and whether the provisional CS0 pinmux is right. Since nothing is flashed,
-booting the previous payload restores the known-good battery state.
+
+**TOUCH-1's hardware gate passed on 2026-09-12.** This exact payload booted
+on real J81 hardware and the SPI3 controller registered a working
+`spi_master` -- as `spi0`, not `spi3`, since `apple_spi_probe()` never
+consults the DT's `spi3` alias for bus numbering and this is the only SPI
+controller ever probed in this system (cosmetic, not a bug; confirmed by
+`readlink -f /sys/class/spi_master/spi0` resolving to
+`.../20a08c000.spi/spi_master/spi0`, the exact SPI3 register address). The
+power domain and pinctrl suppliers both resolved before probe, no new dmesg
+errors appeared, and the already-working battery driver was unaffected
+after 4 minutes of uptime. TOUCH-1 is now complete end to end. CS0 itself
+remains untested until TOUCH-2 adds a real child device to transact with.
 
 TOUCH-2's child `reg` question is **resolved**: the parent's
 `#address-cells = 1` makes the child's packed 32-byte ADT `reg` parse as

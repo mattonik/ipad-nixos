@@ -88,7 +88,7 @@ shasum -a 256 result/m1n1-linux.bin
 # Expected for the BAT-4 function-1 build:
 # 0681c720ec632fc6fad88f562cdc57a74ac31e2ec58e29cbd4cedec2aa7f3e27
 
-sudo /tmp/palera1n-arm64 --pongo-shell \
+sudo boot/vendor/palera1n-macos-arm64 --pongo-shell \
   --override-pongo "$PWD/result/Pongo.bin" --debug-logging
 ```
 
