@@ -9,7 +9,12 @@ Base: Hoolock's `ans1` Linux branch, pinned at `ed8528f482a526371e59711645794c91
 `research/j81-long-term-subsystems.md`'s "Internal NAND storage" section and
 `kernel/hoolock-ans1-check.nix`).
 
-**Status: combined bootable test payload cross-build verified, 2026-09-13.**
+**Status: first hardware test passed, 2026-09-13.** All ten ASP namespaces
+probed and registered read-only on real J81 hardware, a real single-block
+read succeeded, and no crash indicator of any kind appeared. See "First
+hardware test result" below for the full evidence.
+
+**Status (superseded by the above): combined bootable test payload cross-build verified, 2026-09-13.**
 The six-item observation-only hardening below is implemented as
 `kernel/patches/0012-ans1-asp-observation-only.patch` and cross-build
 verified in isolation (`hoolock-ans1-check-kernel`). ANS1 has since been
@@ -198,14 +203,63 @@ with no new dmesg errors. That would be the first real evidence this
 driver and its hardening behave as designed against actual J81 hardware,
 not just in cross-compilation.
 
+## First hardware test result: passed, 2026-09-13
+
+Booted `m1n1-hoolock-ans1-test` (`m1n1-linux.bin` SHA-256
+`bc448757e849080c185d2717094a452ea7db23785f0808382426580a302b6e05`) on
+the real J81. Every check above passed cleanly:
+
+- `apple-asp 208040000.block` (the ASP node `0013`/`0014` add) came up and
+  its RTKit firmware channel is genuinely live -- dmesg shows real
+  `Util_Host` syslog traffic from the firmware itself identifying every
+  namespace (EFFACE, NVRAM, SYSCFG, PANICLOG, LLB, UTILDM, CTRLBITS, FW,
+  DM), including expected boundary responses ("LBA offset beyond end",
+  "not yet written") for empty/unformatted regions -- this is the
+  firmware's own identify-time protocol chatter, not driver error paths.
+- **All ten `asp0n{1..10}` block devices registered with `ro=1`** --
+  confirmed by reading `/sys/block/asp0nN/ro` directly on the device, not
+  inferred. `asp0n1` (USERAREA) reports a capacity of 250,000,000
+  512-byte sectors = 128 GB, a real, plausible capacity for this iPad Air
+  2 model -- further evidence the identify sequence is reading genuine
+  device state, not stub/zero values.
+- **Zero occurrences of `WRITE_UNLOCK` anywhere in dmesg** -- confirms the
+  command really was never issued, not just absent from the visible log
+  tail.
+- **Zero real crash indicators** -- a targeted dmesg search for `kernel
+  panic`, `oops`, `call trace`, `WARNING: CPU`, and exception strings
+  returned nothing. (An earlier broad `grep -i panic` had matched only
+  the substring inside `PANICLOG` -- a false positive from the search
+  itself, not a near-miss; worth noting so it isn't mistaken for a close
+  call in hindsight.)
+- **The gated safe read test passed**: the test script re-checks
+  `ro=1` on `asp0n1` itself immediately before reading (not just trusting
+  the earlier status check), then reads exactly one 4096-byte logical
+  block with `dd if=/dev/asp0n1 of=/dev/null bs=4096 count=1` --
+  `1+0 records in / 1+0 records out`, no I/O error, no new dmesg lines at
+  all afterward (expected: successful block reads aren't logged by
+  default, only errors are). The actual returned bytes were deliberately
+  never inspected or printed anywhere -- proving the read path works
+  doesn't require handling the disk's real content, and USERAREA is real
+  user data.
+- System remained stable throughout: 3 minutes uptime, no crash loop, no
+  repeated USB re-enumeration beyond the one expected reconnect during
+  the kernel's own gadget bring-up.
+
+**This closes the ANS1 storage line of work at its currently intended
+scope**: the driver is confirmed to probe cleanly, expose every namespace
+read-only, never issue the unlock command, and service a real read
+against actual J81 hardware, all without a single crash indicator. Making
+the storage actually *usable* (a real filesystem, write support, is a
+different and much larger undertaking than this project has scoped) is
+future work, not implied by this result.
+
 ## What this explicitly does not include
 
-- No hardware test of any kind. This is compiled and cross-build verified,
-  not booted.
+- No write support, and no attempt to make the storage actually usable
+  (filesystem mount, etc.) -- the entire point so far is proving the
+  read-only path is safe and functional, not building a usable storage
+  stack. That remains future work if ever wanted.
 - No change to whether ANS1 is wired into any actual *default* boot
   payload -- `m1n1-hoolock-control`/`kernel/hoolock.nix` are untouched;
   ANS1 only exists in the dedicated `m1n1-hoolock-ans1-test` payload,
   confirmed not to affect the default payload's build output at all.
-- No decision yet about when/whether to attempt the first real read-only
-  hardware test. That is a separate, later, explicit decision -- not
-  something this patch being ready implies permission for.

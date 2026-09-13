@@ -262,31 +262,35 @@ real patch: enabling it now would fail for three compounding unresolved
 reasons at once (no firmware, unconfirmed size, unimplemented power
 sequence), which would make any hardware result impossible to attribute.
 
-**Internal storage (ANS1): observation-only hardening cross-build
-verified, 2026-09-13.** Hoolock's `ans1` branch (real, credible upstream
-work by Nick Chan) compile-verifies in isolation, but its default behavior
-unconditionally unlocks writes to the iPad's real internal NAND on probe
-and has three reachable `BUG()`/`BUG_ON()` calls. `kernel/patches/0012`
-removes the unlock command outright, rejects all block writes/flushes at
-a single dispatch point, marks every namespace (including user data)
-read-only, and downgrades all three fatal assertions to graceful errors --
-cross-build verified alone first, then reconciled onto this project's own
-patched tree (17/19 ans1 files applied with zero conflicts; only
-`t7001.dtsi`/`t7001-air2.dtsi` needed one trivial hand-reconciled `aliases`
-entry) as a **separate, dedicated payload**,
-`packages.x86_64-linux.m1n1-hoolock-ans1-test`
+**Internal storage (ANS1): hardware gate passed, 2026-09-13.** Hoolock's
+`ans1` branch (real, credible upstream work by Nick Chan) compile-verifies
+in isolation, but its default behavior unconditionally unlocks writes to
+the iPad's real internal NAND on probe and has three reachable
+`BUG()`/`BUG_ON()` calls. `kernel/patches/0012` removes the unlock command
+outright, rejects all block writes/flushes at a single dispatch point,
+marks every namespace (including user data) read-only, and downgrades all
+three fatal assertions to graceful errors -- cross-build verified alone
+first, then reconciled onto this project's own patched tree (17/19 ans1
+files applied with zero conflicts; only `t7001.dtsi`/`t7001-air2.dtsi`
+needed one trivial hand-reconciled `aliases` entry) as a **separate,
+dedicated payload**, `packages.x86_64-linux.m1n1-hoolock-ans1-test`
 (`kernel/hoolock-ans1-test.nix`), deliberately not merged into
 `kernel/hoolock.nix`/`m1n1-hoolock-control` so ANS1 never runs as a side
-effect of routine touch/battery work. The full combined payload (BT-1,
-BAT-1/2/3, CHG-1, TOUCH-1/2 groundwork, plus hardened ANS1) cross-builds
-successfully; `apple_asp_probe`/`apple_asp_start_disk`/`apple_asp_of_match`
-confirmed in `System.map`, and `m1n1-hoolock-control`'s output hash
-re-verified byte-identical to before this work. One real Nix bug found and
-fixed along the way: a config derivation used `cp` on an existing store
-path (read-only, `-r--r--r--`) and inherited that permission, breaking a
+effect of routine touch/battery work. **Booted on real J81 hardware**:
+`apple-asp 208040000.block` probed all ten namespaces with genuine RTKit
+firmware traffic (EFFACE/NVRAM/SYSCFG/PANICLOG/LLB/UTILDM/CTRLBITS/FW/DM),
+every `asp0n{1..10}` device came back `ro=1` read directly from sysfs,
+`asp0n1` (USERAREA) reported a real 128 GB capacity, zero occurrences of
+`WRITE_UNLOCK` and zero crash indicators appeared anywhere in dmesg, and a
+gated single 4096-byte read against USERAREA succeeded cleanly with the
+system stable throughout (3 min uptime, no crash loop).
+`m1n1-hoolock-control`'s output hash was separately re-verified
+byte-identical to before this work. One real Nix bug found and fixed
+along the way: a config derivation used `cp` on an existing store path
+(read-only, `-r--r--r--`) and inherited that permission, breaking a
 following append -- fixed with `cat ... > "$out"`, which always creates a
-fresh writable file. No hardware touched; the first real read-only test is
-a separate, later, explicit decision. Full detail in
+fresh writable file. Making the storage actually usable (filesystem,
+writes) is future work, not implied by this result. Full detail in
 `docs/plans/2026-09-13-j81-ans1-observation-only.md`.
 
 **BAT-4 hardware gate: real result, 2026-09-10.** UART5 (`ttySAC2`) registers
