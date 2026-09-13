@@ -2294,9 +2294,20 @@ at that point -- the user has approved building a Tamarin Cable for this
 parts yet, so these two software-only experiments are worth trying first
 since they cost nothing and are already built.
 
-## UART/JTAG procurement and setup plan (2026-09-04; not yet built, try the software-only experiments above first)
+## UART/JTAG procurement and setup plan (2026-09-04; declined 2026-09-13 -- no hardware investment)
 
-The user confirmed they want to proceed with this. This is a purchasing/
+**Closed, 2026-09-13.** The 2026-09-07 `bootm`→m1n1 breakthrough (real,
+interactive shell access over USB networking) resolved the actual
+problem this cable would have debugged, three days after the parts plan
+below was approved -- the cable was never bought or built, and the
+"approval" below is superseded. Explicitly revisited and declined this
+session: **no new hardware investment**, software/compute work only.
+If a future blocker genuinely has no software-only path forward (unlike
+everything solved so far), this would need to be re-raised as a fresh
+decision, not assumed from the old 2026-09-04 approval below.
+
+The plan itself is kept as a historical record, not a live TODO. This is
+a purchasing/
 build plan, not a purchase made on their behalf -- they place any orders
 themselves.
 

@@ -331,6 +331,27 @@ work:
   5.19-rc1 kernel, in case the newer kernel turns out to have its own new
   problems, or simply as an independent confirmation of the root cause.
 
+**Closed, 2026-09-13.** `main` won outright the next day (Round 10, USB
+networking fully bidirectional on real hardware) -- the newer kernel
+never developed its own problems, so the independent-confirmation
+rationale for keeping this branch alive never materialized. The branch
+got exactly one more commit (Round 9, 2026-09-07) before being set aside;
+its finding is worth keeping even though the branch itself is closed:
+tracing the *specific* 90-byte transfer the Round 8 diagnostic observed
+(not the general case) showed `dwc2_hsotg_write_fifo()` shouldn't need
+any partial-fill/re-arm cycle at that size at all, and the function is
+byte-identical to mainline v7.2 -- ruling out a software fill-logic bug
+outright. The real break is downstream of the software fill, at the
+point where a completed FIFO write should trigger a hardware
+`XferCompl` interrupt and never does -- either a genuine T7001 DWC2/PHY
+quirk under forced PIO, or something host-side on the macOS end, not
+distinguishable from source reading alone. Revisited and explicitly not
+resumed this session (2026-09-13): the only paths forward
+(UART/JTAG-level device access, or an independent Linux USB host) need
+new hardware, and the user has declined further hardware investment for
+this project. The branch and tag remain in git, unmerged, as a
+historical record -- not deleted.
+
 ### Newest kernel available, verified today
 
 Checked directly against the live repositories, not from memory or the

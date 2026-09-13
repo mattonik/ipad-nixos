@@ -83,6 +83,21 @@ PIO-fill trace investigation forward independently on the
 so neither path blocks or discards the other -- "only positive in the
 long run" regardless of which path resolves the USB fault first.
 
+**Branch closed, 2026-09-13.** Hoolock's kernel (the other path) won
+outright the very next day -- real DMA support just works, making the
+whole forced-PIO question moot for this project's actual goal. The
+branch's own one unique commit (Round 9, pure source analysis) is worth
+keeping as a record: it ruled out a software fill-logic bug in
+`dwc2_hsotg_write_fifo()` (byte-identical to mainline v7.2) and narrowed
+the historical fork's asymmetric USB fault to somewhere downstream of the
+software FIFO fill -- a real hardware completion-interrupt/bus-level
+issue, or possibly host-side, neither confirmable from source reading
+alone. Explicitly not resumed this session -- would need UART/JTAG-level
+access or an independent Linux USB host to make further progress, and
+the user has declined new hardware investment. The branch and its
+`usb-diagnostic-round8-2026-09-07` tag remain in git, unmerged, as an
+inert historical record.
+
 **Newer-kernel progress, same day: it builds.** `kernel/hoolock.nix` (new,
 modeled on `kernel/historical.nix`) cross-compiles cleanly with this
 project's existing GCC toolchain after one narrow, USB-unrelated fix (the
