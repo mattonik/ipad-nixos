@@ -411,6 +411,40 @@ investigation, not a continuation of this one. **Not pursuing further
 today.** Full detail in `docs/plans/2026-09-09-j81-touch-spi3.md`'s
 "TOUCH-3, 2026-09-13 (fourth pass)".
 
+**TOUCH-3, fifth pass, same day: opened `AppleARMPlatform.kext`, the
+dispatch mechanism is now fully mapped, register offset still open.**
+Picked up exactly the thread the fourth pass left dangling. Pulled
+`AppleARMPlatform.kext` (ships with real symbols, unlike the stripped
+kernelcache) and disassembled it directly with `llvm-objdump`. Confirmed
+`AppleARMFunction::callFunction` is a thin shim: it reads back the
+cached `provider` pointer and makes a virtual call through **the
+provider's own vtable at byte offset `0x3a0` (slot 116)** --
+i.e. `provider->callPlatformFunction(...)`. Dumped slot 116 on
+`AppleT7000PerformanceController`'s real instance vtable (the fourth
+pass's 80-slot dump never reached that far) and found a real,
+substantial (1024-byte) in-kext function, `FUN_ffffff80031e921c` --
+genuinely `callPlatformFunction`. Decompiled it in full: it dispatches
+on four verbs (cached `OSSymbol*` globals) and, within one verb, on five
+4-char magics including `KLCT` (`0x54434c4b`, byte order confirmed).
+The `KLCT` case doesn't write a register directly -- it allocates a
+small token/handle object whose own vtable (dumped and decompiled too)
+turned out to be nearly all inherited `OSObject` boilerplate, no
+clock-specific logic. A *different* verb in the same function (guarded
+by a `"Warning, this clock was not disabled..."` string) walks a
+128-bit gate bitmask and calls a shared per-gate primitive whose body is
+completely legible: **every PMGR clock gate lives at `ioBase + 0x20000
++ gate_index * 8`, one 32-bit register per gate, bit 28 (`0x10000000`)
+as the enable/disable bit, across a 101-entry table** (gate `0x44`
+specially excluded from auto-disable) -- real, general, reusable
+T7000/T7001 SoC knowledge. The exact gate index for `KLCT`/touch itself
+wasn't found: the per-magic constant tables that would answer it read
+back as all-zero, because they live in `__DATA`/`__DATA_CONST`, a
+segment this session's extraction never pulled (only `__PRELINK_TEXT`
+was). **Net effect: the dispatch mechanism has no remaining unknowns;
+the open number has narrowed from "somewhere in the kernel" to "one of
+101 known-shape registers."** Full detail in
+`docs/plans/2026-09-09-j81-touch-spi3.md`'s "TOUCH-3, 2026-09-13 (fifth pass)".
+
 **WiFi (PCIe): evidence-gathering phase complete, 2026-09-13, no code
 yet.** Picked as the next focus over touch (no UI to exercise touch
 input with yet; WiFi is independently useful). Decoded the real J81

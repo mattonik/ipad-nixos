@@ -181,8 +181,26 @@ compared directly against each other today to decide what's next:
   this session. Four independent techniques (manual disassembly, a real
   ship firmware, and a full-region professional decompile) all converge
   on the same wall; the rest of the KLCT decode stands on its own
-  regardless. Genuinely exhausted for this session -- see
-  `docs/plans/2026-09-09-j81-touch-spi3.md`'s "TOUCH-3, 2026-09-13 (fourth pass)".
+  regardless. **Fifth pass, same day**: opened `AppleARMPlatform.kext`
+  itself (this one ships with real symbols) and fully mapped the
+  dispatch mechanism the fourth pass could only infer --
+  `AppleARMFunction::callFunction` forwards through a virtual call at
+  vtable slot 116 (byte offset `0x3a0`) on the provider, landing in
+  `AppleT7000PerformanceController::callPlatformFunction`
+  (`FUN_ffffff80031e921c`, decompiled in full). Its `KLCT` case builds a
+  small token/handle object (not a direct register write); a sibling
+  verb in the same function confirmed the real, general T7000/T7001 PMGR
+  clock-gate register mechanism instead -- every gate lives at `ioBase +
+  0x20000 + gate_index * 8`, one 32-bit register per gate, bit 28
+  (`0x10000000`) as the enable/disable bit, across a 101-entry table
+  (gate `0x44` specially excluded from auto-disable). The exact gate
+  index assigned to `KLCT`/touch specifically is still open -- the
+  per-magic constant tables that would answer it live in `__DATA`/
+  `__DATA_CONST`, a segment this session's kernelcache extraction never
+  pulled (only `__PRELINK_TEXT` was). Full writeup, including why the
+  search space is now much narrower ("one of 101 known-shape registers"
+  rather than "somewhere in the kernel"), in
+  `docs/plans/2026-09-09-j81-touch-spi3.md`'s "TOUCH-3, 2026-09-13 (fifth pass)".
 - **Internal storage (ANS1)**: the chosen focus, and now **done, including
   the hardware gate, 2026-09-13**. Hoolock's `ans1` branch compile-verifies
   in isolation, the observation-only safety patch
