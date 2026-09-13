@@ -366,9 +366,35 @@ anyway and found only trivial destructor-thunk vtable slots; the real
 logic lives in the shared parent class, unreachable without a proper
 decompiler (IDA/Hopper/Ghidra) rather than `objdump`+`grep`. Stopped
 deliberately rather than open-ended address archaeology -- the rest of
-the KLCT decode stands on its own regardless. Full detail in
-`docs/plans/2026-09-09-j81-touch-spi3.md`'s "TOUCH-3, 2026-09-13 (third
-pass)".
+the KLCT decode stands on its own regardless.
+
+**TOUCH-3, fourth pass, 2026-09-13: got a real decompiler (Ghidra), still
+genuinely exhausted.** Installed Ghidra 12.1.3 (`brew install ghidra`;
+needs `JAVA_HOME` pointed at the `openjdk@21` keg, not symlinked into
+`PATH`) specifically to get past the third pass's symbol-free-binary
+wall. Imported the *entire* 14 MB `__PRELINK_TEXT` segment (all 169
+kexts, one flat address space) as a raw ARM64 binary at its real load
+address, ran full auto-analysis (~10.5 min headless), then scripted the
+decompiler (Java `GhidraScript`, `DecompInterface`) to: (1) independently
+re-confirm the string-xref dead end via real cross-kext-boundary
+reference analysis, not per-kext text matching; (2) confirm zero
+references anywhere in the full region to the panic strings; (3) dump
+`AppleT7000PerformanceController`'s vtable -- caught and corrected a real
+mistake here, the address named in the `OSMetaClass` constructor call is
+the *MetaClass object's own* vtable, not the driver instance's, something
+the decompiled `MetaClass::alloc()` body made obvious; (4) dump the *real*
+instance vtable (80 slots). Result: the class overrides only 3 of ~80
+inherited `IOService` methods -- it almost certainly does **not** override
+`callPlatformFunction` at this iOS version at all. The real dispatch most
+likely lives one level up, in `AppleARMPlatform.kext`'s own generic
+platform-function framework (confirmed as a real, separate kext this
+class imports symbols from) -- never examined this session. Four
+independent techniques (manual disassembly, a real ship firmware, and a
+full-region professional decompile) now converge on the same wall;
+finding the offset from here means opening a new kext, a new
+investigation, not a continuation of this one. **Not pursuing further
+today.** Full detail in `docs/plans/2026-09-09-j81-touch-spi3.md`'s
+"TOUCH-3, 2026-09-13 (fourth pass)".
 
 **BAT-4 hardware gate: real result, 2026-09-10.** UART5 (`ttySAC2`) registers
 cleanly on hardware, and independent cross-checks (live pinctrl debugfs, the

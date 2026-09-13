@@ -169,14 +169,20 @@ compared directly against each other today to decide what's next:
   download) -- and confirmed the same mechanism exists at ship under an
   earlier name (`AppleT7000PerformanceControllerFunctionEnableTouchClock`),
   with new corroborating panic strings ("invalid target frequency: %d")
-  independently reinforcing the frequency-based decode. But this
-  kernelcache generation has zero per-kext symbols at all (confirmed via
-  `LC_SYMTAB`), and tracing the class by address alone found only
-  trivial destructor thunks -- the real logic lives in the shared parent
-  class, unreachable without a proper decompiler. Stopped deliberately
-  rather than open-ended address archaeology; the rest of the KLCT decode
-  stands on its own regardless. See
-  `docs/plans/2026-09-09-j81-touch-spi3.md`'s "TOUCH-3, 2026-09-13 (third pass)".
+  independently reinforcing the frequency-based decode. Went one step
+  further and installed Ghidra to get a real decompiler on this
+  symbol-free binary: imported the entire 169-kext, 14 MB prelink region
+  as one flat address space so cross-kext references would resolve, ran
+  full auto-analysis, and traced the driver class's real instance vtable
+  (correcting a genuine MetaClass-vs-instance mix-up along the way). The
+  result: the class overrides only 3 of ~80 inherited `IOService`
+  methods, meaning the actual dispatch almost certainly lives one level
+  up in `AppleARMPlatform.kext`'s own generic framework -- never examined
+  this session. Four independent techniques (manual disassembly, a real
+  ship firmware, and a full-region professional decompile) all converge
+  on the same wall; the rest of the KLCT decode stands on its own
+  regardless. Genuinely exhausted for this session -- see
+  `docs/plans/2026-09-09-j81-touch-spi3.md`'s "TOUCH-3, 2026-09-13 (fourth pass)".
 - **Internal storage (ANS1)**: the chosen focus, and now **done, including
   the hardware gate, 2026-09-13**. Hoolock's `ans1` branch compile-verifies
   in isolation, the observation-only safety patch
