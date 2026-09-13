@@ -313,6 +313,46 @@ def action_pmu_read(shell: IPadShell) -> None:
     print(shell.run(cmd, timeout=8))
 
 
+# ANS1 (docs/plans/2026-09-13-j81-ans1-observation-only.md): disk names
+# come straight from the driver's own snprintf(disk->disk_name, ...,
+# "asp%dn%d", asp->instance, i) -- instance 0, i = 1 (USERAREA) through
+# 10 (PANICLOG); ADMIN (0) has no disk. All ten must read back ro=1 --
+# that's what kernel/patches/0012's hardening is for.
+ASP_NAMESPACES = {
+    1: "USERAREA", 2: "LLB", 3: "FW", 4: "UTILDM", 5: "DM",
+    6: "CTRLBITS", 7: "EFFACE", 8: "NVRAM", 9: "SYSCFG", 10: "PANICLOG",
+}
+
+
+def action_asp_status(shell: IPadShell) -> None:
+    print(shell.run("dmesg | grep -iE 'apple.asp|asp0n|s5l8960x-ans' | tail -n 30"))
+    print()
+    print(shell.run("ls -la /sys/block/ 2>&1 | grep asp0n"))
+    print()
+    for i, name in ASP_NAMESPACES.items():
+        dev = f"asp0n{i}"
+        ro = shell.run(f"cat /sys/block/{dev}/ro 2>&1").strip()
+        size = shell.run(f"cat /sys/block/{dev}/size 2>&1").strip()
+        flag = f"{GREEN}ro=1{RESET}" if ro == "1" else f"{RED}ro={ro}{RESET}"
+        print(f"  {dev} ({name:9s}): {flag}  size={size} sectors")
+
+
+def action_asp_read_test(shell: IPadShell) -> None:
+    # Read-only by construction: refuses to touch the device at all unless
+    # sysfs itself already reports ro=1, and only ever reads exactly one
+    # logical block (ASP_LBA_SIZE = 4096 bytes, not the usual 512) straight
+    # to /dev/null. This never writes anything to the iPad's real NAND.
+    dev = input("Namespace device [asp0n1 = USERAREA]: ").strip() or "asp0n1"
+    ro = shell.run(f"cat /sys/block/{dev}/ro 2>&1").strip()
+    if ro != "1":
+        print(f"{RED}Refusing: /sys/block/{dev}/ro reports '{ro}', not '1'.{RESET}")
+        print("This device is not confirmed read-only -- not touching it.")
+        return
+    print(f"{dev} confirmed read-only. Reading one 4096-byte block...")
+    print(shell.run(f"dd if=/dev/{dev} of=/dev/null bs=4096 count=1 2>&1", timeout=10))
+    print(shell.run("dmesg | tail -n 15"))
+
+
 def action_uptime_mem(shell: IPadShell) -> None:
     print(shell.run("uptime"))
     print(shell.run("free 2>&1 || head -5 /proc/meminfo"))
@@ -339,6 +379,8 @@ ACTIONS: list[tuple[str, Callable[["IPadShell"], None]]] = [
     ("Bluetooth: safe read-only snapshot", action_bt_probe),
     ("Bluetooth: attach HCI UART (btattach)", action_bt_attach),
     ("PMU: read I2C register (pmu,d2207 @ 0x3c)", action_pmu_read),
+    ("Storage (ANS1): probe status + ro flags", action_asp_status),
+    ("Storage (ANS1): safe single-block read test", action_asp_read_test),
     ("Uptime & memory", action_uptime_mem),
     ("Run a raw shell command", action_raw_command),
 ]

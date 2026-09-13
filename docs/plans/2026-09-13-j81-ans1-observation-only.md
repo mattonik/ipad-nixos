@@ -151,6 +151,53 @@ Status column updated as each lands.
   this is really as inert as it looks, not assuming it from the TODO text
   alone.
 
+## First hardware test procedure (read-only only)
+
+Written before running it, per this project's own discipline. Uses the
+standard boot recipe (README.md's "Boot status") with the ANS1 test
+payload in place of `m1n1-hoolock-control`:
+
+```bash
+nix build .#packages.x86_64-linux.m1n1-hoolock-ans1-test -o result -L
+shasum -a 256 result/m1n1-linux.bin
+sudo boot/vendor/palera1n-macos-arm64 --pongo-shell \
+  --override-pongo "$PWD/result/Pongo.bin" --debug-logging
+# reconnect the cable once at Checkmate!, once at the Pongo logo
+nix develop -c python3 boot/load_m1n1.py result/m1n1-linux.bin
+```
+
+Once the telnet shell answers, `boot/ipad_console.py` gained two actions
+for this test:
+
+- **"Storage (ANS1): probe status + ro flags"** -- dmesg for the ASP
+  probe, then reads `/sys/block/asp0n{1..10}/ro` for every namespace
+  (USERAREA through PANICLOG). All ten must read `1`; anything else means
+  the hardening isn't actually in effect on this boot and the test stops
+  there.
+- **"Storage (ANS1): safe single-block read test"** -- refuses to touch a
+  device at all unless its own `ro` sysfs entry already reads `1`, then
+  reads exactly one 4096-byte logical block (`dd bs=4096 count=1
+  if=/dev/asp0nN of=/dev/null`) -- never anything larger, never to a real
+  file, never a write.
+
+**Stop conditions** -- do not go further than the two actions above if any
+of these show up; note it, revert to the known-good payload, and treat it
+as a real finding, not something to push past:
+
+- any `ro` value other than `1` on any of the ten namespace devices;
+- a kernel panic, oops, or `BUG`/`WARN_ON` splat during or after probe;
+- the read test hanging past its 10-second timeout instead of returning;
+- anything reachable in dmesg mentioning `WRITE_UNLOCK` outside of a
+  comment (there should be none at all -- the command was deleted, not
+  gated).
+
+**Pass criterion**: `apple_asp_probe` completes, all ten `asp0n*` devices
+appear with `ro=1`, and the single-block read on at least one of them
+(USERAREA, `asp0n1`, is the most interesting namespace) returns real data
+with no new dmesg errors. That would be the first real evidence this
+driver and its hardening behave as designed against actual J81 hardware,
+not just in cross-compilation.
+
 ## What this explicitly does not include
 
 - No hardware test of any kind. This is compiled and cross-build verified,
