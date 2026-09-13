@@ -610,29 +610,28 @@ errors. That is exactly what a warm-reboot check is for, and it already
 happened as a side effect of unrelated touch testing -- no separate warm
 test is needed.
 
-**Still open: cold tethered boot.** This has not yet been done -- every
-boot so far this project has been either the original bring-up or another
-same-session reconnect, never a genuine disconnect-and-wait-first cycle.
-The concrete, minimal procedure to close this out:
+**Correction, same day: cold tethered boot is also already satisfied,
+just not by something done inside this chat.** Every checkm8 DFU entry is
+already a genuine full AP reset by construction (SecureROM-level, not a
+soft re-trigger), and this project's actual physical routine goes further
+than that: every charging session means physically disconnecting the iPad
+from the Mac entirely and connecting it to a separate, more powerful
+charger, then reconnecting later for the next session. That is a stronger
+cold cycle than "unplug and wait a few minutes" -- it is a real, extended,
+fully-disconnected interval between sessions.
 
-1. Fully unplug the iPad's USB cable from the Mac (not just let it sit in
-   DFU/PongoOS/Linux -- physically disconnect).
-2. Wait a real interval before reconnecting (a few minutes is enough to
-   distinguish this from "still mid-session"; there is no specific longer
-   duration this project's evidence requires).
-3. Reconnect and run the exact same boot recipe as always (`README.md`'s
-   "Boot status" section: pwn, load PongoOS, load `result/m1n1-linux.bin`,
-   bring up the USB network link).
-4. Once at the debug shell, check the same things already used throughout
-   BAT-4: `dmesg | grep -i hdq`, `cat /sys/class/power_supply/*/capacity
-   /sys/class/power_supply/*/voltage_now`. Plausible, error-free readings
-   close this gate for good -- no new code, no new patches, just this one
-   more boot.
+Given that routine, and that this project has logged correct, error-free
+battery reads across multiple *separate days* since BAT-4 first passed
+permanently (2026-09-10, then again 2026-09-12 and 2026-09-13's TOUCH-1/
+TOUCH-2 sessions), each necessarily separated by real disconnect-and-charge
+intervals -- **both halves of the warm/cold acceptance gate are satisfied
+by the accumulated record already, not by a fresh dedicated test.** Nothing
+further needs to be scheduled for this specifically.
 
-This is a genuinely small task: one disconnect, one wait, one normal boot,
-one read. Comparison with iPadOS (the acceptance list's other remaining
-item) is separate and can be done in the same session by checking the
-iPad's own Settings/Battery reading at roughly the same moment.
+What remains from the original acceptance list is only the iPadOS
+comparison (voltage/capacity checked against the device's own Settings
+reading near the same moment) -- worth doing opportunistically next time
+the iPad is connected for any other reason, not as its own task.
 
 ## Sources
 

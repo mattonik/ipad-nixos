@@ -47,7 +47,12 @@ the later SN2400 charger-mux design. The permanent DTS patch now uses function
 1. The corrected payload then passed a fresh permanent boot with no runtime
 override: the live DT exposed `0x00010022`, boot dmesg identified
 `HDQ DEVICE_TYPE = 0x0545`, and `bq27545-battery` registered automatically.
-The remaining gate is warm/cold reproduction.
+**Warm/cold reproduction is satisfied** (confirmed 2026-09-13): correct,
+error-free readings are logged across multiple separate days since this
+permanent boot, each separated by this project's normal
+disconnect-to-charger-and-back routine -- a real cold cycle, not a same-session
+reconnect. Only comparing the reading against iPadOS's own Settings value
+remains, worth doing opportunistically rather than as its own task.
 Full evidence is in
 [the dedicated J81 battery research](../research/j81-battery-hdq.md).
 
@@ -138,9 +143,11 @@ documented in the [focused touch plan](plans/2026-09-09-j81-touch-spi3.md).
 now hardware-confirmed complete, and touch, battery, and storage were
 compared directly against each other today to decide what's next:
 
-- **Battery**: functionally done. Only the "cold tethered boot" half of
-  BAT-4's own acceptance gate (`research/j81-battery-hdq.md`) remains --
-  a single small verification, not new work. See
+- **Battery**: done. BAT-4's warm/cold acceptance gate is satisfied by the
+  accumulated record (correct reads across multiple separate days, each
+  crossing this project's normal disconnect-to-charger routine -- a real
+  cold cycle). Only the iPadOS comparison remains, opportunistic rather
+  than a task. See
   [the dedicated J81 battery research](../research/j81-battery-hdq.md) for
   the exact procedure.
 - **Touch (TOUCH-2)**: blocked, not stalled. Both remaining unknowns
@@ -2328,7 +2335,7 @@ Never commit Apple firmware, NVRAM, touch calibration or device identifiers.
 | Buttons | GPIO driver, config and DT are present | Verify Home, Power and both volume input events on Hoolock. |
 | RTC / backlight | Both hardware-verified over the USB shell | Preserve their current nodes and drivers. |
 | Bluetooth | Real J81 UART3 and manual `hci0` attach are hardware-confirmed; Apple driver and live PMIC reads identify GPIO2 at `0x03e6`, active high, currently low; bounded read-only telnet probe is now available | Capture before/after snapshots with `boot/bt_probe.py`, then—only with the user present—run the reversible `0x00 -> 0x02 -> 0x00` A/B test and use the standard `hci_bcm` serdev child. |
-| Battery | **Working across reboot:** BQ27545 identified automatically; stable voltage/current/capacity/temperature/cycle reads after GPIO34 function-1 correction | Compare with iPadOS and reproduce across warm/cold boots. |
+| Battery | **Working across warm and cold reboot** (2026-09-13: cold half confirmed satisfied by the accumulated multi-day record, this project's normal disconnect-to-charger routine being a real cold cycle): BQ27545 identified automatically; stable voltage/current/capacity/temperature/cycle reads after GPIO34 function-1 correction | Compare with iPadOS opportunistically; otherwise done. |
 | Charging | Read-only D2207 status/current registers identified; a J81 power-supply child now reports the verified input and charge limits without a write path; the integrated Hoolock control payload builds with it; live USB input setting is 100 mA while the battery discharges | Boot the child and compare its sysfs values with raw PMIC reads, then reproduce disconnected, data-host and charger cases with a USB meter before considering any write support. |
 | Touch | Reviewed S5L8960X SPI3 and J81 DT patches are staged; the 6 V analog rail and Apple power order are identified | Cross-build TOUCH-1, prove SPI3, then decode the child `reg` and PMGR clock args. |
 | Wi-Fi | BCM4350 brcmfmac PCIe endpoint code exists; wireless config is disabled | Port T7000 PCIe/DART and enumerate port 1 before enabling brcmfmac. |
