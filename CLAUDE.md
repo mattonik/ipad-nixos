@@ -325,11 +325,16 @@ converted to a divisor of 732 against a fixed 24 MHz reference clock --
 not a device-table index, as first assumed. Cross-validated PMGR's base
 address (`0x20e000000`) against this project's own captured real ADT --
 two independent sources agreeing. **Still open**: the one fixed register
-offset `enableTouchClock` itself reads/writes -- checked and ruled out in
-both `ApplePMGR.kext` SDK builds and `AppleT7001PMGR.kext` (literal-immediate
-search, raw-byte search, and Info.plist/DT-property-name search all came
-up empty), likely supplied by a per-board PMGR personality source not yet
-located. Full detail in `docs/plans/2026-09-09-j81-touch-spi3.md`'s
+offset `enableTouchClock` itself reads/writes -- confirmed (via a public
+symbol-signature database) to be `_regGroups[kRegGroupTouch]`, group
+index 3, the one gap `AppleT7000PMGR::initRegGroups()` never fills
+(`0,1,2,4,5,6`). Tried a genuinely different iOS SDK build (iOS 11.0's
+T7000 kernel, a different public repo) and the real ADT's own `pmgr`
+"devices" table (a complete, human-readable device list with no
+touch/multitouch entry); both ruled out. Every source found so far is an
+iPhone build that merely bundles T7001 support, not an actual iPad5,3
+firmware -- a real IPSW is now the best-motivated next step for this one
+number. Full detail in `docs/plans/2026-09-09-j81-touch-spi3.md`'s
 "TOUCH-3, 2026-09-13".
 
 **BAT-4 hardware gate: real result, 2026-09-10.** UART5 (`ttySAC2`) registers

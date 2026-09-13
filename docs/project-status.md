@@ -164,9 +164,14 @@ compared directly against each other today to decide what's next:
   device-table index as first assumed. PMGR's base address
   (`0x20e000000`) was cross-validated against this project's own captured
   ADT. Still open: the one fixed register offset `enableTouchClock`
-  itself operates on -- checked and ruled out in both `ApplePMGR.kext`
-  SDK builds and `AppleT7001PMGR.kext`, likely supplied by a per-board
-  personality source not yet located. See
+  itself operates on (`_regGroups[kRegGroupTouch]`, confirmed via a
+  public symbol-signature database to be the same array
+  `initRegGroups()` populates -- group index 3, the one gap in the
+  sequence `0,1,2,4,5,6`). Tried a genuinely different iOS SDK build
+  (iOS 11.0's T7000 kernel) and the real ADT's own `pmgr` "devices"
+  table; both ruled out. Every source found so far is an iPhone build
+  that merely bundles T7001 support -- a real `iPad5,3` IPSW is now the
+  best-motivated next step for this one specific number. See
   `docs/plans/2026-09-09-j81-touch-spi3.md`'s "TOUCH-3, 2026-09-13".
 - **Internal storage (ANS1)**: the chosen focus, and now **done, including
   the hardware gate, 2026-09-13**. Hoolock's `ans1` branch compile-verifies
