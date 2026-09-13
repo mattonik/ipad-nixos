@@ -307,25 +307,29 @@ routine is the next step before trying again, not another raw byte
 pattern. Full detail in
 `docs/plans/2026-09-08-j81-bluetooth-battery-adt.md`'s "Stage B attempt".
 
-**TOUCH-3, 2026-09-13: touch-ASIC registers found, KLCT partially traced
--- no IPSW download needed.** A public repo of unstripped Apple driver
-kexts (already cited in `docs/plans/2026-09-09-j81-touch-spi3.md`'s
-references, fetched via a sparse `git clone`, a few MB) gave real,
-concrete touch-controller-internal register addresses straight from
+**TOUCH-3, 2026-09-13: touch-ASIC registers found, KLCT fully decoded --
+no IPSW download needed.** A public repo of unstripped Apple driver kexts
+(already cited in `docs/plans/2026-09-09-j81-touch-spi3.md`'s references,
+fetched via a sparse `git clone`, a few MB) gave real, concrete
+touch-controller-internal register addresses straight from
 `AppleMultitouchSPIJ82.kext`'s `Info.plist` (`clk32-clock-enable-addr/-val`,
 `fll-mval-addr/-mval`, `fw-execute-addr`, `cal-dl-addr`, `prox-cal-addr`)
 -- enough to implement most of the touch bring-up sequence. Separately,
-disassembled `ApplePMGRFunctionClockGate::callFunction` (the real KLCT
-handler, in the same repo's `ApplePMGR.kext`) with Xcode's bundled
-`llvm-objdump`, tracing `function-clock_enable` through
-`ApplePMGR::_enableDevice` → `_enableDeviceGated` → `_updateDeviceStatus`,
-and cross-validated the PMGR base address (`0x20e000000`) against this
-project's own captured real ADT -- two independent sources agreeing.
-**Still open**: the exact register KLCT's device-index `8` resolves to --
-mainline's own `t7001-pmgr.dtsi` has no touch/multitouch entry to compare
-against (only `ps_spi0`-`ps_spi3`), so this needs more disassembly of
-already-fetched binaries (a data table lookup, not yet located), not a
-new download. Full detail in `docs/plans/2026-09-09-j81-touch-spi3.md`'s
+after an initial mistrace of the wrong generic class
+(`ApplePMGRFunctionClockGate`), found and disassembled the real KLCT
+handler -- `ApplePMGRFunctionEnableTouchClock`/`ApplePMGR::enableTouchClock`,
+in the same repo's `ApplePMGR.kext` -- with Xcode's bundled `llvm-objdump`.
+**KLCT's three ADT words are now fully decoded**: an 8 µs enable-settle
+delay, a 100 µs disable-settle delay, and a 32.768 kHz target frequency
+converted to a divisor of 732 against a fixed 24 MHz reference clock --
+not a device-table index, as first assumed. Cross-validated PMGR's base
+address (`0x20e000000`) against this project's own captured real ADT --
+two independent sources agreeing. **Still open**: the one fixed register
+offset `enableTouchClock` itself reads/writes -- checked and ruled out in
+both `ApplePMGR.kext` SDK builds and `AppleT7001PMGR.kext` (literal-immediate
+search, raw-byte search, and Info.plist/DT-property-name search all came
+up empty), likely supplied by a per-board PMGR personality source not yet
+located. Full detail in `docs/plans/2026-09-09-j81-touch-spi3.md`'s
 "TOUCH-3, 2026-09-13".
 
 **BAT-4 hardware gate: real result, 2026-09-10.** UART5 (`ttySAC2`) registers

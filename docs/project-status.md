@@ -155,14 +155,18 @@ compared directly against each other today to decide what's next:
   (already cited in the touch plan doc) gave the touch ASIC's own
   bring-up registers directly (`clk32-clock-enable`, FLL multiplier,
   `fw-execute`, calibration addresses) from `AppleMultitouchSPIJ82.kext`'s
-  personality data, plus a real disassembly trace of KLCT's actual PMGR
-  handler (`ApplePMGRFunctionClockGate::callFunction` →
-  `ApplePMGR::_enableDevice`), cross-validated against this project's own
-  captured ADT (PMGR base `0x20e000000` confirmed from two independent
-  sources). Still open: the exact register KLCT's device-index `8` maps
-  to -- mainline's own `t7001-pmgr.dtsi` has no touch entry to compare
-  against, so this needs more disassembly of the same already-fetched
-  binaries, not a new download. See
+  personality data. **KLCT is now fully semantically decoded**: its three
+  ADT words are an 8 µs enable-settle delay, a 100 µs disable-settle
+  delay, and a 32.768 kHz target frequency the real handler
+  (`ApplePMGRFunctionEnableTouchClock`/`ApplePMGR::enableTouchClock`,
+  found after an initial mistrace of the wrong generic class) turns into
+  a divisor of 732 against a fixed 24 MHz reference clock -- not a
+  device-table index as first assumed. PMGR's base address
+  (`0x20e000000`) was cross-validated against this project's own captured
+  ADT. Still open: the one fixed register offset `enableTouchClock`
+  itself operates on -- checked and ruled out in both `ApplePMGR.kext`
+  SDK builds and `AppleT7001PMGR.kext`, likely supplied by a per-board
+  personality source not yet located. See
   `docs/plans/2026-09-09-j81-touch-spi3.md`'s "TOUCH-3, 2026-09-13".
 - **Internal storage (ANS1)**: the chosen focus, and now **done, including
   the hardware gate, 2026-09-13**. Hoolock's `ans1` branch compile-verifies
