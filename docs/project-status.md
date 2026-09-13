@@ -150,11 +150,20 @@ compared directly against each other today to decide what's next:
   than a task. See
   [the dedicated J81 battery research](../research/j81-battery-hdq.md) for
   the exact procedure.
-- **Touch (TOUCH-2)**: blocked, not stalled. Both remaining unknowns
-  (`KLCT`'s clock arguments, `touchscreen-size-x/y`) need a fresh local IPSW
-  extraction of an older iOS build, which needs an explicit go-ahead first
-  (a multi-GB download). No further progress is possible without that
-  decision. See `docs/plans/2026-09-09-j81-touch-spi3.md`.
+- **Touch (TOUCH-2/3)**: substantially advanced, 2026-09-13, no IPSW
+  download needed. A free public repo of unstripped Apple driver kexts
+  (already cited in the touch plan doc) gave the touch ASIC's own
+  bring-up registers directly (`clk32-clock-enable`, FLL multiplier,
+  `fw-execute`, calibration addresses) from `AppleMultitouchSPIJ82.kext`'s
+  personality data, plus a real disassembly trace of KLCT's actual PMGR
+  handler (`ApplePMGRFunctionClockGate::callFunction` →
+  `ApplePMGR::_enableDevice`), cross-validated against this project's own
+  captured ADT (PMGR base `0x20e000000` confirmed from two independent
+  sources). Still open: the exact register KLCT's device-index `8` maps
+  to -- mainline's own `t7001-pmgr.dtsi` has no touch entry to compare
+  against, so this needs more disassembly of the same already-fetched
+  binaries, not a new download. See
+  `docs/plans/2026-09-09-j81-touch-spi3.md`'s "TOUCH-3, 2026-09-13".
 - **Internal storage (ANS1)**: the chosen focus, and now **done, including
   the hardware gate, 2026-09-13**. Hoolock's `ans1` branch compile-verifies
   in isolation, the observation-only safety patch

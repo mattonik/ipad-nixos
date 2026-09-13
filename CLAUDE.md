@@ -307,6 +307,27 @@ routine is the next step before trying again, not another raw byte
 pattern. Full detail in
 `docs/plans/2026-09-08-j81-bluetooth-battery-adt.md`'s "Stage B attempt".
 
+**TOUCH-3, 2026-09-13: touch-ASIC registers found, KLCT partially traced
+-- no IPSW download needed.** A public repo of unstripped Apple driver
+kexts (already cited in `docs/plans/2026-09-09-j81-touch-spi3.md`'s
+references, fetched via a sparse `git clone`, a few MB) gave real,
+concrete touch-controller-internal register addresses straight from
+`AppleMultitouchSPIJ82.kext`'s `Info.plist` (`clk32-clock-enable-addr/-val`,
+`fll-mval-addr/-mval`, `fw-execute-addr`, `cal-dl-addr`, `prox-cal-addr`)
+-- enough to implement most of the touch bring-up sequence. Separately,
+disassembled `ApplePMGRFunctionClockGate::callFunction` (the real KLCT
+handler, in the same repo's `ApplePMGR.kext`) with Xcode's bundled
+`llvm-objdump`, tracing `function-clock_enable` through
+`ApplePMGR::_enableDevice` → `_enableDeviceGated` → `_updateDeviceStatus`,
+and cross-validated the PMGR base address (`0x20e000000`) against this
+project's own captured real ADT -- two independent sources agreeing.
+**Still open**: the exact register KLCT's device-index `8` resolves to --
+mainline's own `t7001-pmgr.dtsi` has no touch/multitouch entry to compare
+against (only `ps_spi0`-`ps_spi3`), so this needs more disassembly of
+already-fetched binaries (a data table lookup, not yet located), not a
+new download. Full detail in `docs/plans/2026-09-09-j81-touch-spi3.md`'s
+"TOUCH-3, 2026-09-13".
+
 **BAT-4 hardware gate: real result, 2026-09-10.** UART5 (`ttySAC2`) registers
 cleanly on hardware, and independent cross-checks (live pinctrl debugfs, the
 real ADT, the decompiled DTB) confirm pinmux, power-domain, IRQ and register
