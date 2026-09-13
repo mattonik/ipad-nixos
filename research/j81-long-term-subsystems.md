@@ -380,6 +380,75 @@ contains `BUG()`/`BUG_ON()` assertions, has timeout recovery disabled, and
 states that an RTKit crash cannot recover without reboot because firmware came
 from the previous boot stage.
 
+### Ecosystem check, 2026-09-13: real, credible upstream work; danger warnings confirmed precisely, not just repeated
+
+Checked both branches' actual current state and read the real diff and
+driver source directly, rather than re-stating the summary above from
+memory.
+
+**Linux `ans1` is unchanged** (`ed8528f`, still 27 commits ahead of our
+pinned base). **m1n1 `ans1` gained one new commit** since this section was
+written: `00fdcd79`, an interactive AKF-mailbox loopback self-test
+(`proxyclient/experiments/akf_int.py`) that exercises the raw mailbox
+IRQ/FIFO hardware over m1n1's own USB proxy protocol. **Not directly usable
+here**: it depends on m1n1 proxy mode enumerating, which this project
+already diagnosed as broken on this exact hardware (`docs/software-only-control.md`,
+four separate attempts, all reaching "Running proxy..." but never
+enumerating). Any ANS bring-up work on J81 will need its own verification
+method, not this script as-is.
+
+**The Linux side is real, credible, board-specific work, not a rough
+experiment.** Author is Nick Chan -- the same person behind the A7-A11
+device tree patches already cited elsewhere in this repo's research, posted
+for review on the real Linux kernel mailing list. It includes a proper
+devicetree binding document (`Documentation/devicetree/bindings/block/apple,s5l8960x-ans.yaml`)
+and clean SoC/board-level DTS wiring that matches this project's own
+established pattern exactly -- a disabled `ans`/`ans_mbox` pair at the
+T7001 SoC level (`t7001.dtsi`, register base `0x208040000`/`0x208041000`,
+mailbox IRQs 36-39), enabled at the board level in **our own board file**,
+`t7001-air2.dtsi`, with an `ans_firmware` reserved-memory placeholder node
+(`reg = <0 0 0 0>`, "filled in by bootloader") that lines up exactly with
+m1n1's `9d53672` ("kboot: Pass ANS1 firmware information to Linux... the
+firmware is already loaded into memory by iBoot").
+
+**The danger warning is confirmed precisely, with the exact lines, not just
+repeated.** Read `drivers/block/asp.c` directly:
+
+- `apple_asp_probe()` unconditionally issues `ASP_CMD_WRITE_UNLOCK` for
+  **every** namespace during probe (line ~816) -- not gated by a module
+  parameter, not opt-in. The driver's own comment two dozen lines later
+  says it plainly: "Enabling writes to certain namespaces is also unsafe as
+  putting the wrong things in some of them could cause persistent
+  controller crashes." Only the LLB namespace is explicitly forced
+  read-only afterward via `set_disk_ro()`; every other namespace -- the
+  user data area included -- is left writable by default the moment probe
+  succeeds. This is exactly why this project's own step 2 below (patch to
+  observation-only *before* first boot) is a real precondition, not
+  caution for its own sake.
+- The three `BUG()` calls are in default-case switch branches on internal
+  enum values (queue type, command classification) -- defensive assertions
+  on "should be unreachable" states, not something normal read-only
+  operation would trip. Still not upstream-quality (real Linux prefers
+  `WARN_ON` plus graceful failure), but a narrower practical risk than the
+  probe-time write-unlock above.
+- `apple_asp_rtkit_crashed()` logs "RTKit crashed; unable to recover
+  without a reboot" and does nothing else (a `// TODO cleanup and remove
+  disk` marks the gap) -- confirms the doc's existing claim exactly, this
+  is not fixed upstream yet either.
+
+**Net assessment: closer to usable than "dangerous WIP" alone conveys, and
+exactly as dangerous as this section already said in the one place that
+matters.** The DTS wiring for our exact board is real, board-specific, and
+looks correct on inspection; disagreeing with "not started" is warranted.
+But the driver's default behavior on real hardware is still to unlock
+writes to genuine iOS user-data-bearing namespaces as a side effect of
+successful probe, with no config-time escape hatch upstream. Pulling this
+branch in and compile-verifying it (matching the TOUCH-1 software-gate
+pattern) is safe and would be real progress; **booting it against real J81
+hardware before implementing this project's own step-2 observation-only
+patch would not be** -- that step is not optional caution, it is required
+because of what was just confirmed directly in the driver source.
+
 ### What is needed
 
 1. Add a separate experimental payload pinned to Linux `ed8528f` and a
