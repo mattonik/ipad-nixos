@@ -599,6 +599,26 @@ same operations, not just plausible-sounding guesses.
 - Write support is not considered ready until power-cut and recovery tests pass
   on data that can be lost.
 
+## WiFi: quick note from the real firmware, 2026-09-13
+
+While the same iPad5,3 iOS 8.1 kernelcache was open for the touch/storage
+work above, a quick check confirmed WiFi is `AppleBCMWLANBusInterfacePCIe`
+-- BCM4350 over PCIe, matching this project's existing ADT-based finding
+(`research/hardware.md`). Its register names
+(`kBCOMPCIeCoreRegIntStatus`, `kBCOMPCIeCoreRegMailboxIntStatus/Mask`,
+`kBCOMPCIeCoreRegHostToDev0Doorbell0`/`DevToHostDoorbell0`, DMA ring
+registers) match mainline Linux's own `brcmfmac` PCIe driver
+(`drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c`) closely
+enough that this looks like Broadcom's own standard SDK architecture,
+not a T7001-specific mystery the way KLCT was for touch. This is a much
+shallower check than the storage/touch work above (a few minutes, not a
+deep dive) -- the real remaining work for WiFi is almost certainly PCIe
+controller bring-up on T7001 itself (getting the bus enumerable at all),
+not protocol reverse-engineering, since `brcmfmac` already exists
+upstream and complete. Not pursued further this session; recorded so a
+future WiFi push knows the firmware/protocol side isn't the open
+question.
+
 ## Dependency-ordered execution plan
 
 1. Keep the permanent battery fix as the measurement baseline for charging and
