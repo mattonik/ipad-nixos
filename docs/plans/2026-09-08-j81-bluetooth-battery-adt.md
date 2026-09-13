@@ -915,6 +915,35 @@ driver code (the same `AppleD2207PMU`/backlight kext lineage already used
 to decode the register map) rather than trying more raw byte patterns
 against real hardware.
 
+#### Offline transport resolution, 2026-09-13: the command was already Apple-correct
+
+The productive static follow-up is complete.  The exact iPad5,3 iOS 8.1
+kernelcache path, cross-checked against unstripped iOS 10.0 and iOS 10.3
+`AppleD2207PMU`, `AppleDialogPMU`, `AppleS5L8940XI2C`, and
+`AppleARMIICDevice`, establishes all of the following:
+
+- D2207 GPIO2 maps to `0x03e6`; function 1 changes its byte to `0x02`.
+- The J81 PMU configuration is a two-byte, big-endian address with zero bank
+  switches.
+- Apple's one-byte GPIO write is exactly one I2C transaction carrying
+  `03 e6 02`, the same bytes used by the Linux attempt.
+- GPIO and LDO operations have no CRC, special write opcode, bank select,
+  commit operation, or unlock sequence.
+
+The one explicit unlock found in this driver family (`0x7000 <- 0x1d`) belongs
+only to a GPU test-mode routine; neither GPIO nor LDO code reaches it.  It is
+evidence that Apple uses an unlock when required, and evidence against trying
+that unrelated sequence here.
+
+The non-persistent live write is consequently not a malformed Linux I2C
+transfer.  The remaining possibilities are a runtime owner/state/lock outside
+the normal PMIC path, or a device/model-state difference unavailable to static
+analysis.  **Do not repeat the write or try alternate PMIC byte patterns.**
+The next safe experiment is passive SDA/SCL logic-analyser capture during an
+iPadOS Bluetooth enable/disable transition, looking for `03 e6 02` and any
+immediately preceding transaction.  The full cross-subsystem record is in
+`docs/plans/2026-09-13-pmic-pcie-execution.md`.
+
 BT completion criteria: cold-boot repeatability, firmware loaded, controller
 address stable, scan works, and three minutes of connect/disconnect activity
 produces no UART overruns or HCI timeouts.

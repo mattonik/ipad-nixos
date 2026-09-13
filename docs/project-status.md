@@ -89,6 +89,18 @@ UART3, but received none; Broadcom baud-rate and reset commands timed out with
 `0x20`, so the radio power state was not changed. Private before/after captures
 and hashes are recorded in the [Bluetooth plan](plans/2026-09-08-j81-bluetooth-battery-adt.md#bt-5-transport-only-attach-result-2026-09-10).
 
+**D2207 write-path resolution, 2026-09-13:** the exact J81 iOS 8.1 driver and
+unstripped iOS 10.0/10.3 cross-checks prove that the attempted Linux write
+`03 e6 02` was already Apple's normal GPIO2 one-byte transaction.  It has a
+two-byte big-endian address, no bank switch, no checksum, no GPIO/LDO unlock,
+and no separate commit step.  The ACK followed by unchanged readback is thus
+a runtime ownership/state/lock issue that static code cannot identify, not an
+invitation to try alternate wire formats.  No further live D2207 write should
+be attempted.  The next safe evidence is a passive I2C logic-analyser capture
+during an iPadOS Bluetooth power transition.  The isolated GPU test-mode
+unlock at `0x7000` is not called by GPIO/LDO code and must not be repurposed.
+See the [execution record](plans/2026-09-13-pmic-pcie-execution.md).
+
 **Touch groundwork, 2026-09-09:** patches `0007`–`0009` port the older Apple
 SPI controller path and describe/enable J81 SPI3 from the real ADT. A pre-build
 review fixed reversed bit-order handling, an `IRQ_NONE` completion path, an IRQ
@@ -2469,11 +2481,11 @@ Never commit Apple firmware, NVRAM, touch calibration or device identifiers.
 | Display | Inherited framebuffer produces a visible shell | Keep simplefb; defer native display/GPU. |
 | Buttons | GPIO driver, config and DT are present | Verify Home, Power and both volume input events on Hoolock. |
 | RTC / backlight | Both hardware-verified over the USB shell | Preserve their current nodes and drivers. |
-| Bluetooth | Real J81 UART3 and manual `hci0` attach are hardware-confirmed; Apple driver and live PMIC reads identify GPIO2 at `0x03e6`, active high, currently low; bounded read-only telnet probe is now available | Capture before/after snapshots with `boot/bt_probe.py`, then—only with the user present—run the reversible `0x00 -> 0x02 -> 0x00` A/B test and use the standard `hci_bcm` serdev child. |
+| Bluetooth | Real J81 UART3 and manual `hci0` attach are hardware-confirmed; GPIO2 at `0x03e6` is low, and static Apple-driver evidence proves the prior ACKed `03 e6 02` command already had the correct wire format | Do not retry a PMIC write. Passively capture I2C traffic during an iPadOS Bluetooth transition, then determine the runtime owner/condition before adding `hci_bcm`. |
 | Battery | **Working across warm and cold reboot** (2026-09-13: cold half confirmed satisfied by the accumulated multi-day record, this project's normal disconnect-to-charger routine being a real cold cycle): BQ27545 identified automatically; stable voltage/current/capacity/temperature/cycle reads after GPIO34 function-1 correction | Compare with iPadOS opportunistically; otherwise done. |
 | Charging | Read-only D2207 status/current registers identified; a J81 power-supply child now reports the verified input and charge limits without a write path; the integrated Hoolock control payload builds with it; live USB input setting is 100 mA while the battery discharges | Boot the child and compare its sysfs values with raw PMIC reads, then reproduce disconnected, data-host and charger cases with a USB meter before considering any write support. |
 | Touch | Reviewed S5L8960X SPI3 and J81 DT patches are staged; the 6 V analog rail and Apple power order are identified | Cross-build TOUCH-1, prove SPI3, then decode the child `reg` and PMGR clock args. |
-| Wi-Fi | BCM4350 brcmfmac PCIe endpoint code exists; wireless config is disabled | Port T7000 PCIe/DART and enumerate port 1 before enabling brcmfmac. |
+| Wi-Fi | BCM4350 is confirmed on J81 PCIe port 1; PCI apertures and DART compatibility are decoded; an inert, compile-only T7000 PCIe skeleton is isolated from all payloads | Cross-build the isolated check, map the twelve controller-window roles, then add disabled DT/DART topology before any link training or brcmfmac enablement. |
 | Audio / GPU / NAND / cameras / Touch ID | No complete A8X stack | Defer beyond the interactive-tablet milestone. |
 
 ### Priority bring-up sequence
@@ -2482,9 +2494,10 @@ Never commit Apple firmware, NVRAM, touch calibration or device identifiers.
    values with raw PMIC reads, then use a USB power meter across disconnected,
    data-host and known charger cases; record D2207 status, VBUS ADCs, input
    code and gauge current before writing any PMIC register.
-2. **Bluetooth power.** Run the exact D2207 GPIO2 A/B test, then add the
-   standard `hci_bcm` serdev child and its power/wake GPIOs if the radio
-   responds. UART3 and manual HCI attachment are already hardware-confirmed.
+2. **Bluetooth power.** Passively capture the D2207 I2C bus during an iPadOS
+   Bluetooth transition. The previously attempted GPIO2 write exactly matches
+   Apple's wire format but did not persist, so no further injected PMIC write
+   is justified until the runtime owner/condition is identified.
 3. **Touch.** Cross-build the staged S5L SPI3 patches, prove the controller,
    then adapt the existing `apple_z2` driver with private local
    firmware/calibration and the identified power sequence.
@@ -2519,10 +2532,10 @@ Never commit Apple firmware, NVRAM, touch calibration or device identifiers.
 | RTC / Backlight (Apple PMIC) | ✅✅ **Hardware-verified, 2026-09-08**: connected over the newly-working USB network link and confirmed both live on real hardware — RTC set the system clock from real PMIC time (`rtc-apple-pmic ... registered as rtc0`); backlight physically dimmed the screen on command, visually confirmed by the user, then restored. |
 | Hoolock payload / RTC / backlight validation | ✅✅ Hardware-verified; buttons remain untested |
 | J81 ADT capture | ✅ Real raw ADT captured privately; UART, battery, touch and Wi-Fi/PCIe resources sanitized and documented |
-| Bluetooth | 🟡 UART3 and `hci0` registration hardware-confirmed; exact active-high D2207 GPIO2 register identified and read low; reversible power A/B test remains |
+| Bluetooth | 🟡 UART3 and `hci0` registration hardware-confirmed; GPIO2 is identified/read low and the attempted write is proven wire-correct but non-persistent; passive I2C capture is the next evidence gate |
 | Battery | ✅ **Working live, 2026-09-10:** BQ27545 identified and stable standard power-supply readings verified after correcting GPIO34 to peripheral function 1; rebuilt-DT reboot reproduction remains |
 | Touch | 🟡 Reviewed SPI3 controller/DTS groundwork is staged; D2207 6 V analog rail and Apple power order identified; cross-build and hardware test remain |
-| Wi‑Fi implementation | ❌ Real J81 resources confirmed; T7000 PCIe/DART host work has not started |
+| Wi‑Fi implementation | 🟡 Real J81 resources, PCI apertures and DART compatibility confirmed; a compile-only, payload-isolated T7000 PCIe skeleton is ready for the next cross-build |
 | Internal storage | 🟡 Hoolock's `ans1` branch (real, board-specific T7001/J81 DTS wiring from a credible contributor) compile-verified in isolation, 2026-09-13; the observation-only safety patch this project's own plan required is now **written and cross-build verified too** (`kernel/patches/0012-ans1-asp-observation-only.patch`, [full writeup](plans/2026-09-13-j81-ans1-observation-only.md)) -- `WRITE_UNLOCK` removed outright, every namespace including user data forced read-only, a central write/flush rejection added, three `BUG()`/`BUG_ON()` calls turned into graceful errors. Still not wired into any boot payload and not tested on hardware -- that first read-only hardware test is a separate, later, explicit decision. See the [long-term subsystem plan](../research/j81-long-term-subsystems.md). |
 | Native GPU / audio / suspend | ❌ Sanitized J81 hardware paths and dependency-ordered implementation gates are documented in the [long-term subsystem plan](../research/j81-long-term-subsystems.md); no driver implementation has started. |
 | Charging control | 🟡 Read-only D2207 status/current register map recovered; the reporting driver is implemented and build-validated, but J81 sysfs and cable A/B behavior remain to be tested. |

@@ -51,6 +51,82 @@ evidenced.
    a disabled-by-default T7000 PCIe-host skeleton.  Their results are recorded
    below when reviewed.
 
+## PCIe compile-only result
+
+The first PCIe change is deliberately an inert kernel-integration checkpoint:
+
+- `kernel/patches/0016-pcie-apple-t7000-compile-only-skeleton.patch` adds
+  `CONFIG_PCIE_APPLE_T7000` and a platform driver for a future
+  `apple,t7000-pcie` node.
+- `kernel/hoolock-pcie-check.nix` and the
+  `hoolock-pcie-check-kernel` flake package make it possible to compile that
+  patch without changing the normal Hoolock kernel or any boot payload.
+- The probe validates exactly twelve firmware register windows and four port
+  interrupts, then returns `-EOPNOTSUPP`.  It does not map registers, enable
+  clocks/power, request GPIOs or interrupts, train a link, configure DART/MSI,
+  or enumerate PCI.  A device-tree node is intentionally absent, so even this
+  driver cannot bind on J81.
+
+The patch dry-runs cleanly against the pinned Hoolock source revision
+`6831bc7`, and `git diff --check` passes.  A full cross-build remains pending
+the offline builder VM.
+
+The real J81 `apcie` ADT data was also normalized for the implementation that
+follows.  Its twelve absolute MMIO windows are:
+
+```
+0x610000000 (16 MiB config aperture)
+0x601004000  0x601001000  0x602004000  0x602001000
+0x603004000  0x603001000  0x604004000  0x604001000
+0x600000000 (8 KiB shared window)
+0x601005000  0x603005000
+```
+
+Its PCI `ranges` property is a 64-bit prefetchable aperture from PCI
+`0x620000000` to CPU `0x620000000`, size `0x1a0000000`, plus a
+non-prefetchable aperture from PCI `0xc0000000` to CPU `0x7c0000000`, size
+`0x40000000`.  These are apertures for endpoint BARs; they do not assign roles
+to the twelve controller windows.  The next PCIe phase is to map those window
+roles and add an equally disabled DT/DART topology before any controller
+register access is written.
+
+## D2207 write-path result
+
+Offline disassembly of the exact iPad5,3 iOS 8.1 kernelcache, independently
+cross-checked against unstripped iOS 10.0 and 10.3 D2207, Dialog PMU, and I2C
+drivers, establishes that the earlier Linux attempt was already Apple's normal
+GPIO transaction:
+
+```text
+I2C address 0x3c, one transaction: 03 e6 02
+```
+
+`AppleD2207PMU` maps GPIO2 to `0x03e6`, reads one byte, changes function bits
+to `0x02`, and writes that one byte.  Its PMU configuration declares a
+two-byte, big-endian register address and zero bank switches.  The Dialog PMU
+transport passes precisely those two address bytes followed by the data byte
+to the Apple I2C controller.  There is no GPIO/LDO checksum, alternate write
+opcode, bank select, commit operation, or unlock sequence omitted by the
+Linux command.
+
+The driver does contain one unrelated GPU test-mode sequence (`0x7000 <-
+0x1d`, GPU test work, then `0x7000 <- 0x00`).  GPIO and LDO code never calls
+it.  This demonstrates that Apple emits an unlock where one is required; using
+that GPU-only sequence for GPIO, touch power, Bluetooth, or charging would be
+unsupported and unsafe.
+
+Therefore the earlier ACK followed by unchanged readback is **not** a framing
+mistake that can be solved by trying more byte patterns.  It must be a runtime
+ownership/state/lock condition outside the normal D2207 GPIO/LDO path, or a
+hardware/model-state difference that the static images cannot distinguish.
+No further live PMIC write is justified at this stage.
+
+The only evidence-producing next experiment is passive: capture SDA/SCL with
+a logic analyser while iPadOS turns Bluetooth on or off, then compare the
+observed bus traffic with `03 e6 02` and any immediately preceding
+transactions.  It introduces no injected PMIC traffic and can establish
+whether a separate controller changes the state in the real device.
+
 ## Acceptance criteria for this pass
 
 - D2207: either identify an evidence-backed write transaction, or document

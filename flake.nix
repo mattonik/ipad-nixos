@@ -218,6 +218,23 @@
             hoolockConfig = patchedHoolockConfig;
           };
 
+          # Compile-only T7000 PCIe host groundwork. The driver patch is inert
+          # and this kernel is not consumed by any payload.
+          patchedHoolockPcieCheckConfig = pkgs.runCommand "ipad-t7001-pcie-check-defconfig-4k" {} ''
+            sed \
+              -e 's/^# CONFIG_ARM64_4K_PAGES is not set$/CONFIG_ARM64_4K_PAGES=y/' \
+              -e 's/^CONFIG_ARM64_16K_PAGES=y$/# CONFIG_ARM64_16K_PAGES is not set/' \
+              -e 's/^CONFIG_DEBUG_INFO=y$/# CONFIG_DEBUG_INFO is not set/' \
+              -e 's/^CONFIG_DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT=y$/# CONFIG_DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT is not set/' \
+              -e 's/^CONFIG_DEBUG_INFO_COMPRESSED_NONE=y$/# CONFIG_DEBUG_INFO_COMPRESSED_NONE is not set/' \
+              ${inputs.hoolockDocs}/config_16k > "$out"
+            echo 'CONFIG_PCIE_APPLE_T7000=y' >> "$out"
+          '';
+          hoolockPcieCheckKernel = pkgsCross.callPackage ./kernel/hoolock-pcie-check.nix {
+            source = inputs.hoolockLinux;
+            pcieConfig = patchedHoolockPcieCheckConfig;
+          };
+
           # research/j81-long-term-subsystems.md's "Internal NAND storage"
           # ecosystem check, 2026-09-13: same 4K-pages/debug-info base fixes
           # as patchedHoolockConfig above (about our hardware/toolchain, not
@@ -314,6 +331,9 @@
         # not yet wired into m1n1-control -- so the working historical
         # control stays the rollback path while this is evaluated.
         hoolock-kernel = hoolockKernel;
+
+        # Inert T7000 PCIe host-driver compile check; no payload uses it.
+        hoolock-pcie-check-kernel = hoolockPcieCheckKernel;
 
         # research/j81-long-term-subsystems.md's ANS1 storage ecosystem
         # check, 2026-09-13: compile-only, not wired into any boot payload.
