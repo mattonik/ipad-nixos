@@ -9,11 +9,90 @@ Base: Hoolock's `ans1` Linux branch, pinned at `ed8528f482a526371e59711645794c91
 `research/j81-long-term-subsystems.md`'s "Internal NAND storage" section and
 `kernel/hoolock-ans1-check.nix`).
 
-**Status: done and cross-build verified, 2026-09-13.** All six items below
-are implemented as `kernel/patches/0012-ans1-asp-observation-only.patch`,
-wired into the isolated `hoolock-ans1-check-kernel` build (still not wired
-into any boot payload), and confirmed to compile with the ASP driver
-genuinely present in the built `System.map`. No hardware has been touched.
+**Status: combined bootable test payload cross-build verified, 2026-09-13.**
+The six-item observation-only hardening below is implemented as
+`kernel/patches/0012-ans1-asp-observation-only.patch` and cross-build
+verified in isolation (`hoolock-ans1-check-kernel`). ANS1 has since been
+reconciled onto this project's own working tree (not ans1's source
+directly) as a **separate, dedicated payload**
+(`packages.x86_64-linux.m1n1-hoolock-ans1-test`, built from
+`kernel/hoolock-ans1-test.nix`) -- deliberately not merged into
+`kernel/hoolock.nix`/`m1n1-hoolock-control`, so ANS1 is only ever exercised
+when this specific test payload is chosen, never as a side effect of
+routine touch/battery work on the default payload. The full combined tree
+(BT-1, BAT-1/2/3, CHG-1, TOUCH-1/2 groundwork, plus the hardened ANS1
+storage driver, all together) now cross-builds successfully. No hardware
+has been touched.
+
+## Combined cross-build result, 2026-09-13
+
+`nix build .#packages.x86_64-linux.m1n1-hoolock-ans1-test` succeeds and
+produces a complete payload (`Pongo.bin`, `m1n1.bin`, `Image.gz`,
+`t7001-j81.dtb`, `initramfs.gz`, `m1n1-linux.bin`, `SHA256SUMS`), same
+structure as `m1n1-hoolock-control`. Verified, not assumed:
+
+- `apple_asp_probe`, `apple_asp_start_disk`, and `apple_asp_of_match` are
+  present in the built kernel's `System.map` (exposed for direct
+  inspection as the new `packages.x86_64-linux.hoolock-ans1-test-kernel`
+  output) -- the ANS1 driver is genuinely compiled in. The smaller static
+  helpers the hardening patch touches (`asp_setup_cmd`, `asp_setup_rw`,
+  `apple_asp_submit_cmd`) don't appear as separate symbols because GCC
+  inlines them at `-O2`; this is expected for small single-caller static
+  functions, not a sign they were dropped.
+- The rest of the payload is intact in the same build: `bq27xxx_battery_*`
+  (battery/HDQ) and `apple_z2_probe`/`apple_s5l_spi_irq` (touch/SPI3) are
+  all still present in `System.map`, and the DTB carries both
+  `t7001-j81.dtb` device nodes as before.
+- The default `m1n1-hoolock-control` payload was rebuilt from the same
+  `flake.nix` afterward and its `m1n1-linux.bin` SHA-256
+  (`2acd7c1719b3425f47cc77a1db9c663351f6896005ac3540aede1d331c9f2345`)
+  matches the value recorded before any of this session's ANS1 work --
+  byte-for-byte unaffected, confirming the isolated-payload approach
+  actually holds in practice, not just by inspection of the Nix
+  expressions.
+
+**Build bug hit and fixed**: the first two build attempts failed
+reproducibly with `Permission denied` trying to write to
+`patchedHoolockAns1TestConfig`'s own output path. Root cause:
+that derivation used `cp ${patchedHoolockConfig} "$out"` to seed the
+config from an existing Nix store path, and plain `cp` preserves the
+source's permission bits -- Nix store paths are read-only
+(`-r--r--r--`), so `$out` came out read-only and the following
+`echo ... >> "$out"` line failed. Fixed by using
+`cat ${patchedHoolockConfig} > "$out"` instead: shell redirection always
+opens/creates the destination fresh (subject to umask, not the source's
+mode), so the file is writable for the following line. Not a problem with
+the patches or the kernel tree at all -- purely a Nix plumbing detail in
+how this one config derivation was assembled.
+
+## Reconciling ans1 onto this project's own tree
+
+`ans1` is 27 commits ahead of this project's pinned `hoolockLinux` base and
+touches 19 files. Rather than build it as isolated source (as
+`kernel/hoolock-ans1-check.nix` does for the compile-only check), getting a
+*bootable* payload means merging those changes onto this project's own
+already-patched tree. Verified this empirically before writing anything,
+using a real local clone and the actual `patch` tool, not assumed:
+
+- **17 of 19 files apply cleanly with zero conflicts** on top of this
+  project's full existing patch stack (0001-0011) -- the new driver
+  (`drivers/block/asp.c`), the shared RTKit/AKF-mailbox/macsmc framework
+  changes it needs, the new devicetree binding doc, and unrelated SoC/board
+  dtsi files this project doesn't otherwise touch. Written as
+  `kernel/patches/0015-ans1-storage-driver-and-core-support.patch`.
+- **Only `t7001.dtsi` and `t7001-air2.dtsi` needed reconciliation**, and
+  only one line was a genuine conflict: both `ans1` and this project's own
+  `0001` patch add an entry to the same short SoC-level `aliases` block.
+  Not a semantic conflict -- two community patches happened to touch the
+  same short list -- resolved by hand and re-verified by re-running the
+  full 15-patch stack from a clean checkout with zero rejects anywhere.
+  Written as `kernel/patches/0013-t7001-add-ans1-node.patch` (SoC-level,
+  disabled -- same pattern as this project's own UART3/UART5/SPI3 patches)
+  and `0014-t7001-air2-enable-ans1.patch` (board-level enable).
+- Applied in the order 0001-0011, 0013, 0014, 0015, then 0012 (the
+  hardening, last, so it patches the driver 0015 just introduced) --
+  `kernel/hoolock-ans1-test.nix` mirrors `kernel/hoolock.nix` exactly for
+  the first eleven, differing only in adding the last four.
 
 ## What this is for, in plain terms
 
@@ -74,11 +153,12 @@ Status column updated as each lands.
 
 ## What this explicitly does not include
 
-- No hardware test of any kind. This is compiled, not booted.
-- No change to whether ANS1 is wired into any actual boot payload --
-  it remains its own isolated check (`kernel/hoolock-ans1-check.nix`,
-  `packages.x86_64-linux.hoolock-ans1-check-kernel`), sharing nothing with
-  `m1n1-hoolock-control`.
+- No hardware test of any kind. This is compiled and cross-build verified,
+  not booted.
+- No change to whether ANS1 is wired into any actual *default* boot
+  payload -- `m1n1-hoolock-control`/`kernel/hoolock.nix` are untouched;
+  ANS1 only exists in the dedicated `m1n1-hoolock-ans1-test` payload,
+  confirmed not to affect the default payload's build output at all.
 - No decision yet about when/whether to attempt the first real read-only
   hardware test. That is a separate, later, explicit decision -- not
   something this patch being ready implies permission for.

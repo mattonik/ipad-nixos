@@ -157,13 +157,30 @@ compared directly against each other today to decide what's next:
   decision. See `docs/plans/2026-09-09-j81-touch-spi3.md`.
 - **Internal storage (ANS1)**: the chosen focus, and now **done up to the
   hardware gate**. Hoolock's `ans1` branch compile-verifies in isolation
-  (2026-09-13), and the observation-only safety patch is now written and
-  cross-build verified too (`kernel/patches/0012-ans1-asp-observation-only.patch`,
-  [full writeup](plans/2026-09-13-j81-ans1-observation-only.md)). The next
-  step -- a real read-only hardware test -- is a separate, later, explicit
-  decision, not implied by this being ready. See
+  (2026-09-13), and the observation-only safety patch is written and
+  cross-build verified (`kernel/patches/0012-ans1-asp-observation-only.patch`).
+  ANS1 has since been reconciled onto this project's own tree (17/19 files
+  clean, one trivial `aliases` block conflict resolved by hand) and a full
+  combined bootable test payload,
+  `packages.x86_64-linux.m1n1-hoolock-ans1-test`
+  (`kernel/hoolock-ans1-test.nix`), cross-builds successfully as of
+  2026-09-13 -- everything `m1n1-hoolock-control` has (BT-1, BAT-1/2/3,
+  CHG-1, TOUCH-1/2 groundwork) plus the hardened ANS1 driver, all together.
+  `apple_asp_probe`/`apple_asp_start_disk`/`apple_asp_of_match` are
+  confirmed in the built `System.map`, and the default
+  `m1n1-hoolock-control` payload's `m1n1-linux.bin` SHA-256 was re-verified
+  byte-identical (`2acd7c17...`) to before this work, so ANS1 remains fully
+  isolated from routine touch/battery use. One real build bug was hit and
+  fixed along the way: `patchedHoolockAns1TestConfig` used `cp` to copy an
+  existing Nix store config, which silently inherited the store's read-only
+  permission bits and made the very next line's config append fail with
+  "Permission denied" -- fixed by using `cat ... > "$out"` instead, which
+  always produces a fresh writable file. The next step -- a real read-only
+  hardware test -- is a separate, later, explicit decision, not implied by
+  this being ready. See
   [the long-term subsystem plan](../research/j81-long-term-subsystems.md)'s
-  "Internal NAND storage" section.
+  "Internal NAND storage" section and
+  [the full ANS1 writeup](plans/2026-09-13-j81-ans1-observation-only.md).
 - Bluetooth's GPIO2 A/B test and native graphics remain queued, unchanged
   from before -- see the [updated bring-up plan](plans/2026-09-08-ipad-air2-driver-bringup.md#priority-review-touch-wi-fi-and-graphics).
 

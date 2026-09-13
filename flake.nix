@@ -242,6 +242,22 @@
             ansConfig = patchedAns1Config;
           };
 
+          # docs/plans/2026-09-13-j81-ans1-observation-only.md's combined,
+          # bootable test kernel: everything patchedHoolockConfig already
+          # has, plus CONFIG_APPLE_ASP for the (observation-only-hardened)
+          # ANS1 storage driver kernel/hoolock-ans1-test.nix adds. Built
+          # from patchedHoolockConfig's own output rather than duplicating
+          # its sed chain, so it can never drift from the real payload's
+          # base config.
+          patchedHoolockAns1TestConfig = pkgs.runCommand "ipad-t7001-hoolock-ans1-test-defconfig-4k" {} ''
+            cat ${patchedHoolockConfig} > "$out"
+            echo 'CONFIG_APPLE_ASP=y' >> "$out"
+          '';
+          hoolockAns1TestKernel = pkgsCross.callPackage ./kernel/hoolock-ans1-test.nix {
+            source = inputs.hoolockLinux;
+            hoolockConfig = patchedHoolockAns1TestConfig;
+          };
+
           # BT-1 (docs/plans/2026-09-08-j81-bluetooth-battery-adt.md):
           # The transport-only UART3 DT patch deliberately has no Bluetooth
           # child. This userspace tool attaches the raw HCI UART independently;
@@ -302,6 +318,11 @@
         # research/j81-long-term-subsystems.md's ANS1 storage ecosystem
         # check, 2026-09-13: compile-only, not wired into any boot payload.
         hoolock-ans1-check-kernel = hoolockAns1CheckKernel;
+
+        # Kernel backing the combined m1n1-hoolock-ans1-test payload below;
+        # exposed on its own so System.map/dtbs can be inspected directly
+        # without pulling apart the assembled payload archive.
+        hoolock-ans1-test-kernel = hoolockAns1TestKernel;
 
         # Kernel, the published multi-device DTB pack, and debug initramfs in
         # the exact file layout consumed by the historical PongoOS loader.
@@ -532,6 +553,60 @@
           # framebuffer node also carries a power-domains reference
           # (unlike the historical kernel's DTB, which had none at all),
           # so the same risk plausibly applies here too.
+          printf '%s\n' 'chosen.bootargs=console=tty0 loglevel=8 ignore_loglevel rdinit=/init PMOS_NO_OUTPUT_REDIRECT pd_ignore_unused clk_ignore_unused' \
+            > "$out/bootargs"
+          cat "$out/m1n1.bin" "$out/bootargs" "$out/t7001-j81.dtb" \
+            "$out/Image.gz" "$out/initramfs.gz" > "$out/m1n1-linux.bin"
+          sha256sum "$out/Pongo.bin" "$out/m1n1.bin" "$out/m1n1-linux.bin" \
+            > "$out/SHA256SUMS"
+        '';
+
+        # docs/plans/2026-09-13-j81-ans1-observation-only.md's dedicated
+        # ANS1 test payload -- identical to m1n1-hoolock-control above in
+        # every respect except the kernel (hoolockAns1TestKernel instead of
+        # hoolockKernel), so ANS1 storage is exercised only when this
+        # payload is deliberately chosen, never as a side effect of routine
+        # touch/battery testing on the default payload. Duplicated rather
+        # than parameterized to avoid any risk of changing
+        # m1n1-hoolock-control's own already-hardware-proven behavior.
+        m1n1-hoolock-ans1-test = pkgs.runCommand "ipad-air2-m1n1-hoolock-ans1-test" {
+          nativeBuildInputs = [ pkgs.gzip pkgs.dtc pkgs.cpio ];
+        } ''
+          mkdir -p "$out"
+          cp ${inputs.hoolockDocs}/binaries/Pongo.bin "$out/Pongo.bin"
+          cp ${inputs.hoolockM1n1}/m1n1.bin "$out/m1n1.bin"
+          gzip -n -c ${hoolockAns1TestKernel}/Image > "$out/Image.gz"
+
+          dtc -I dtb -O dts ${hoolockAns1TestKernel}/dtbs/apple/t7001-j81.dtb \
+            | sed -e '/^\tchosen {$/,/^\t};$/ s/framebuffer@0 {/framebuffer {/' \
+            | dtc -I dts -O dtb -p 0x10000 -o "$out/t7001-j81.dtb"
+
+          gzip -dc ${inputs.linuxAppleResources}/debug_initrd.img > initramfs.cpio
+          mkdir -p original-etc overlay/etc overlay/usr/bin
+          (cd original-etc && cpio -id --no-absolute-filenames etc/deviceinfo < ../initramfs.cpio)
+          cp original-etc/etc/deviceinfo overlay/etc/deviceinfo
+          printf '\ndeviceinfo_usb_rndis_function="ecm.usb0"\n' >> overlay/etc/deviceinfo
+          touch -d @1 overlay/etc/deviceinfo
+
+          cp ${btattachPkg}/bin/btattach overlay/usr/bin/btattach
+          chmod 755 overlay/usr/bin/btattach
+          touch -d @1 overlay/usr/bin/btattach
+
+          for f in ${i2cToolsPkg}/bin/*; do
+            cp "$f" "overlay/usr/bin/$(basename "$f")"
+            chmod 755 "overlay/usr/bin/$(basename "$f")"
+            touch -d @1 "overlay/usr/bin/$(basename "$f")"
+          done
+
+          (cd overlay
+           { printf '%s\0' "etc/deviceinfo" "usr/bin/btattach"
+             for f in ${i2cToolsPkg}/bin/*; do
+               printf 'usr/bin/%s\0' "$(basename "$f")"
+             done
+           } | cpio --null -o -H newc --owner=0:0 --reproducible
+          ) >> initramfs.cpio
+          gzip -n -c initramfs.cpio > "$out/initramfs.gz"
+
           printf '%s\n' 'chosen.bootargs=console=tty0 loglevel=8 ignore_loglevel rdinit=/init PMOS_NO_OUTPUT_REDIRECT pd_ignore_unused clk_ignore_unused' \
             > "$out/bootargs"
           cat "$out/m1n1.bin" "$out/bootargs" "$out/t7001-j81.dtb" \
