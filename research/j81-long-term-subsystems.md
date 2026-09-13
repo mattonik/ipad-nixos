@@ -615,9 +615,17 @@ shallower check than the storage/touch work above (a few minutes, not a
 deep dive) -- the real remaining work for WiFi is almost certainly PCIe
 controller bring-up on T7001 itself (getting the bus enumerable at all),
 not protocol reverse-engineering, since `brcmfmac` already exists
-upstream and complete. Not pursued further this session; recorded so a
-future WiFi push knows the firmware/protocol side isn't the open
-question.
+upstream and complete. Not pursued further at the time this note was
+written; recorded so a future WiFi push knows the firmware/protocol side
+isn't the open question.
+
+**Picked up the same day, 2026-09-13**: this became the actual next
+focus (touch has no UI to exercise yet; WiFi is independently useful).
+Full PCIe host-controller evidence -- register windows, GPIOs, DART,
+real tunables, all cross-validated against this project's own prior J82
+predictions -- plus reference-driver research and a concrete, staged,
+no-hardware-needed implementation plan are in
+[`docs/plans/2026-09-13-j81-wifi-pcie.md`](../docs/plans/2026-09-13-j81-wifi-pcie.md).
 
 ## Dependency-ordered execution plan
 

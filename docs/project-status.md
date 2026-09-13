@@ -236,6 +236,20 @@ compared directly against each other today to decide what's next:
   Not yet traced to a working write sequence (same symbol-free-binary
   limitation as the touch-clock dig) -- recorded as a concrete starting
   point for next time, not a dead end.
+- **WiFi (PCIe): evidence-gathering phase complete, 2026-09-13, no code
+  written yet.** Picked as the next focus over continuing touch work
+  (touch has no UI to exercise yet; WiFi is independently useful).
+  Captured and decoded the real J81 ADT's `apcie` PCIe host controller
+  node in full -- register windows, GPIOs, DART, real PHY tunables, IRQ
+  numbers -- all of which cross-validate exactly against this project's
+  own earlier J82-derived predictions (wake/CLKREQ/PERST GPIOs
+  165/174/179, 2.5 GT/s link speed, DART IRQ216). Confirmed mainline
+  Linux's own Apple PCIe driver is the wrong SoC generation (M1-only)
+  and pulled the actual structurally-relevant reference
+  (Corellium's `pcie-hx.c`, for the related older "H9P" Apple PCIe
+  family). A concrete, staged, no-hardware-needed implementation plan is
+  written up. See
+  [the WiFi/PCIe plan](plans/2026-09-13-j81-wifi-pcie.md).
   Native graphics remains queued, unchanged -- see the
   [updated bring-up plan](plans/2026-09-08-ipad-air2-driver-bringup.md#priority-review-touch-wi-fi-and-graphics).
 

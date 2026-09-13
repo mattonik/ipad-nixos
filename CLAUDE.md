@@ -411,6 +411,18 @@ investigation, not a continuation of this one. **Not pursuing further
 today.** Full detail in `docs/plans/2026-09-09-j81-touch-spi3.md`'s
 "TOUCH-3, 2026-09-13 (fourth pass)".
 
+**WiFi (PCIe): evidence-gathering phase complete, 2026-09-13, no code
+yet.** Picked as the next focus over touch (no UI to exercise touch
+input with yet; WiFi is independently useful). Decoded the real J81
+ADT's `apcie` PCIe host controller node in full -- register windows,
+GPIOs, DART, real PHY tunables, IRQ numbers -- cross-validated exactly
+against this project's own earlier J82-derived predictions
+(wake/CLKREQ/PERST GPIOs 165/174/179, 2.5 GT/s link speed, DART IRQ216).
+Confirmed mainline's own Apple PCIe driver is the wrong SoC generation
+(M1-only) and pulled the real structural reference (Corellium's
+`pcie-hx.c`, H9P-family). Concrete staged plan, no hardware needed for
+any of it, in `docs/plans/2026-09-13-j81-wifi-pcie.md`.
+
 **BAT-4 hardware gate: real result, 2026-09-10.** UART5 (`ttySAC2`) registers
 cleanly on hardware, and independent cross-checks (live pinctrl debugfs, the
 real ADT, the decompiled DTB) confirm pinmux, power-domain, IRQ and register

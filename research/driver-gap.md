@@ -141,6 +141,16 @@ tunables cannot be reused on A8X. Add the DART and only port 1, prove stable
 PCI config-space enumeration, then enable brcmfmac and supply locally extracted
 `brcmfmac4350-pcie` firmware/NVRAM.
 
+**2026-09-13: every prediction above confirmed against the real J81 ADT,
+`pcie-apple.c` ruled out precisely (M1-only, `apcie,t7000` not in its
+`of_device_id` table), full register-window and resource evidence
+captured.** Wake/CLKREQ/PERST GPIOs (165/174/179) and 2.5 GT/s link
+speed all match this section's own J82-derived numbers exactly, now from
+this project's own real captured hardware. Full decode, reference-driver
+findings, and a concrete staged implementation plan (no hardware needed
+for any of it) are in
+[`docs/plans/2026-09-13-j81-wifi-pcie.md`](../docs/plans/2026-09-13-j81-wifi-pcie.md).
+
 ## Implementation order
 
 1. Boot and measure the existing Hoolock ECM payload.
