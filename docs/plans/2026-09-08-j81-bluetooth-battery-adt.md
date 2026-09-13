@@ -866,6 +866,55 @@ Not a blocker on doing this work -- a record of why it needs its own
 explicit go-ahead and a deliberate process, rather than being treated as
 a natural continuation of the read-only work above it.
 
+#### Stage B attempt, 2026-09-13: write had no effect, no harm done, stopped there
+
+Ran the exact 7-step process above, with the user present and this
+document's own bounded test procedure, using `m1n1-hoolock-ans1-test`
+(happens to carry the same UART3/BT-1 and PMU support as
+`m1n1-hoolock-control`; unrelated to its ANS1 payload).
+
+1. **Fresh baseline, re-confirmed live rather than trusting the
+   2026-09-08 dump**: `0x03e0`-`0x03ef` read all-zero (so `0x03e6 = 0x00`)
+   and `0x0060`-`0x0067` read `0f 03 42 20 7e 00 00 00` (so
+   `0x0063 = 0x20`, GPIO2's bit -- mask `0x04` -- clear). Exact match to
+   the prior record; `/sys/class/bluetooth` empty, `/dev/ttySAC1` present.
+2. **Read-modify-write**: current byte `0x00`, target byte `0x00 | 0x02 =
+   0x02`. Wrote it with
+   `i2ctransfer -f -y 0 w3@0x3c 0x03 0xe6 0x02` -- exit code `0`, no I2C
+   bus error, nothing new in dmesg at all.
+3. **Immediate readback**: `0x03e6` still `0x00`, `0x0063` still `0x20`
+   (GPIO2 bit still clear). The write did **not** take effect, despite
+   the transaction itself completing cleanly on the bus.
+4. **Delayed re-check** (a full console round-trip later, well past any
+   plausible race): still `0x00` / `0x20`. Not a timing artifact.
+
+**Stopped here, per the plan's own "one candidate at a time, don't push
+past an unexpected result" rule** -- did not proceed to `btattach` (the
+required precondition, GPIO2 data bit going high, never held), and did
+not try alternate write patterns or byte values in the same session, since
+that would be exactly the "sweep" this process was written to avoid.
+
+**No harm done**: the register never actually changed from its recorded
+baseline at any point (confirmed immediately and again after a delay), so
+there was nothing to revert, and no dmesg error, PMIC fault indication,
+or instability of any kind appeared anywhere in this or later checks.
+
+**What this actually shows**: a plain 2-byte-address-plus-1-data-byte
+I2C write -- the same shape that reads this exact chip perfectly -- is
+not sufficient to change `arabela-pmic`'s stored GPIO2 configuration.
+Either this chip needs something read-back-and-writes don't share (an
+additional protocol element such as a checksum/CRC trailer, a different
+opcode for writes than reads, or a lock/unlock sequence), or the kernel's
+own `arabela-pmic` MFD driver (bound to this exact address, confirmed via
+`/sys/bus/i2c/devices/0-003c/modalias` = `apple,arabela-pmic`) is
+authoritative over this register in some way a raw `i2c-dev` write from
+userspace doesn't route around. This is genuinely unknown, not yet worth
+guessing at -- the productive next step, before any further live
+attempt, is finding a real write path in the disassembled Apple PMIC/GPIO
+driver code (the same `AppleD2207PMU`/backlight kext lineage already used
+to decode the register map) rather than trying more raw byte patterns
+against real hardware.
+
 BT completion criteria: cold-boot repeatability, firmware loaded, controller
 address stable, scan works, and three minutes of connect/disconnect activity
 produces no UART overruns or HCI timeouts.

@@ -180,8 +180,19 @@ compared directly against each other today to decide what's next:
   [the long-term subsystem plan](../research/j81-long-term-subsystems.md)'s
   "Internal NAND storage" section. Making the storage actually usable
   (filesystem, write support) is future work, not implied by this result.
-- Bluetooth's GPIO2 A/B test and native graphics remain queued, unchanged
-  from before -- see the [updated bring-up plan](plans/2026-09-08-ipad-air2-driver-bringup.md#priority-review-touch-wi-fi-and-graphics).
+- **Bluetooth GPIO2 A/B test: attempted, 2026-09-13, no harm done, write
+  didn't take effect.** Followed the plan's own bounded 7-step process:
+  fresh baseline matched the 2026-09-08 record exactly (`0x03e6=0x00`,
+  `0x0063=0x20`, GPIO2 low), the read-modify-write to `0x02` completed
+  with no I2C bus error, but the immediate and delayed readback both
+  still showed the original values -- the write never actually landed,
+  so nothing was reverted because nothing changed. Stopped there rather
+  than trying alternate write patterns (a real "sweep" this project's
+  own process rules out). The chip likely needs a write path this raw
+  `i2c-dev` byte write doesn't provide; see
+  [the BT plan's "Stage B attempt" section](plans/2026-09-08-j81-bluetooth-battery-adt.md#stage-b-attempt-2026-09-13-write-had-no-effect-no-harm-done-stopped-there).
+  Native graphics remains queued, unchanged -- see the
+  [updated bring-up plan](plans/2026-09-08-ipad-air2-driver-bringup.md#priority-review-touch-wi-fi-and-graphics).
 
 **USB follow-up, Round 8 (hardware-tested):** the display diagnostic ran on
 real hardware and found the fault is asymmetric, not total. The iPad's

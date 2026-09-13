@@ -293,6 +293,20 @@ fresh writable file. Making the storage actually usable (filesystem,
 writes) is future work, not implied by this result. Full detail in
 `docs/plans/2026-09-13-j81-ans1-observation-only.md`.
 
+**Bluetooth GPIO2 write attempted, 2026-09-13: safe, no effect.** Followed
+the plan's own pre-committed 7-step process for the first live PMU
+register write: fresh baseline matched the 2026-09-08 record exactly
+(`0x03e6=0x00`, `0x0063=0x20`, GPIO2 low), the read-modify-write to `0x02`
+via `i2ctransfer` completed with no I2C bus error, but neither an
+immediate nor a delayed readback showed any change -- the write never
+actually landed, so there was nothing to revert. No dmesg error, no
+instability, no harm. This chip's actual write path is evidently not a
+plain 2-byte-address-plus-1-data-byte transaction (the same shape that
+reads it fine); real research into the disassembled PMIC driver's write
+routine is the next step before trying again, not another raw byte
+pattern. Full detail in
+`docs/plans/2026-09-08-j81-bluetooth-battery-adt.md`'s "Stage B attempt".
+
 **BAT-4 hardware gate: real result, 2026-09-10.** UART5 (`ttySAC2`) registers
 cleanly on hardware, and independent cross-checks (live pinctrl debugfs, the
 real ADT, the decompiled DTB) confirm pinmux, power-domain, IRQ and register
