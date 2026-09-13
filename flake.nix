@@ -34,6 +34,21 @@
       url = "github:HoolockLinux/linux/6831bc701a6ce059e71e5aaa9488c9195bea6927";
       flake = false;
     };
+    # Separate, isolated pin for research/j81-long-term-subsystems.md's
+    # internal-storage check: Hoolock's own `ans1` branch (ANS1/ASP storage
+    # controller support), 27 commits ahead of the hoolockLinux pin above.
+    # Deliberately its own input rather than a rebase of hoolockLinux, so
+    # this compile-only check can never disturb the known-good battery/
+    # touch payload -- see kernel/hoolock-ans1-check.nix, which builds this
+    # source with none of this project's own patches applied (a direct
+    # "does Hoolock's own community code compile under our toolchain"
+    # question, not "do our patches also apply on top of a divergent
+    # tree", which is a different, later question). Not wired into
+    # m1n1-hoolock-control at all.
+    hoolockLinuxAns1 = {
+      url = "github:HoolockLinux/linux/ed8528f482a526371e59711645794c91fafb2b42";
+      flake = false;
+    };
     # Fetched as a proper flake input (resolved on the Mac, which has real
     # internet access) rather than via pkgs.fetchzip inside the package body
     # -- that fetch used to run on the offline cross-compilation builder,
@@ -203,6 +218,30 @@
             hoolockConfig = patchedHoolockConfig;
           };
 
+          # research/j81-long-term-subsystems.md's "Internal NAND storage"
+          # ecosystem check, 2026-09-13: same 4K-pages/debug-info base fixes
+          # as patchedHoolockConfig above (about our hardware/toolchain, not
+          # about our own drivers), but none of our own driver symbols --
+          # this config is for ans1's unpatched source tree, which doesn't
+          # have them. CONFIG_APPLE_ASP is ans1's own new symbol for the
+          # ANS1 storage driver; its real dependencies (APPLE_RTKIT,
+          # ARCH_APPLE) are already =y in the base config -- checked, not
+          # assumed.
+          patchedAns1Config = pkgs.runCommand "ipad-t7001-ans1-check-defconfig-4k" {} ''
+            sed \
+              -e 's/^# CONFIG_ARM64_4K_PAGES is not set$/CONFIG_ARM64_4K_PAGES=y/' \
+              -e 's/^CONFIG_ARM64_16K_PAGES=y$/# CONFIG_ARM64_16K_PAGES is not set/' \
+              -e 's/^CONFIG_DEBUG_INFO=y$/# CONFIG_DEBUG_INFO is not set/' \
+              -e 's/^CONFIG_DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT=y$/# CONFIG_DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT is not set/' \
+              -e 's/^CONFIG_DEBUG_INFO_COMPRESSED_NONE=y$/# CONFIG_DEBUG_INFO_COMPRESSED_NONE is not set/' \
+              ${inputs.hoolockDocs}/config_16k > "$out"
+            echo 'CONFIG_APPLE_ASP=y' >> "$out"
+          '';
+          hoolockAns1CheckKernel = pkgsCross.callPackage ./kernel/hoolock-ans1-check.nix {
+            source = inputs.hoolockLinuxAns1;
+            ansConfig = patchedAns1Config;
+          };
+
           # BT-1 (docs/plans/2026-09-08-j81-bluetooth-battery-adt.md):
           # The transport-only UART3 DT patch deliberately has no Bluetooth
           # child. This userspace tool attaches the raw HCI UART independently;
@@ -259,6 +298,10 @@
         # not yet wired into m1n1-control -- so the working historical
         # control stays the rollback path while this is evaluated.
         hoolock-kernel = hoolockKernel;
+
+        # research/j81-long-term-subsystems.md's ANS1 storage ecosystem
+        # check, 2026-09-13: compile-only, not wired into any boot payload.
+        hoolock-ans1-check-kernel = hoolockAns1CheckKernel;
 
         # Kernel, the published multi-device DTB pack, and debug initramfs in
         # the exact file layout consumed by the historical PongoOS loader.

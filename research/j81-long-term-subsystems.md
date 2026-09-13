@@ -449,6 +449,40 @@ hardware before implementing this project's own step-2 observation-only
 patch would not be** -- that step is not optional caution, it is required
 because of what was just confirmed directly in the driver source.
 
+### Compile-only check: passed, 2026-09-13
+
+Built Hoolock's `ans1` branch (`ed8528f`, pinned as its own separate flake
+input, `hoolockLinuxAns1`) completely isolated from this project's own
+patch stack -- a new `kernel/hoolock-ans1-check.nix` and
+`packages.x86_64-linux.hoolock-ans1-check-kernel` output, sharing nothing
+with `kernel/hoolock.nix`/`m1n1-hoolock-control` beyond the cross-toolchain
+itself. Deliberately answers "does Hoolock's own ANS1 work compile under
+our toolchain", not "do our other patches also apply on top of a divergent
+tree" -- a different, later question.
+
+Hit one build failure first, unrelated to ANS1: the same pre-existing
+`apple_pmic_bl.c` `-Werror=return-type` gap `kernel/hoolock.nix` already
+fixes (a switch over `enum apple_pmic_type` with no default case -- this
+project's GCC cross-toolchain can't prove every path returns; Hoolock's own
+recommended Clang apparently doesn't flag it). Applied the identical,
+already-proven fix. After that, compiled clean:
+
+- `apple_asp_probe`, `apple_asp_start_disk`, `apple_asp_queue_rq`,
+  `apple_asp_rtkit_crashed`, `apple_asp_of_match`, `apple_asp_rtkit_ops`,
+  `apple_asp_driver_init` all present in the built `System.map` -- the ASP
+  driver genuinely compiled in, not stubbed out.
+- The built DTB carries `block@208040000`, `compatible = "apple,t7001-ans",
+  "apple,s5l8960x-ans"`, `status = "okay"`, with `mboxes`/`power-domains`/
+  `resets`/`memory-region` all resolving to real phandles -- the T7001/J81
+  board wiring reviewed above is genuinely present in a real build output,
+  not just in the diff.
+
+**This changes nothing about the safety conclusion above.** A clean compile
+says the code is syntactically and structurally sound for this toolchain;
+it says nothing about `apple_asp_probe()`'s unconditional `WRITE_UNLOCK`
+call, which only matters once code actually runs against real silicon. This
+kernel is not wired into any boot payload and was not tested on hardware.
+
 ### What is needed
 
 1. Add a separate experimental payload pinned to Linux `ed8528f` and a
