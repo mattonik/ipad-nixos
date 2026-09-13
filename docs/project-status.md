@@ -133,15 +133,31 @@ extraction of an older iOS build is the real next step. The
 off. ADT phandle `0x1a` is confirmed as PMGR, and Apple's power order is now
 documented in the [focused touch plan](plans/2026-09-09-j81-touch-spi3.md).
 
-**Next-subsystem priority:** after the permanent battery reboot gate, run the
-now-exact Bluetooth GPIO2 A/B test because it is one register and uses the
-already-working UART3/`btattach` path. Then cross-build and prove SPI3 before
-adding touch. The real J81 ADT confirms the touch controller and GPIO resources,
-Linux already has the Z2 protocol/input driver, and Hoolock has a focused
-old-SPI experiment. Keep native graphics deferred; simplefb works while the
-A8X display pipe, GPU platform integration and GXA6850 support remain
-unavailable. See the
-[updated bring-up plan](plans/2026-09-08-ipad-air2-driver-bringup.md#priority-review-touch-wi-fi-and-graphics).
+**Next-subsystem priority, revisited 2026-09-13:** the original order above
+(BT GPIO2, then SPI3/touch) has been overtaken by events -- SPI3/TOUCH-1 is
+now hardware-confirmed complete, and touch, battery, and storage were
+compared directly against each other today to decide what's next:
+
+- **Battery**: functionally done. Only the "cold tethered boot" half of
+  BAT-4's own acceptance gate (`research/j81-battery-hdq.md`) remains --
+  a single small verification, not new work. See
+  [the dedicated J81 battery research](../research/j81-battery-hdq.md) for
+  the exact procedure.
+- **Touch (TOUCH-2)**: blocked, not stalled. Both remaining unknowns
+  (`KLCT`'s clock arguments, `touchscreen-size-x/y`) need a fresh local IPSW
+  extraction of an older iOS build, which needs an explicit go-ahead first
+  (a multi-GB download). No further progress is possible without that
+  decision. See `docs/plans/2026-09-09-j81-touch-spi3.md`.
+- **Internal storage (ANS1)**: the chosen next focus. Unlike touch, nothing
+  blocks it -- Hoolock's `ans1` branch already compile-verifies in
+  isolation (2026-09-13), and the next step (writing the observation-only
+  safety patch: remove `WRITE_UNLOCK`, force every namespace read-only,
+  replace fatal asserts with graceful errors) is pure software work needing
+  no download and no hardware. See
+  [the long-term subsystem plan](../research/j81-long-term-subsystems.md)'s
+  "Internal NAND storage" section.
+- Bluetooth's GPIO2 A/B test and native graphics remain queued, unchanged
+  from before -- see the [updated bring-up plan](plans/2026-09-08-ipad-air2-driver-bringup.md#priority-review-touch-wi-fi-and-graphics).
 
 **USB follow-up, Round 8 (hardware-tested):** the display diagnostic ran on
 real hardware and found the fault is asymmetric, not total. The iPad's

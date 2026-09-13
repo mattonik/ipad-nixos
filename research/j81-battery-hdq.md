@@ -580,6 +580,60 @@ reproduction. No charger or PMU mux work belongs on that path. Charging policy
 remains a separate D2207/`charger,k48` project after read-only battery reporting
 is locked down.
 
+### What "warm" and "cold" reboot mean here, and what's actually left, 2026-09-13
+
+Every boot in this project already goes through the full
+checkm8 -> PongoOS -> m1n1 -> Linux chain -- there is no persistent,
+"press reboot and it just comes back" path, since checkm8 is unpatchable but
+not persistent. What "warm" vs "cold" distinguishes is the state of the
+*iPad itself* right before that chain starts:
+
+- **Warm reboot**: the iPad was already connected and mid-session (this is
+  what re-running `sudo .../create-builder`-style pwn+load cycles
+  back-to-back, cable never disconnected, produces). Confirms the driver
+  survives being re-probed without the gauge's own state (it's a separate,
+  continuously battery-powered chip, not reset by the AP's own reboot)
+  having changed.
+- **Cold tethered boot**: the iPad is fully disconnected from the Mac first
+  (USB cable out), left disconnected for a real interval, then reconnected
+  and taken through the entire chain from that genuinely fresh state.
+  "Tethered" here just means what it always means in this project -- the
+  Mac must drive the exploit chain every time, there is no untethered
+  variant -- the contrast is specifically with "warm."
+
+**Already satisfied, incidentally: warm reboot.** TOUCH-1's hardware-gate
+boot (2026-09-12) and TOUCH-2's groundwork-verification boot (2026-09-12)
+were two separate, independent checkm8/PongoOS/m1n1 cycles run back-to-back
+in the same working session, and both showed the battery driver identifying
+and reading correctly (98%/4.261 V, then 96% on the next boot) with no new
+errors. That is exactly what a warm-reboot check is for, and it already
+happened as a side effect of unrelated touch testing -- no separate warm
+test is needed.
+
+**Still open: cold tethered boot.** This has not yet been done -- every
+boot so far this project has been either the original bring-up or another
+same-session reconnect, never a genuine disconnect-and-wait-first cycle.
+The concrete, minimal procedure to close this out:
+
+1. Fully unplug the iPad's USB cable from the Mac (not just let it sit in
+   DFU/PongoOS/Linux -- physically disconnect).
+2. Wait a real interval before reconnecting (a few minutes is enough to
+   distinguish this from "still mid-session"; there is no specific longer
+   duration this project's evidence requires).
+3. Reconnect and run the exact same boot recipe as always (`README.md`'s
+   "Boot status" section: pwn, load PongoOS, load `result/m1n1-linux.bin`,
+   bring up the USB network link).
+4. Once at the debug shell, check the same things already used throughout
+   BAT-4: `dmesg | grep -i hdq`, `cat /sys/class/power_supply/*/capacity
+   /sys/class/power_supply/*/voltage_now`. Plausible, error-free readings
+   close this gate for good -- no new code, no new patches, just this one
+   more boot.
+
+This is a genuinely small task: one disconnect, one wait, one normal boot,
+one read. Comparison with iPadOS (the acceptance list's other remaining
+item) is separate and can be done in the same session by checking the
+iPad's own Settings/Battery reading at roughly the same moment.
+
 ## Sources
 
 - [Real J81 evidence and execution log](../docs/plans/2026-09-08-j81-bluetooth-battery-adt.md)
