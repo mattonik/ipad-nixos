@@ -194,13 +194,32 @@ compared directly against each other today to decide what's next:
   0x20000 + gate_index * 8`, one 32-bit register per gate, bit 28
   (`0x10000000`) as the enable/disable bit, across a 101-entry table
   (gate `0x44` specially excluded from auto-disable). The exact gate
-  index assigned to `KLCT`/touch specifically is still open -- the
-  per-magic constant tables that would answer it live in `__DATA`/
-  `__DATA_CONST`, a segment this session's kernelcache extraction never
-  pulled (only `__PRELINK_TEXT` was). Full writeup, including why the
-  search space is now much narrower ("one of 101 known-shape registers"
-  rather than "somewhere in the kernel"), in
-  `docs/plans/2026-09-09-j81-touch-spi3.md`'s "TOUCH-3, 2026-09-13 (fifth pass)".
+  index assigned to `KLCT`/touch specifically is still open. **Sixth
+  pass, same day**: the __DATA_CONST theory was checked and is wrong --
+  this kernelcache predates that segment split entirely (a single legacy
+  `__PRELINK_TEXT` container, fully file-backed, confirmed by direct hex
+  dump of the original file that the bytes really are zero, not missing).
+  Pivoted instead to `AppleMultitouchSPI`'s own real compiled code,
+  present in this same ship kernelcache (`0xffffff8002fb7000`, 320
+  functions) -- and found the actual, complete touch bring-up
+  register-write sequence, independent of KLCT entirely. A function
+  identified by its own debug string as `MTSPIBootloader::performCalibration`
+  writes `ref-clk-div`, `const-cal` (with a chip-revision-dependent
+  override), and `clk32-clock-enable` (skipped when its address is `0`,
+  matching a confirmed hardcoded default of off) to the touch ASIC's own
+  internal register space, each via one generic "write ASIC register"
+  helper -- fully confirming, from real driver code rather than
+  Info.plist inference alone, the values the very first same-day pass
+  already found (`clk32-clock-enable-addr`/`-val` = `0x10003518`/`1`).
+  **This means the touch bring-up sequence itself is now fully known and
+  reproducible; only the separate, upstream PMGR gate index (`KLCT`)
+  remains an open number**, and it's plausible that gate doesn't block a
+  real bring-up attempt at all (it may already be enabled if it's a
+  shared bus-level clock SPI3 itself depends on) -- worth testing on
+  hardware rather than continuing to chase statically. Full detail,
+  including the corrected `__DATA_CONST` record, in
+  `docs/plans/2026-09-09-j81-touch-spi3.md`'s "TOUCH-3, 2026-09-13 (fifth
+  pass)" and "(sixth pass)".
 - **Internal storage (ANS1)**: the chosen focus, and now **done, including
   the hardware gate, 2026-09-13**. Hoolock's `ans1` branch compile-verifies
   in isolation, the observation-only safety patch

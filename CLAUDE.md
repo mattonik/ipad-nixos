@@ -437,13 +437,47 @@ completely legible: **every PMGR clock gate lives at `ioBase + 0x20000
 as the enable/disable bit, across a 101-entry table** (gate `0x44`
 specially excluded from auto-disable) -- real, general, reusable
 T7000/T7001 SoC knowledge. The exact gate index for `KLCT`/touch itself
-wasn't found: the per-magic constant tables that would answer it read
-back as all-zero, because they live in `__DATA`/`__DATA_CONST`, a
-segment this session's extraction never pulled (only `__PRELINK_TEXT`
-was). **Net effect: the dispatch mechanism has no remaining unknowns;
-the open number has narrowed from "somewhere in the kernel" to "one of
-101 known-shape registers."** Full detail in
+wasn't found this pass: the per-magic constant tables that would answer
+it read back as all-zero. Full detail in
 `docs/plans/2026-09-09-j81-touch-spi3.md`'s "TOUCH-3, 2026-09-13 (fifth pass)".
+
+**TOUCH-3, sixth pass, same day: `__DATA_CONST` theory was wrong, but
+found the complete touch bring-up write sequence anyway.** Checked the
+fifth pass's "re-extract `__DATA_CONST`" plan before doing it: this
+kernelcache is a legacy pre-iOS-12 layout with **no `__DATA_CONST`
+segment at all** (`otool -l` shows only `__TEXT`/`__DATA`/`__KLD`/
+`__LAST`/`__PRELINK_TEXT`/`__PRELINK_STATE`/`__PRELINK_INFO`/
+`__LINKEDIT`; `__PRELINK_TEXT`'s filesize exactly equals its vmsize, no
+BSS gap). Directly hex-dumped the fifth pass's zeroed template-blob
+address from the *original* kernelcache file at its exact computed file
+offset: genuinely zero, not an extraction artifact (most likely a
+`IOSimpleLock`-style object, correctly zero at rest -- not a missing
+per-magic constants table). Corrected the fifth-pass writeup
+accordingly rather than let the wrong claim stand.
+
+Pivoted to a better lead instead: `AppleMultitouchSPI`'s own real
+compiled code is present in this same ship kernelcache
+(`0xffffff8002fb7000`, 320 functions, found by parsing `__PRELINK_INFO`'s
+plist). Found the actual register-write sequence for touch bring-up,
+completely independent of KLCT: a function identified by its own debug
+string as `MTSPIBootloader::performCalibration` writes, via one generic
+"write ASIC register" helper (vtable slot `0x8c0`): `ref-clk-div-addr/-val`,
+`const-cal-addr/-val` (swapped for a raw field value when the chip
+version read at the start isn't `0x434d11a0`), and -- only when its
+address is non-zero -- `clk32-clock-enable-addr/-val`. A neighboring
+function sets the hardcoded defaults (`clk32-clock-enable` defaults to
+`0`/`0`, i.e. off, confirming the J82 personality's `0x10003518`/`1`
+genuinely turns it on rather than reflecting a universal baseline).
+This fully confirms, from real ship driver code rather than Info.plist
+inference alone, the values the very first same-day pass already found.
+
+**Net effect: the touch bring-up register sequence is now fully known
+and reproducible. Only the separate, upstream PMGR gate index (`KLCT`)
+remains an open number** -- and it's plausible that gate doesn't block
+a real bring-up attempt (it may be a shared bus-level clock already
+enabled once SPI3 itself is up), worth testing on hardware rather than
+continuing to chase statically. Full detail in
+`docs/plans/2026-09-09-j81-touch-spi3.md`'s "TOUCH-3, 2026-09-13 (sixth pass)".
 
 **WiFi (PCIe): evidence-gathering phase complete, 2026-09-13, no code
 yet.** Picked as the next focus over touch (no UI to exercise touch
