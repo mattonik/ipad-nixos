@@ -156,6 +156,7 @@
               -e 's/^CONFIG_DEBUG_INFO=y$/# CONFIG_DEBUG_INFO is not set/' \
               -e 's/^CONFIG_DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT=y$/# CONFIG_DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT is not set/' \
               -e 's/^CONFIG_DEBUG_INFO_COMPRESSED_NONE=y$/# CONFIG_DEBUG_INFO_COMPRESSED_NONE is not set/' \
+              -e 's/^# CONFIG_INPUT_TOUCHSCREEN is not set$/CONFIG_INPUT_TOUCHSCREEN=y/' \
               ${inputs.hoolockDocs}/config_16k > "$out"
 
             # Not needed for this project's goal (booting Linux on the iPad,
@@ -182,6 +183,20 @@
             # settings. It has no write callback; safe charging control stays
             # gated on a physical meter and a later explicit test.
             echo 'CONFIG_CHARGER_J81_D2207=y' >> "$out"
+
+            # TOUCH-2 groundwork: CONFIG_TOUCHSCREEN_APPLE_Z2 doesn't exist in
+            # the pinned upstream config_16k (a brand-new symbol, same as
+            # CONFIG_BATTERY_BQ27XXX_HDQ_UART above -- append, don't sed).
+            # Its own Kconfig depends on SPI (already =y) and ARCH_APPLE
+            # (already =y) -- checked directly, not assumed. Built in now so
+            # the whole chain (config + kernel/patches/0011's new
+            # apple,j81-touchscreen compatible) compile-verifies together,
+            # matching TOUCH-1's rigor -- but no touch child DT node exists
+            # yet for it to bind to (see docs/plans/2026-09-09-j81-touch-spi3.md
+            # for why: firmware-name and touchscreen-size-x/y are still
+            # unresolved, and guessing them is exactly what this project's
+            # process avoids).
+            echo 'CONFIG_TOUCHSCREEN_APPLE_Z2=y' >> "$out"
           '';
           hoolockKernel = pkgsCross.callPackage ./kernel/hoolock.nix {
             source = inputs.hoolockLinux;

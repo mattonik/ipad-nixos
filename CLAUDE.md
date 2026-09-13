@@ -240,6 +240,28 @@ Still open: `KLCT`'s argument layout, and the binding-required
 at all -- only `mesa` has one). Full detail in
 `docs/plans/2026-09-09-j81-touch-spi3.md`.
 
+**TOUCH-1 CS0 pinmux confirmed on hardware; TOUCH-2 crash-fix implemented,
+2026-09-12.** Booted the TOUCH-1 payload on real J81 hardware: the SPI3
+controller genuinely probes (registers as `spi0`, not `spi3` -- cosmetic,
+`apple_spi_probe()` doesn't consult the DT alias for bus numbering; confirmed
+via `readlink -f /sys/class/spi_master/spi0` resolving to
+`.../20a08c000.spi/spi_master/spi0`). Same session, live pinctrl debugfs
+confirmed `pin 51 (PIN51): device 20a08c000.spi function periph1` -- the
+provisional `APPLE_PINMUX(51, 1)` was correct, no A/B test needed. Touch
+pins 55/82/84/95 read cleanly unclaimed, a clean baseline for TOUCH-2.
+Then implemented the already-documented `apple_z2` crash-fix:
+`kernel/patches/0011` adds `apple,j81-touchscreen` to both its match tables,
+`CONFIG_TOUCHSCREEN_APPLE_Z2=y`/`CONFIG_INPUT_TOUCHSCREEN=y` are set,
+cross-build verified (`apple_z2_probe`/`apple_z2_of_id` in `System.map`).
+Checked this Mac's local `AppleD2207PMU`/`AppleMultitouchSPI` kext copies for
+the `KLCT` clock-enable path -- both dead ends (metadata-only stub; the only
+real binary found is a decade too modern) -- so a fresh local IPSW
+extraction is the real next step for `KLCT` and `touchscreen-size-x/y`. The
+child DT node itself stays a documented draft, deliberately not written as a
+real patch: enabling it now would fail for three compounding unresolved
+reasons at once (no firmware, unconfirmed size, unimplemented power
+sequence), which would make any hardware result impossible to attribute.
+
 **BAT-4 hardware gate: real result, 2026-09-10.** UART5 (`ttySAC2`) registers
 cleanly on hardware, and independent cross-checks (live pinctrl debugfs, the
 real ADT, the decompiled DTB) confirm pinmux, power-domain, IRQ and register

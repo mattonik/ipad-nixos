@@ -116,14 +116,33 @@ let
     # this matters because genpd powers the domain before probe, and an
     # Apple SoC faults or hangs on register access to an unpowered block.
     #
-    # No touch child node yet: the child's packed multi-word `reg` and its
-    # "KLCT" PMGR clock arguments are still undecoded, and TOUCH-2 owns them.
-    # The CS0 pinmux APPLE_PINMUX(51, 1) is still provisional -- BAT-4
-    # disproved the ADT-flags-low-byte theory that first suggested it,
-    # without contradicting function 1 itself -- so a bounded live A/B test
-    # remains a TOUCH-1 hardware gate.
+    # No touch child node yet: the child's packed multi-word `reg` parses
+    # cleanly as chip-select 0 (resolved from the mainline apple,z2-multitouch
+    # binding's own example, not decoded from Apple's packing), but its
+    # "KLCT" PMGR clock arguments and the binding-required
+    # touchscreen-size-x/y are still unresolved, and TOUCH-2 owns them.
+    # TOUCH-1's hardware gate passed 2026-09-12: the controller genuinely
+    # probes on real J81 silicon (registers as spi0, not spi3 -- cosmetic,
+    # apple_spi_probe() doesn't consult the DT alias for bus numbering), and
+    # live pinctrl debugfs confirmed APPLE_PINMUX(51, 1) is correct
+    # (`pin 51 (PIN51): device 20a08c000.spi function periph1`), so the
+    # value that once needed a live A/B test needed none in the end. See
+    # docs/plans/2026-09-09-j81-touch-spi3.md for the full evidence.
     patch -d "$out" -p1 < ${./patches/0008-t7001-add-spi3-node.patch}
     patch -d "$out" -p1 < ${./patches/0009-t7001-air2-enable-spi3.patch}
+
+    # TOUCH-2 groundwork: apple_z2 (mainline's Z2-protocol touchscreen
+    # driver, drivers/input/touchscreen/apple_z2.c) only matches Touch Bar
+    # board IDs (j293/j493). Adds this board's own "apple,j81-touchscreen"
+    # to both its of_device_id and spi_device_id tables -- the second one
+    # matters as much as the first: DT-probed SPI devices match by modalias
+    # (the compatible string with its vendor prefix stripped), and
+    # apple_z2_probe() dereferences spi_get_device_id(spi)->driver_data
+    # unchecked, so an entry in only one table is a NULL-deref waiting to
+    # happen, not a harmless no-match. No touch child DT node references
+    # this compatible string yet (see the comment above) -- this patch alone
+    # is inert until one exists.
+    patch -d "$out" -p1 < ${./patches/0011-touchscreen-apple-z2-add-j81.patch}
   '';
   buildArgs = builtins.removeAttrs args [ "source" "hoolockConfig" "runCommand" ];
 in

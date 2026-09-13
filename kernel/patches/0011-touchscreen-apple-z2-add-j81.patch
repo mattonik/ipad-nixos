@@ -1,0 +1,18 @@
+--- a/drivers/input/touchscreen/apple_z2.c	2026-09-12 21:00:00
++++ b/drivers/input/touchscreen/apple_z2.c	2026-09-12 21:00:05
+@@ -450,12 +450,14 @@
+ static const struct of_device_id apple_z2_of_match[] = {
+ 	{ .compatible = "apple,j293-touchbar" },
+ 	{ .compatible = "apple,j493-touchbar" },
++	{ .compatible = "apple,j81-touchscreen" },
+ 	{}
+ };
+ MODULE_DEVICE_TABLE(of, apple_z2_of_match);
+
+ static struct spi_device_id apple_z2_of_id[] = {
+ 	{ .name = "j293-touchbar", .driver_data = (kernel_ulong_t)"MacBookPro17,1 Touch Bar" },
+ 	{ .name = "j493-touchbar", .driver_data = (kernel_ulong_t)"Mac14,7 Touch Bar" },
++	{ .name = "j81-touchscreen", .driver_data = (kernel_ulong_t)"iPad5,3 Touchscreen" },
+ 	{}
+ };
+ MODULE_DEVICE_TABLE(spi, apple_z2_of_id);

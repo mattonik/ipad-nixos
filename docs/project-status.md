@@ -115,7 +115,19 @@ reads, and the mainline binding's own example uses `reg = <0>`. `KLCT` and
 the required `touchscreen-size-x/y` values remain open, and a concrete
 crash-on-probe gotcha is now documented (`apple_z2_probe()` dereferences
 `spi_get_device_id()` unchecked, so a J81 compatible must be added to the
-`spi_device_id` table, not only to `of_match`). The
+`spi_device_id` table, not only to `of_match`). **That fix is now
+implemented and cross-build-verified (2026-09-12)**:
+`kernel/patches/0011-touchscreen-apple-z2-add-j81.patch` adds
+`apple,j81-touchscreen` to both tables, `CONFIG_TOUCHSCREEN_APPLE_Z2=y` and
+`CONFIG_INPUT_TOUCHSCREEN=y` are set, and `apple_z2_probe`/`apple_z2_of_id`
+are confirmed in the built `System.map`. This patch is inert until a touch
+child DT node exists to use it -- deliberately not written yet, since it
+would need to guess `touchscreen-size-x/y` and has no firmware, which would
+make any hardware failure impossible to attribute to a single cause. Local
+kext copies on this Mac were checked for the `KLCT` clock-enable path and
+both were dead ends (metadata-only stub; the only real binary found is over
+a decade too modern to retain J81/J82 code) -- a fresh local IPSW
+extraction of an older iOS build is the real next step. The
 `Lump` blocker is resolved: it is D2207 LDO14, configured for 6.0 V at
 `0x0398` and enabled by `0x0084` bit 2. Live reads show that rail is currently
 off. ADT phandle `0x1a` is confirmed as PMGR, and Apple's power order is now
