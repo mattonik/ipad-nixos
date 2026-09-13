@@ -1,0 +1,189 @@
+--- a/drivers/block/asp.c	2026-09-13 07:59:16
++++ b/drivers/block/asp.c	2026-09-13 11:02:45
+@@ -326,7 +326,19 @@
+ 		case 0xa1:
+ 			return false;
+ 		default:
+-			BUG();
++			/*
++			 * Observation-only hardening: an unrecognized admin
++			 * opcode reaching here is an internal-consistency bug
++			 * (this driver only ever constructs opcodes from its
++			 * own known set), not something a crash improves.
++			 * Conservatively classify it as a write -- callers
++			 * only use this to decide REQ_OP_DRV_OUT vs _IN, and
++			 * asp_setup_cmd() below unconditionally rejects any
++			 * write in this build regardless, so the safe
++			 * direction to guess wrong in is "write."
++			 */
++			WARN_ON(1);
++			return true;
+ 	};
+ }
+ 
+@@ -369,7 +381,15 @@
+ 
+ 	switch (qd->type) {
+ 		case ASP_QUEUE_TYPE_ADMIN:
+-			BUG();
++			/*
++			 * Observation-only hardening: admin requests never
++			 * reach the rw setup path in normal operation
++			 * (asp_setup_cmd() only calls this for REQ_OP_READ/
++			 * WRITE), so this is an internal-consistency bug,
++			 * not a crash-worthy one.
++			 */
++			WARN_ON(1);
++			return BLK_STS_IOERR;
+ 		case ASP_QUEUE_TYPE_USERAREA:
+ 			cmd->op = 0x10 | write;
+ 			break;
+@@ -385,7 +405,11 @@
+ 			cmd->op = (write ? 0x40 : 0x30) | (qd->type - 2);
+ 			break;
+ 		default:
+-			BUG();
++			/* Same reasoning: unreachable in practice, but a
++			 * clean I/O error beats taking the kernel down.
++			 */
++			WARN_ON(1);
++			return BLK_STS_IOERR;
+ 	}
+ 
+ 	cmd->flags = ASP_CMD_IO_FLAG_NO_ENCRYPTION;
+@@ -455,21 +479,33 @@
+ 
+ 	cmd->tag = req->tag;
+ 
++	/*
++	 * Observation-only hardening: this build never accepts anything that
++	 * could mutate media, at this single, central dispatch point that
++	 * every namespace's requests pass through -- independent of, not a
++	 * replacement for, the WRITE_UNLOCK removal and set_disk_ro() calls
++	 * elsewhere in this file. REQ_OP_DRV_OUT covers internally-classified
++	 * "write" admin commands (see asp_is_write()); no legitimate one of
++	 * those remains once WRITE_UNLOCK itself is never issued. See
++	 * docs/plans/2026-09-13-j81-ans1-observation-only.md.
++	 */
+ 	switch (req_op(req)) {
+-		/* these are already setup */
+-		case REQ_OP_DRV_IN:
++		case REQ_OP_WRITE:
+ 		case REQ_OP_DRV_OUT:
+-			ret = BLK_STS_OK;
++		case REQ_OP_FLUSH:
++			return BLK_STS_NOTSUPP;
++		default:
+ 			break;
++	}
+ 
+-		case REQ_OP_READ:
+-		case REQ_OP_WRITE:
+-			ret = asp_setup_rw(qd, req, req_op(req) == REQ_OP_WRITE);
++	switch (req_op(req)) {
++		/* already setup */
++		case REQ_OP_DRV_IN:
++			ret = BLK_STS_OK;
+ 			break;
+ 
+-		case REQ_OP_FLUSH:
+-			iod->cmd.op = ASP_CMD_FLUSH;
+-			ret = BLK_STS_OK;
++		case REQ_OP_READ:
++			ret = asp_setup_rw(qd, req, false);
+ 			break;
+ 
+ 		default:
+@@ -489,7 +525,14 @@
+ 
+ 	dma_wmb();
+ 	//dev_info(asp->dev, "tag: %d", cmd->tag);
+-	BUG_ON(cmd->tag >= 16);
++	/*
++	 * Observation-only hardening: the tag set is sized to ASP_NUM_TAGS
++	 * (16) by this same driver, so an out-of-range tag here is an
++	 * internal-consistency bug. Fail that one request rather than the
++	 * whole kernel.
++	 */
++	if (WARN_ON(cmd->tag >= 16))
++		return BLK_STS_IOERR;
+ 
+ 	u64 rtk_msg = FIELD_PREP(ASP_MSG_TYPE, ASP_MSG_TYPE_SUBMIT)
+ 		      | FIELD_PREP(ASP_SUBMIT_TAG, cmd->tag)
+@@ -517,6 +560,20 @@
+ 		while (len) {
+ 			//dev_dbg(asp->dev, "HW SGL IDX: %d addr 0x%llx len 0x%x", hw_idx, addr, len);
+ 
++			/*
++			 * Observation-only hardening: check *before* writing,
++			 * not after. The original BUG_ON(hw_idx >
++			 * ASP_CMD_MAX_SECTORS) ran only once, after the loop
++			 * had already finished -- by the time it fired, the
++			 * out-of-bounds write into hw_sgl[] had already
++			 * happened. blk-mq's own queue_limits (max_hw_sectors/
++			 * max_segments, set in apple_asp_start_disk()) should
++			 * make this unreachable in practice; this is defense
++			 * in depth, not a expected path.
++			 */
++			if (WARN_ON(hw_idx >= ASP_CMD_MAX_SECTORS))
++				return;
++
+ 			hw_sgl[hw_idx++] = addr >> ASP_LBA_SHIFT;
+ 
+ 			addr += ASP_LBA_SIZE;
+@@ -524,7 +581,6 @@
+ 		}
+ 
+ 	}
+-	BUG_ON(hw_idx > ASP_CMD_MAX_SECTORS);
+ }
+ 
+ static bool apple_asp_is_aux_read(struct asp_cmd_hdr *cmd)
+@@ -813,19 +869,19 @@
+ 
+ 	kfree(identify);
+ 
+-	cmd->op = ASP_CMD_WRITE_UNLOCK;
+-	cmd->flags = 0;
+-	cmd->slba = 0;
+-	cmd->length = 0;
+-
+-	status = asp_submit_sync_admin_cmd(asp->admin_rq, cmd, NULL, 0);
+-	if (status) {
+-		dev_err(asp->dev, "could not enable writes: %d", status);
+-		ret = -EIO;
+-		goto out_free_cmd;
+-	}
+-
+-	dev_dbg(asp->dev, "Write enable OK");
++	/*
++	 * Observation-only hardening: deliberately never issue
++	 * ASP_CMD_WRITE_UNLOCK. Upstream calls this unconditionally here as
++	 * part of normal probe, immediately unlocking writes to every
++	 * namespace at the controller/firmware level -- its own comment a
++	 * few lines below (kept, see the set_disk_ro block) admits that
++	 * putting the wrong things in some of them "could cause persistent
++	 * controller crashes." This build is read-only by construction: the
++	 * controller itself is never asked to unlock writes in the first
++	 * place, on top of the block-layer read-only marking below and
++	 * asp_setup_cmd()'s own hard rejection of any write/flush request.
++	 * See docs/plans/2026-09-13-j81-ans1-observation-only.md.
++	 */
+ 
+ 	struct queue_limits lim = {
+ 		.logical_block_size = ASP_LBA_SIZE,
+@@ -866,7 +922,14 @@
+ 	 * Eventually though it would be nie to support things like writing
+ 	 * NVRAM, so set it to RO outside of the loop such that the statement
+ 	 * can be removed on per-namespace basis.
++	 *
++	 * Observation-only hardening: upstream leaves USERAREA -- the actual
++	 * iOS user-data partition, the one namespace WRITE_UNLOCK above
++	 * existed to enable -- writable by omission from this list. Force it
++	 * read-only too, so every namespace this driver exposes is read-only,
++	 * with no exception, in this build.
+ 	 */
++	set_disk_ro(asp->q_data[ASP_QUEUE_TYPE_USERAREA].disk, true);
+ 	set_disk_ro(asp->q_data[ASP_QUEUE_TYPE_LLB].disk, true);
+ 	set_disk_ro(asp->q_data[ASP_QUEUE_TYPE_FW].disk, true);
+ 	/* write disallowed at controller level */

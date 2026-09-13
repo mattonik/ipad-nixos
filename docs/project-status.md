@@ -155,12 +155,13 @@ compared directly against each other today to decide what's next:
   extraction of an older iOS build, which needs an explicit go-ahead first
   (a multi-GB download). No further progress is possible without that
   decision. See `docs/plans/2026-09-09-j81-touch-spi3.md`.
-- **Internal storage (ANS1)**: the chosen next focus. Unlike touch, nothing
-  blocks it -- Hoolock's `ans1` branch already compile-verifies in
-  isolation (2026-09-13), and the next step (writing the observation-only
-  safety patch: remove `WRITE_UNLOCK`, force every namespace read-only,
-  replace fatal asserts with graceful errors) is pure software work needing
-  no download and no hardware. See
+- **Internal storage (ANS1)**: the chosen focus, and now **done up to the
+  hardware gate**. Hoolock's `ans1` branch compile-verifies in isolation
+  (2026-09-13), and the observation-only safety patch is now written and
+  cross-build verified too (`kernel/patches/0012-ans1-asp-observation-only.patch`,
+  [full writeup](plans/2026-09-13-j81-ans1-observation-only.md)). The next
+  step -- a real read-only hardware test -- is a separate, later, explicit
+  decision, not implied by this being ready. See
   [the long-term subsystem plan](../research/j81-long-term-subsystems.md)'s
   "Internal NAND storage" section.
 - Bluetooth's GPIO2 A/B test and native graphics remain queued, unchanged
@@ -2388,7 +2389,7 @@ Never commit Apple firmware, NVRAM, touch calibration or device identifiers.
 | Battery | ✅ **Working live, 2026-09-10:** BQ27545 identified and stable standard power-supply readings verified after correcting GPIO34 to peripheral function 1; rebuilt-DT reboot reproduction remains |
 | Touch | 🟡 Reviewed SPI3 controller/DTS groundwork is staged; D2207 6 V analog rail and Apple power order identified; cross-build and hardware test remain |
 | Wi‑Fi implementation | ❌ Real J81 resources confirmed; T7000 PCIe/DART host work has not started |
-| Internal storage | 🟡 Hoolock's `ans1` branch (real, board-specific T7001/J81 DTS wiring from a credible contributor) now compile-verified in isolation, 2026-09-13 -- `apple_asp_probe` and the `block@208040000` DTB node both confirmed in a real build. Not wired into any boot payload; the driver unconditionally unlocks writes on probe with no config-time opt-out, so this project's own observation-only safety patch is a real precondition before any hardware boot, not optional caution. See the [long-term subsystem plan](../research/j81-long-term-subsystems.md). |
+| Internal storage | 🟡 Hoolock's `ans1` branch (real, board-specific T7001/J81 DTS wiring from a credible contributor) compile-verified in isolation, 2026-09-13; the observation-only safety patch this project's own plan required is now **written and cross-build verified too** (`kernel/patches/0012-ans1-asp-observation-only.patch`, [full writeup](plans/2026-09-13-j81-ans1-observation-only.md)) -- `WRITE_UNLOCK` removed outright, every namespace including user data forced read-only, a central write/flush rejection added, three `BUG()`/`BUG_ON()` calls turned into graceful errors. Still not wired into any boot payload and not tested on hardware -- that first read-only hardware test is a separate, later, explicit decision. See the [long-term subsystem plan](../research/j81-long-term-subsystems.md). |
 | Native GPU / audio / suspend | ❌ Sanitized J81 hardware paths and dependency-ordered implementation gates are documented in the [long-term subsystem plan](../research/j81-long-term-subsystems.md); no driver implementation has started. |
 | Charging control | 🟡 Read-only D2207 status/current register map recovered; the reporting driver is implemented and build-validated, but J81 sysfs and cable A/B behavior remain to be tested. |
 | Usable tethered Linux tablet | ❌ Future milestone |

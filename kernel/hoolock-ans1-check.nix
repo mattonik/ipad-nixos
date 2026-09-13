@@ -1,16 +1,23 @@
 # Isolated compile-only check for Hoolock's `ans1` branch (ANS1/ASP
 # internal-storage controller support), per research/j81-long-term-
-# subsystems.md's "Internal NAND storage" section. Deliberately builds
-# ans1's own source completely unmodified by this project's own patches
-# (UART3/UART5/SPI3/touch/charger) -- this answers "does Hoolock's own
-# community ANS1 work compile under our cross-toolchain", not "do our
-# other patches also apply on top of a divergent tree", which is a
-# separate, later question. Not wired into m1n1-hoolock-control; nothing
-# here is flashed or booted. See that research doc for why: the driver
-# (drivers/block/asp.c) unconditionally unlocks writes to every storage
-# namespace during probe with no config-time opt-out, which is real,
-# confirmed-in-source danger this project's own plan requires patching
-# to observation-only before any hardware boot -- not attempted here.
+# subsystems.md's "Internal NAND storage" section. Deliberately built
+# separately from this project's own driver patches (UART3/UART5/SPI3/
+# touch/charger) -- this answers "does Hoolock's own community ANS1 work,
+# hardened to observation-only, compile under our cross-toolchain", not
+# "do our other patches also apply on top of a divergent tree", which is
+# a separate, later question. Not wired into m1n1-hoolock-control; nothing
+# here is flashed or booted.
+#
+# 0012-ans1-asp-observation-only.patch (see
+# docs/plans/2026-09-13-j81-ans1-observation-only.md) rewrites
+# drivers/block/asp.c before this source is ever compiled: removes the
+# unconditional WRITE_UNLOCK command upstream issues to every storage
+# namespace at probe (its own comment nearby admits "could cause
+# persistent controller crashes"), forces every namespace including the
+# user-data area read-only, adds a central write/flush rejection at
+# request dispatch, and turns three BUG()/BUG_ON() calls into graceful
+# errors. Still not tested on hardware -- this only proves the hardened
+# version compiles.
 { buildLinux
 , runCommand
 , source
@@ -37,6 +44,11 @@ let
     sed -i \
       's/return ((cmd\[1\] \& 7) << 8) | (cmd\[0\] \& 0xff);/&\n\t\tdefault:\n\t\t\treturn -EINVAL;/' \
       "$file"
+
+    # The observation-only safety patch itself -- see the header comment
+    # above and docs/plans/2026-09-13-j81-ans1-observation-only.md for
+    # the full reasoning behind each change.
+    patch -d "$out" -p1 < ${./patches/0012-ans1-asp-observation-only.patch}
   '';
   buildArgs = builtins.removeAttrs args [ "source" "ansConfig" "runCommand" ];
 in

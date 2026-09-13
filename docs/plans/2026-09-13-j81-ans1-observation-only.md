@@ -9,6 +9,12 @@ Base: Hoolock's `ans1` Linux branch, pinned at `ed8528f482a526371e59711645794c91
 `research/j81-long-term-subsystems.md`'s "Internal NAND storage" section and
 `kernel/hoolock-ans1-check.nix`).
 
+**Status: done and cross-build verified, 2026-09-13.** All six items below
+are implemented as `kernel/patches/0012-ans1-asp-observation-only.patch`,
+wired into the isolated `hoolock-ans1-check-kernel` build (still not wired
+into any boot payload), and confirmed to compile with the ASP driver
+genuinely present in the built `System.map`. No hardware has been touched.
+
 ## What this is for, in plain terms
 
 The upstream `asp.c` driver (Nick Chan's ANS1/ASP storage-controller work)
@@ -28,12 +34,12 @@ Status column updated as each lands.
 
 | # | Requirement | Status |
 | --- | --- | --- |
-| 1 | Remove the `WRITE_UNLOCK` command | pending |
-| 2 | Reject all block writes/flushes that could mutate media | pending |
-| 3 | Mark the user area and every auxiliary namespace read-only | pending |
-| 4 | Replace reachable fatal assertions with errors that offline the disk | pending |
-| 5 | Omit any format path from the test build | pending (checking whether one exists to omit) |
-| 6 | Cross-build verify (isolated, same as the unmodified compile check) | pending |
+| 1 | Remove the `WRITE_UNLOCK` command | **done** -- the submission is deleted outright, not gated behind a flag |
+| 2 | Reject all block writes/flushes that could mutate media | **done** -- centralized in `asp_setup_cmd()`, one dispatch point every namespace's requests pass through |
+| 3 | Mark the user area and every auxiliary namespace read-only | **done** -- `USERAREA` added to the existing `set_disk_ro()` block; every namespace this driver exposes is now covered, no exceptions |
+| 4 | Replace reachable fatal assertions with errors that offline the disk | **done** -- all 3 `BUG()`/`BUG_ON()` call sites now `WARN_ON()` plus a graceful `blk_status_t` error (or an early return before the actual out-of-bounds write, for the one that returns `void`) |
+| 5 | Omit any format path from the test build | **confirmed already inert** -- checked directly, not assumed from the TODO comment: no format path exists in this source at all, only a `// TODO support auto reformat` describing something never implemented; unformatted media is already refused with an error |
+| 6 | Cross-build verify (isolated, same as the unmodified compile check) | **done**, 2026-09-13 -- `apple_asp_probe`/`apple_asp_start_disk`/`apple_asp_of_match` all confirmed present in the hardened build's `System.map`; the driver is still genuinely compiled in, not stubbed out by the safety changes |
 
 ## Why each one, specifically -- read directly from `drivers/block/asp.c`
 
