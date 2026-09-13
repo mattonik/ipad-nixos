@@ -164,15 +164,19 @@ compared directly against each other today to decide what's next:
   device-table index as first assumed. PMGR's base address
   (`0x20e000000`) was cross-validated against this project's own captured
   ADT. Still open: the one fixed register offset `enableTouchClock`
-  itself operates on (`_regGroups[kRegGroupTouch]`, confirmed via a
-  public symbol-signature database to be the same array
-  `initRegGroups()` populates -- group index 3, the one gap in the
-  sequence `0,1,2,4,5,6`). Tried a genuinely different iOS SDK build
-  (iOS 11.0's T7000 kernel) and the real ADT's own `pmgr` "devices"
-  table; both ruled out. Every source found so far is an iPhone build
-  that merely bundles T7001 support -- a real `iPad5,3` IPSW is now the
-  best-motivated next step for this one specific number. See
-  `docs/plans/2026-09-09-j81-touch-spi3.md`'s "TOUCH-3, 2026-09-13".
+  itself operates on. Pulled the real thing -- the actual iPad5,3 ship
+  firmware (iOS 8.1, remote-extracted with `blacktop/ipsw`, no multi-GB
+  download) -- and confirmed the same mechanism exists at ship under an
+  earlier name (`AppleT7000PerformanceControllerFunctionEnableTouchClock`),
+  with new corroborating panic strings ("invalid target frequency: %d")
+  independently reinforcing the frequency-based decode. But this
+  kernelcache generation has zero per-kext symbols at all (confirmed via
+  `LC_SYMTAB`), and tracing the class by address alone found only
+  trivial destructor thunks -- the real logic lives in the shared parent
+  class, unreachable without a proper decompiler. Stopped deliberately
+  rather than open-ended address archaeology; the rest of the KLCT decode
+  stands on its own regardless. See
+  `docs/plans/2026-09-09-j81-touch-spi3.md`'s "TOUCH-3, 2026-09-13 (third pass)".
 - **Internal storage (ANS1)**: the chosen focus, and now **done, including
   the hardware gate, 2026-09-13**. Hoolock's `ans1` branch compile-verifies
   in isolation, the observation-only safety patch
@@ -198,6 +202,15 @@ compared directly against each other today to decide what's next:
   [the long-term subsystem plan](../research/j81-long-term-subsystems.md)'s
   "Internal NAND storage" section. Making the storage actually usable
   (filesystem, write support) is future work, not implied by this result.
+  **Cross-referenced against real Apple source, 2026-09-13**: a real
+  iPad5,3 iOS 8.1 kernelcache has Apple's own original ASP driver
+  (`ASPSupportNodes`, `AppleStorageProcessorNodes-195.3.1`) -- confirms
+  the namespace-to-class mapping, that Apple's own `SetWritable` is
+  called conditionally (not unconditionally, unlike the pre-hardening
+  Linux port), and that NAND formatting is opt-in on Apple's own side
+  too, matching this project's existing conclusions independently. See
+  [the long-term subsystem plan](../research/j81-long-term-subsystems.md)'s
+  "Real Apple ASP source cross-reference" section.
 - **Bluetooth GPIO2 A/B test: attempted, 2026-09-13, no harm done, write
   didn't take effect.** Followed the plan's own bounded 7-step process:
   fresh baseline matched the 2026-09-08 record exactly (`0x03e6=0x00`,
@@ -209,6 +222,14 @@ compared directly against each other today to decide what's next:
   own process rules out). The chip likely needs a write path this raw
   `i2c-dev` byte write doesn't provide; see
   [the BT plan's "Stage B attempt" section](plans/2026-09-08-j81-bluetooth-battery-adt.md#stage-b-attempt-2026-09-13-write-had-no-effect-no-harm-done-stopped-there).
+  **New lead, same day**: a real iPad5,3 iOS 8.1 kernelcache (pulled for
+  the touch-clock work) has `com.apple.driver.AppleD2207PMU` itself --
+  strings confirm it talks to the chip through a dedicated `_pmuIICNub`
+  object and reads GPIO function config from a `gpio-pin-config` DT
+  property via `_setGPIOFunction`, rather than raw ad-hoc register pokes.
+  Not yet traced to a working write sequence (same symbol-free-binary
+  limitation as the touch-clock dig) -- recorded as a concrete starting
+  point for next time, not a dead end.
   Native graphics remains queued, unchanged -- see the
   [updated bring-up plan](plans/2026-09-08-ipad-air2-driver-bringup.md#priority-review-touch-wi-fi-and-graphics).
 

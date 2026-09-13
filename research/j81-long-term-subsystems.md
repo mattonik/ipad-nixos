@@ -512,6 +512,84 @@ kernel is not wired into any boot payload and was not tested on hardware.
    and bounds checks. Keep firmware, SysCfg and all auxiliary namespaces
    permanently read-only.
 
+### Real Apple ASP source cross-reference, 2026-09-13
+
+While pulling a real `iPad5,3` firmware for the touch-clock investigation
+(see `docs/plans/2026-09-09-j81-touch-spi3.md`'s "TOUCH-3"), the same
+iOS 8.1 kernelcache turned up `com.apple.driver.ASPSupportNodes` --
+Apple's own original ASP driver
+(`/SourceCache/AppleStorageProcessorNodes/AppleStorageProcessorNodes-195.3.1/`,
+per its embedded debug-string paths). This is genuinely the source the
+open-source Linux `ans1` driver was reverse-engineered from -- extracted
+and read via the same free technique as the touch work (`ipsw extract
+--kernel --remote --lookup`, no full IPSW download), ~750 unique
+readable strings recovered directly from the binary. Real, useful
+cross-reference for the hardening already shipped in
+`kernel/patches/0012-ans1-asp-observation-only.patch`:
+
+- **The namespace-to-class mapping is now confirmed from Apple's own
+  code**, not just inferred from the Linux port: `ASPBlockStorage`/
+  `IONANDBlockDevice` = USERAREA, `ASPFirmware`/`IOFirmwareDevice` = FW,
+  `ASPLLBFirmware`/`IOLLBFirmwareDevice` = LLB, `ASPEffaceable`/
+  `IOEffaceableDevice` = EFFACE, `ASPNVRAM` = NVRAM, `ASPPanicLog`/
+  `IOPanicLog` = PANICLOG, and `ASPDiagnostic` handles **both**
+  ControlBits and SysConfig together (`readRegion`/`writeRegion`) --
+  explaining why the Linux driver's `ASP_QUEUE_TYPE_CTRLBITS` and
+  `_SYSCFG` are separate queue types but conceptually one Apple-side
+  service. No `UTILDM`/`DM`-named class turned up in this string set --
+  still open, not resolved by this pass.
+- **`SetWritable`/`ASPSetWritable`** is almost certainly Apple's own name
+  for the mechanism the Linux port encodes as `ASP_CMD_WRITE_UNLOCK`
+  (0x19) -- and, tellingly, Apple's own code guards it
+  (`"ASPStorage::%s - Already writable. Ignoring request"`), calling it
+  *conditionally*, not unconditionally on every probe the way the
+  upstream Linux port (before this project's own hardening patch) does.
+  This is corroborating evidence, not new information -- the hardening
+  already removes the unconditional call outright, which is a strictly
+  safer posture than either version.
+- **A real, Apple-native `nand-readonly` boot/DT flag already exists**
+  (`"ASPStorage::%s - Ramdisk rooted. Returning readonly %s"`,
+  `ASPIsReadOnly`). Not used by this project's own hardening (which
+  works entirely at the Linux driver level and doesn't depend on
+  boot-arg plumbing), but worth knowing this exists as a second,
+  independent, Apple-native safety mechanism if it's ever useful to
+  cross-check against.
+- **Formatting is opt-in on Apple's own side too**: `"nand-enable-reformat
+  not set. NAND Formatting disabled."` -- directly confirms (from Apple's
+  own source, not just absence-of-evidence in the Linux port) that this
+  project's existing conclusion ("no format path exists... unformatted
+  media is already refused") reflects Apple's own real default, not a
+  gap in the ported driver.
+- **The real command surface is much larger than what's ported**:
+  `ASPPROTO_CMD_EXPEDITE_IO`, `_FLUSH`, `_UNMAP`, `_ERASE_TRIMMED`,
+  `_SHUTDOWNNOTIFY` all appear as real opcodes Apple's driver issues:
+  none of these are implemented in the Linux `ans1` port, which only
+  really does identify/read (and, before hardening, the unlock). This is
+  reassuring in the same direction as the point above: the hardened
+  Linux driver's "reject everything except read" posture isn't fighting
+  against a richer surface the port already exposes -- that surface
+  mostly doesn't exist in the port to begin with.
+- **The real request-tag pool is bigger than what the Linux port models**
+  (`ASPRequestPool` sizes separate 64 KB/1 MB/8 MB command pools, `tag <
+  32`), versus the Linux driver's single generic tag space bounded to 16
+  (`kernel/patches/0012`'s existing `cmd->tag >= 16` hardening check).
+  The Linux port is a deliberately simplified subset, not a 1:1
+  reimplementation -- consistent with treating it as WIP research code,
+  as this project already does.
+- **A parallel `function-vcc_ldo` platform-function property**
+  (`"ASPStorage::%s - fNandPowerFunction = %p"`) handles ASP's own NAND
+  power-rail sequencing, the same `function-*`/magic-cookie pattern as
+  touch's `function-clock_enable`/KLCT. Not something this project needs
+  to implement (m1n1/the existing power-domain setup already handles
+  ASP's power sequencing for the observation-only read path), but useful
+  context if ASP power-up issues ever come up.
+
+None of this changes the hardening or the risk assessment -- it's
+independent, real-source confirmation that the design choices already
+made (remove the unlock, reject writes centrally, mark every namespace
+read-only) line up with how Apple's own driver actually gates the
+same operations, not just plausible-sounding guesses.
+
 ### Acceptance gates
 
 - `blockdev --getro /dev/asp0n0` reports read-only before the first read.

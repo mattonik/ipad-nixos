@@ -293,6 +293,20 @@ fresh writable file. Making the storage actually usable (filesystem,
 writes) is future work, not implied by this result. Full detail in
 `docs/plans/2026-09-13-j81-ans1-observation-only.md`.
 
+**ASP cross-referenced against real Apple source, 2026-09-13.** A real
+iPad5,3 iOS 8.1 kernelcache (pulled with `blacktop/ipsw`, remote
+kernelcache extraction only, no multi-GB download -- see the touch entry
+below) has Apple's own original ASP driver
+(`com.apple.driver.ASPSupportNodes`,
+`AppleStorageProcessorNodes-195.3.1`). Confirms the Linux `ans1` port's
+namespace-to-class mapping from Apple's own code, that Apple's own
+`SetWritable`/`ASPSetWritable` is called conditionally rather than
+unconditionally (the pre-hardening Linux port's behavior), and that NAND
+formatting really is opt-in on Apple's own side (`nand-enable-reformat`)
+-- independent confirmation of conclusions this project already reached.
+Full detail in `research/j81-long-term-subsystems.md`'s "Real Apple ASP
+source cross-reference".
+
 **Bluetooth GPIO2 write attempted, 2026-09-13: safe, no effect.** Followed
 the plan's own pre-committed 7-step process for the first live PMU
 register write: fresh baseline matched the 2026-09-08 record exactly
@@ -334,8 +348,27 @@ T7000 kernel, a different public repo) and the real ADT's own `pmgr`
 touch/multitouch entry); both ruled out. Every source found so far is an
 iPhone build that merely bundles T7001 support, not an actual iPad5,3
 firmware -- a real IPSW is now the best-motivated next step for this one
-number. Full detail in `docs/plans/2026-09-09-j81-touch-spi3.md`'s
-"TOUCH-3, 2026-09-13".
+number.
+
+**TOUCH-3, third pass, 2026-09-13: pulled a real iPad5,3 IPSW; register
+offset still not pinned down.** Installed `blacktop/ipsw` (GitHub release
+binary) and remote-extracted just the kernelcache -- no multi-GB
+download -- from the genuine iOS 8.1 ship firmware (12B410), using a
+publicly-known decryption key auto-fetched from TheiPhoneWiki. Confirmed
+the same mechanism exists at ship under an earlier name
+(`AppleT7000PerformanceControllerFunctionEnableTouchClock`, predating the
+later `ApplePMGR` split), with new panic strings
+(`"invalid target frequency: %d"`) independently corroborating the
+frequency-based decode from a completely different Apple engineering
+era. But this kernelcache generation has zero per-kext symbols at all
+(confirmed via `LC_SYMTAB` directly) -- traced the class by address
+anyway and found only trivial destructor-thunk vtable slots; the real
+logic lives in the shared parent class, unreachable without a proper
+decompiler (IDA/Hopper/Ghidra) rather than `objdump`+`grep`. Stopped
+deliberately rather than open-ended address archaeology -- the rest of
+the KLCT decode stands on its own regardless. Full detail in
+`docs/plans/2026-09-09-j81-touch-spi3.md`'s "TOUCH-3, 2026-09-13 (third
+pass)".
 
 **BAT-4 hardware gate: real result, 2026-09-10.** UART5 (`ttySAC2`) registers
 cleanly on hardware, and independent cross-checks (live pinctrl debugfs, the
