@@ -491,6 +491,39 @@ Confirmed mainline's own Apple PCIe driver is the wrong SoC generation
 `pcie-hx.c`, H9P-family). Concrete staged plan, no hardware needed for
 any of it, in `docs/plans/2026-09-13-j81-wifi-pcie.md`.
 
+**D2207 GPIO2 write: confirmed byte-correct, no further live testing
+justified, 2026-09-13 overnight.** Offline disassembly of the real
+iPad5,3 iOS 8.1 kernelcache, cross-checked against unstripped iOS
+10.0/10.3 `AppleD2207PMU`/`AppleDialogPMU`/I2C drivers, confirms the
+earlier GPIO2 write (`03 e6 02`) was already exactly Apple's own
+transaction -- right address, right function bits, no missing
+CRC/bank-select/commit/unlock step. The one unlock sequence in this
+driver family belongs only to an unrelated GPU test-mode routine;
+GPIO/LDO code never reaches it. Conclusion: the earlier "ACK but no
+effect" isn't a framing bug -- it's a runtime ownership/lock condition
+invisible to static analysis. **Do not repeat the write or try
+alternate byte patterns.** The only next experiment that adds evidence
+is passive SDA/SCL logic-analyzer capture during a real iPadOS
+Bluetooth toggle -- which needs a logic analyzer, running into the
+standing no-new-hardware rule; flag this to Martin rather than assuming
+it's fine. Full record in `docs/plans/2026-09-13-pmic-pcie-execution.md`.
+
+**T7000 PCIe compile-only skeleton: staged and cross-build verified,
+2026-09-13/14.** Added an inert `CONFIG_PCIE_APPLE_T7000` driver
+(validates window/interrupt counts, returns `-EOPNOTSUPP`; no MMIO,
+clocks, GPIOs, or link training) plus a `status = "disabled"` T7001 DT
+node built from the real J81 `apcie` ADT data (12 register windows, 4
+ports/IRQs, resolved `ranges` apertures, a `dart_apcie1` node). Wired
+into its own isolated flake package
+(`hoolock-pcie-check-kernel`) so it cannot affect the real boot
+payload. The overnight pass left the actual cross-build pending (no
+local `nix`, builder VM down); **verified clean the next day** once the
+VM was restarted (`docs/build-infrastructure.md`'s documented
+procedure): `nix build
+.#packages.x86_64-linux.hoolock-pcie-check-kernel --no-link -L` exits
+0, `pcie-apple-t7000.c` compiles, no errors. Full record in
+`docs/plans/2026-09-13-pmic-pcie-execution.md`.
+
 **BAT-4 hardware gate: real result, 2026-09-10.** UART5 (`ttySAC2`) registers
 cleanly on hardware, and independent cross-checks (live pinctrl debugfs, the
 real ADT, the decompiled DTB) confirm pinmux, power-domain, IRQ and register

@@ -68,8 +68,20 @@ The first PCIe change is deliberately an inert kernel-integration checkpoint:
   driver cannot bind on J81.
 
 The patch dry-runs cleanly against the pinned Hoolock source revision
-`6831bc7`, and `git diff --check` passes.  A full cross-build remains pending
-the offline builder VM.
+`6831bc7`, and `git diff --check` passes.
+
+**Cross-build verified, 2026-09-14.** The `darwin.linux-builder-vz` VM was
+restarted (from inside this repo, per `docs/build-infrastructure.md`) and
+confirmed healthy (`nix-daemon --stdio` gives the expected benign EOF, `free
+-h` shows the documented ~8 GB). `nix build
+.#packages.x86_64-linux.hoolock-pcie-check-kernel --no-link -L` completed
+with exit 0: the config question for `PCIE_APPLE_T7000` is answered `Y`,
+`drivers/pci/controller/pcie-apple-t7000.c` compiles cleanly (`CC
+drivers/pci/controller/pcie-apple-t7000.o`), and the kernel/modules/dev
+outputs all build and copy back successfully. No errors; the only warnings
+are the builder VM's expected lack of internet access (`cache.nixos.org`
+unresolvable) and one pre-existing, unrelated Nix packaging deprecation
+notice. This closes the one item this pass explicitly left pending.
 
 The real J81 `apcie` ADT data was also normalized for the implementation that
 follows.  Its twelve absolute MMIO windows are:
