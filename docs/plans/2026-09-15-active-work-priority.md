@@ -19,7 +19,7 @@ software writes.
 | 3 | Repeat ANS1's intentionally read-only hardware observation | 4 | 4 | 3 | Requires the separate observation-only payload; never mount or write it. |
 | 4 | Passively trace the D2207 I2C bus during an iPadOS Bluetooth transition | 4 | 2 | 5 | Requires a logic analyser and iPadOS; no injected transactions. |
 | 5 | Touch: resolve firmware/calibration delivery and power ownership | 3 | 2 | 5 | Blocked by the non-persistent D2207 LDO/GPIO state and private touch data. |
-| 6 | T7000 PCIe host: map controller-window roles and link sequence | 3 | 2 | 5 | Disabled DT/DART topology and compile-only skeleton are ready; do not access registers yet. |
+| 6 | T7000 PCIe host: finish controller-window roles and link sequence | 3 | 2 | 5 | ECAM and shared-block classes are mapped; disabled DT/DART topology and compile-only skeleton are ready; do not access registers yet. |
 | 7 | Charging policy writes | 2 | 1 | 5 | Blocked by cable/meter observations and PMIC runtime ownership. |
 | 8 | Suspend-to-idle audit | 2 | 2 | 4 | Needs driver power ownership after touch/PCIe work; deep suspend remains later. |
 | 9 | Audio playback | 2 | 1 | 4 | Needs old-Apple I2S/DMA, codec and routing work. |
