@@ -33,6 +33,7 @@ keys/
 *.qcow2
 *.img
 vzvm.json
+linux-builder.log
 
 # Third-party binary tools kept locally so they survive /tmp being cleared
 # (bit us 2026-09-12: palera1n was in /tmp, lost on a Mac reboot). Not
