@@ -2490,6 +2490,11 @@ Never commit Apple firmware, NVRAM, touch calibration or device identifiers.
 
 ### Priority bring-up sequence
 
+The ranked active backlog and its scoring rationale are in
+[`plans/2026-09-15-active-work-priority.md`](plans/2026-09-15-active-work-priority.md).
+The current control payload was rebuilt successfully on 2026-09-15; the first
+remaining action is its read-only charging observation, not a PMIC write.
+
 1. **Charging observation.** Boot the read-only D2207 child, compare its sysfs
    values with raw PMIC reads, then use a USB power meter across disconnected,
    data-host and known charger cases; record D2207 status, VBUS ADCs, input
