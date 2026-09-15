@@ -284,6 +284,51 @@ def action_bt_attach(shell: IPadShell) -> None:
 
 PMU_I2C_BUS = 0
 PMU_I2C_ADDR = "0x3c"  # pmu,d2207 (BT-3): confirmed at /sys/bus/i2c/devices/0-003c
+CHARGER = "/sys/class/power_supply/j81-d2207-charger"
+
+
+def _number(value: str) -> int | None:
+    try:
+        return int(value.split()[0], 0)
+    except (IndexError, ValueError):
+        return None
+
+
+def _show_charger_value(label: str, sysfs: str, register: int, raw: str,
+                        decode: Callable[[int], int]) -> None:
+    sysfs_value = _number(sysfs)
+    code = _number(raw)
+    print(label)
+    print(f"  sysfs: {sysfs.strip()}")
+    print(f"  D2207 {register:#06x}: {raw.strip()}", end="")
+    if code is None:
+        print(" (could not decode)")
+        return
+    decoded = decode(code)
+    print(f" -> {decoded} uA")
+    if sysfs_value is not None:
+        print(f"  compare: {'MATCH' if sysfs_value == decoded else 'DIFF'}")
+
+
+def action_charging_observe(shell: IPadShell) -> None:
+    # These are reads only. i2ctransfer's w2 phase selects the 16-bit register;
+    # every transaction ends in r1 and sends no register-data byte.
+    input_sysfs = shell.run(f"cat {CHARGER}/input_current_limit")
+    charge_sysfs = shell.run(f"cat {CHARGER}/constant_charge_current_max")
+    input_raw = shell.run(
+        f"i2ctransfer -f -y {PMU_I2C_BUS} w2@{PMU_I2C_ADDR} 0x04 0xc0 r1"
+    )
+    charge_raw = shell.run(
+        f"i2ctransfer -f -y {PMU_I2C_BUS} w2@{PMU_I2C_ADDR} 0x04 0xcf r1"
+    )
+    _show_charger_value(
+        "Input current limit", input_sysfs, 0x04c0, input_raw,
+        lambda code: (3262 if code >= 0xfe else 75 + (100 * code + 7) // 8) * 1000,
+    )
+    _show_charger_value(
+        "Constant charge current max", charge_sysfs, 0x04cf, charge_raw,
+        lambda code: (code & 0x3f) * 50000,
+    )
 
 
 def action_pmu_read(shell: IPadShell) -> None:
@@ -379,6 +424,7 @@ ACTIONS: list[tuple[str, Callable[["IPadShell"], None]]] = [
     ("Bluetooth: safe read-only snapshot", action_bt_probe),
     ("Bluetooth: attach HCI UART (btattach)", action_bt_attach),
     ("PMU: read I2C register (pmu,d2207 @ 0x3c)", action_pmu_read),
+    ("Charging: read-only D2207 snapshot", action_charging_observe),
     ("Storage (ANS1): probe status + ro flags", action_asp_status),
     ("Storage (ANS1): safe single-block read test", action_asp_read_test),
     ("Uptime & memory", action_uptime_mem),

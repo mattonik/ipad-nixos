@@ -64,8 +64,8 @@ The first PCIe change is deliberately an inert kernel-integration checkpoint:
 - The probe validates exactly twelve firmware register windows and four port
   interrupts, then returns `-EOPNOTSUPP`.  It does not map registers, enable
   clocks/power, request GPIOs or interrupts, train a link, configure DART/MSI,
-  or enumerate PCI.  A device-tree node is intentionally absent, so even this
-  driver cannot bind on J81.
+  or enumerate PCI.  The matching PCIe/DART DT nodes preserve the real J81
+  resources but are disabled, so the driver cannot bind on J81.
 
 The patch dry-runs cleanly against the pinned Hoolock source revision
 `6831bc7`, and `git diff --check` passes.
@@ -138,6 +138,22 @@ a logic analyser while iPadOS turns Bluetooth on or off, then compare the
 observed bus traffic with `03 e6 02` and any immediately preceding
 transactions.  It introduces no injected PMIC traffic and can establish
 whether a separate controller changes the state in the real device.
+
+## Read-only charging observer, 2026-09-15
+
+`boot/ipad_console.py` now has **Charging: read-only D2207 snapshot**.  It
+reads the charging driver's two sysfs values and PMIC registers `0x04c0` and
+`0x04cf`, applies the same conversions as the driver, then prints `MATCH` or
+`DIFF`.  Its PMIC commands are only two-byte register-address selection plus
+`r1`; they send no data byte and cannot modify PMIC state.  This makes the
+first CHG-1 device check reproducible without exposing a charging-control
+write path.
+
+`boot/test_ipad_console.py` asserts the exact four commands and both expected
+comparisons offline.  It passed with `python3 boot/test_ipad_console.py` and
+`python3 -m py_compile boot/ipad_console.py boot/test_ipad_console.py`.
+Hardware validation remains pending: boot the already-built control payload,
+choose the new console action, and record its output for the cable A/B table.
 
 ## Acceptance criteria for this pass
 
