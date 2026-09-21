@@ -536,6 +536,43 @@ procedure): `nix build
 0, `pcie-apple-t7000.c` compiles, no errors. Full record in
 `docs/plans/2026-09-13-pmic-pcie-execution.md`.
 
+**T7000 PCIe: real link/enumeration driver implemented and cross-build
+verified, 2026-09-21.** Picked up per the approved plan
+(`/Users/martinp/.claude/plans/mighty-snuggling-cocke.md`), after the
+same-day background research pass fully recovered the exact
+`_enablePortHardware` register sequence (offsets, bits, confirmed
+microsecond delays via a traced `_IODelay` call) and confirmed windows
+2/4/6/8 are genuinely unused by Apple's own host path.
+`kernel/patches/0018-pcie-apple-t7000-enumeration-test.patch` layers on
+top of `0016` (same discipline as ANS1's `0012` on `0013`/`0014`/`0015`)
+and rewrites the inert skeleton into a real, strictly bounded driver:
+brings up board port 1 only, uses the kernel's own generic ECAM
+(`pci_host_common_init()`) and -- verified directly against the real
+pinned kernel source, not assumed -- its *already-built-in* generic
+PERST-GPIO deassertion (`pci_host_common_parse_ports()` auto-finds a
+`device_type = "pci"` child node's `reset-gpios`, no hand-rolled GPIO
+code needed). CLKREQ and windows 2/4/6/8 stay untouched; MSI properties
+dropped from this test's DT since the driver implements no MSI domain.
+New isolated build (`kernel/hoolock-pcie-test.nix`,
+`m1n1-hoolock-pcie-test`), mirroring `hoolock-ans1-test.nix` exactly --
+built on the same proven patch stack as the real control payload, never
+touching its own build.
+
+**Cross-build verified**: `nix build
+.#packages.x86_64-linux.m1n1-hoolock-pcie-test --no-link -L` produced a
+complete real payload (confirmed by listing the actual Nix store
+output, not just trusting the log) -- `Pongo.bin`, `m1n1.bin`,
+`t7001-j81.dtb`, `Image.gz`, `initramfs.gz`, `m1n1-linux.bin`, real
+`SHA256SUMS`. `dtc` prints 4 new advisory warnings for the added
+`pci@0,0` node (3 generic PCI-bridge-schema warnings that don't apply to
+a bare `reset-gpios` carrier node, 1 "not a phandle reference" warning
+that's the exact same pre-existing class this DTS already emits for the
+hardware-proven `gpio-keys` buttons) -- none block the build, zero
+`error:` lines anywhere. **No hardware boot attempted -- explicitly out
+of scope for this pass, a separate later decision.** Full record in
+`docs/plans/2026-09-13-j81-wifi-pcie.md`'s "PCIe link/enumeration test:
+implemented and cross-build verified" section.
+
 **Buttons hardware-verified, 2026-09-21.** `evtest /dev/input/event0` on
 the existing `gpio-keys` device captured clean press/release events for
 Home (`KEY_HOMEPAGE`), Power, Volume Up and Volume Down. No driver work
