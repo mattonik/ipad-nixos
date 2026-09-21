@@ -687,10 +687,22 @@ factory `0x02`) baked in. Two offline tests added
 hardware**: selected 500 mA, watched it poll for 30s (dropped to
 `Discharging` -- 500 mA alone isn't quite enough right now), declined to
 keep, watched it auto-restore to `0x4a`, confirmed `Charging` resumed at
-`+68000` uA five seconds later. Stage 2 (kernel-level writable sysfs
-property, `kernel/patches/0017-...`) is designed in the plan but not
-started -- pick that up next if asked to continue this thread. Full
-record in `docs/plans/2026-09-13-pmic-pcie-execution.md`.
+`+68000` uA five seconds later.
+
+**Higher tiers validated, same session: 2100 and 2400 mA both clean.**
+Ran both through the new tool. Both: voltage held essentially flat with
+no droop (`2400` mA's poll window showed `3781000` uA unchanged for the
+full 30s), current stable ~100-115 mA net charging, temperature flat at
+33.3 C, no USB link instability, `dmesg` clean. Net charging current did
+**not** meaningfully increase from 1000 to 2100 to 2400 mA -- all landed
+in the same ~100-115 mA band, suggesting the battery's own
+charge-acceptance rate, not the input-current ceiling, is the real
+bottleneck once it clears system draw. **All five planned tiers now
+validated live; currently running at 2400 mA by explicit choice.** Stage
+2 (kernel-level writable sysfs property, `kernel/patches/0017-...`) is
+now well-motivated by a complete sweep, not started -- pick that up next
+if asked to continue this thread. Full record in
+`docs/plans/2026-09-13-pmic-pcie-execution.md`.
 
 **BAT-4 hardware gate: real result, 2026-09-10.** UART5 (`ttySAC2`) registers
 cleanly on hardware, and independent cross-checks (live pinctrl debugfs, the
