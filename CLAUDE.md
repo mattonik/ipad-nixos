@@ -588,16 +588,18 @@ host/cable/DFU flakiness. Reviewed the register-window math (index 9 is
 correctly sized, not an off-by-one); two live suspects remained: the
 `reset-gpios` pin identity (OIPG 179, never confirmed on hardware) and the
 `power-domains = <&ps_pcie>` power-up the DT status flip triggers
-automatically during probe. Rewrote `0018` into a **read-only diagnostic**
-version -- no register writes, no `reset-gpios`/`pci@0,0` node, pure
-`dev_info()` register-value logging -- cross-build verified clean, then
-hardware-tested: **identical hang.** This rules out the driver's own logic
-and the PERST/GPIO handling, and isolates the fault to the `status =
-"okay"` DT flip itself (DART attach or the power-domain power-up), which
-runs before the driver's `.init` ever executes. Next step (not yet
-attempted): split the DT change to isolate DART from the power domain.
-Full record in `docs/plans/2026-09-13-j81-wifi-pcie.md`'s "First hardware
-boot attempts: hangs before reaching a console" section.
+automatically during probe. Rewrote `0018` into a supposed **read-only
+diagnostic** and observed the same hang, but a subsequent source review
+corrected that conclusion: it still mapped shared MMIO/ECAM and entered the
+generic PCI probe. The first build also never called the separate
+`pci_host_common_parse_ports()` helper, so PERST was not deasserted, and it
+omitted Apple’s DART ordering, port tunables, and final link-start write.
+Do **not** rerun either existing PCIe payload or spend a boot on a standalone
+DART probe: the stock DART driver resets the block before the recovered Apple
+order makes it active. First recover PCIE/AUX/REF gate ownership and
+`function-dart_force_active`, then make a true PMGR-only no-MMIO test. Full
+record in `docs/plans/2026-09-13-j81-wifi-pcie.md`'s "Post-attempt
+implementation review" section.
 
 **Buttons hardware-verified, 2026-09-21.** `evtest /dev/input/event0` on
 the existing `gpio-keys` device captured clean press/release events for
