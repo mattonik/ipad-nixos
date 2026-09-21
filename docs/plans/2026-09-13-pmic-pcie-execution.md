@@ -214,6 +214,81 @@ write, to which register, does Apple's own driver perform once it decides to
 raise the limit" -- the same shape of question KLCT was for touch, and the
 next step is the same offline-driver-archaeology technique that answered it.
 
+### The real write path, 2026-09-21: found and fully decoded
+
+Re-extracted the same iPad5,3 12B410 kernelcache (SHA-256
+`19c277d60e0a1185b1e4a1b72cda4f1f550c0b0bf670791542234a6dbbcc28bf`, matching
+the copy already used for KLCT and the PCIe window-role work) and disassembled
+`AppleD2207PMU.kext` directly (`0xffffff8002b44000`, size `0x11000`, found via
+its own `CFBundleIdentifier</key><string>...</string>` declaration in
+`__PRELINK_INFO` -- not a dependency reference, which is where an earlier,
+looser substring search went wrong this same session). The class
+`AppleD2207PMUPowerSource` (found via its own class-name and log strings,
+e.g. `AppleD2207PMUPowerSource::handleInterrupt(%#x)`, `usb-input-limit-calibration`)
+contains the real write logic, string-anchored and disassembled directly with
+`llvm-objdump` (the Xcode.app copy is gated behind an unaccepted license on
+this machine -- worked around by invoking
+`/Library/Developer/CommandLineTools/usr/bin/llvm-objdump` directly, a
+separate, unaffected install).
+
+**`AppleD2207PMUPowerSource`'s current-limit setter, `0xffffff8002b4c574`,
+does exactly what CHG-1/CHG-2 needed to know:**
+
+1. Reads register `0x04c0` (the same register the read-only observer already
+   validated) through the identical two-byte-address-plus-length I2C vtable
+   call already established for GPIO2 (`mov w1, #<addr>`, length `1`, `blr`
+   through the transport object's vtable -- read at slot `+0x5a8`, write at
+   slot `+0x5b0`).
+2. Passes a caller-supplied target current through a tiered clamp/derate
+   function (`0xffffff8002b4c610`) that matches Apple's classic USB charger-ID
+   tiers almost exactly: targets above 2399/2099/999/499/249/99 mA clamp down
+   to 2325/2025/950/475/250/100 mA respectively (a consistent few-percent
+   safety margin under each nominal tier) -- logged via the already-found
+   strings (`p1000 = %d, p500 = %d`, `p2100 = %d, p2400 = %d`, `target = %d,
+   adjusted = %d`).
+3. **Writes the resulting single byte back to register `0x04c0`.** A
+   neighboring helper in the same kext (`grep` for the byte-decode idiom
+   `and w8, w8, #0x3f; mov w9, #0x32; mul w0, w8, w9`) confirms the exact
+   encoding: **mA = (raw_byte & 0x3f) * 50** -- independently cross-checked
+   against CHG-1's real hardware read (`0x04c0 = 0x02` -> `2 * 50 = 100` mA,
+   exactly what the driver reported). This is a clean, two-way-confirmed
+   formula, not a guess.
+4. A second helper in the same call path (`0xffffff8002b4c9ac`) performs an
+   independent read-modify-write of register `0x0010`, toggling bit 2 based
+   on whether the target current is zero or nonzero -- read the same way,
+   written the same way, immediately adjacent in the same function. This is
+   very plausibly a separate charge-enable bit, not yet confirmed by name.
+
+This satisfies this pass's own acceptance criterion in full: an
+evidence-backed write transaction, not an assumption -- Apple's own compiled
+driver reading and writing the *exact* register CHG-1 already validated
+against real hardware, using the same transport ABI already proven correct
+for GPIO2, with a byte-decode formula that independently reproduces CHG-1's
+observed value.
+
+**What remains open, and why it's a narrower question than before:** the
+setter at `0xffffff8002b4c574` is invoked through a C++ vtable slot (found as
+a raw pointer at `0xffffff8002b50600`), not a direct call anywhere within this
+kext -- so nothing in `AppleD2207PMU.kext` itself calls it, and the code that
+decides *when* to call it with a higher target (i.e. the actual charger-type
+detection: reading a D+/D- ID resistor, a BC1.2 result, or similar) lives
+elsewhere, not traced this pass. The question has narrowed from "does a write
+path exist at all" (now answered: yes, fully decoded) to "what upstream code
+calls this vtable slot, and how does it decide the target current" -- a
+smaller, more tractable follow-up, likely requiring the same full-kernelcache
+Ghidra cross-reference technique already used for KLCT's dispatch chain
+rather than single-kext `objdump`.
+
+This evidence is substantially stronger than what existed for the earlier
+GPIO2 attempt: GPIO2's "correct write, no effect" conclusion relied on
+matching a single write's wire format against Apple's driver; here, Apple's
+own driver performs a full, symmetric read-then-write of the *same* register
+this project already validated by live readback, with an independently
+reproducible encoding formula. Whether that difference justifies a small,
+reversible, monitored live write test (read `0x04c0`, write a modest target
+such as `500` mA's encoding `0x0a`, read back immediately, restore the
+original `0x02`) is a decision left to Martin, not taken automatically here.
+
 ## Acceptance criteria for this pass
 
 - D2207: either identify an evidence-backed write transaction, or document

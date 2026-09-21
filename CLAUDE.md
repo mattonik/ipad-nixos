@@ -524,6 +524,64 @@ procedure): `nix build
 0, `pcie-apple-t7000.c` compiles, no errors. Full record in
 `docs/plans/2026-09-13-pmic-pcie-execution.md`.
 
+**Buttons hardware-verified, 2026-09-21.** `evtest /dev/input/event0` on
+the existing `gpio-keys` device captured clean press/release events for
+Home (`KEY_HOMEPAGE`), Power, Volume Up and Volume Down. No driver work
+needed; item closed.
+
+**CHG-1 hardware-verified, then CHG-2 traced to a real write path,
+2026-09-21.** The read-only D2207 charger observer confirmed live
+hardware: `MATCH` on both `input_current_limit` (100 mA, raw `0x04c0 =
+0x02`) and `constant_charge_current_max` (3 A, raw `0x04cf = 0x3c`); the
+gauge read `Discharging` at the time. Martin confirmed the same
+cable/connector charges normally under stock iPadOS and owns no USB
+power meter, so investigation stayed entirely software-only. Two live
+checks ruled out the obvious theory: the USB gadget is fully
+`configured` at `high-speed` right now (not stuck unconfigured), and
+this kernel has zero charger-detection code at all --
+no `/sys/class/extcon`, no `/sys/class/typec`, zero `dmesg` lines
+matching charger/extcon/role-switch, a charger DT node with only
+`compatible`+`name`. **Conclusion: nothing in Linux has ever attempted
+to raise the current limit; 100 mA is almost certainly the D2207's
+untouched power-on default**, not a live detection result.
+
+Re-extracted the same iPad5,3 12B410 kernelcache
+(SHA-256 `19c277d60e0a1185b1e4a1b72cda4f1f550c0b0bf670791542234a6dbbcc28bf`,
+matching every prior use this project) and disassembled
+`AppleD2207PMU.kext` (`0xffffff8002b44000`, found via its own
+`CFBundleIdentifier` declaration, not a dependency reference -- a looser
+substring search this same session initially grabbed the wrong kext's
+address; caught and corrected by checking actual string content, not
+just trusting the plist parse). Class `AppleD2207PMUPowerSource`'s
+current-limit setter (`0xffffff8002b4c574`) **reads `0x04c0`, clamps a
+target through Apple's classic charger-ID tiers (100/500/1000/2100/2400
+mA, each derated a few percent -- matches the found log strings
+`p1000 = %d, p500 = %d` / `p2100 = %d, p2400 = %d` / `target = %d,
+adjusted = %d` exactly), and writes the byte back to `0x04c0`** via the
+same read/write I2C vtable ABI (`+0x5a8`/`+0x5b0`) already established
+for GPIO2. Byte encoding independently confirmed both from a
+neighboring decode helper and cross-checked against CHG-1's real
+hardware read: **mA = (byte & 0x3f) * 50** (`0x02 * 50 = 100`, exactly
+matching). A second helper in the same call path toggles bit 2 of
+register `0x0010`, plausibly a separate charge-enable bit.
+(Xcode.app's own `llvm-objdump`/`otool`/`strings` are gated behind an
+unaccepted license on this Mac -- worked around by invoking
+`/Library/Developer/CommandLineTools/usr/bin/<tool>` directly, a
+separate, unaffected install; flag the license prompt to Martin if it
+matters for anything else.)
+
+This is a real, evidence-backed write transaction -- Apple's own driver
+reading and writing the *exact* register CHG-1 validated against live
+hardware, with an independently reproducible formula, not a guess. What
+remains open: the setter is called through a vtable slot found only as
+a raw pointer (`0xffffff8002b50600`), not a direct call anywhere in
+this kext -- so the code that actually decides *when* to raise it (real
+charger-type detection) lives elsewhere and wasn't traced. Whether this
+evidence now clears the project's own bar for a small, reversible,
+monitored live write test is explicitly left to Martin -- not decided
+automatically. Full record in
+`docs/plans/2026-09-13-pmic-pcie-execution.md`.
+
 **BAT-4 hardware gate: real result, 2026-09-10.** UART5 (`ttySAC2`) registers
 cleanly on hardware, and independent cross-checks (live pinctrl debugfs, the
 real ADT, the decompiled DTB) confirm pinmux, power-domain, IRQ and register
