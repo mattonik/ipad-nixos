@@ -411,6 +411,95 @@ from the fifth/sixth touch-style passes), since that's the only place
 likely to reveal what else Apple's driver checks or sets before charging
 actually starts.
 
+### Caller trace, 2026-09-21: genuinely exhausted this pass -- static analysis can't resolve it
+
+Set up the same full-`__PRELINK_TEXT` Ghidra project used for KLCT (import as
+raw binary at `0xffffff8002593000`, full headless auto-analysis, ~10-11
+minutes), specifically to use Ghidra's own reference engine --
+`ReferenceManager.getReferencesTo()` -- rather than the plain-text `grep`
+that already failed to find a caller (virtual calls are indirect; the target
+address never appears as a literal at the call site, only inside the vtable
+data itself).
+
+Ghidra's own constant-propagation-based reference resolution found exactly
+**one** reference to the setter (`0xffffff8002b4c574`): the vtable data slot
+at `0xffffff8002b50600` itself. **Zero references to that vtable slot from
+anywhere in the 14 MB region.** This means the object that ends up calling
+through this vtable gets its vtable pointer from something Ghidra's own
+propagation can't resolve to a literal address either -- most likely the
+object is constructed dynamically at runtime (e.g. obtained via IOKit's
+provider-matching/property-lookup machinery, the same pattern
+`AppleARMFunction`/`callPlatformFunction` used for KLCT) rather than through
+a compile-time-constant `adr`/`adrp` sequence. **Genuinely exhausted with the
+techniques available this pass** -- the same honest conclusion the touch
+investigation reached at its fourth pass, for the same underlying reason
+(indirect dispatch through a dynamically-obtained object, not a static
+constant). Finding the real caller would need either a different technique
+entirely (e.g. tracing `IOService::start()`/personality-matching machinery
+directly) or is simply not answerable from this kernelcache's disassembly
+alone.
+
+### Live write test, 2026-09-21: raising `0x04c0` further -- real charging achieved
+
+Martin proposed raising the input current limit clearly above the measured
+discharge rate, to see whether `STATUS` would actually transition. Baseline
+confirmed clean first: `0x04c0 = 0x02`, `0x0010 = 0x00` (still at rest from
+the prior test), gauge `Discharging` at `-705000` uA, 29%, 33.7 C.
+
+Wrote `0x04c0 <- 0x4a` (decimal 74; the formula gives exactly `1000` mA for
+this code, one of Apple's own real tier values, not an arbitrary
+number) -- deliberately **`0x0010` was left untouched** this time, isolating
+the test to the one register that had already shown a real, positive
+effect. Readback confirmed `0x4a`; sysfs `input_current_limit` correctly
+decoded it to `1000000` uA (matching the formula exactly, independently
+reconfirming it for a second data point). `dmesg` clean.
+
+**`STATUS` transitioned to `Charging` immediately -- the first time this
+project has ever observed it.** `CURRENT_NOW` went positive:
+`+44000` uA, then `+53000` uA eight seconds later, then `+66000` /
+`+76000` uA over the following ~20 seconds -- a real, stable, gently
+*rising* trickle charge, not a single-sample artifact. Voltage rose in step
+(`3756000` -> `3770000` uA over the same window). Temperature held flat at
+`336`-`337` (33.6-33.7 C) throughout -- no thermal concern. This single
+register write, alone, was sufficient: **no `0x0010` bit, no other register,
+no Apple driver code path involved at all -- just a large enough
+`input_current_limit` for the input current to exceed the system's own
+draw.**
+
+This substantially reframes the whole charging investigation. The earlier
+100 mA default was never a "detection failure" or a "missing enable
+signal" -- it was simply **too low a ceiling to ever produce positive net
+current once system load is accounted for**. `0x0010` bit 2's real role
+remains unexplained (its own isolated test still showed a real, negative
+effect -- extra draw, no benefit), but it is now clearly **not required**
+for charging to occur.
+
+**Martin's explicit standing instruction for this state:** keep `0x04c0` at
+`0x4a` (charging) until either the next test step supersedes it, temperature
+becomes a concern, or any other safety issue appears -- and **automatically
+restore to the `0x02` default the moment capacity reaches 80%**, as a
+conservative cutoff. This is being monitored on a recurring check-in basis;
+see the running log below for each observation and the eventual stop
+condition and reason.
+
+#### Charging monitor log
+
+Safety thresholds in effect: stop (restore `0x04c0 -> 0x02`) immediately if
+capacity reaches 80%, `TEMP` reaches 42.0 C (`420`), the device becomes
+unreachable, `dmesg` shows anything concerning, or Martin gives a new
+instruction that supersedes this. Checked on a recurring basis (not
+continuous polling); each entry below is one observation.
+
+| Time (approx) | STATUS | CURRENT_NOW | TEMP | CAPACITY | Note |
+| --- | --- | --- | --- | --- | --- |
+| write+0s | Charging | +44000 uA | 33.7 C | 29% | Write took effect immediately |
+| write+8s | Charging | +53000 uA | 33.7 C | 29% | Confirms stability, not a fluke |
+| write+~30s | Charging | +66000 uA | 33.7 C | 29% | Rising |
+| write+~60s | Charging | +76000 uA | 33.6 C | 29% | Rising further; `0x04c0` reconfirmed `0x4a` |
+
+(Continued below as the recurring check-ins accumulate; this table is the
+running record Martin asked for.)
+
 ## Acceptance criteria for this pass
 
 - D2207: either identify an evidence-backed write transaction, or document

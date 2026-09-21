@@ -626,12 +626,39 @@ draw); `0x0010` bit 2 alone hurts (~100 mA more draw, no `STATUS`
 change); together, roughly cancel out. Nothing tried produced an actual
 `Charging` transition.** Whatever really triggers charging -- if
 software-controlled at all, rather than autonomous D2207 hardware gating
-independent of both these registers -- remains unidentified. The
-strongest remaining lead is tracing the current-limit setter's actual
-caller (the vtable dispatch found but not traced in the write-path
-section above) -- the only place likely to reveal what else Apple's
-driver checks or sets before real charging starts. Full record in
-`docs/plans/2026-09-13-pmic-pcie-execution.md`.
+independent of both these registers -- remains unidentified.
+
+**Caller trace: genuinely exhausted, same day.** Set up the same
+full-`__PRELINK_TEXT` Ghidra project used for KLCT and asked
+`ReferenceManager.getReferencesTo()` who calls the setter. Found exactly
+one reference -- the vtable's own data slot -- and **zero references to
+that vtable slot from anywhere in the 14 MB region.** The calling object
+gets its vtable pointer from something not resolvable to a static
+constant (almost certainly obtained dynamically at runtime, the same
+dead-end shape touch's fourth pass hit). Not answerable from this
+kernelcache's disassembly alone.
+
+**Breakthrough, same day: real `Charging` achieved with one register.**
+Martin proposed raising `0x04c0` clearly above the measured drain instead
+of continuing to chase the caller. Wrote `0x04c0 = 0x4a` (1000 mA,
+`0x0010` deliberately left untouched this time). **`STATUS` transitioned
+to `Charging` immediately** -- current went positive (`+44000` uA rising
+to `+76000` uA over the next minute), voltage rose in step, temperature
+held flat at 33.6-33.7 C throughout. **The 100 mA default was never a
+detection failure -- it was simply too low a ceiling for input current
+to ever exceed system draw.** No `0x0010`, no other register, no Apple
+driver code path needed at all.
+
+**Currently left charging on Martin's explicit standing instruction**:
+keep `0x04c0` at `0x4a` until the next test step, a safety concern, or
+temperature reaches 42 C -- whichever comes first -- and **automatically
+restore to `0x02` the instant capacity reaches 80%** as a conservative
+cutoff. Monitored on a recurring check-in basis (not continuous polling);
+full running log with each observation in
+`docs/plans/2026-09-13-pmic-pcie-execution.md`'s "Charging monitor log".
+If you're picking this thread up in a later session: check that log
+first for the latest state before assuming what `0x04c0` is currently
+set to.
 
 **BAT-4 hardware gate: real result, 2026-09-10.** UART5 (`ttySAC2`) registers
 cleanly on hardware, and independent cross-checks (live pinctrl debugfs, the
