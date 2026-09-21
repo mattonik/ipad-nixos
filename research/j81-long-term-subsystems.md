@@ -310,10 +310,20 @@ J81 DTB SHA-256 is
 `bc94c94222dd967f345a4d7d18f6ae4e036d6b54339db551ff9d240e703fcd01`, and
 the packaged `m1n1-linux.bin` SHA-256 is
 `b8d7a2e99c568277947d9f219bff92c2476e532956302ae63806c9de8611f271`.
-It has not yet been booted on J81, so sysfs registration and cable behavior
-remain hardware test work. The existing battery path is unchanged, and no
-PMIC register was written during implementation, build validation or payload
-packaging.
+At this build checkpoint it had not yet been booted on J81. The existing
+battery path was unchanged, and no PMIC register was written during
+implementation, build validation or payload packaging.
+
+#### CHG-1 hardware verification (2026-09-21)
+
+The later current control payload was booted on J81 and the read-only observer
+passed on real hardware: sysfs reported `100000` uA for the input limit and
+`3000000` uA for the charge-current maximum, and raw D2207 reads `0x04c0 =
+0x02` and `0x04cf = 0x3c` decoded to the same values.  In that same session,
+the working BQ27545 path reported `Discharging` at about `-645000` uA.  This
+closes the registration-and-decoding portion of step 1 below, but does not
+assign charger-status bits or demonstrate that external power is accepted.
+No PMIC write was issued.
 
 Validation commands were:
 
@@ -328,8 +338,7 @@ the build or came from the new charger driver.
 
 ### What is needed
 
-1. Boot this read-only child and confirm its two sysfs values match the raw
-   PMIC reads, then use a USB power meter to record the D2207 status block,
+1. Use a USB power meter to record the D2207 status block,
    input-current setting, gauge current and VBUS measurements for disconnected,
    Mac data, and known charger cases. This assigns semantic names to the status
    bits without guessing and shows who changes `0x04c0`.

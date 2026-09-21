@@ -2483,7 +2483,7 @@ Never commit Apple firmware, NVRAM, touch calibration or device identifiers.
 | RTC / backlight | Both hardware-verified over the USB shell | Preserve their current nodes and drivers. |
 | Bluetooth | Real J81 UART3 and manual `hci0` attach are hardware-confirmed; GPIO2 at `0x03e6` is low, and static Apple-driver evidence proves the prior ACKed `03 e6 02` command already had the correct wire format | Do not retry a PMIC write. Passively capture I2C traffic during an iPadOS Bluetooth transition, then determine the runtime owner/condition before adding `hci_bcm`. |
 | Battery | **Working across warm and cold reboot** (2026-09-13: cold half confirmed satisfied by the accumulated multi-day record, this project's normal disconnect-to-charger routine being a real cold cycle): BQ27545 identified automatically; stable voltage/current/capacity/temperature/cycle reads after GPIO34 function-1 correction | Compare with iPadOS opportunistically; otherwise done. |
-| Charging | Read-only D2207 status/current registers identified; a J81 power-supply child now reports the verified input and charge limits without a write path; the integrated Hoolock control payload builds with it; `boot/ipad_console.py` now compares those sysfs values with raw reads without issuing a PMIC write | Boot the child, run **Charging: read-only D2207 snapshot**, then reproduce disconnected, data-host and charger cases with a USB meter before considering any write support. |
+| Charging | **CHG-1 hardware-verified, 2026-09-21:** the J81 read-only D2207 child reports 100 mA input and 3 A charge-current limits, matching raw `0x04c0 = 0x02` and `0x04cf = 0x3c`; the simultaneous BQ27545 reading was `Discharging` at about -645 mA. No PMIC write path exists or was used. | Reproduce disconnected, data-host and known-charger cases with a USB meter and read-only status observations before considering any write support. |
 | Touch | Reviewed S5L8960X SPI3 and J81 DT patches are staged; the 6 V analog rail and Apple power order are identified | Cross-build TOUCH-1, prove SPI3, then decode the child `reg` and PMGR clock args. |
 | Wi-Fi | BCM4350 is confirmed on J81 PCIe port 1; PCI apertures and DART compatibility are decoded; an inert, compile-only T7000 PCIe skeleton is isolated from all payloads | Cross-build the isolated check, map the twelve controller-window roles, then add disabled DT/DART topology before any link training or brcmfmac enablement. |
 | Audio / GPU / NAND / cameras / Touch ID | No complete A8X stack | Defer beyond the interactive-tablet milestone. |
@@ -2492,13 +2492,14 @@ Never commit Apple firmware, NVRAM, touch calibration or device identifiers.
 
 The ranked active backlog and its scoring rationale are in
 [`plans/2026-09-15-active-work-priority.md`](plans/2026-09-15-active-work-priority.md).
-The current control payload was rebuilt successfully on 2026-09-15; the first
-remaining action is its read-only charging observation, not a PMIC write.
+The current control payload was rebuilt successfully on 2026-09-15; its
+read-only charging observation passed on hardware on 2026-09-21. The next
+charging action remains measurement, not a PMIC write.
 
-1. **Charging observation.** Boot the read-only D2207 child, compare its sysfs
-   values with raw PMIC reads, then use a USB power meter across disconnected,
+1. **Charging observation.** Use a USB power meter across disconnected,
    data-host and known charger cases; record D2207 status, VBUS ADCs, input
-   code and gauge current before writing any PMIC register.
+   code and gauge current before writing any PMIC register. The child already
+   passed its sysfs/raw-register comparison on J81.
 2. **Bluetooth power.** Passively capture the D2207 I2C bus during an iPadOS
    Bluetooth transition. The previously attempted GPIO2 write exactly matches
    Apple's wire format but did not persist, so no further injected PMIC write
@@ -2543,7 +2544,7 @@ remaining action is its read-only charging observation, not a PMIC write.
 | Wi‑Fi implementation | 🟡 Real J81 resources, PCI apertures and DART compatibility confirmed; a compile-only, payload-isolated T7000 PCIe skeleton **cross-build verified, 2026-09-14** (`.#packages.x86_64-linux.hoolock-pcie-check-kernel`, clean build, `pcie-apple-t7000.c` compiles) -- still inert, disabled in the DT, not wired into any boot payload |
 | Internal storage | 🟡 Hoolock's `ans1` branch (real, board-specific T7001/J81 DTS wiring from a credible contributor) compile-verified in isolation, 2026-09-13; the observation-only safety patch this project's own plan required is now **written and cross-build verified too** (`kernel/patches/0012-ans1-asp-observation-only.patch`, [full writeup](plans/2026-09-13-j81-ans1-observation-only.md)) -- `WRITE_UNLOCK` removed outright, every namespace including user data forced read-only, a central write/flush rejection added, three `BUG()`/`BUG_ON()` calls turned into graceful errors. Still not wired into any boot payload and not tested on hardware -- that first read-only hardware test is a separate, later, explicit decision. See the [long-term subsystem plan](../research/j81-long-term-subsystems.md). |
 | Native GPU / audio / suspend | ❌ Sanitized J81 hardware paths and dependency-ordered implementation gates are documented in the [long-term subsystem plan](../research/j81-long-term-subsystems.md); no driver implementation has started. |
-| Charging control | 🟡 Read-only D2207 status/current register map recovered; the reporting driver is implemented and build-validated, but J81 sysfs and cable A/B behavior remain to be tested. |
+| Charging control | 🟡 J81 sysfs registration and input/charge-limit decoding are hardware-verified; the battery still discharged at about 645 mA in the USB-network session. Cable A/B behavior and status-bit semantics remain to be measured. |
 | Usable tethered Linux tablet | ❌ Future milestone |
 
 ## Safety boundaries

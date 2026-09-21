@@ -14,7 +14,7 @@ software writes.
 
 | Order | Work item | Certainty | Ease | Impact | Current gate |
 | --- | --- | ---: | ---: | ---: | --- |
-| 1 | CHG-1: validate read-only D2207 charging reporting | 5 | 5 | 4 | Requires a normal control-payload boot and the existing USB connection; no PMIC writes. |
+| 1 | CHG-2: map charger cable/status behavior with a USB meter | 5 | 4 | 5 | CHG-1 passed on J81 on 2026-09-21; record disconnected, data-host and known-charger cases without PMIC writes. |
 | 2 | Verify Home, Power and volume input events | 5 | 5 | 2 | Requires a live USB shell only. |
 | 3 | Repeat ANS1's intentionally read-only hardware observation | 4 | 4 | 3 | Requires the separate observation-only payload; never mount or write it. |
 | 4 | Passively trace the D2207 I2C bus during an iPadOS Bluetooth transition | 4 | 2 | 5 | Requires a logic analyser and iPadOS; no injected transactions. |
@@ -39,15 +39,23 @@ nix build .#packages.x86_64-linux.m1n1-hoolock-control --no-link -L
 It completed successfully and produced
 `/nix/store/76saw65fjsiv1clj4bvvfl5ka4k7fsdx-ipad-air2-m1n1-hoolock-control`.
 This validates the current normal payload, including the read-only D2207
-charger child.  It does not claim hardware registration or charging behavior.
+charger child.  Hardware registration and raw-register decoding were then
+verified on J81 on 2026-09-21; charging behavior remains unproven.
 
-## Next action, when the iPad is booted
+## Completed CHG-1 hardware check (2026-09-21)
 
-Run `boot/ipad_console.py` and choose **Charging: read-only D2207 snapshot**.
-It compares the driver's sysfs values with raw registers `0x04c0` and
-`0x04cf`.  A match is the acceptance gate for CHG-1; record that result before
-using a USB meter across the cable cases.  The action only performs PMIC
-address-select-plus-read transfers and cannot write a PMIC register.
+The live observer reported `100000` uA and `3000000` uA.  Raw registers
+`0x04c0 = 0x02` and `0x04cf = 0x3c` decoded to those same values, satisfying
+the CHG-1 acceptance gate.  The battery was present but reported
+`Discharging` at about `-645000` uA.  The action used only PMIC
+address-select-plus-read transfers.
+
+## Next action, with a USB power meter
+
+Record disconnected, data-host and known-charger cases: meter voltage/current,
+gauge current, `0x04c0`, and the read-only D2207 status block.  Those cases
+are needed to name status bits and explain the 100 mA data-host limit before
+any charging-control design is considered.
 
 ## Explicitly deferred
 

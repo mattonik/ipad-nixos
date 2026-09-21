@@ -152,8 +152,20 @@ write path.
 `boot/test_ipad_console.py` asserts the exact four commands and both expected
 comparisons offline.  It passed with `python3 boot/test_ipad_console.py` and
 `python3 -m py_compile boot/ipad_console.py boot/test_ipad_console.py`.
-Hardware validation remains pending: boot the already-built control payload,
-choose the new console action, and record its output for the cable A/B table.
+
+### CHG-1 hardware result, 2026-09-21
+
+The current control payload booted normally and its USB network shell was
+used for the first live snapshot.  The driver reported an input-current limit
+of `100000` uA and a constant-charge-current maximum of `3000000` uA.  Raw
+D2207 reads were `0x04c0 = 0x02` and `0x04cf = 0x3c`; both decoded to the same
+values and the observer printed `MATCH` twice.  The BQ27545 simultaneously
+reported `Discharging`, 72%, 3.985 V and `-645000` uA.  This proves the
+read-only child is registered and decodes those two PMIC controls correctly.
+It does not prove VBUS detection, input-online state, charge enable or a
+working charging policy.  The next charging evidence remains a USB-meter
+cable A/B table and read-only status-block observations; no PMIC write follows
+from this result.
 
 ## Acceptance criteria for this pass
 
