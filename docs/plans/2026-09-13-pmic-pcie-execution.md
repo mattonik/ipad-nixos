@@ -167,6 +167,11 @@ working charging policy.  The next charging evidence remains a USB-meter
 cable A/B table and read-only status-block observations; no PMIC write follows
 from this result.
 
+After a normal USB replug in the same session, USB networking and telnet
+returned immediately but the gauge remained `Discharging` at `-651000` uA
+(71%).  The two reported limits were unchanged.  Re-enumerating the data cable
+therefore does not by itself establish a charging state.
+
 ## Acceptance criteria for this pass
 
 - D2207: either identify an evidence-backed write transaction, or document
