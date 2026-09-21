@@ -1,10 +1,10 @@
 --- a/drivers/pci/controller/pcie-apple-t7000.c
 +++ b/drivers/pci/controller/pcie-apple-t7000.c
-@@ -1,59 +1,145 @@
+@@ -1,59 +1,154 @@
  // SPDX-License-Identifier: GPL-2.0-only
  /*
 - * Compile-only groundwork for the Apple T7000-family PCIe host controller.
-+ * Apple T7000-family PCIe host controller -- link/enumeration test driver.
++ * Apple T7000-family PCIe host controller -- read-only diagnostic driver.
   *
 - * The real J81 ADT describes four ports, four port interrupts and twelve
 - * register windows. Corellium's older H9P driver confirms the four-port
@@ -13,29 +13,40 @@
 - * resource ordering without naming the unresolved small-window roles. Keep
 - * this driver inert until those roles, DART attachment and ADT-provided
 - * tunables have been implemented.
-+ * Deliberately bounded to the smallest useful test: bring up port 1 (the
-+ * only populated port on J81/BCM4350), then let the generic PCI/ECAM core
-+ * scan the bus and report the result through its own standard sysfs/dmesg
-+ * output (vendor/device/revision IDs). No brcmfmac, no firmware upload, no
-+ * WiFi association, no touching ports 2-4.
++ * First hardware attempt at the write-capable version of this driver (which
++ * enabled port 1 and deasserted PERST# via a DT reset-gpios child node)
++ * hung with a black screen (backlight still on, no framebuffer console, no
++ * USB networking) on two separate boots, while the unmodified control
++ * payload booted normally from the same PongoOS/m1n1 pipeline moments
++ * later. That isolates the fault to this driver or its DT changes rather
++ * than the boot chain. Two real, unverified risks in that version: the
++ * reset-gpios pin identity (OIPG 179, reverse-engineered, never confirmed
++ * on real hardware) and the `power-domains = <&ps_pcie>` power-up this DT
++ * status flip triggers during probe, before this driver's own init runs.
 + *
-+ * Register offsets, bit positions and the two microsecond delays below are
-+ * traced directly from AppleT7000PCIe::_enablePortHardware and
-+ * AppleEmbeddedPCIEPort::enableGated in the real J81 iOS 8.1 kernelcache --
-+ * not guessed. See docs/plans/2026-09-13-j81-wifi-pcie.md's "Enable-sequence
-+ * checkpoint" and "port enable order" sections for the full evidence trail.
-+ * Register windows 2/4/6/8 (of the ADT's 12 total) are confirmed unused by
-+ * Apple's own host path and are intentionally left unmapped. CLKREQ is
-+ * confirmed endpoint/controller-managed and is not toggled here. PERST# is
-+ * not hand-rolled either -- the DT's port-1 child node carries a standard
-+ * "reset-gpios" property, which pci_host_common_init()'s own
-+ * pci_host_common_parse_ports()/pci_host_probe() path already deasserts at
-+ * the right point in its own sequence.
++ * This version removes the write-capable enable sequence and the
++ * reset-gpios DT node entirely, and only reads and logs the current state
++ * of the same registers the enable sequence would have written, via
++ * dev_info() so it lands in dmesg. Both `dart_apcie1`/`pcie` are still
++ * flipped to status = "okay" -- that alone is what's needed to get this
++ * driver probed at all, and it's the same status flip either version needs.
++ * If this version also hangs before reaching a console, the fault is in
++ * that generic DT-status-triggered machinery (DART attach or the
++ * power-domain power-up), not in anything this driver's own code does. If
++ * it reaches dmesg cleanly, the fault is isolated to the register writes or
++ * the reset-gpios deassertion from the previous version.
++ *
++ * Register offsets and bit positions are traced directly from
++ * AppleT7000PCIe::_enablePortHardware and AppleEmbeddedPCIEPort::enableGated
++ * in the real J81 iOS 8.1 kernelcache -- not guessed. See
++ * docs/plans/2026-09-13-j81-wifi-pcie.md's "Enable-sequence checkpoint" and
++ * "port enable order" sections for the full evidence trail. Register
++ * windows 2/4/6/8 (of the ADT's 12 total) are confirmed unused by Apple's
++ * own host path and are intentionally left unmapped here too.
   */
 
 -#include <linux/errno.h>
 +#include <linux/bitops.h>
-+#include <linux/delay.h>
 +#include <linux/err.h>
 +#include <linux/io.h>
  #include <linux/module.h>
@@ -76,20 +87,27 @@
 +	void __iomem *shared;
 +};
 +
-+static void t7000_pcie_rmw(void __iomem *base, u32 off, u32 clr, u32 set)
++static void t7000_pcie_log_port(struct device *dev,
++				 struct apple_t7000_pcie *pcie, int port)
  {
 -	struct device *dev = &pdev->dev;
 -	int count;
-+	u32 val = readl(base + off);
++	u32 shared_off = port * T7000_PCIE_PORT_STRIDE;
++	u32 ltssm_off = T7000_PCIE_LTSSM_BASE + port * T7000_PCIE_LTSSM_STRIDE;
 
 -	count = of_address_count(dev->of_node);
 -	if (count != APPLE_T7000_PCIE_NUM_REGIONS)
 -		return dev_err_probe(dev, -EINVAL,
 -				     "expected %d register windows, found %d\n",
 -				     APPLE_T7000_PCIE_NUM_REGIONS, count);
-+	val &= ~clr;
-+	val |= set;
-+	writel(val, base + off);
++	dev_info(dev,
++		 "t7000-pcie diag: port %d refclk_en=0x%08x perst_internal=0x%08x unknown_10c=0x%08x link_enable=0x%08x ltssm=0x%08x\n",
++		 port,
++		 readl(pcie->shared + T7000_PCIE_REFCLK_EN + shared_off),
++		 readl(pcie->shared + T7000_PCIE_PERST_INTERNAL + shared_off),
++		 readl(pcie->shared + T7000_PCIE_UNKNOWN_10C + shared_off),
++		 readl(pcie->shared + T7000_PCIE_LINK_ENABLE + shared_off),
++		 readl(pcie->shared + ltssm_off));
 +}
 
 -	count = platform_irq_count(pdev);
@@ -99,58 +117,47 @@
 -		return dev_err_probe(dev, -EINVAL,
 -				     "expected %d port interrupts, found %d\n",
 -				     APPLE_T7000_PCIE_NUM_PORTS, count);
-+static void apple_t7000_pcie_enable_port(struct apple_t7000_pcie *pcie, int port)
-+{
-+	u32 shared_off = port * T7000_PCIE_PORT_STRIDE;
-+	u32 ltssm_off = T7000_PCIE_LTSSM_BASE + port * T7000_PCIE_LTSSM_STRIDE;
-
--	return 0;
-+	/* Traced sequence: AppleT7000PCIe::_enablePortHardware. */
-+	t7000_pcie_rmw(pcie->shared, T7000_PCIE_LINK_ENABLE + shared_off, BIT(0), 0);
-+	t7000_pcie_rmw(pcie->shared, T7000_PCIE_PERST_INTERNAL + shared_off, 0, BIT(0));
-+	udelay(10);
-+	t7000_pcie_rmw(pcie->shared, T7000_PCIE_UNKNOWN_10C + shared_off, BIT(0), 0);
-+	t7000_pcie_rmw(pcie->shared, T7000_PCIE_REFCLK_EN + shared_off, 0, BIT(0));
-+	udelay(100); /* t-refclk-to-perst, confirmed microseconds (real _IODelay call) */
-+	t7000_pcie_rmw(pcie->shared, T7000_PCIE_LINK_ENABLE + shared_off, 0, BIT(0));
-+	t7000_pcie_rmw(pcie->shared, T7000_PCIE_PERST_INTERNAL + shared_off, BIT(8), 0);
-+	writel(3, pcie->shared + ltssm_off);
- }
-
--static int apple_t7000_pcie_probe(struct platform_device *pdev)
 +static int apple_t7000_pcie_map_window(struct device *dev, int index,
 +				       void __iomem **out)
- {
++{
 +	struct resource res;
- 	int ret;
++	int ret;
 
--	ret = apple_t7000_pcie_validate_firmware(pdev);
+-	return 0;
 +	ret = of_address_to_resource(dev->of_node, index, &res);
- 	if (ret)
++	if (ret)
 +		return dev_err_probe(dev, ret,
 +				     "missing register window %d\n", index);
 +
++	dev_info(dev, "t7000-pcie diag: window %d at %pR\n", index, &res);
++
 +	*out = devm_ioremap_resource(dev, &res);
 +	return PTR_ERR_OR_ZERO(*out);
-+}
-+
+ }
+
+-static int apple_t7000_pcie_probe(struct platform_device *pdev)
 +static int apple_t7000_pcie_init(struct pci_config_window *cfg)
-+{
+ {
 +	struct device *dev = cfg->parent;
 +	struct apple_t7000_pcie *pcie;
-+	int ret;
+ 	int ret;
+
+-	ret = apple_t7000_pcie_validate_firmware(pdev);
++	dev_info(dev, "t7000-pcie diag: init entry (read-only, no writes, no PERST deassert)\n");
 +
 +	pcie = devm_kzalloc(dev, sizeof(*pcie), GFP_KERNEL);
 +	if (!pcie)
 +		return -ENOMEM;
 +
 +	ret = apple_t7000_pcie_map_window(dev, T7000_PCIE_REG_SHARED, &pcie->shared);
-+	if (ret)
+ 	if (ret)
  		return ret;
 
 -	return dev_err_probe(&pdev->dev, -EOPNOTSUPP,
 -			     "link bring-up is not implemented\n");
-+	apple_t7000_pcie_enable_port(pcie, T7000_PCIE_TEST_PORT);
++	t7000_pcie_log_port(dev, pcie, T7000_PCIE_TEST_PORT);
++
++	dev_info(dev, "t7000-pcie diag: init complete, handing back to generic ECAM core\n");
 +
 +	return 0;
  }
@@ -168,6 +175,8 @@
 +{
 +	struct pci_host_bridge *bridge;
 +
++	dev_info(&pdev->dev, "t7000-pcie diag: probe entry\n");
++
 +	bridge = devm_pci_alloc_host_bridge(&pdev->dev, 0);
 +	if (!bridge)
 +		return -ENOMEM;
@@ -178,14 +187,13 @@
  static const struct of_device_id apple_t7000_pcie_of_match[] = {
  	{ .compatible = "apple,t7000-pcie" },
  	{ }
-@@ -70,5 +156,5 @@
+@@ -69,5 +164,5 @@
  };
  module_platform_driver(apple_t7000_pcie_driver);
 
 -MODULE_DESCRIPTION("Compile-only Apple T7000 PCIe host bridge groundwork");
-+MODULE_DESCRIPTION("Apple T7000 PCIe host bridge link/enumeration test driver");
++MODULE_DESCRIPTION("Apple T7000 PCIe host bridge read-only diagnostic driver");
  MODULE_LICENSE("GPL");
-
 --- a/arch/arm64/boot/dts/apple/t7001.dtsi
 +++ b/arch/arm64/boot/dts/apple/t7001.dtsi
 @@ -345,7 +345,7 @@
@@ -217,7 +225,7 @@
  			iommu-map = <0x100 &dart_apcie1 0 1>;
  			iommu-map-mask = <0xff00>;
 
-@@ -392,7 +397,26 @@
+@@ -392,6 +397,18 @@
  				  0x7 0xc0000000 0x0 0x40000000>;
 
  			power-domains = <&ps_pcie>;
@@ -225,23 +233,15 @@
 +			status = "okay";
 +
 +			/*
-+			 * Board port 1, the only populated port on J81 --
-+			 * function-perst's OIPG pin (179), decoded from the
-+			 * real J81 ADT (docs/plans/2026-09-13-j81-wifi-pcie.md's
-+			 * "pci-bridge1" evidence table). pci_host_common_init()'s
-+			 * own pci_host_common_parse_ports() finds this via its
-+			 * device_type = "pci" and deasserts it as part of the
-+			 * generic pci_host_probe() sequence -- not hand-rolled
-+			 * in the driver. function-clkreq (confirmed
-+			 * endpoint/controller-managed, not host-toggled) and
-+			 * function-device_wake (not required for basic link-up)
-+			 * are deliberately not added here.
++			 * Read-only diagnostic pass (2026-09-21): deliberately
++			 * no reset-gpios child node here. The write-capable
++			 * version deasserted PERST# via this node's generic
++			 * pci_host_common_parse_ports() handling; that pin
++			 * identity (OIPG 179) was never confirmed on real
++			 * hardware, and it's one of two live suspects for the
++			 * hang this diagnostic pass exists to isolate. See the
++			 * driver's own file comment for the other suspect and
++			 * the full reasoning.
 +			 */
-+			pci@0,0 {
-+				device_type = "pci";
-+				reg = <0x0 0x0 0x0 0x0 0x0>;
-+				reset-gpios = <&pinctrl 179 GPIO_ACTIVE_LOW>;
-+			};
  		};
-
 

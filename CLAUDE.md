@@ -573,6 +573,32 @@ of scope for this pass, a separate later decision.** Full record in
 `docs/plans/2026-09-13-j81-wifi-pcie.md`'s "PCIe link/enumeration test:
 implemented and cross-build verified" section.
 
+**T7000 PCIe: first hardware attempts hang before reaching a console,
+2026-09-21.** The user made the hardware-boot decision explicitly and this
+became the next step. Real recipe (not `gaster`+`irecovery`, which is
+documented-unreliable on this Mac -- see `docs/project-status.md`'s "Clean
+DFU relaunch attempt"): vendored `boot/vendor/palera1n-macos-arm64
+--pongo-shell --override-pongo ...` with the two-replug sequence. **Two
+attempts** with the write-capable `m1n1-hoolock-pcie-test` payload both
+hung: black screen, backlight on, no framebuffer console, no USB networking
+(`172.16.42.1` unreachable, device dropped off USB entirely). **A control
+test** with the unmodified, already-proven `m1n1-hoolock-control` payload
+booted normally immediately after on the same pipeline -- rules out
+host/cable/DFU flakiness. Reviewed the register-window math (index 9 is
+correctly sized, not an off-by-one); two live suspects remained: the
+`reset-gpios` pin identity (OIPG 179, never confirmed on hardware) and the
+`power-domains = <&ps_pcie>` power-up the DT status flip triggers
+automatically during probe. Rewrote `0018` into a **read-only diagnostic**
+version -- no register writes, no `reset-gpios`/`pci@0,0` node, pure
+`dev_info()` register-value logging -- cross-build verified clean, then
+hardware-tested: **identical hang.** This rules out the driver's own logic
+and the PERST/GPIO handling, and isolates the fault to the `status =
+"okay"` DT flip itself (DART attach or the power-domain power-up), which
+runs before the driver's `.init` ever executes. Next step (not yet
+attempted): split the DT change to isolate DART from the power domain.
+Full record in `docs/plans/2026-09-13-j81-wifi-pcie.md`'s "First hardware
+boot attempts: hangs before reaching a console" section.
+
 **Buttons hardware-verified, 2026-09-21.** `evtest /dev/input/event0` on
 the existing `gpio-keys` device captured clean press/release events for
 Home (`KEY_HOMEPAGE`), Power, Volume Up and Volume Down. No driver work
