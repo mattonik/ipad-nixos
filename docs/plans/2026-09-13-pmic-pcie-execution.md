@@ -172,6 +172,48 @@ returned immediately but the gauge remained `Discharging` at `-651000` uA
 (71%).  The two reported limits were unchanged.  Re-enumerating the data cable
 therefore does not by itself establish a charging state.
 
+### Software-only CHG-2 investigation, 2026-09-21: no USB meter available
+
+Martin does not own a USB power meter, and confirmed the same cable and
+connector charges a stock iPadOS install normally -- ruling out the cable and
+connector as the cause. Two live, read-only checks were run over the existing
+USB network shell instead, both fully reversible and requiring no new
+hardware:
+
+1. **USB gadget enumeration state.** `/sys/class/udc/20c100000.usbdev/state`
+   reads `configured`; `current_speed` and `maximum_speed` both read
+   `high-speed`. This rules out the otherwise-plausible theory that the
+   observed 100 mA is simply the USB 2.0 spec's default for an unconfigured
+   device -- the gadget is fully enumerated and configured right now. `dmesg`
+   additionally shows several full-speed-then-high-speed renegotiation
+   cycles across the uptime (cable replugs/resets), none of which changed the
+   reported limits, consistent with the same-day replug test above.
+2. **Charger-detection plumbing.** Neither `/sys/class/extcon` nor
+   `/sys/class/typec` exist on this kernel. `dmesg` has zero lines matching
+   `charg`, `extcon`, `d2207`, or `role-switch` anywhere in the boot log
+   (confirmed the ring buffer had not wrapped -- the earliest boot-time
+   `dwc2`/gadget lines from timestamp 0 are still present). The charger's
+   sysfs node exposes only `input_current_limit` and
+   `constant_charge_current_max` -- no `online`, `status`, or `present`
+   property exists at all. `waiting_for_supplier` reads `0` (not deferred on
+   a missing supplier). The charger's own devicetree node
+   (`/soc/i2c@20a110000/pmic@3c/charger`) has exactly two properties,
+   `compatible` and `name` -- no register offsets, no interrupt, nothing
+   else wired in; the driver hardcodes the two PMIC register addresses
+   internally.
+
+**Conclusion: this is not a negotiation-failure bug to debug. Nothing in the
+current Linux stack has ever attempted to raise the input current limit at
+all.** The driver is a minimal, intentionally read-only reporting shim -- it
+reads two fixed PMIC registers and exposes them, with no charger-type
+detection, no USB-event-driven current negotiation, and no write path of any
+kind. The `100000`/`0x02` value is almost certainly the D2207's power-on
+default, unchanged since boot, not a live (mis-)detection result. This
+reframes CHG-2/CHG-3 from "why does detection give the wrong answer" to "what
+write, to which register, does Apple's own driver perform once it decides to
+raise the limit" -- the same shape of question KLCT was for touch, and the
+next step is the same offline-driver-archaeology technique that answered it.
+
 ## Acceptance criteria for this pass
 
 - D2207: either identify an evidence-backed write transaction, or document
