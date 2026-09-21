@@ -559,10 +559,13 @@ mA, each derated a few percent -- matches the found log strings
 `p1000 = %d, p500 = %d` / `p2100 = %d, p2400 = %d` / `target = %d,
 adjusted = %d` exactly), and writes the byte back to `0x04c0`** via the
 same read/write I2C vtable ABI (`+0x5a8`/`+0x5b0`) already established
-for GPIO2. Byte encoding independently confirmed both from a
-neighboring decode helper and cross-checked against CHG-1's real
-hardware read: **mA = (byte & 0x3f) * 50** (`0x02 * 50 = 100`, exactly
-matching). A second helper in the same call path toggles bit 2 of
+for GPIO2. A neighboring decode helper was initially (wrongly) assumed
+to be `0x04c0`'s own byte-decode formula -- **corrected by the live
+test below: that helper actually reads `0x04cf`
+(`constant_charge_current_max`), a different register.** `0x04c0`'s
+real formula is the one `boot/ipad_console.py`'s observer already used
+(`code >= 0xfe ? 3262 : 75 + (100*code+7)//8`, mA), now independently
+confirmed live. A second helper in the same call path toggles bit 2 of
 register `0x0010`, plausibly a separate charge-enable bit.
 (Xcode.app's own `llvm-objdump`/`otool`/`strings` are gated behind an
 unaccepted license on this Mac -- worked around by invoking
@@ -570,17 +573,25 @@ unaccepted license on this Mac -- worked around by invoking
 separate, unaffected install; flag the license prompt to Martin if it
 matters for anything else.)
 
-This is a real, evidence-backed write transaction -- Apple's own driver
-reading and writing the *exact* register CHG-1 validated against live
-hardware, with an independently reproducible formula, not a guess. What
-remains open: the setter is called through a vtable slot found only as
-a raw pointer (`0xffffff8002b50600`), not a direct call anywhere in
-this kext -- so the code that actually decides *when* to raise it (real
-charger-type detection) lives elsewhere and wasn't traced. Whether this
-evidence now clears the project's own bar for a small, reversible,
-monitored live write test is explicitly left to Martin -- not decided
-automatically. Full record in
-`docs/plans/2026-09-13-pmic-pcie-execution.md`.
+**Live write test, same day: it works.** Martin authorized a single,
+small, reversible, monitored write of `0x04c0` specifically (not the
+`0x0010` bit -- untested). Baseline: `0x04c0=0x02`, sysfs `100000`,
+gauge `Discharging` at `-689000` uA. Wrote
+`i2ctransfer -f -y 0 w3@0x3c 0x04 0xc0 0x0a` (same transaction shape as
+GPIO2). Immediate readback: **`0x0a` -- the write took and persisted,
+unlike GPIO2's ACKed-but-unchanged result.** Sysfs decoded it to
+`200000` uA, matching the corrected formula exactly. More significantly:
+the gauge's discharge current **dropped to `-567000` uA**, a real ~120
+mA change in measured battery current, not just a changed register.
+Restored to `0x02` immediately after; readback, sysfs, and `dmesg` all
+confirmed clean restoration, no errors throughout. **This is the first
+live PMIC write this project has found to actually take effect on real
+J81 hardware** -- doesn't by itself prove full charging (`STATUS`
+stayed `Discharging`, `0x0010` untouched), but establishes `0x04c0` as
+a real, live, AP-writable register with a measurable power-behavior
+effect. Natural next step, not done this pass: the same kind of small
+test on `0x0010` bit 2, the more likely actual charge-enable signal.
+Full record in `docs/plans/2026-09-13-pmic-pcie-execution.md`.
 
 **BAT-4 hardware gate: real result, 2026-09-10.** UART5 (`ttySAC2`) registers
 cleanly on hardware, and independent cross-checks (live pinctrl debugfs, the

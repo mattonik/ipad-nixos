@@ -247,12 +247,14 @@ does exactly what CHG-1/CHG-2 needed to know:**
    strings (`p1000 = %d, p500 = %d`, `p2100 = %d, p2400 = %d`, `target = %d,
    adjusted = %d`).
 3. **Writes the resulting single byte back to register `0x04c0`.** A
-   neighboring helper in the same kext (`grep` for the byte-decode idiom
-   `and w8, w8, #0x3f; mov w9, #0x32; mul w0, w8, w9`) confirms the exact
-   encoding: **mA = (raw_byte & 0x3f) * 50** -- independently cross-checked
-   against CHG-1's real hardware read (`0x04c0 = 0x02` -> `2 * 50 = 100` mA,
-   exactly what the driver reported). This is a clean, two-way-confirmed
-   formula, not a guess.
+   neighboring helper in the same kext, found at the time via the byte-decode
+   idiom `and w8, w8, #0x3f; mov w9, #0x32; mul w0, w8, w9`, was initially
+   (incorrectly) assumed to be `0x04c0`'s own decode formula -- **corrected
+   after the live test below: that helper actually reads register `0x04cf`
+   (`constant_charge_current_max`, a separate register), not `0x04c0`.**
+   `0x04c0`'s real formula is the one `boot/ipad_console.py`'s observer
+   already used (`code >= 0xfe ? 3262 : 75 + (100*code+7)//8`, in mA) --
+   now independently confirmed live, see below.
 4. A second helper in the same call path (`0xffffff8002b4c9ac`) performs an
    independent read-modify-write of register `0x0010`, toggling bit 2 based
    on whether the target current is zero or nonzero -- read the same way,
@@ -284,10 +286,47 @@ GPIO2 attempt: GPIO2's "correct write, no effect" conclusion relied on
 matching a single write's wire format against Apple's driver; here, Apple's
 own driver performs a full, symmetric read-then-write of the *same* register
 this project already validated by live readback, with an independently
-reproducible encoding formula. Whether that difference justifies a small,
-reversible, monitored live write test (read `0x04c0`, write a modest target
-such as `500` mA's encoding `0x0a`, read back immediately, restore the
-original `0x02`) is a decision left to Martin, not taken automatically here.
+reproducible encoding formula.
+
+### Live write test, 2026-09-21: the write takes effect -- unlike GPIO2
+
+Martin authorized a single, small, reversible, monitored write test of
+`0x04c0` specifically (not the `0x0010` charge-enable bit found alongside
+it -- that stays untested). Procedure and results, run over the existing USB
+network telnet shell:
+
+1. **Baseline.** `0x04c0` raw read: `0x02`. Sysfs `input_current_limit`:
+   `100000`. Gauge: `Discharging`, `-689000` uA, 49%, 33.1 C. `dmesg` clean.
+2. **Write.** `i2ctransfer -f -y 0 w3@0x3c 0x04 0xc0 0x0a` (the exact
+   two-address-byte-plus-data-byte transaction shape already established for
+   GPIO2, target code `0x0a`).
+3. **Immediate readback: `0x0a`.** The write took and persisted --
+   **unlike GPIO2's ACKed-but-unchanged result.** No `dmesg` errors.
+4. **Effect check, before restoring.** Sysfs `input_current_limit` now reads
+   `200000` -- decoding `0x0a` through `boot/ipad_console.py`'s existing
+   formula (`75 + (100*10+7)//8 = 200`) confirms *that* formula is correct
+   for `0x04c0`, and retroactively confirms the disassembly's byte-decode
+   attribution above was wrong (see the correction inline). More
+   significantly: the gauge's discharge current **dropped from `-689000` uA
+   to `-567000` uA** in the same window -- a real ~120 mA change in measured
+   battery current, not just a changed register. This is evidence the write
+   affects genuine input current draw, not only a cosmetic sysfs number,
+   even without touching the separate `0x0010` charge-enable bit.
+5. **Restore.** `i2ctransfer -f -y 0 w3@0x3c 0x04 0xc0 0x02`. Readback:
+   `0x02`. Sysfs: back to `100000`. `dmesg` clean throughout.
+
+**This is the first live PMIC write this project has found to actually take
+effect on real J81 hardware** (GPIO2 remains the only prior attempt, and it
+did not). It does not by itself prove full "charging" -- gauge `STATUS`
+stayed `Discharging` throughout, `0x0010`'s charge-enable bit was
+deliberately not touched this pass, and a single ~120 mA current-draw change
+is not the same as a verified charge curve. What it does establish: `0x04c0`
+is a real, live, AP-writable register with a measurable effect on the
+device's power behavior, using exactly the transaction shape Apple's own
+compiled driver performs. The natural next step -- not done this pass -- is
+the same kind of small, reversible, monitored test of the `0x0010` bit-2
+toggle found alongside it, which is the more likely candidate for an actual
+"start charging" signal.
 
 ## Acceptance criteria for this pass
 
