@@ -1,71 +1,63 @@
 # J81 active-work priority
 
-**Reviewed:** 2026-09-15
+**Reviewed:** 2026-09-21 (supersedes the 2026-09-15 version -- charging is
+now fully resolved and PCIe has moved from "evidence-gathering" to
+"implementation-ready")
 
 This is the live backlog distilled from `docs/project-status.md`, the
-subsystem plans, and the driver-gap research.  It excludes completed boot/USB
-investigations and intentionally deferred historical experiments.
+subsystem plans, and the driver-gap research. It excludes completed
+boot/USB investigations and intentionally deferred historical experiments.
 
-Scores are 1–5: higher certainty means stronger J81 evidence; higher ease
-means less new code and lower risk; higher impact means a clearer improvement
-to a usable Linux tablet.  Hardware-only observations are included because
-they can close a blocker cheaply, but they are never substituted with guessed
-software writes.
+Scores are 1-5: higher certainty means stronger J81 evidence; higher ease
+means less new code and lower risk; higher impact means a clearer
+improvement to a usable Linux tablet. Hardware-only observations are
+included because they can close a blocker cheaply, but they are never
+substituted with guessed software writes.
 
 | Order | Work item | Certainty | Ease | Impact | Current gate |
 | --- | --- | ---: | ---: | ---: | --- |
-| 1 | CHG-2: map charger cable/status behavior with a USB meter | 5 | 4 | 5 | CHG-1 passed on J81 on 2026-09-21; record disconnected, data-host and known-charger cases without PMIC writes. |
-| 2 | Repeat ANS1's intentionally read-only hardware observation | 4 | 4 | 3 | Requires the separate observation-only payload; never mount or write it. |
-| 3 | Passively trace the D2207 I2C bus during an iPadOS Bluetooth transition | 4 | 2 | 5 | Requires a logic analyser and iPadOS; no injected transactions. |
+| 1 | PCIe: implement and cross-build the isolated link/enumeration test payload | 4 | 3 | 5 | Register-level enable sequence fully recovered from real firmware (exact offsets, bit positions, microsecond delays). Not yet implemented as real driver code or cross-built. No hardware attempt until it compiles clean and is reviewed. |
+| 2 | Charging Stage 2: writable `input_current_limit` kernel property | 5 | 4 | 3 | Approved plan (`kernel/patches/0017-...`), fully backed by a live tier-validation sweep across all five tiers. Not started. Charging itself already works via the console tool; this is a convenience/permanence upgrade, not a new capability. |
+| 3 | Repeat ANS1's intentionally read-only hardware observation | 4 | 4 | 3 | Requires the separate observation-only payload; never mount or write it. |
 | 4 | Touch: resolve firmware/calibration delivery and power ownership | 3 | 2 | 5 | Blocked by the non-persistent D2207 LDO/GPIO state and private touch data. |
-| 5 | T7000 PCIe host: finish one per-port register class and enable order | 3 | 2 | 5 | ECAM, shared, controller and pair-PHY classes are mapped; disabled DT/DART topology and compile-only skeleton are ready; do not access registers yet. |
-| 6 | Charging policy writes | 2 | 1 | 5 | Blocked by cable/meter observations and PMIC runtime ownership. |
-| 8 | Suspend-to-idle audit | 2 | 2 | 4 | Needs driver power ownership after touch/PCIe work; deep suspend remains later. |
-| 9 | Audio playback | 2 | 1 | 4 | Needs old-Apple I2S/DMA, codec and routing work. |
-| 10 | Native GPU / KMS | 1 | 1 | 5 | Needs exact BVNC, DART/power/firmware and a new A8X platform port. |
-| 11 | Writable internal storage | 1 | 1 | 3 | Explicitly blocked: preserve the proven read-only ANS1 configuration. |
-| 12 | Sensors, cameras, Touch ID and NFC | 1 | 1 | 1 | Missing M8/ISP/SEP/proprietary protocols; defer. |
+| 5 | Passively trace the D2207 I2C bus during an iPadOS Bluetooth transition | 4 | 2 | 4 | Requires a logic analyser and iPadOS; no injected transactions. The `0x0010` master-enable hypothesis was tested and ruled out 2026-09-21, narrowing but not closing this. |
+| 6 | Suspend-to-idle audit | 2 | 2 | 4 | Needs driver power ownership after touch/PCIe work; deep suspend remains later. |
+| 7 | Audio playback | 2 | 1 | 4 | Needs old-Apple I2S/DMA, codec and routing work. |
+| 8 | Native GPU / KMS | 1 | 1 | 5 | Needs exact BVNC, DART/power/firmware and a new A8X platform port. |
+| 9 | Writable internal storage | 1 | 1 | 3 | Explicitly blocked: preserve the proven read-only ANS1 configuration. |
+| 10 | Sensors, cameras, Touch ID and NFC | 1 | 1 | 1 | Missing M8/ISP/SEP/proprietary protocols; defer. |
 
-## Completed first item: current payload build
+## Completed since the 2026-09-15 version
 
-The current `m1n1-hoolock-control` payload was rebuilt on the restored Linux
-builder with:
-
-```sh
-nix build .#packages.x86_64-linux.m1n1-hoolock-control --no-link -L
-```
-
-It completed successfully and produced
-`/nix/store/76saw65fjsiv1clj4bvvfl5ka4k7fsdx-ipad-air2-m1n1-hoolock-control`.
-This validates the current normal payload, including the read-only D2207
-charger child.  Hardware registration and raw-register decoding were then
-verified on J81 on 2026-09-21; charging behavior remains unproven.
-
-## Completed CHG-1 hardware check (2026-09-21)
-
-The live observer reported `100000` uA and `3000000` uA.  Raw registers
-`0x04c0 = 0x02` and `0x04cf = 0x3c` decoded to those same values, satisfying
-the CHG-1 acceptance gate.  The battery was present but reported
-`Discharging` at about `-645000` uA.  The action used only PMIC
-address-select-plus-read transfers.
-
-## Next action, with a USB power meter
-
-Record disconnected, data-host and known-charger cases: meter voltage/current,
-gauge current, `0x04c0`, and the read-only D2207 status block.  Those cases
-are needed to name status bits and explain the 100 mA data-host limit before
-any charging-control design is considered.
-
-## Completed button check (2026-09-21)
-
-`evtest /dev/input/event0` captured press and release events from Home
-(`KEY_HOMEPAGE`), Power, Volume Up and Volume Down.  The existing
-`gpio-keys` device therefore has complete hardware coverage; no new payload
-or driver is required for buttons.
+- **CHG-1 and CHG-2 (charging): fully resolved, 2026-09-21.** Real
+  `Charging` status achieved and understood end to end -- `0x04c0`
+  (input current limit) is the real, AP-writable register; `0x0010` bit 2
+  is Apple's own named `setCurrentLimitSuspend` control, not a mystery bit.
+  All five tiers (100/500/1000/2100/2400 mA) validated live on real
+  hardware, all clean (no voltage droop, no thermal concern, no USB link
+  instability at any tier). A console tool (`Charging: switch current
+  tier`) makes this reproducible without raw `i2ctransfer` syntax. Device
+  is currently running at 2400 mA under a recurring safety monitor
+  (80% capacity / 42 C auto-cutoff). Full record in
+  `docs/plans/2026-09-13-pmic-pcie-execution.md`.
+- **Buttons: verified complete, 2026-09-21.** All four physical inputs
+  (Home, Power, Volume Up/Down) produce clean Linux events on the existing
+  `gpio-keys` device. No further work needed.
+- **PCIe: enable-order evidence gap closed, 2026-09-21.** The exact
+  `AppleT7000PCIe`/`AppleEmbeddedPCIEPort` port-enable sequence is now
+  fully recovered from the real iOS 8.1 kernelcache -- register offsets,
+  bit positions, and confirmed (not inferred) microsecond-precision
+  delays. The previously-open second per-port register-window class
+  (entries 2/4/6/8) is confirmed unused by Apple's own host path -- closed
+  as a real negative result, not left open. CLKREQ confirmed
+  endpoint/controller-managed, not host-toggled. All static analysis; no
+  J81 controller register was read or written. Full record in
+  `docs/plans/2026-09-13-j81-wifi-pcie.md`.
 
 ## Explicitly deferred
 
-Do not add a D2207 GPIO/regulator/charging write path, attempt PCIe link
-training, enable a touch child, make ANS1 writable, or begin GPU/audio work
-from this ranking alone.  Each is below a missing evidence or hardware gate
-listed above.
+Do not add a D2207 GPIO/regulator write path beyond the already-validated
+charging registers, attempt PCIe link training or hardware bring-up before
+the isolated payload is cross-build verified, enable a touch child, make
+ANS1 writable, or begin GPU/audio work from this ranking alone. Each is
+below a missing evidence or hardware gate listed above.
