@@ -605,9 +605,32 @@ evidence the bump really was caused by the write, not coincidence.
 not supported** -- more consistent with gating some quiescent-current
 circuit (comparator/regulator/detection block) than connecting USB
 current through to the battery. Don't assume this is charge-enable going
-forward. Worth trying next (not done this pass): the same isolated test
-with `0x04c0` also raised at the same time -- maybe the combination, not
-either register alone, produces net charging current. Full record in
+forward.
+
+**Then tried both registers together, same day -- combination is worse
+than `0x04c0` alone, not better.** Baseline confirmed clean
+(`0x04c0=0x02`, `0x0010=0x00`, `-705000` uA). Wrote both in Apple's own
+call order (enable bit, then current limit): `0x0010<-0x04` then
+`0x04c0<-0x0a`, both took and persisted, sysfs correctly decoded `0x0a`
+to `200000` uA. But `STATUS` stayed `Discharging`, and current sat at
+`-809000`/`-808000` uA -- **matching the `0x0010`-alone result, not the
+improved `-567000` uA seen with `0x04c0` alone.** The bit's quiescent
+penalty looks like it dominates regardless of current-limit setting,
+rather than the two effects adding toward charging. Restored both in
+reverse order; clean readback on both, sysfs back to `100000`, current
+settled to `-701000` uA eight seconds later, `dmesg` clean throughout
+all three tests.
+
+**Net result of all three live tests: `0x04c0` alone helps (~120 mA less
+draw); `0x0010` bit 2 alone hurts (~100 mA more draw, no `STATUS`
+change); together, roughly cancel out. Nothing tried produced an actual
+`Charging` transition.** Whatever really triggers charging -- if
+software-controlled at all, rather than autonomous D2207 hardware gating
+independent of both these registers -- remains unidentified. The
+strongest remaining lead is tracing the current-limit setter's actual
+caller (the vtable dispatch found but not traced in the write-path
+section above) -- the only place likely to reveal what else Apple's
+driver checks or sets before real charging starts. Full record in
 `docs/plans/2026-09-13-pmic-pcie-execution.md`.
 
 **BAT-4 hardware gate: real result, 2026-09-10.** UART5 (`ttySAC2`) registers

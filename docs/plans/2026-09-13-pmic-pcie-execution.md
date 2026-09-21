@@ -372,10 +372,44 @@ when set," nothing more confirmed than that. The disassembly's `csel`-based
 set/clear logic and its co-location with the current-limit setter remain
 the only reasons to suspect it's charging-related at all.
 
-A reasonable next test, not done this pass: repeat this same isolated
-procedure with `0x04c0` *also* raised (e.g. back to the already-tested
-`0x0a`/500 mA), to see whether the combination -- rather than either
-register alone -- is what actually produces net charging current.
+### Live write test, 2026-09-21 (continued): both registers together -- combination is worse than `0x04c0` alone, not better
+
+Martin authorized the combined test. Baseline confirmed both registers at
+rest (`0x04c0 = 0x02`, `0x0010 = 0x00`) before touching anything; gauge
+`Discharging`, `-705000` uA, 38%, 34.4 C.
+
+Wrote both, in the order Apple's own driver calls them (the enable-bit
+helper before the current-limit setter, per the disassembly): `0x0010 <-
+0x04` (readback `0x04`), then `0x04c0 <- 0x0a` (readback `0x0a`). Both took
+and persisted. `dmesg` clean.
+
+**Effect: no better than `0x0010` alone, and worse than `0x04c0` alone.**
+Sysfs `input_current_limit` correctly decoded `0x0a` to `200000` uA (same
+round-trip through the real driver as the isolated test). But gauge
+`STATUS` stayed `Discharging` throughout, and current sat at `-809000` /
+`-808000` uA -- **matching the `0x0010`-alone result almost exactly, not
+the improved `-567000` uA seen with `0x04c0` raised alone.** The bit 2
+quiescent draw looks like it dominates regardless of the current-limit
+setting, rather than the two effects combining toward net charging.
+
+Restored in reverse: `0x04c0 <- 0x02` (readback `0x02`), `0x0010 <- 0x00`
+(readback `0x00`). Sysfs back to `100000`. `dmesg` clean throughout. Current
+settled to `-701000` uA eight seconds later, matching baseline.
+
+**Conclusion: the combination hypothesis is not supported either.** Three
+clean, isolated, fully-reversible live tests now agree: `0x04c0` alone
+measurably *helps* (reduces discharge by ~120 mA); `0x0010` bit 2 alone
+measurably *hurts* (~100 mA more draw, no `STATUS` change); together, bit
+2's penalty roughly cancels `0x04c0`'s benefit, landing close to the
+`0x0010`-alone result. Nothing tested this pass produced an actual
+`Charging` transition. Whatever *does* trigger real charging -- if it's
+software-controlled at all, rather than something the D2207's own
+autonomous charger-detection hardware gates independently of both these
+registers -- remains unidentified. The next-best lead is tracing the
+current-limit setter's real caller (the still-untraced vtable dispatch
+from the fifth/sixth touch-style passes), since that's the only place
+likely to reveal what else Apple's driver checks or sets before charging
+actually starts.
 
 ## Acceptance criteria for this pass
 
