@@ -323,10 +323,59 @@ deliberately not touched this pass, and a single ~120 mA current-draw change
 is not the same as a verified charge curve. What it does establish: `0x04c0`
 is a real, live, AP-writable register with a measurable effect on the
 device's power behavior, using exactly the transaction shape Apple's own
-compiled driver performs. The natural next step -- not done this pass -- is
-the same kind of small, reversible, monitored test of the `0x0010` bit-2
-toggle found alongside it, which is the more likely candidate for an actual
-"start charging" signal.
+compiled driver performs.
+
+### Live write test, 2026-09-21 (continued): `0x0010` bit 2 -- writable, but not a "charge enable" bit
+
+Martin authorized the same test on `0x0010` bit 2, isolated from `0x04c0`
+(left at its rest value `0x02` throughout, confirmed unchanged before and
+after) so any effect could be attributed to this one register alone.
+Read-modify-write discipline mirrored exactly what
+`AppleD2207PMUPowerSource`'s own helper does (`0xffffff8002b4c9ac`): read
+the current byte, OR in bit 2 to enable, restore the *original* byte
+afterward rather than assuming a fixed rest value.
+
+1. **Baseline.** `0x0010` raw read: `0x00` (bit 2 clear). `0x04c0` confirmed
+   still `0x02`. Gauge: `Discharging`, `-709000` uA, 39%, 34.8 C.
+2. **Write.** `i2ctransfer -f -y 0 w3@0x3c 0x00 0x10 0x04` (set bit 2, same
+   transaction shape). Readback: **`0x04` -- took and persisted**, same as
+   `0x04c0`'s test.
+3. **Effect check.** Gauge `STATUS` stayed `Discharging` throughout (no
+   transition toward `Charging` or `Not charging`). Discharge current went
+   the **wrong direction**: `-709000` -> `-809000` uA, and held there
+   (`-808000` uA five seconds later) -- roughly 100 mA of *additional* draw,
+   not reduced discharge. `0x04c0` reread and confirmed still `0x02`
+   (isolation held; the earlier test's effect can't be leaking in here).
+4. **Restore.** `i2ctransfer -f -y 0 w3@0x3c 0x00 0x10 0x00`. Readback:
+   `0x00`. `dmesg` clean throughout. Current was still `-809000` uA
+   immediately after restoring (gauge lag, not a failed restore -- the raw
+   register readback already confirmed `0x00`); rechecked 8 seconds later
+   and it had settled to `-701000` uA, matching the original baseline almost
+   exactly. This settle-back is good evidence the current bump really was
+   caused by the register write (temporally correlated both ways), not
+   coincidental background load.
+
+**Conclusion: this bit is real and writable (unlike GPIO2), but the
+"charge-enable" hypothesis from the disassembly is not supported by this
+result.** Setting it *increased* battery drain rather than reducing or
+reversing it, with no `STATUS` change -- consistent with it gating some
+circuit that itself draws quiescent/parasitic current (a comparator, a
+boost stage, an LED, a detection block) rather than connecting USB input
+current through to the battery. It may still be part of the real charging
+path (e.g. a precondition that only produces net charging current once
+`0x04c0` is *also* raised, since this test deliberately kept `0x04c0` at
+its 100 mA rest value throughout, or may require other, still-unidentified
+register state alongside it) or may control something unrelated to
+charging entirely. **Do not assume this is the charge-enable bit going
+forward** -- treat it as "real, writable, causes ~100 mA of extra draw
+when set," nothing more confirmed than that. The disassembly's `csel`-based
+set/clear logic and its co-location with the current-limit setter remain
+the only reasons to suspect it's charging-related at all.
+
+A reasonable next test, not done this pass: repeat this same isolated
+procedure with `0x04c0` *also* raised (e.g. back to the already-tested
+`0x0a`/500 mA), to see whether the combination -- rather than either
+register alone -- is what actually produces net charging current.
 
 ## Acceptance criteria for this pass
 

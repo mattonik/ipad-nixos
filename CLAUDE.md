@@ -587,11 +587,28 @@ Restored to `0x02` immediately after; readback, sysfs, and `dmesg` all
 confirmed clean restoration, no errors throughout. **This is the first
 live PMIC write this project has found to actually take effect on real
 J81 hardware** -- doesn't by itself prove full charging (`STATUS`
-stayed `Discharging`, `0x0010` untouched), but establishes `0x04c0` as
-a real, live, AP-writable register with a measurable power-behavior
-effect. Natural next step, not done this pass: the same kind of small
-test on `0x0010` bit 2, the more likely actual charge-enable signal.
-Full record in `docs/plans/2026-09-13-pmic-pcie-execution.md`.
+stayed `Discharging`, `0x0010` untouched at this point), but establishes
+`0x04c0` as a real, live, AP-writable register with a measurable
+power-behavior effect.
+
+**Then tested `0x0010` bit 2 the same way, same day -- writable, but not
+confirmed as charge-enable.** Isolated from `0x04c0` (reread and
+confirmed `0x02` throughout, so any effect is attributable to this one
+register alone). Baseline `0x00`; wrote `0x04` (set bit 2, same
+transaction shape); readback confirmed it took and persisted, same as
+`0x04c0`. But the effect went the wrong way: `STATUS` stayed
+`Discharging` throughout, and discharge current *increased*
+(`-709000` -> `-809000` uA, ~100 mA more draw, not less) -- then settled
+back to baseline (`-701000` uA) within 8s of restoring to `0x00`, good
+evidence the bump really was caused by the write, not coincidence.
+**Conclusion: real, writable bit, but the "charge-enable" hypothesis is
+not supported** -- more consistent with gating some quiescent-current
+circuit (comparator/regulator/detection block) than connecting USB
+current through to the battery. Don't assume this is charge-enable going
+forward. Worth trying next (not done this pass): the same isolated test
+with `0x04c0` also raised at the same time -- maybe the combination, not
+either register alone, produces net charging current. Full record in
+`docs/plans/2026-09-13-pmic-pcie-execution.md`.
 
 **BAT-4 hardware gate: real result, 2026-09-10.** UART5 (`ttySAC2`) registers
 cleanly on hardware, and independent cross-checks (live pinctrl debugfs, the
