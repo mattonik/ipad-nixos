@@ -21,9 +21,11 @@ registers on hardware and bundled `btattach` reaches `hci0`; the radio remains
 silent because PMU GPIO2 is low. The 2026-09-10 Apple-driver review resolves
 its exact control: GPIO2 configuration register `0x03e6`, data bit 2 at
 `0x0063`, active high. Live read-only values are `0x00` and `0x20`
-respectively, proving the radio power enable is currently low. The next test is
-a single reversible `0x03e6: 0x00 -> 0x02 -> 0x00` A/B run followed by the
-existing `btattach` action; no PMIC write has occurred yet.
+respectively, proving the radio power enable is currently low.  Later
+Apple-driver review and a live ACKed-but-non-persistent attempt proved that
+the wire format was already correct but a runtime owner or condition rejects
+the change.  Do not repeat the PMIC write; the next evidence is a passive I2C
+capture during an iPadOS Bluetooth transition.
 
 The battery source audit found that Samsung UART already supports serdev
 children through the common serial core. Commit `863d2e4` now implements the
