@@ -1,6 +1,6 @@
 # iPad Linux Project Status
 
-Status date: 2026-09-10
+Status date: 2026-09-21
 
 ## 🎉 USB networking resolved -- real remote shell access to the device (2026-09-08)
 
@@ -2481,7 +2481,7 @@ Never commit Apple firmware, NVRAM, touch calibration or device identifiers.
 | PongoOS → Linux | **Working** on Hoolock Linux 7.3-rc1; historical route remains a control | Preserve the working Hoolock payload and the historical control. |
 | Console / USB gadget | Hoolock CDC-ECM works bidirectionally at `172.16.42.1` | Keep it as the driver-development control channel. |
 | Display | Inherited framebuffer produces a visible shell | Keep simplefb; defer native display/GPU. |
-| Buttons | GPIO driver, config and DT are present | Verify Home, Power and both volume input events on Hoolock. |
+| Buttons | **Hardware-verified, 2026-09-21:** `gpio-keys` on `/dev/input/event0` reported clean press/release events for Home (`KEY_HOMEPAGE`), Power, Volume Up and Volume Down. | Preserve the existing GPIO/DT wiring; no driver work is needed. |
 | RTC / backlight | Both hardware-verified over the USB shell | Preserve their current nodes and drivers. |
 | Bluetooth | Real J81 UART3 and manual `hci0` attach are hardware-confirmed; GPIO2 at `0x03e6` is low, and static Apple-driver evidence proves the prior ACKed `03 e6 02` command already had the correct wire format | Do not retry a PMIC write. Passively capture I2C traffic during an iPadOS Bluetooth transition, then determine the runtime owner/condition before adding `hci_bcm`. |
 | Battery | **Working across warm and cold reboot** (2026-09-13: cold half confirmed satisfied by the accumulated multi-day record, this project's normal disconnect-to-charger routine being a real cold cycle): BQ27545 identified automatically; stable voltage/current/capacity/temperature/cycle reads after GPIO34 function-1 correction | Compare with iPadOS opportunistically; otherwise done. |
@@ -2509,8 +2509,8 @@ charging action remains measurement, not a PMIC write.
 3. **Touch.** Cross-build the staged S5L SPI3 patches, prove the controller,
    then adapt the existing `apple_z2` driver with private local
    firmware/calibration and the identified power sequence.
-4. **Buttons.** Validate Home, Power and both volume inputs through the USB
-   shell.
+4. **Buttons.** Complete: all four physical inputs generated Linux events on
+   2026-09-21.
 5. **PCIe and Wi-Fi.** Add the existing old-Apple DART node, port the T7000 PCIe
    host using live A8X tunables, enumerate BCM4350, then enable the wireless
    Kconfig closure and load local firmware/NVRAM.
@@ -2538,7 +2538,7 @@ charging action remains measurement, not a PMIC write.
 | Linux kernel boot | ✅✅ Achieved in full, 2026-09-07, via `bootm`→m1n1: reaches a live, interactive postmarketOS `/ #` shell prompt (`pd_ignore_unused`/`clk_ignore_unused` fixed a power-domain auto-shutdown that was killing the display). See docs/software-only-control.md. |
 | USB networking to the debug shell | ✅✅ **Resolved, 2026-09-08 (Round 10)**: switched to the newer Hoolock kernel (Linux 7.3-rc1, real `dwc2` DMA support instead of the historical fork's forced PIO). Booted completely on first hardware attempt; USB networking works bidirectionally — 0% ping loss, working telnet, genuine interactive remote shell access to the live device confirmed by running real commands (`uname -a`, `cat /proc/version`) over the network. See docs/software-only-control.md's "Round 10" for the full transcript; Rounds 3-9 document the path that led here. |
 | RTC / Backlight (Apple PMIC) | ✅✅ **Hardware-verified, 2026-09-08**: connected over the newly-working USB network link and confirmed both live on real hardware — RTC set the system clock from real PMIC time (`rtc-apple-pmic ... registered as rtc0`); backlight physically dimmed the screen on command, visually confirmed by the user, then restored. |
-| Hoolock payload / RTC / backlight validation | ✅✅ Hardware-verified; buttons remain untested |
+| Hoolock payload / RTC / backlight / buttons validation | ✅✅ Hardware-verified; all four physical buttons produced clean Linux input events on 2026-09-21 |
 | J81 ADT capture | ✅ Real raw ADT captured privately; UART, battery, touch and Wi-Fi/PCIe resources sanitized and documented |
 | Bluetooth | 🟡 UART3 and `hci0` registration hardware-confirmed; GPIO2 is identified/read low and the attempted write is proven wire-correct but non-persistent; passive I2C capture is the next evidence gate |
 | Battery | ✅ **Working live, 2026-09-10:** BQ27545 identified and stable standard power-supply readings verified after correcting GPIO34 to peripheral function 1; rebuilt-DT reboot reproduction remains |

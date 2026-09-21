@@ -43,7 +43,7 @@ identifiers stay outside Git.
 | GPIO/pinctrl | Apple GPIO | Working during boot | New peripheral pins absent | Add only from live ADT evidence |
 | Display | Bootloader framebuffer | Visible Linux console | No native A8X display/GPU stack | Retain simplefb |
 | USB gadget | T7001 PHY + DWC2 | **Resolved 2026-09-08** on the Hoolock kernel: bidirectional networking works | None -- historical kernel's TX stall doesn't apply, real DMA works | Done; USB networking is the live channel now used for further hardware validation |
-| Buttons | GPIO 0/1/92/93 | Driver/config/DT present | Physical test missing | Verify input events |
+| Buttons | GPIO 0/1/92/93 | **Hardware-verified, 2026-09-21:** `gpio-keys` produced clean press/release events for Home, Power and both volume buttons | None observed | Preserve the existing GPIO/DT wiring |
 | RTC | Apple D2207 PMIC child | **Hardware-verified 2026-09-08** | None | `rtc-apple-pmic` registered as `rtc0`, set system clock from real hardware time (`hwclock -r` matched actual date), confirmed live over the newly-working USB network link |
 | Backlight | Apple D2207 PMIC child | **Hardware-verified 2026-09-08** | None | `echo 200 > brightness` physically dimmed the screen, visually confirmed by the user, then restored to 1627/2047; confirmed live over the USB network link |
 | Bluetooth | BCM4350-family radio over UART3 | UART3 and manual `hci0` registration hardware-confirmed | Exact GPIO2 power A/B test, serdev child and local firmware | Toggle identified `0x03e6` control, then retry HCI |
