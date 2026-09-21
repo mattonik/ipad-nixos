@@ -2,8 +2,8 @@
 # extract-firmware.sh — Extract WiFi/BT/Touch firmware from iPad IPSW
 #
 # iPad Air 2 (iPad5,3 / iPad5,4) firmware blobs needed for Linux:
-#   - WiFi:  BCM4354 → brcmfmac driver (brcmfmac4354-sdio.*)
-#   - BT:   BCM4354 → btbcm driver
+#   - WiFi:  BCM4350 over PCIe → brcmfmac driver
+#   - BT:   BCM4350-family combo radio → btbcm driver
 #   - Touch: BCM5976 → apple_z2 driver (Z2 protocol over SPI)
 #
 # IPSW files are ZIP archives containing:
@@ -101,7 +101,9 @@ if [[ -d "$WIFI_SRC" ]]; then
     mkdir -p "$OUTPUT/brcm"
 
     # Copy all Broadcom firmware files
-    # brcmfmac expects files named like: brcmfmac4354-sdio.bin, .clm_blob, .txt
+    # Preserve Apple's raw names. J81 needs a board-specific conversion step:
+    # Linux requests brcmfmac4350c2-pcie or brcmfmac4350-pcie only after PCIe
+    # enumeration identifies the chip revision (see WiFi/PCIe plan).
     for f in "$WIFI_SRC"/*; do
         if [[ -f "$f" ]]; then
             cp "$f" "$OUTPUT/brcm/"
@@ -176,7 +178,6 @@ echo "To install for Linux:"
 echo "  WiFi:  copy $OUTPUT/brcm/* to /lib/firmware/brcm/ on the initramfs"
 echo "  Touch: copy $OUTPUT/apple/* to /lib/firmware/apple/ on the initramfs"
 echo ""
-echo "Note: brcmfmac expects specific filenames. You may need to rename files:"
-echo "  brcmfmac4354-sdio.bin          — main firmware"
-echo "  brcmfmac4354-sdio.clm_blob     — CLM (country locale) blob"
-echo "  brcmfmac4354-sdio.txt          — NVRAM config (board-specific)"
+echo "Note: do not blindly rename raw Apple WiFi firmware. For J81, brcmfmac"
+echo "will request brcmfmac4350c2-pcie or brcmfmac4350-pcie after PCIe reports"
+echo "the BCM4350 revision. Convert/select the matching board NVRAM first."
