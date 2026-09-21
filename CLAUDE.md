@@ -672,6 +672,25 @@ If you're picking this thread up in a later session: check that log
 first for the latest state before assuming what `0x04c0` is currently
 set to.
 
+**Automatic charging plan approved and Stage 0/1 implemented, same day.**
+Full plan at `/Users/martinp/.claude/plans/mighty-snuggling-cocke.md`.
+Stage 0 (live, no code): tested whether `0x0010` bit 2 is a Bluetooth
+master enable -- **ruled out**, GPIO2's write still didn't persist even
+with it set, HCI commands still timed out. Stage 1 (built and shipped):
+`boot/ipad_console.py` has a new "Charging: switch current tier" action
+(100/500/1000/2100/2400 mA + custom), reusing the exact validated
+`0x04c0` formula, never touching `0x0010`, with a 42 C thermal abort and
+automatic restore to `0x4a` (the validated resting state, not Apple's
+factory `0x02`) baked in. Two offline tests added
+(`boot/test_ipad_console.py`); both pass. **Live-validated against real
+hardware**: selected 500 mA, watched it poll for 30s (dropped to
+`Discharging` -- 500 mA alone isn't quite enough right now), declined to
+keep, watched it auto-restore to `0x4a`, confirmed `Charging` resumed at
+`+68000` uA five seconds later. Stage 2 (kernel-level writable sysfs
+property, `kernel/patches/0017-...`) is designed in the plan but not
+started -- pick that up next if asked to continue this thread. Full
+record in `docs/plans/2026-09-13-pmic-pcie-execution.md`.
+
 **BAT-4 hardware gate: real result, 2026-09-10.** UART5 (`ttySAC2`) registers
 cleanly on hardware, and independent cross-checks (live pinctrl debugfs, the
 real ADT, the decompiled DTB) confirm pinmux, power-domain, IRQ and register

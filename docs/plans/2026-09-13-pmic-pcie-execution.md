@@ -517,6 +517,50 @@ unlocking GPIO2 or Bluetooth.** Full record in
 `docs/plans/2026-09-08-j81-bluetooth-battery-adt.md`'s "Tested and ruled
 out: `0x0010` bit 2 as a master enable" section.
 
+### Stage 1: console tier-switcher tool, built and live-validated, 2026-09-21
+
+Following the approved plan
+(`/Users/martinp/.claude/plans/mighty-snuggling-cocke.md`), added
+`action_charging_switch` to `boot/ipad_console.py` -- a menu-driven
+tier-switcher (100/500/1000/2100/2400 mA + custom) built entirely on the
+same primitives already validated live all session (`i2ctransfer` read/write
+of `0x04c0`, the same formula CHG-1 confirmed:
+`mA = 75 + floor((100*code+7)/8)`, with a verified exact inverse for
+encoding). It never touches `0x0010` (a code comment states why, with a
+pointer to the negative results above). Every restore path -- whether the
+operator declines to keep a tier, or a safety abort fires -- returns to
+`SAFE_RESTING_CODE` (`0x4a`, 1000 mA), **not** Apple's `0x02` factory
+default, since `0x4a` is the validated, currently-running resting state.
+Built-in safety guard: aborts and force-restores immediately if `TEMP`
+reads at or above 42.0 C, or if a shell command raises/times out (possible
+lost USB link) mid-poll.
+
+Two offline tests added to `boot/test_ipad_console.py` (`FakeSwitchShell`,
+extending the existing `FakeShell` pattern to simulate the register and
+gauge across a full write-then-restore cycle): a normal-path run (select
+500 mA, six clean polls, decline to keep, confirm restore lands on `0x4a`
+not `0x02`) and a thermal-abort run (select 2100 mA, `TEMP` crosses 42.0 C
+on the second poll, confirm polling stops early and an automatic restore
+fires without ever reaching the keep prompt). Both assert the tool never
+issues a single command touching register `0x0010`. `python3 boot/test_ipad_console.py`
+and `python3 -m py_compile boot/ipad_console.py boot/test_ipad_console.py`
+both pass.
+
+**Live-validated against real hardware, same session**: ran the actual tool
+against the real device (input mocked only for the two prompts, everything
+else genuine), selected 500 mA. Baseline read correctly (`0x4a`, `Charging`,
+`+54000` uA). Wrote `0x22`, readback confirmed. Polled six times over 30 s,
+watched `STATUS` shift to `Discharging` at `-240000` uA (500 mA alone isn't
+quite enough right now -- consistent with the very first isolated `0x04c0`
+test's finding), temperature flat at 33.3 C throughout. Declined to keep;
+tool automatically restored to `0x4a`, readback confirmed. Rechecked five
+seconds later: `Charging` again at `+68000` uA, `0x04c0` confirmed `0x4a`.
+**The tool works exactly as designed, on real hardware, with no manual
+`i2ctransfer` syntax needed.**
+
+Stage 2 (a real kernel-level writable sysfs property, per the approved
+plan) is not started yet -- next step when picked up again.
+
 ## Acceptance criteria for this pass
 
 - D2207: either identify an evidence-backed write transaction, or document

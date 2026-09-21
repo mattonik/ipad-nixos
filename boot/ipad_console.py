@@ -331,6 +331,149 @@ def action_charging_observe(shell: IPadShell) -> None:
     )
 
 
+# CHG-2 (docs/plans/2026-09-13-pmic-pcie-execution.md): 0x04c0 alone,
+# live-tested 2026-09-21, is what actually produces charging -- the D2207's
+# 100 mA power-on default is simply too low a ceiling for input current to
+# ever exceed the system's own draw. 0x0010 bit 2 was separately tested in
+# isolation and found harmful (extra draw, no benefit, no STATUS change) and
+# tested again as a possible Bluetooth master-enable (also negative,
+# docs/plans/2026-09-08-j81-bluetooth-battery-adt.md) -- nothing in this
+# tool ever touches it.
+#
+# Decode/encode both follow the exact formula CHG-1 validated against live
+# hardware: mA = 75 + floor((100*code + 7) / 8), capped at 3262 for
+# code >= 0xfe. The inverse below is only ever used for the menu's fixed
+# tiers and the "custom" entry -- never guessed, always round-tripped
+# through the same formula.
+def _charging_current_ma(code: int) -> int:
+    return 3262 if code >= 0xFE else 75 + (100 * code + 7) // 8
+
+
+def _charging_current_code(ma: int) -> int:
+    code = round(((ma - 75) * 8 - 7) / 100)
+    return max(0, min(code, 0xFD))
+
+
+# 0x4a (1000 mA) is not just another tier: it is the resting state this
+# device has been left running in since CHG-2's live test (2026-09-21) --
+# real, stable, hardware-verified Charging with flat temperature. Every
+# restore path in this tool returns here, not to Apple's 100 mA factory
+# default, unless the operator explicitly picks a different tier to keep.
+SAFE_RESTING_CODE = 0x4A  # 1000 mA
+
+CHARGING_TIERS: list[tuple[str, int]] = [
+    ("100 mA (Apple power-on default)", 0x02),
+    ("500 mA", _charging_current_code(500)),
+    ("1000 mA (validated resting state)", SAFE_RESTING_CODE),
+    ("2100 mA (not yet validated -- watch closely)", _charging_current_code(2100)),
+    ("2400 mA (not yet validated -- watch closely)", _charging_current_code(2400)),
+]
+
+CHARGING_TEMP_ABORT_C = 42.0  # deciC field / 10 must stay below this
+
+
+def _read_charging_snapshot(shell: IPadShell) -> dict[str, str]:
+    fields = ("STATUS", "CURRENT_NOW", "VOLTAGE_NOW", "TEMP", "CAPACITY")
+    raw = shell.run(
+        "cat /sys/class/power_supply/bq27545-battery/uevent", timeout=8
+    )
+    values: dict[str, str] = {}
+    for line in raw.splitlines():
+        if "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.removeprefix("POWER_SUPPLY_")
+        if key in fields:
+            values[key] = value
+    return values
+
+
+def _write_charging_code(shell: IPadShell, code: int) -> str:
+    shell.run(
+        f"i2ctransfer -f -y {PMU_I2C_BUS} w3@{PMU_I2C_ADDR} 0x04 0xc0 {code:#04x}",
+        timeout=8,
+    )
+    return shell.run(
+        f"i2ctransfer -f -y {PMU_I2C_BUS} w2@{PMU_I2C_ADDR} 0x04 0xc0 r1", timeout=8
+    )
+
+
+def action_charging_switch(shell: IPadShell) -> None:
+    print(f"{BOLD}Baseline{RESET}")
+    baseline_raw = shell.run(
+        f"i2ctransfer -f -y {PMU_I2C_BUS} w2@{PMU_I2C_ADDR} 0x04 0xc0 r1", timeout=8
+    )
+    print(f"  0x04c0: {baseline_raw}")
+    baseline = _read_charging_snapshot(shell)
+    print(f"  gauge: {baseline}")
+    print()
+
+    print("Tiers:")
+    for i, (label, code) in enumerate(CHARGING_TIERS, start=1):
+        print(f"  {i}. {label} -- code {code:#04x} ({_charging_current_ma(code)} mA)")
+    print(f"  {len(CHARGING_TIERS) + 1}. Custom mA")
+    choice = input("Select: ").strip()
+    if not choice:
+        print("Cancelled.")
+        return
+
+    if choice == str(len(CHARGING_TIERS) + 1):
+        ma_raw = input("Target mA: ").strip()
+        target_ma = _number(ma_raw)
+        if target_ma is None:
+            print("Not a number, cancelled.")
+            return
+        code = _charging_current_code(target_ma)
+        label = f"{target_ma} mA (custom)"
+    else:
+        index = _number(choice)
+        if index is None or not (1 <= index <= len(CHARGING_TIERS)):
+            print("Not a valid choice, cancelled.")
+            return
+        label, code = CHARGING_TIERS[index - 1]
+
+    print(f"\n{BOLD}Writing {label} (code {code:#04x}){RESET}")
+    readback = _write_charging_code(shell, code)
+    print(f"  readback: {readback}")
+    actual_code = _number(readback)
+    if actual_code != code:
+        print(f"{RED}Write did not take -- readback does not match. Not polling.{RESET}")
+        return
+
+    iterations = 6
+    aborted = False
+    for i in range(iterations):
+        time.sleep(5)
+        try:
+            snap = _read_charging_snapshot(shell)
+        except Exception as exc:  # possible lost USB link -- treat as unsafe
+            print(f"{RED}Lost contact reading gauge ({exc}); aborting and attempting restore.{RESET}")
+            aborted = True
+            break
+        temp_c = _number(snap.get("TEMP", ""))
+        temp_c = temp_c / 10 if temp_c is not None else None
+        print(f"  +{(i + 1) * 5}s  {snap}")
+        if temp_c is not None and temp_c >= CHARGING_TEMP_ABORT_C:
+            print(f"{RED}TEMP {temp_c:.1f}C >= {CHARGING_TEMP_ABORT_C}C abort threshold; restoring.{RESET}")
+            aborted = True
+            break
+
+    if aborted:
+        readback = _write_charging_code(shell, SAFE_RESTING_CODE)
+        print(f"Restored to {SAFE_RESTING_CODE:#04x} (1000 mA): readback {readback}")
+        return
+
+    keep = input(
+        f"\nKeep {label} active? [y/N, otherwise restores to "
+        f"{SAFE_RESTING_CODE:#04x}/1000 mA]: "
+    ).strip().lower()
+    if keep != "y":
+        readback = _write_charging_code(shell, SAFE_RESTING_CODE)
+        print(f"Restored to {SAFE_RESTING_CODE:#04x} (1000 mA): readback {readback}")
+    else:
+        print(f"Kept at {label}.")
+
+
 def action_pmu_read(shell: IPadShell) -> None:
     # BT-3 (docs/plans/2026-09-08-j81-bluetooth-battery-adt.md): read-only
     # register scan of the PMU chip that also backs RTC/backlight, looking
@@ -425,6 +568,7 @@ ACTIONS: list[tuple[str, Callable[["IPadShell"], None]]] = [
     ("Bluetooth: attach HCI UART (btattach)", action_bt_attach),
     ("PMU: read I2C register (pmu,d2207 @ 0x3c)", action_pmu_read),
     ("Charging: read-only D2207 snapshot", action_charging_observe),
+    ("Charging: switch current tier (writes 0x04c0)", action_charging_switch),
     ("Storage (ANS1): probe status + ro flags", action_asp_status),
     ("Storage (ANS1): safe single-block read test", action_asp_read_test),
     ("Uptime & memory", action_uptime_mem),
