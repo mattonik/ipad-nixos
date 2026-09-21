@@ -1291,6 +1291,14 @@ negotiation bytes, since modern macOS ships no `telnet` client and
 `telnetlib` was removed in Python 3.13) and ran commands on the live
 device over the network:
 
+**Host routing note, 2026-09-21:** the macOS service for this debug link may
+retain `172.16.42.1` as its configured router.  That is the iPad endpoint,
+not an Internet gateway.  If the Mac loses Internet while the iPad is
+connected, move the **Sony Xperia Z5** service below the primary Internet
+service in macOS network-service order.  This was verified with the iPad link
+active: `172.16.42.1` remained reachable on `en11`, while the default route
+and DNS remained on Wi-Fi (`en0`).
+
 ```
 / # uname -a
 Linux (none) 7.3.0-rc1 #1-NixOS SMP PREEMPT ... aarch64 Linux
