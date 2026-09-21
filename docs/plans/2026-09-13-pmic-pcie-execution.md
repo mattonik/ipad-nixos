@@ -500,6 +500,23 @@ continuous polling); each entry below is one observation.
 (Continued below as the recurring check-ins accumulate; this table is the
 running record Martin asked for.)
 
+### Bluetooth hypothesis for `0x0010` bit 2, 2026-09-21: tested and ruled out
+
+Before building the console tool tier-switcher (approved plan,
+`/Users/martinp/.claude/plans/mighty-snuggling-cocke.md`), Martin asked
+whether `0x0010` bit 2 might be connected to Bluetooth's still-unexplained
+GPIO2 write (`0x03e6 <- 0x02`, ACKed but historically non-persistent) rather
+than being charging-specific. Tested directly: set `0x0010` bit 2, retried
+the exact `03 e6 02` write -- **still reverted to `0x00`, identical to every
+prior attempt** -- then ran `btattach` anyway; `hci0` attached (as always,
+independent of radio power) but real HCI commands still timed out exactly
+as before (`command 0xfc18 tx timeout`, `BCM: Reset failed (-110)`).
+Restored both registers immediately; `0x04c0` (charging, running throughout)
+confirmed untouched. **Conclusion: `0x0010` bit 2 is not a master enable
+unlocking GPIO2 or Bluetooth.** Full record in
+`docs/plans/2026-09-08-j81-bluetooth-battery-adt.md`'s "Tested and ruled
+out: `0x0010` bit 2 as a master enable" section.
+
 ## Acceptance criteria for this pass
 
 - D2207: either identify an evidence-backed write transaction, or document

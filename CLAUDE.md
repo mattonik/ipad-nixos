@@ -506,7 +506,19 @@ alternate byte patterns.** The only next experiment that adds evidence
 is passive SDA/SCL logic-analyzer capture during a real iPadOS
 Bluetooth toggle -- which needs a logic analyzer, running into the
 standing no-new-hardware rule; flag this to Martin rather than assuming
-it's fine. Full record in `docs/plans/2026-09-13-pmic-pcie-execution.md`.
+it's fine.
+
+**2026-09-21: tested and ruled out one specific new hypothesis** (not a
+blind retry -- one controlled variable, evidence-backed, matching the
+project's own bar): does charging's `0x0010` bit 2 act as a master
+enable that gates whether GPIO2's write actually takes effect? Set
+`0x0010` bit 2, retried the exact `03 e6 02` GPIO2 write -- **still
+reverted to `0x00`, identical to every prior attempt.** `btattach`
+still gets `hci0` (that's just UART3, independent of radio power) but
+HCI commands still time out (`0xfc18 tx timeout`, `BCM: Reset failed
+(-110)`). Restored both registers immediately; `0x04c0` (charging,
+running at the time) confirmed untouched. Full record in
+`docs/plans/2026-09-13-pmic-pcie-execution.md`.
 
 **T7000 PCIe compile-only skeleton: staged and cross-build verified,
 2026-09-13/14.** Added an inert `CONFIG_PCIE_APPLE_T7000` driver

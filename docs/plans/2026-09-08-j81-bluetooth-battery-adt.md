@@ -944,6 +944,41 @@ iPadOS Bluetooth enable/disable transition, looking for `03 e6 02` and any
 immediately preceding transaction.  The full cross-subsystem record is in
 `docs/plans/2026-09-13-pmic-pcie-execution.md`.
 
+#### Tested and ruled out: `0x0010` bit 2 as a master enable, 2026-09-21
+
+While live-testing D2207 charging the same day (full record in
+`docs/plans/2026-09-13-pmic-pcie-execution.md`), a second PMU register
+(`0x0010` bit 2) was found and live-tested for an unrelated purpose
+(charging current). Its effect there -- a real, repeatable ~100 mA of extra
+draw with no charging benefit -- raised a specific, well-motivated new
+hypothesis worth testing here directly: **is `0x0010` bit 2 a chip-wide
+master enable that gates whether other GPIO/LDO writes on this PMIC take
+effect at all**, which would explain why GPIO2's write has always been
+ACKed but inert? This is not "trying alternate PMIC byte patterns" (the
+thing the prior section says not to do) -- it's a targeted retest of the
+*already-proven-correct* `03 e6 02` transaction, with exactly one new
+variable controlled.
+
+Procedure, on real hardware: confirmed baseline (`0x0010 = 0x00`,
+`0x03e6 = 0x00`, GPIO2 data bit `0x0063 = 0x20`, `hci0` not yet attached).
+Set `0x0010` bit 2 (`0x00 -> 0x04`, readback-confirmed). Retried the exact
+`03 e6 02` GPIO2 write -- **readback still `0x00`; the write still did not
+persist, identical to every prior attempt.** Ran `btattach` anyway for
+completeness: `hci0` attached (as it always has, independent of radio
+power -- that's just UART3 registering), but real HCI commands still failed
+exactly as before (`command 0xfc18 tx timeout`, `BCM: failed to write
+update baudrate (-110)`, `BCM: Reset failed (-110)`) -- the radio chip
+itself is still not responding. Restored `0x0010` and `0x03e6` to `0x00`
+immediately after; `dmesg` clean, `0x04c0` (charging, running at the time)
+confirmed untouched throughout by this isolated test.
+
+**Conclusion: `0x0010` bit 2 is not a master enable that unlocks GPIO2 or
+Bluetooth.** This closes off a real, well-reasoned hypothesis with a clean
+negative rather than leaving it open. The runtime lock/ownership condition
+behind GPIO2's non-persistent write remains genuinely unexplained; the
+passive logic-analyzer capture (needs hardware Martin doesn't currently
+have) remains the only evidence-producing next step identified so far.
+
 BT completion criteria: cold-boot repeatability, firmware loaded, controller
 address stable, scan works, and three minutes of connect/disconnect activity
 produces no UART overruns or HCI timeouts.
