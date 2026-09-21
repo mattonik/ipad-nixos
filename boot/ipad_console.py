@@ -334,8 +334,9 @@ def action_charging_observe(shell: IPadShell) -> None:
 # CHG-2 (docs/plans/2026-09-13-pmic-pcie-execution.md): 0x04c0 alone,
 # live-tested 2026-09-21, is what actually produces charging -- the D2207's
 # 100 mA power-on default is simply too low a ceiling for input current to
-# ever exceed the system's own draw. 0x0010 bit 2 was separately tested in
-# isolation and found harmful (extra draw, no benefit, no STATUS change) and
+# ever exceed the system's own draw. 0x0010 bit 2 is Apple's separately named
+# USB input-current suspend control; setting it removed the existing ~100 mA
+# USB contribution, which appeared as ~100 mA more battery discharge, and was
 # tested again as a possible Bluetooth master-enable (also negative,
 # docs/plans/2026-09-08-j81-bluetooth-battery-adt.md) -- nothing in this
 # tool ever touches it.

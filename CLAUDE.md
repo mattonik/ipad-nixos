@@ -578,7 +578,9 @@ test below: that helper actually reads `0x04cf`
 real formula is the one `boot/ipad_console.py`'s observer already used
 (`code >= 0xfe ? 3262 : 75 + (100*code+7)//8`, mA), now independently
 confirmed live. A second helper in the same call path toggles bit 2 of
-register `0x0010`, plausibly a separate charge-enable bit.
+register `0x0010`. Its public unstripped symbol is
+`setCurrentLimitSuspend`; setting the bit suspends USB input current, and
+the conversion helper requests it only for targets below 75 mA.
 (Xcode.app's own `llvm-objdump`/`otool`/`strings` are gated behind an
 unaccepted license on this Mac -- worked around by invoking
 `/Library/Developer/CommandLineTools/usr/bin/<tool>` directly, a
@@ -613,11 +615,10 @@ transaction shape); readback confirmed it took and persisted, same as
 (`-709000` -> `-809000` uA, ~100 mA more draw, not less) -- then settled
 back to baseline (`-701000` uA) within 8s of restoring to `0x00`, good
 evidence the bump really was caused by the write, not coincidence.
-**Conclusion: real, writable bit, but the "charge-enable" hypothesis is
-not supported** -- more consistent with gating some quiescent-current
-circuit (comparator/regulator/detection block) than connecting USB
-current through to the battery. Don't assume this is charge-enable going
-forward.
+**Corrected interpretation after resolving the unstripped symbol:** this is
+the USB input-current suspend bit. The extra ~100 mA of battery discharge is
+the loss of the approximately 100 mA USB contribution, not a newly enabled
+load. Clear permits input according to `0x04c0`; set suspends it.
 
 **Then tried both registers together, same day -- combination is worse
 than `0x04c0` alone, not better.** Baseline confirmed clean

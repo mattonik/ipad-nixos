@@ -256,10 +256,11 @@ does exactly what CHG-1/CHG-2 needed to know:**
    already used (`code >= 0xfe ? 3262 : 75 + (100*code+7)//8`, in mA) --
    now independently confirmed live, see below.
 4. A second helper in the same call path (`0xffffff8002b4c9ac`) performs an
-   independent read-modify-write of register `0x0010`, toggling bit 2 based
-   on whether the target current is zero or nonzero -- read the same way,
-   written the same way, immediately adjacent in the same function. This is
-   very plausibly a separate charge-enable bit, not yet confirmed by name.
+   independent read-modify-write of register `0x0010` bit 2. A later review
+   of the public unstripped kext resolved its symbol as
+   `AppleD2207PMUPowerSource::setCurrentLimitSuspend(bool, bool *)`: setting
+   the bit suspends USB input current; clearing it permits the `0x04c0`
+   limit. `getInputCurrentSetting()` requests suspend only below 75 mA.
 
 This satisfies this pass's own acceptance criterion in full: an
 evidence-backed write transaction, not an assumption -- Apple's own compiled
@@ -355,22 +356,14 @@ afterward rather than assuming a fixed rest value.
    caused by the register write (temporally correlated both ways), not
    coincidental background load.
 
-**Conclusion: this bit is real and writable (unlike GPIO2), but the
-"charge-enable" hypothesis from the disassembly is not supported by this
-result.** Setting it *increased* battery drain rather than reducing or
-reversing it, with no `STATUS` change -- consistent with it gating some
-circuit that itself draws quiescent/parasitic current (a comparator, a
-boost stage, an LED, a detection block) rather than connecting USB input
-current through to the battery. It may still be part of the real charging
-path (e.g. a precondition that only produces net charging current once
-`0x04c0` is *also* raised, since this test deliberately kept `0x04c0` at
-its 100 mA rest value throughout, or may require other, still-unidentified
-register state alongside it) or may control something unrelated to
-charging entirely. **Do not assume this is the charge-enable bit going
-forward** -- treat it as "real, writable, causes ~100 mA of extra draw
-when set," nothing more confirmed than that. The disassembly's `csel`-based
-set/clear logic and its co-location with the current-limit setter remain
-the only reasons to suspect it's charging-related at all.
+**Corrected interpretation after resolving the public kext symbols:** this
+is the USB input-current **suspend** bit. Apple's method is explicitly named
+`setCurrentLimitSuspend`, and `getInputCurrentSetting()` sets its Boolean
+output only for targets below 75 mA. The live change from `-709000` to
+`-809000` uA therefore did not reveal a new ~100 mA load: it shows the
+battery replacing the approximately 100 mA that USB had supplied before
+input was suspended. The test result matches the Apple-driver meaning almost
+exactly.
 
 ### Live write test, 2026-09-21 (continued): both registers together -- combination is worse than `0x04c0` alone, not better
 
@@ -378,7 +371,7 @@ Martin authorized the combined test. Baseline confirmed both registers at
 rest (`0x04c0 = 0x02`, `0x0010 = 0x00`) before touching anything; gauge
 `Discharging`, `-705000` uA, 38%, 34.4 C.
 
-Wrote both, in the order Apple's own driver calls them (the enable-bit
+Wrote both, in the order Apple's own driver calls them (the suspend-bit
 helper before the current-limit setter, per the disassembly): `0x0010 <-
 0x04` (readback `0x04`), then `0x04c0 <- 0x0a` (readback `0x0a`). Both took
 and persisted. `dmesg` clean.
@@ -388,28 +381,19 @@ Sysfs `input_current_limit` correctly decoded `0x0a` to `200000` uA (same
 round-trip through the real driver as the isolated test). But gauge
 `STATUS` stayed `Discharging` throughout, and current sat at `-809000` /
 `-808000` uA -- **matching the `0x0010`-alone result almost exactly, not
-the improved `-567000` uA seen with `0x04c0` raised alone.** The bit 2
-quiescent draw looks like it dominates regardless of the current-limit
-setting, rather than the two effects combining toward net charging.
+the improved `-567000` uA seen with `0x04c0` raised alone.** This is expected:
+the suspend bit overrides the programmed `0x04c0` limit, so raising the
+limit while input remains suspended cannot help.
 
 Restored in reverse: `0x04c0 <- 0x02` (readback `0x02`), `0x0010 <- 0x00`
 (readback `0x00`). Sysfs back to `100000`. `dmesg` clean throughout. Current
 settled to `-701000` uA eight seconds later, matching baseline.
 
-**Conclusion: the combination hypothesis is not supported either.** Three
-clean, isolated, fully-reversible live tests now agree: `0x04c0` alone
-measurably *helps* (reduces discharge by ~120 mA); `0x0010` bit 2 alone
-measurably *hurts* (~100 mA more draw, no `STATUS` change); together, bit
-2's penalty roughly cancels `0x04c0`'s benefit, landing close to the
-`0x0010`-alone result. Nothing tested this pass produced an actual
-`Charging` transition. Whatever *does* trigger real charging -- if it's
-software-controlled at all, rather than something the D2207's own
-autonomous charger-detection hardware gates independently of both these
-registers -- remains unidentified. The next-best lead is tracing the
-current-limit setter's real caller (the still-untraced vtable dispatch
-from the fifth/sixth touch-style passes), since that's the only place
-likely to reveal what else Apple's driver checks or sets before charging
-actually starts.
+**Conclusion:** the three live tests match one coherent mechanism. `0x04c0`
+raises the permitted USB input current; `0x0010` bit 2 suspends that input;
+and suspend overrides the programmed limit. This also explains why the bit
+did not enable Bluetooth: it belongs to the charger's USB input-current
+path, not a chip-wide power gate.
 
 ### Caller trace, 2026-09-21: genuinely exhausted this pass -- static analysis can't resolve it
 
@@ -469,10 +453,9 @@ draw.**
 This substantially reframes the whole charging investigation. The earlier
 100 mA default was never a "detection failure" or a "missing enable
 signal" -- it was simply **too low a ceiling to ever produce positive net
-current once system load is accounted for**. `0x0010` bit 2's real role
-remains unexplained (its own isolated test still showed a real, negative
-effect -- extra draw, no benefit), but it is now clearly **not required**
-for charging to occur.
+current once system load is accounted for**. `0x0010` bit 2 is the separate
+USB input-current suspend control; it must remain clear for charging and is
+not required to select a nonzero current tier.
 
 **Martin's explicit standing instruction for this state:** keep `0x04c0` at
 `0x4a` (charging) until either the next test step supersedes it, temperature
@@ -560,6 +543,45 @@ seconds later: `Charging` again at `+68000` uA, `0x04c0` confirmed `0x4a`.
 
 Stage 2 (a real kernel-level writable sysfs property, per the approved
 plan) is not started yet -- next step when picked up again.
+
+### Higher tiers validated, same session: 2100 mA and 2400 mA both clean
+
+Martin asked to try the two remaining untested tiers next, using the new
+tool itself. Both run through the identical procedure (baseline, write,
+readback, six 5 s polls, keep-or-restore prompt):
+
+- **2100 mA** (code `0xa2`): wrote and confirmed cleanly. Voltage held
+  essentially flat (`3780000`-`3781000` uA across the full 30 s poll -- no
+  droop at all), current climbed and stabilized around `+100000`-`+109000`
+  uA net charging, temperature flat at 33.3 C. Kept active (chose not to
+  restore).
+- **2400 mA** (code `0xba`): same procedure, same result -- voltage
+  *completely* unchanged (`3781000` uA for the entire 30 s window), current
+  stable around `+106000`-`+114000` uA, temperature flat at 33.3 C. Kept
+  active.
+
+Notably, actual net charging current **did not meaningfully increase**
+between the 1000/2100/2400 mA tiers (all landed in the same ~100-115 mA
+range) -- consistent with the battery's own charge-acceptance rate (or
+some other stage in the charge path), not the input-current ceiling, being
+the real bottleneck once the ceiling comfortably clears system draw. This
+also means the earlier "will asking for more than the source can supply
+destabilize the USB link" safety concern did not materialize at any tested
+tier on this Mac's port: voltage never sagged, no USB re-enumeration events
+appeared in `dmesg` beyond what was already there, and the telnet
+connection never dropped mid-poll at any tier.
+
+`dmesg` checked clean after both tests -- no new entries beyond the
+already-known Bluetooth timeout lines from the Stage 0 test earlier in the
+session. Final confirmed state: `Charging`, `+114000` uA, `3782000` uA,
+33.3 C, `0x04c0 = 0xba`.
+
+**All five planned tiers (100/500/1000/2100/2400 mA) are now validated live
+on real hardware** -- the last two just now, the first three across this
+and earlier sessions. The device is currently running at the highest tier,
+2400 mA, by explicit choice after watching it prove clean. Stage 2 (the
+kernel-level writable property) is now well-motivated by a complete tier
+validation sweep, not just the single 1000 mA data point it had before.
 
 ## Acceptance criteria for this pass
 
