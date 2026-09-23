@@ -10,7 +10,7 @@ sections.
 
 ## The conclusion, stated first
 
-Seven real hardware boots, each changing exactly one variable versus the
+Nine real hardware boots, each changing exactly one variable versus the
 previous clean one:
 
 | # | Patch | What it did | Result |
@@ -23,6 +23,7 @@ previous clean one:
 | 6 | `0022` (multi-offset ECAM read) | Same as `0021`, three reads: bus 0, bus 1, bus 4 | **Clean.** All three `0xffffffff`. |
 | 7 | `0023` (isolated `pci_host_common_init()`) | The *exact* call both `0018` attempts made -- `devm_pci_alloc_host_bridge()` + `pci_host_common_init()` with a bare ECAM ops struct -- and nothing else. No shared-window writes, no PERST, no DART. | **Clean.** Returns `0`; full generic bus scan completes. |
 | 8 | `0024` (remaining shared offsets) | `0019` + four bounded `readl()`s of port 1's `REFCLK_EN`/`PERST_INTERNAL`/`0x10c`/`LINK_ENABLE` -- the offsets read-only `0018` read but `0020` never isolated | **Clean.** Real, non-trivial values (see below). |
+| 9 | `0025` (DART enable, no `iommu-map`) | `0019`'s exact inert PCIe probe + `dart_apcie1` flipped to `"okay"` (real Linux `apple-dart` probe: register map, reset, IRQ) -- no `iommu-map` consumer | **Hung.** Black screen after the m1n1 logo/sequence; no USB re-enumeration; no networking. First hang since `0018`. |
 
 Every individual piece `pci_host_common_init()` touches, and every
 register either hanging `0018` driver ever read, has now been proven
@@ -327,6 +328,74 @@ domains, controller MMIO, PERST handling, or PCI enumeration. The
 `_manualAvailabilityEnabled` question remains relevant to reproducing
 Apple's full controller sequence, but not to characterizing Linux DART
 probe.
+
+## `0025` DART-enable test: hangs, 2026-09-23
+
+Ran the payload the section above specified: `0019`'s proven inert PCIe
+probe unchanged, `dart_apcie1` flipped to `"okay"`, no `iommu-map`. Same
+DFU/palera1n recipe as every prior round; `05ac:4141` confirmed, `m1n1.bin`
++ `Image.gz` uploaded via `boot/load_m1n1.py` with no replug after the
+`bootm` request (per the infrastructure note below).
+
+**Result: hung.** The iPad showed the normal m1n1 logo and boot sequence,
+then went to a black screen with only the backlight on -- no framebuffer
+console text at all, unlike every one of the six prior clean tests
+(`0019`-`0024`), which all produced visible boot text. Polled USB
+enumeration and `ping 172.16.42.1` for 30+ seconds after the handoff: the
+device never re-enumerated as a USB network gadget and never answered a
+single ping. This is the same observable signature as both original `0018`
+hangs -- total silence, no crash message, no watchdog recovery seen -- not
+a slow boot.
+
+This isolates the fault to `dart_apcie1` alone. `0019`'s own PCIe PMGR-only
+node (`status = "okay"` + `power-domains = <&ps_pcie>`) has already been
+independently hardware-proven clean six times over; the only new variable
+`0025` introduces is enabling the DART node, which lets the stock Linux
+`apple-dart` driver's `apple_dart_probe()` actually run: map the DART's
+MMIO window, register its IRQ, and -- the most likely point of failure --
+reset the unit, which is the first place probe touches a real DART
+register rather than just OS bookkeeping (`ioremap`/IRQ registration don't
+themselves generate a bus transaction).
+
+**A concrete, evidence-backed hypothesis for why, not yet confirmed:**
+`dart_apcie1`'s own DT node has no `power-domains` property at all (checked
+directly against the trusted pre-`0016`-baseline `t7001.dtsi` source used
+throughout this investigation's patch-verification methodology) -- so no
+Linux genpd ever powers it up, on its own or via any parent link.
+`power-domains = <&ps_pcie>` is declared only on `pcie`, not on
+`dart_apcie1`, and this project's own earlier genpd research already
+established `ps_pcie`, `ps_pcie_aux`, and `ps_pcie_ref` are independent,
+non-hierarchical PMGR genpds with no parent links between them (see the
+"Correction to the preceding gate inference" above). Checked the pinned
+[T7001 PMGR DTS](https://github.com/HoolockLinux/linux/blob/6831bc701a6ce059e71e5aaa9488c9195bea6927/arch/arm64/boot/dts/apple/t7001-pmgr.dtsi)
+directly: `ps_pcie_aux`/`ps_pcie_ref` power-controller nodes exist there,
+but nothing in the current Linux DT references either one -- they're
+defined but orphaned. If the DART's silicon is actually gated by
+`PCIE_AUX`/`PCIE_REF` (plausible: it's PCIe-adjacent IOMMU hardware, and
+Apple's own recovered `enableGated()` call order treats `power-gates`/
+`clock-gates` as a single opaque index covering more than just the port
+itself) rather than, or in addition to, `PCIE`, then `apple_dart_probe()`'s
+first real register touch would hit completely unclocked hardware -- which
+on real SoC fabric typically hangs the AXI/APB bus outright rather than
+faulting gracefully, exactly matching the observed total silence (no
+panic, no printk, nothing).
+
+The captured J81 ADT (`artifacts/adt/20260908T082112Z-j81.adt`, git-ignored)
+does name the DART's own ADT node `dart-apcie1`, confirming the node
+exists as a distinct ADT entity, but its `power-gates`/`clock-gates` index
+values are binary `u32` array properties, not printable strings, and
+weren't decoded this pass -- proper ADT binary parsing (or another Ghidra
+pass tracing `AppleS5L8960XDART`'s own platform-function setup, rather than
+the PCIe port driver already covered) is needed to pin down the actual
+index/indices the DART hardware depends on. This is the natural next
+research step before any further hardware attempt.
+
+**Per the plan's own conditional gate, test 2 (`0026`, `iommu-map`
+restored) does not run next** -- the instruction was "if that boots,
+repeat with iommu-map restored," and it did not boot. `0026` stays built
+and cross-build-verified (`result-dart-b`) but untested; running it now
+would only add a second, less-isolated variable on top of an already-
+failing base, not new evidence.
 
 ## Infrastructure notes worth keeping
 

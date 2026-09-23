@@ -796,6 +796,45 @@ Full record in `research/t7000-pcie-hardware-findings.md`'s
 "`function-dart_force_active` and gate semantics, recovered 2026-09-23"
 section.
 
+**T7000 PCIe: DART-enable test hangs on real hardware, 2026-09-23.**
+Implemented the corrected two-test plan from the section above:
+`kernel/patches/0025-...` (test 1, DART enabled, no `iommu-map`) and
+`kernel/patches/0026-...` (test 2, `iommu-map` restored), both layered on
+`0016` with `0019`'s exact inert PCIe probe unchanged -- only `dart_apcie1`'s
+DT status differs. `CONFIG_APPLE_DART` was already `=y`. Both cross-build
+verified clean and built alongside each other (`result` = test 1,
+`result-dart-b` = test 2, staged ahead of time so no second build wait is
+needed), but per the plan's own conditional gate only test 1 was run first.
+
+**Hardware result: test 1 hangs.** Same DFU/palera1n recipe as every prior
+round. The iPad showed the normal m1n1 logo/sequence, then went to a black
+screen with only the backlight on -- no console text at all, unlike all six
+prior clean tests. Polled USB enumeration and `ping 172.16.42.1` for 30+
+seconds after handoff: neither ever came up. Same observable signature as
+both original `0018` hangs. Since `0019`'s PCIe PMGR-only node is
+independently proven clean six times over and unchanged in this test, the
+fault isolates to `dart_apcie1` alone -- the stock Linux `apple-dart`
+driver's real probe (register map, IRQ registration, and most likely its
+reset step, the first actual register touch).
+
+**Leading hypothesis, not yet confirmed:** `dart_apcie1`'s DT node has no
+`power-domains` property at all (checked against the trusted baseline DTS
+source), and the pinned T7001 PMGR DTS defines `ps_pcie_aux`/`ps_pcie_ref`
+genpd nodes that nothing in the current Linux DT references -- only
+`ps_pcie` is wired up, and only to `pcie`, not to `dart_apcie1`. If the
+DART's silicon is actually gated by AUX/REF rather than (or in addition to)
+`PCIE`, its first register access would hit unclocked hardware, which tends
+to hang the bus outright on this SoC class rather than fault gracefully --
+matching the observed total silence. The captured ADT confirms a distinct
+`dart-apcie1` node exists but its binary `power-gates`/`clock-gates` index
+values weren't decoded this pass. **Test 2 (`0026`) does not run next** --
+the plan's own gate was "if that boots, repeat with iommu-map restored," and
+it did not boot. Next is research (ADT binary parsing, or another Ghidra
+pass on `AppleS5L8960XDART`'s own platform-function setup) to find the
+DART's real gate dependency before any further hardware attempt. Full
+record in `research/t7000-pcie-hardware-findings.md`'s "`0025` DART-enable
+test: hangs" section.
+
 **Buttons hardware-verified, 2026-09-21.** `evtest /dev/input/event0` on
 the existing `gpio-keys` device captured clean press/release events for
 Home (`KEY_HOMEPAGE`), Power, Volume Up and Volume Down. No driver work
