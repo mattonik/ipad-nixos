@@ -682,6 +682,35 @@ original hang without saying where in the address space it happens. Full
 record in `docs/plans/2026-09-13-j81-wifi-pcie.md`'s "Bounded ECAM-window
 read test: hardware-verified clean" section.
 
+**T7000 PCIe: multi-offset ECAM read test also hardware-verified clean,
+2026-09-23.** Implemented `kernel/patches/0022-...` (layered on `0016`,
+same clean-branch pattern): to avoid a separate hardware round per offset,
+`probe()` reads three points in one boot -- bus 0 (repeated sanity anchor),
+bus 1 (the leading suspect for board port 1 under standard ECAM
+addressing), and bus 4 (the boundary edge) -- each independently logged.
+Cross-build verified clean. **Hardware result: all three reads succeeded,
+no hang** -- postmarketOS, working USB networking, `dmesg` confirms every
+step including all three reads returning `0xffffffff` cleanly (bus 0, bus
+1, bus 4).
+
+This **rules out the "unsafe region" hypothesis entirely** -- bus 1 (the
+real suspect) and bus 4 (the boundary) are exactly as safe as bus 0. Every
+raw MMIO read tried anywhere on this controller across four tests (`0019`
+shared-window read, `0021` ECAM offset 0, `0022` ECAM at three bus
+offsets) is safe. Sharper hypothesis now: `pci_host_common_init()` sets
+`pci_add_flags(PCI_REASSIGN_ALL_BUS)` before calling `pci_host_probe()`,
+and generic PCI enumeration performs *writes* as part of standard resource
+discovery (BAR-sizing: write all-1s to a BAR, read back the size mask;
+bus-number programming while walking bridges) that no read-only test has
+exercised. The real suspect may not be "touching ECAM" at all, but
+specifically the write side of generic enumeration, or some other piece of
+`pci_host_probe()`'s logic a handful of plain reads can't reach. Next
+diagnostic step (not yet attempted): call `pci_host_common_init()` itself
+in complete isolation from everything else `0018` also did (no register
+writes, no PERST/GPIO, no DART/iommu-map) to test that one remaining code
+path directly. Full record in `docs/plans/2026-09-13-j81-wifi-pcie.md`'s
+"Multi-offset ECAM read test: hardware-verified clean" section.
+
 **Buttons hardware-verified, 2026-09-21.** `evtest /dev/input/event0` on
 the existing `gpio-keys` device captured clean press/release events for
 Home (`KEY_HOMEPAGE`), Power, Volume Up and Volume Down. No driver work
