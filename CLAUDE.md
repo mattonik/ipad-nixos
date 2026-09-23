@@ -653,6 +653,35 @@ step (not yet attempted): a bounded ECAM-only read, still without the
 generic bus scan. Full record in `docs/plans/2026-09-13-j81-wifi-pcie.md`'s
 "Bounded shared-window read test: hardware-verified clean" section.
 
+**T7000 PCIe: bounded ECAM-window read test also hardware-verified clean,
+2026-09-23.** Implemented `kernel/patches/0021-...` (layered on `0016`,
+same clean-branch pattern as `0019`/`0020`): `probe()` maps only the ECAM
+config-space window (reg index 0) via `devm_ioremap_resource()`, does one
+bounded `readl()` at config offset 0, logs it, returns -- no
+`pci_ecam_create()`, no `pci_ops`, no `pci_host_probe()` bus scan, no DART.
+Cross-build verified clean. **Hardware result: third clean payload in a
+row** -- postmarketOS, working USB networking, and `dmesg` confirms the
+window mapped exactly where expected (`0x610000000`, `0x1000000` bytes)
+and the bus0/dev0/fn0 config-space read returned `0xffffffff` -- the
+correct, ordinary "no device present" response, not a fault.
+
+Three clean tests in a row (`0019`, `0020`, `0021`) now rule out the DT
+status flip, the power-domain attachment, the shared-window MMIO access,
+and a single ECAM read as causes. Only `pci_host_probe()`'s full generic
+bus scan is left untested. Leading hypothesis, not yet a conclusion: `bus-
+range = <0 4>` means a full scan walks far more of the declared 16 MiB
+ECAM window (multiple buses, many device/function slots) than this test's
+single offset-0 read did -- if only part of that window is genuinely
+mapped/safe silicon, a full scan would reach the rest while one bounded
+read at the very start would not. Next diagnostic step (not yet
+attempted): a handful of additional bounded reads at other ECAM offsets
+(a higher bus number, and/or the exact device/function slot the real ADT's
+`pci-bridge1` occupies) to try to localize a bad region before ever
+re-running the full generic bus scan, which would just reproduce the
+original hang without saying where in the address space it happens. Full
+record in `docs/plans/2026-09-13-j81-wifi-pcie.md`'s "Bounded ECAM-window
+read test: hardware-verified clean" section.
+
 **Buttons hardware-verified, 2026-09-21.** `evtest /dev/input/event0` on
 the existing `gpio-keys` device captured clean press/release events for
 Home (`KEY_HOMEPAGE`), Power, Volume Up and Volume Down. No driver work
