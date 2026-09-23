@@ -762,6 +762,40 @@ operations from the real iOS kernelcache, before attempting a DART-only
 hardware probe (DART enabled, PCIe inert, no IOMMU consumer). Full record
 in `research/t7000-pcie-hardware-findings.md`.
 
+**T7000 PCIe: `function-dart_force_active`/gate semantics recovered offline
+-- corrects the documented call order, 2026-09-23.** Ghidra analysis of
+`AppleEmbeddedPCIE.kext` and `AppleS5L8960XDART.kext` (same pinned iPad5,3
+12B410 kernelcache) using a Ghidra project reused from an earlier session
+(PRELINK_TEXT already imported, no fresh ~10 min import needed). Found and
+decompiled `AppleEmbeddedPCIEPort::enableGated()` -- its confirmed order is
+power gate → clock gate → **`function-dart_force_active(true)`** →
+(optional NVMe-MMU force-active) → wait for gate active → conditional
+setup → **only then** the first shared-window register writes. This
+**corrects the earlier documented assumption** that DART force-active
+happens after port hardware setup -- it's actually one of the very first
+steps, before the driver even confirms the gate is active.
+
+On the DART side, `AppleS5L8960XDART::_forceAvailable(bool)` sets an
+internal flag and calls `_updateAvailability()`, which only actually uses
+that flag if `_manualAvailabilityEnabled` is already true -- otherwise it
+silently ignores the forced value and re-derives availability from
+registered IOMMU mapper activity (of which there'd be none yet). Where
+that flag gets set was not traced this pass -- a real open gap. Separately,
+`power-gates`/`clock-gates` are never referenced by name in the PCIe port
+driver -- only one gate index (`power-gates`, `57`) is ever used by the two
+gate-enable calls -- implying `PCIE_AUX`/`PCIE_REF` (`58`/`56`) are walked
+automatically by the underlying PMGR machinery, not explicit driver code.
+Whether Linux's `power-domains = <&ps_pcie>` binding (already proven clean
+by `0019`) covers all three gates the same generic way is unverified and
+should be checked against the Hoolock kernel's own PMGR/genpd source.
+
+**Not yet done**: locating the `_manualAvailabilityEnabled` setter, and
+confirming `ps_pcie`'s real gate coverage. A DART-only Linux hardware test
+is next, once those are resolved or explicitly accepted as open risk.
+Full record in `research/t7000-pcie-hardware-findings.md`'s
+"`function-dart_force_active` and gate semantics, recovered 2026-09-23"
+section.
+
 **Buttons hardware-verified, 2026-09-21.** `evtest /dev/input/event0` on
 the existing `gpio-keys` device captured clean press/release events for
 Home (`KEY_HOMEPAGE`), Power, Volume Up and Volume Down. No driver work
