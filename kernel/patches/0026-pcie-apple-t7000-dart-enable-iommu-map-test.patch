@@ -1,0 +1,136 @@
+--- a/drivers/pci/controller/pcie-apple-t7000.c
++++ b/drivers/pci/controller/pcie-apple-t7000.c
+@@ -1,59 +1,40 @@
+ // SPDX-License-Identifier: GPL-2.0-only
+ /*
+- * Compile-only groundwork for the Apple T7000-family PCIe host controller.
++ * Apple T7000-family PCIe -- PMGR-only probe test, DART-enable + iommu-map
++ * variant.
+  *
+- * The real J81 ADT describes four ports, four port interrupts and twelve
+- * register windows. Corellium's older H9P driver confirms the four-port
+- * controller shape, but its register layout, SART and hard-coded PHY sequence
+- * are not valid for T7000. The disabled device tree preserves J81's exact
+- * resource ordering without naming the unresolved small-window roles. Keep
+- * this driver inert until those roles, DART attachment and ADT-provided
+- * tunables have been implemented.
++ * Step 2 of the two-test DART plan: patch `0025` (DART enabled, no
++ * `iommu-map`) hardware-verified clean, so this repeats that exact test
++ * with `pcie`'s `iommu-map` restored -- the one thing `0025` still
++ * omitted. That property is what actually establishes the IOMMU-consumer
++ * relationship between `pcie` and `dart_apcie1` at the OF/DMA layer
++ * (`of_iommu_configure()`, invoked automatically when the device is
++ * created, before any driver `.probe()` runs) -- distinct from, and
++ * potentially exercising more than, DART's own bare probe/reset/IRQ path
++ * that `0025` alone tested.
++ *
++ * The PCIe driver here is still byte-for-byte the same as `0019`'s: probe()
++ * maps nothing and calls no PCI, ECAM or DART code at all. Still no
++ * controller register writes, no PERST change, no PCI enumeration, no AUX/
++ * REF gate changes -- only the DT status flips and this one property.
++ *
++ * See docs/plans/2026-09-13-j81-wifi-pcie.md and
++ * research/t7000-pcie-hardware-findings.md for the full reasoning,
++ * including the offline Ghidra recovery of Apple's own
++ * `function-dart_force_active` call order (not replicated here -- Linux's
++ * DART driver has no equivalent on-demand-availability model).
+  */
+
+-#include <linux/errno.h>
+ #include <linux/module.h>
+-#include <linux/of.h>
+-#include <linux/of_address.h>
+ #include <linux/platform_device.h>
+
+-#define APPLE_T7000_PCIE_NUM_PORTS	4
+-#define APPLE_T7000_PCIE_NUM_REGIONS	12
+-
+-static int apple_t7000_pcie_validate_firmware(struct platform_device *pdev)
++static int apple_t7000_pcie_probe(struct platform_device *pdev)
+ {
+-	struct device *dev = &pdev->dev;
+-	int count;
+-
+-	count = of_address_count(dev->of_node);
+-	if (count != APPLE_T7000_PCIE_NUM_REGIONS)
+-		return dev_err_probe(dev, -EINVAL,
+-				     "expected %d register windows, found %d\n",
+-				     APPLE_T7000_PCIE_NUM_REGIONS, count);
+-
+-	count = platform_irq_count(pdev);
+-	if (count < 0)
+-		return count;
+-	if (count != APPLE_T7000_PCIE_NUM_PORTS)
+-		return dev_err_probe(dev, -EINVAL,
+-				     "expected %d port interrupts, found %d\n",
+-				     APPLE_T7000_PCIE_NUM_PORTS, count);
+-
++	dev_info(&pdev->dev,
++		 "t7000-pcie pmgr-only-test: probe reached (no MMIO, no PCI core; DART enabled with iommu-map)\n");
+ 	return 0;
+ }
+
+-static int apple_t7000_pcie_probe(struct platform_device *pdev)
+-{
+-	int ret;
+-
+-	ret = apple_t7000_pcie_validate_firmware(pdev);
+-	if (ret)
+-		return ret;
+-
+-	return dev_err_probe(&pdev->dev, -EOPNOTSUPP,
+-			     "link bring-up is not implemented\n");
+-}
+-
+ static const struct of_device_id apple_t7000_pcie_of_match[] = {
+ 	{ .compatible = "apple,t7000-pcie" },
+ 	{ }
+@@ -69,5 +50,5 @@
+ };
+ module_platform_driver(apple_t7000_pcie_driver);
+
+-MODULE_DESCRIPTION("Compile-only Apple T7000 PCIe host bridge groundwork");
++MODULE_DESCRIPTION("Apple T7000 PCIe PMGR-only probe test, DART-enable + iommu-map variant (no MMIO, no PCI core)");
+ MODULE_LICENSE("GPL");
+--- a/arch/arm64/boot/dts/apple/t7001.dtsi
++++ b/arch/arm64/boot/dts/apple/t7001.dtsi
+@@ -345,7 +345,7 @@
+ 			#iommu-cells = <1>;
+ 			interrupt-parent = <&aic>;
+ 			interrupts = <AIC_IRQ 216 IRQ_TYPE_LEVEL_HIGH>;
+-			status = "disabled";
++			status = "okay";
+ 		};
+
+ 		pcie: pcie@610000000 {
+@@ -376,10 +376,18 @@
+ 				     <AIC_IRQ 218 IRQ_TYPE_LEVEL_HIGH>,
+ 				     <AIC_IRQ 221 IRQ_TYPE_LEVEL_HIGH>;
+
+-			msi-controller;
+-			msi-parent = <&pcie>;
+-			msi-ranges = <&aic AIC_IRQ 224 IRQ_TYPE_EDGE_RISING 32>;
+-
++			/*
++			 * DART-enable test, iommu-map restored
++			 * (docs/plans/2026-09-13-j81-wifi-pcie.md): step 2,
++			 * run only after the no-iommu-map variant (0025)
++			 * hardware-verified clean. This driver's probe() still
++			 * maps nothing and calls no PCI/ECAM/DART code itself,
++			 * so msi-controller/msi-parent/msi-ranges stay omitted
++			 * (no MSI domain implemented) -- but iommu-map is
++			 * restored here, establishing the real IOMMU-consumer
++			 * relationship to dart_apcie1 that 0025 deliberately
++			 * left out.
++			 */
+ 			iommu-map = <0x100 &dart_apcie1 0 1>;
+ 			iommu-map-mask = <0xff00>;
+
+@@ -392,6 +400,6 @@
+ 				  0x7 0xc0000000 0x0 0x40000000>;
+
+ 			power-domains = <&ps_pcie>;
+-			status = "disabled";
++			status = "okay";
+ 		};
+
