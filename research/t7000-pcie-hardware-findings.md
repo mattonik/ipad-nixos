@@ -357,38 +357,31 @@ reset the unit, which is the first place probe touches a real DART
 register rather than just OS bookkeeping (`ioremap`/IRQ registration don't
 themselves generate a bus transaction).
 
-**A concrete, evidence-backed hypothesis for why, not yet confirmed:**
-`dart_apcie1`'s own DT node has no `power-domains` property at all (checked
-directly against the trusted pre-`0016`-baseline `t7001.dtsi` source used
-throughout this investigation's patch-verification methodology) -- so no
-Linux genpd ever powers it up, on its own or via any parent link.
-`power-domains = <&ps_pcie>` is declared only on `pcie`, not on
-`dart_apcie1`, and this project's own earlier genpd research already
-established `ps_pcie`, `ps_pcie_aux`, and `ps_pcie_ref` are independent,
-non-hierarchical PMGR genpds with no parent links between them (see the
-"Correction to the preceding gate inference" above). Checked the pinned
-[T7001 PMGR DTS](https://github.com/HoolockLinux/linux/blob/6831bc701a6ce059e71e5aaa9488c9195bea6927/arch/arm64/boot/dts/apple/t7001-pmgr.dtsi)
-directly: `ps_pcie_aux`/`ps_pcie_ref` power-controller nodes exist there,
-but nothing in the current Linux DT references either one -- they're
-defined but orphaned. If the DART's silicon is actually gated by
-`PCIE_AUX`/`PCIE_REF` (plausible: it's PCIe-adjacent IOMMU hardware, and
-Apple's own recovered `enableGated()` call order treats `power-gates`/
-`clock-gates` as a single opaque index covering more than just the port
-itself) rather than, or in addition to, `PCIE`, then `apple_dart_probe()`'s
-first real register touch would hit completely unclocked hardware -- which
-on real SoC fabric typically hangs the AXI/APB bus outright rather than
-faulting gracefully, exactly matching the observed total silence (no
-panic, no printk, nothing).
+**Captured-ADT correction, 2026-09-23:** the saved ADT is textual, not an
+opaque binary blob. `dart-apcie1` has **no** `power-gates` or `clock-gates`
+property. It does have `manual-availability = 1`. This is decisive enough to
+reject the AUX/REF-gate hypothesis as the next test: those gates may still
+matter to a future PCIe controller driver, but the captured Apple DART node
+does not name them as its own dependencies.
 
-The captured J81 ADT (`artifacts/adt/20260908T082112Z-j81.adt`, git-ignored)
-does name the DART's own ADT node `dart-apcie1`, confirming the node
-exists as a distinct ADT entity, but its `power-gates`/`clock-gates` index
-values are binary `u32` array properties, not printable strings, and
-weren't decoded this pass -- proper ADT binary parsing (or another Ghidra
-pass tracing `AppleS5L8960XDART`'s own platform-function setup, rather than
-the PCIe port driver already covered) is needed to pin down the actual
-index/indices the DART hardware depends on. This is the natural next
-research step before any further hardware attempt.
+The comparison is useful: the same ADT has six T7001 DART nodes. Display,
+scaler, JPEG, ISP, and AVE DARTs carry explicit power/clock-gate values;
+the PCIe DART is the only one with `manual-availability = 1` and no such
+gate property. The PCIe bridge also has `manual-enable` and resolves
+`function-dart_force_active` to this DART. This directly matches the
+previously recovered DART object's `_manualAvailabilityEnabled` field and
+the port driver's force-active call.
+
+The leading explanation is now an **availability-order mismatch**, not a
+missing decoded gate: Apple's port driver asks this manual-availability DART
+to become available before controller accesses, whereas the stock Linux
+driver immediately maps and resets it during platform probe. The next
+offline Ghidra task is tightly scoped: trace `manual-availability` in
+`AppleS5L8960XDART` to confirm it initializes `_manualAvailabilityEnabled`,
+then trace the virtual "become available" handler called by
+`_updateAvailability()`. That handler is the evidence needed to learn what
+Apple performs before its first DART register access. No further DART
+hardware payload should be built or run until it is recovered.
 
 **Per the plan's own conditional gate, test 2 (`0026`, `iommu-map`
 restored) does not run next** -- the instruction was "if that boots,

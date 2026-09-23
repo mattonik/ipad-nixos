@@ -817,6 +817,14 @@ fault isolates to `dart_apcie1` alone -- the stock Linux `apple-dart`
 driver's real probe (register map, IRQ registration, and most likely its
 reset step, the first actual register touch).
 
+**ADT follow-up corrects the gate hypothesis.** The saved J81 ADT is already
+textual: `dart-apcie1` has no `power-gates` or `clock-gates` property. It
+does have `manual-availability = 1`, directly matching the recovered
+`_manualAvailabilityEnabled` DART field. Do not add or probe AUX/REF domains
+next. Recover the `manual-availability` setter and `_updateAvailability()`'s
+"become available" handler in `AppleS5L8960XDART`; the stock Linux driver's
+immediate reset likely violates that Apple availability order.
+
 **Leading hypothesis, not yet confirmed:** `dart_apcie1`'s DT node has no
 `power-domains` property at all (checked against the trusted baseline DTS
 source), and the pinned T7001 PMGR DTS defines `ps_pcie_aux`/`ps_pcie_ref`

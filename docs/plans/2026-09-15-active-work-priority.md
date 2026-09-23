@@ -15,7 +15,7 @@ substituted with guessed software writes.
 
 | Order | Work item | Certainty | Ease | Impact | Current gate |
 | --- | --- | ---: | ---: | ---: | --- |
-| 1 | PCIe: isolate DART probe, then IOMMU attachment | 5 | 3 | 5 | PMGR, all passive reads, ECAM, and generic enumeration are hardware-clean. Next retain the safe PCIe PMGR-only node, enable DART with no `iommu-map`, then restore only `iommu-map` if clean. AUX/REF are separate Linux genpds and remain a production-driver dependency. |
+| 1 | PCIe: recover DART availability transition | 5 | 2 | 5 | `0025` proved stock Linux DART probe/reset hangs before any IOMMU attachment. Captured ADT: PCIe DART has `manual-availability = 1` and no power/clock-gate properties. Trace Apple's availability handler before another hardware payload; keep `0026` untested. |
 | 2 | Charging Stage 2: writable `input_current_limit` kernel property | 5 | 4 | 3 | Approved plan (`kernel/patches/0017-...`), fully backed by a live tier-validation sweep across all five tiers. Not started. Charging itself already works via the console tool; this is a convenience/permanence upgrade, not a new capability. |
 | 3 | Repeat ANS1's intentionally read-only hardware observation | 4 | 4 | 3 | Requires the separate observation-only payload; never mount or write it. |
 | 4 | Touch: resolve firmware/calibration delivery and power ownership | 3 | 2 | 5 | Blocked by the non-persistent D2207 LDO/GPIO state and private touch data. |
