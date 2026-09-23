@@ -825,6 +825,17 @@ next. Recover the `manual-availability` setter and `_updateAvailability()`'s
 "become available" handler in `AppleS5L8960XDART`; the stock Linux driver's
 immediate reset likely violates that Apple availability order.
 
+**Availability setter now recovered, 2026-09-23.** Focused Ghidra analysis
+of the exact 12B410 `AppleS5L8960XDART.kext` proves its only
+`manual-availability` reference is the initializer, which stores the
+non-zero ADT value directly at `_manualAvailabilityEnabled` (`+0xf5`). Its
+`tcaF` platform-function selector calls `_forceAvailable(bool)`, which
+stores `+0xf6` and invokes virtual slot `+0x610`. A focused import including
+the adjoining `IODARTFamily` code confirms that the call remains a true
+virtual dispatch. The unresolved work is now runtime vtable/superclass
+resolution and its first hardware action. Do not run `0026` or add another
+DART payload before that evidence exists.
+
 **Leading hypothesis, not yet confirmed:** `dart_apcie1`'s DT node has no
 `power-domains` property at all (checked against the trusted baseline DTS
 source), and the pinned T7001 PMGR DTS defines `ps_pcie_aux`/`ps_pcie_ref`

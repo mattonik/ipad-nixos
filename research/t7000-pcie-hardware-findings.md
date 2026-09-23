@@ -383,6 +383,35 @@ then trace the virtual "become available" handler called by
 Apple performs before its first DART register access. No further DART
 hardware payload should be built or run until it is recovered.
 
+### Availability setup trace, 2026-09-23
+
+This first part of that Ghidra task is now complete against the exact
+iPad5,3 iOS 8.1 (12B410) kernelcache. A focused import of only
+`AppleS5L8960XDART.kext` at `0xffffff80026c2000` found one and only one
+reference to the string `manual-availability`: initializer
+`FUN_ffffff80026c316c`. It reads the ADT property, validates its four-byte
+value, and stores whether it is non-zero directly at object offset `0xf5`.
+That proves the captured `dart-apcie1` value of one enables
+`_manualAvailabilityEnabled`; it is no longer an inference from matching
+names.
+
+The same trace also recovers the full local platform-function route. DART's
+platform-function dispatcher at `FUN_ffffff80026c429c` accepts the `tcaF`
+selector (little-endian `0x46616374`) and a boolean input, then calls
+`FUN_ffffff80026c43fc` (`_forceAvailable`). That function locks the object,
+stores the boolean at `0xf6`, and dispatches the virtual method at vtable
+slot `+0x610` before releasing the lock. This is the call reached by the
+PCIe port's already-recovered `function-dart_force_active(true)` request.
+
+The virtual `+0x610` target remains unresolved. A second focused import that
+included the adjoining `IODARTFamily` region still did not yield a reliable
+static target: the call is genuinely virtual, rather than a hidden direct
+branch in the DART kext. The next offline task is therefore to trace the
+runtime vtable initialization or the superclass availability implementation,
+then inspect the handler's first MMIO or PMGR action. Do not turn this result
+into a Linux DT or driver change yet: it identifies the missing transition,
+not the register sequence that transition performs.
+
 **Per the plan's own conditional gate, test 2 (`0026`, `iommu-map`
 restored) does not run next** -- the instruction was "if that boots,
 repeat with iommu-map restored," and it did not boot. `0026` stays built
