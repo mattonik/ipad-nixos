@@ -735,6 +735,33 @@ four missing reads sequentially with DART still disabled; then recover
 `function-dart_force_active` and PCIE/AUX/REF gates before a DART-only test.
 Full record in `research/t7000-pcie-hardware-findings.md`.
 
+**T7000 PCIe: remaining shared offsets test hardware-verified clean --
+the passive-read gap is fully closed, 2026-09-23.** Implemented
+`kernel/patches/0024-...` (layered on `0016`, same clean-branch pattern):
+reads port 1's `REFCLK_EN` (`0x180`), `PERST_INTERNAL` (`0x188`), the
+undocumented `0x18c`, and `LINK_ENABLE` (`0x198`) -- the port-stride-
+adjusted registers read-only `0018` read but `0020` never independently
+isolated (`0020` only re-checked the LTSSM register). Still DART-disabled,
+no `iommu-map`, no ECAM, no writes. Cross-build verified clean. **Hardware
+result: boots cleanly, all four reads succeed** -- postmarketOS, working
+USB networking, `dmesg` shows real, non-trivial "at rest" values:
+`refclk_en=0x11010100`, `perst_internal=0x00000100`, `unknown_10c=
+0x00000001`, `link_enable=0x00000000`. Each is at least loosely
+consistent with the recovered `_enablePortHardware` sequence's own
+behavior on that register (e.g. `link_enable` and `0x10c` match the
+sequence's first-step clear/no-op state).
+
+**Every register either hanging `0018` driver ever read is now
+independently confirmed safe, and so is the complete generic PCI bus
+scan.** Six clean hardware tests in a row (`0019`-`0024`) all kept DART
+disabled and removed `iommu-map`; both hanging `0018` attempts enabled
+them. **DART is now the sole remaining common difference.** Next is a
+research task, not a hardware test: recover Apple's
+`function-dart_force_active` semantics and the PCIE/AUX/REF power-gate
+operations from the real iOS kernelcache, before attempting a DART-only
+hardware probe (DART enabled, PCIe inert, no IOMMU consumer). Full record
+in `research/t7000-pcie-hardware-findings.md`.
+
 **Buttons hardware-verified, 2026-09-21.** `evtest /dev/input/event0` on
 the existing `gpio-keys` device captured clean press/release events for
 Home (`KEY_HOMEPAGE`), Power, Volume Up and Volume Down. No driver work

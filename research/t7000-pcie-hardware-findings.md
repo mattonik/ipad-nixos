@@ -10,32 +10,37 @@ sections.
 
 ## The conclusion, stated first
 
-Six real hardware boots, each changing exactly one variable versus the
+Seven real hardware boots, each changing exactly one variable versus the
 previous clean one:
 
 | # | Patch | What it did | Result |
 | --- | --- | --- | --- |
 | 1 | `0018` (write-capable) | Full enable sequence: shared-window writes (`REFCLK_EN`, `PERST_INTERNAL`, `0x10c`, `LINK_ENABLE`, LTSSM start) + `reset-gpios` DT node + DART/`iommu-map` + full `pci_host_common_init()` | **Hung.** Black screen, backlight on, no console, no USB. Two attempts, identical. |
-| 2 | `0018` ("read-only", later found not actually passive) | Same as above minus the shared-window writes and `reset-gpios`, but still called `pci_host_common_init()` (full ECAM + bus scan) | **Hung**, identically. |
+| 2 | `0018` ("read-only", later found not actually passive) | Same as above minus the shared-window writes and `reset-gpios`, but still called `pci_host_common_init()` (full ECAM + bus scan) and left DART/`iommu-map` enabled | **Hung**, identically. |
 | 3 | `0019` (PMGR-only) | Only the DT `status = "okay"` flip + automatic `power-domains = <&ps_pcie>` genpd power-up. No MMIO, no PCI core, no DART. | **Clean.** |
-| 4 | `0020` (shared-window read) | `0019` + one bounded `readl()` of the shared register window (port 1 LTSSM offset) | **Clean.** `ltssm=0x00000000`. |
+| 4 | `0020` (shared-window read) | `0019` + one bounded `readl()` of the shared register window (port 1 LTSSM offset only) | **Clean.** `ltssm=0x00000000`. |
 | 5 | `0021` (ECAM read) | `0019` + one bounded `readl()` of ECAM offset 0 (bus0/dev0/fn0), via raw `devm_ioremap_resource()`, no `pci_ecam_create()` | **Clean.** `vendor/device=0xffffffff`. |
 | 6 | `0022` (multi-offset ECAM read) | Same as `0021`, three reads: bus 0, bus 1, bus 4 | **Clean.** All three `0xffffffff`. |
 | 7 | `0023` (isolated `pci_host_common_init()`) | The *exact* call both `0018` attempts made -- `devm_pci_alloc_host_bridge()` + `pci_host_common_init()` with a bare ECAM ops struct -- and nothing else. No shared-window writes, no PERST, no DART. | **Clean.** Returns `0`; full generic bus scan completes. |
+| 8 | `0024` (remaining shared offsets) | `0019` + four bounded `readl()`s of port 1's `REFCLK_EN`/`PERST_INTERNAL`/`0x10c`/`LINK_ENABLE` -- the offsets read-only `0018` read but `0020` never isolated | **Clean.** Real, non-trivial values (see below). |
 
-Every individual piece `pci_host_common_init()` touches has now been
-proven safe in isolation: the DT status flip, the power-domain attachment,
-raw MMIO reads of both the shared window and ECAM at multiple points, and
-the complete generic PCI bus scan itself (including its BAR-sizing
-config-space writes and bus-number programming).
+Every individual piece `pci_host_common_init()` touches, and every
+register either hanging `0018` driver ever read, has now been proven
+safe in isolation: the DT status flip, the power-domain attachment, every
+shared-window register the enable sequence touches, ECAM mapping and reads
+at multiple points, and the complete generic PCI bus scan itself
+(including its BAR-sizing config-space writes and bus-number programming).
 
-The former conclusion that only the shared-window enable writes remained is
-incorrect. All five clean follow-up payloads deliberately kept
-`dart_apcie1` disabled and removed `iommu-map`; the failed read-only `0018`
-test enabled both. Therefore DART probe/reset and PCIe-to-DART IOMMU
-attachment remain a common differential alongside the shared-window writes.
-This matters because the pinned DART driver programs MMIO at probe time, while
-Apple invokes `function-dart_force_active` only after port hardware setup.
+**DART is now the sole remaining common difference.** All six clean
+follow-up payloads (`0019` through `0024`) deliberately kept
+`dart_apcie1` disabled and removed `iommu-map`; both hanging `0018`
+attempts enabled them. DART probe/reset and PCIe-to-DART IOMMU attachment
+are the one thing left untested. This matters because the pinned DART
+driver programs MMIO at probe time, while Apple invokes
+`function-dart_force_active` only *after* port hardware setup -- a real,
+concrete reason DART activation could behave differently than expected if
+probed on its own, standalone, with the wrong ordering relative to the
+controller.
 
 **Two secondary corrections, also load-bearing for anyone continuing this
 work**:
@@ -123,6 +128,23 @@ pcie-apple-t7000 610000000.pcie: t7000-pcie shared-read-test: port 1 ltssm=0x000
 [    0.130127] pcie-apple-t7000 610000000.pcie: t7000-pcie full-probe-test: pci_host_common_init() returned 0
 ```
 
+### `0024` remaining shared-window offsets test
+
+```
+[    0.128357] pcie-apple-t7000 610000000.pcie: t7000-pcie shared-remaining-test: probe entry
+[    0.128463] pcie-apple-t7000 610000000.pcie: t7000-pcie shared-remaining-test: window 9 at [mem 0x600000000-0x600001fff]
+[    0.128564] pcie-apple-t7000 610000000.pcie: t7000-pcie shared-remaining-test: mapped, starting bounded reads
+[    0.128650] pcie-apple-t7000 610000000.pcie: t7000-pcie shared-remaining-test: about to read port1 refclk_en (offset 0x180)
+[    0.128741] pcie-apple-t7000 610000000.pcie: t7000-pcie shared-remaining-test: port1 refclk_en = 0x11010100
+[    0.128825] pcie-apple-t7000 610000000.pcie: t7000-pcie shared-remaining-test: about to read port1 perst_internal (offset 0x188)
+[    0.128915] pcie-apple-t7000 610000000.pcie: t7000-pcie shared-remaining-test: port1 perst_internal = 0x00000100
+[    0.129006] pcie-apple-t7000 610000000.pcie: t7000-pcie shared-remaining-test: about to read port1 unknown_10c (offset 0x18c)
+[    0.129096] pcie-apple-t7000 610000000.pcie: t7000-pcie shared-remaining-test: port1 unknown_10c = 0x00000001
+[    0.129181] pcie-apple-t7000 610000000.pcie: t7000-pcie shared-remaining-test: about to read port1 link_enable (offset 0x198)
+[    0.129269] pcie-apple-t7000 610000000.pcie: t7000-pcie shared-remaining-test: port1 link_enable = 0x00000000
+[    0.129368] pcie-apple-t7000 610000000.pcie: t7000-pcie shared-remaining-test: all reads completed
+```
+
 ## Confirmed register/address values (live hardware, not decoded/inferred)
 
 | Item | Value | Source |
@@ -138,26 +160,44 @@ pcie-apple-t7000 610000000.pcie: t7000-pcie shared-read-test: port 1 ltssm=0x000
 | `pci_host_common_init()` outer MEM range 1 | `0x0620000000..0x07bfffffff -> 0x0620000000` | `0023`, matches DT `ranges` |
 | `pci_host_common_init()` outer MEM range 2 | `0x07c0000000..0x07ffffffff -> 0x00c0000000` | `0023`, matches DT `ranges` |
 | `pci_host_common_init()` return value | `0` (success) | `0023` |
+| Port-1 `REFCLK_EN` (`0x100+0x80=0x180`) at rest | `0x11010100` (bits 8/16/24/28 set) | `0024` |
+| Port-1 `PERST_INTERNAL` (`0x108+0x80=0x188`) at rest | `0x00000100` (bit 8 set, not bit 0) | `0024` |
+| Port-1 `0x10c` (`0x10c+0x80=0x18c`) at rest | `0x00000001` (bit 0 set) | `0024` |
+| Port-1 `LINK_ENABLE` (`0x118+0x80=0x198`) at rest | `0x00000000` | `0024` |
 
-All `0xffffffff` results are the ordinary, correct PCI "no device present"
-response -- not faults, not garbage, not hangs. Consistent with the real
-enable sequence (which deasserts PERST# and starts LTSSM) never having
-run, so no endpoint has ever actually been link-trained or visible to any
-of these tests.
+All `0xffffffff` config-space results are the ordinary, correct PCI "no
+device present" response -- not faults, not garbage, not hangs. The
+shared-window "at rest" values from `0024` are real and non-trivial (not
+all-zero, not all-Fs), and each is at least loosely consistent with what
+the recovered `_enablePortHardware` sequence does to that register:
+`link_enable` reading `0x0` matches the sequence's own first step (clear
+bit 0 -- a no-op here); `0x10c` reading bit 0 set matches the sequence
+later clearing that same bit; `perst_internal` reading bit 8 (not bit 0,
+the bit the sequence actually sets) means bit 8 is a distinct,
+still-unidentified status flag; `refclk_en`'s denser bit pattern
+(8/16/24/28) is worth decoding further later but wasn't required for this
+evidence gate. Consistent throughout: the real enable sequence (which
+deasserts PERST# and starts LTSSM) has never actually run on this
+hardware in any test so far, so no endpoint has ever been link-trained or
+made visible.
 
 ## Next step
 
-First close the last passive difference: read the four shared-window offsets
-that read-only `0018` logged but `0020` did not (`0x180`, `0x188`, `0x18c`,
-and `0x198` for port 1), sequentially and with a log before each read. Keep
-DART disabled, omit `iommu-map`, and do not write or enumerate PCI.
+The passive-read gap is now fully closed -- every register either hanging
+`0018` driver read is independently confirmed safe, and the complete
+generic PCI bus scan is independently confirmed safe. **DART is the sole
+remaining common difference** between the hanging attempts and every
+clean test.
 
-If that boot is clean, DART is the sole remaining common difference. Before a
-DART boot, recover Apple's `function-dart_force_active` and PCIE/AUX/REF gate
-operations offline. Then run one DART-probe-only payload: DART enabled, PCIe
-inert, no `iommu-map` consumer. Only after that result and the missing gate
-evidence should controller writes, explicit PERST handling, and link training
-be attempted.
+This is a research task, not a hardware test: recover Apple's
+`function-dart_force_active` semantics and the `PCIE`/`PCIE_AUX`/`PCIE_REF`
+power-gate operations offline, from the real iOS kernelcache (the same
+evidence source as the rest of this investigation). Then run one
+DART-probe-only hardware test: DART enabled, PCIe left inert, no IOMMU
+consumer. Only after that result and the missing gate evidence should
+controller writes, explicit PERST handling, and link training be
+attempted, in Apple's full recovered order: controller setup → DART
+active → tunables → PERST release → link start → PCI enumeration.
 
 ## Infrastructure notes worth keeping
 
