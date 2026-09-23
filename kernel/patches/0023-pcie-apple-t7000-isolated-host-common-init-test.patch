@@ -1,0 +1,160 @@
+--- a/drivers/pci/controller/pcie-apple-t7000.c
++++ b/drivers/pci/controller/pcie-apple-t7000.c
+@@ -1,57 +1,69 @@
+ // SPDX-License-Identifier: GPL-2.0-only
+ /*
+- * Compile-only groundwork for the Apple T7000-family PCIe host controller.
++ * Apple T7000-family PCIe -- isolated pci_host_common_init() test.
+  *
+- * The real J81 ADT describes four ports, four port interrupts and twelve
+- * register windows. Corellium's older H9P driver confirms the four-port
+- * controller shape, but its register layout, SART and hard-coded PHY sequence
+- * are not valid for T7000. The disabled device tree preserves J81's exact
+- * resource ordering without naming the unresolved small-window roles. Keep
+- * this driver inert until those roles, DART attachment and ADT-provided
+- * tunables have been implemented.
++ * Four clean hardware results in a row (`0019`, `0020`, `0021`, `0022`)
++ * rule out the DT `status = "okay"` flip, the power-domain attachment, and
++ * every raw MMIO read tried anywhere on this controller (the shared
++ * window, and ECAM at three different bus offsets). No "unsafe region"
++ * exists among the points already tested.
++ *
++ * Both hanging `0018` attempts called `pci_host_common_init()`. This test
++ * calls it too -- but in complete isolation from everything else `0018`
++ * also did: no shared-window register writes, no PERST/GPIO handling
++ * (no `reset-gpios` child node in the DT), no DART/`iommu-map`. Just
++ * `devm_pci_alloc_host_bridge()` and `pci_host_common_init()` with a bare
++ * ECAM ops struct (the same `pci_ecam_map_bus`/`pci_generic_config_read`/
++ * `pci_generic_config_write` every generic ECAM host controller driver
++ * uses) -- no custom `.init` callback at all.
++ *
++ * `pci_host_common_init()` does two things beyond what `0021`/`0022`
++ * already tested: it sets `pci_add_flags(PCI_REASSIGN_ALL_BUS)`, and it
++ * calls `pci_host_probe(bridge)` -- the generic PCI core's real bus scan,
++ * which (unlike this project's own bounded reads so far) also performs
++ * config-space *writes* as part of standard resource discovery (the
++ * classic BAR-sizing sequence: write all-1s to a BAR, read back the size
++ * mask) while it walks every device/function slot on every bus in
++ * `bus-range`, not just the three points `0022` sampled. This is the one
++ * remaining code path neither working test has exercised. If this hangs,
++ * the fault is in `pci_host_probe()`'s enumeration logic (or its writes)
++ * itself, not in the DT wiring, the power domain, DART, or in merely
++ * touching this controller's MMIO.
+  */
+
+-#include <linux/errno.h>
+ #include <linux/module.h>
+-#include <linux/of.h>
+-#include <linux/of_address.h>
++#include <linux/pci-ecam.h>
+ #include <linux/platform_device.h>
+
+-#define APPLE_T7000_PCIE_NUM_PORTS	4
+-#define APPLE_T7000_PCIE_NUM_REGIONS	12
++#include "pci-host-common.h"
+
+-static int apple_t7000_pcie_validate_firmware(struct platform_device *pdev)
+-{
+-	struct device *dev = &pdev->dev;
+-	int count;
++static const struct pci_ecam_ops apple_t7000_pcie_ecam_ops = {
++	.pci_ops	= {
++		.map_bus	= pci_ecam_map_bus,
++		.read		= pci_generic_config_read,
++		.write		= pci_generic_config_write,
++	},
++};
+
+-	count = of_address_count(dev->of_node);
+-	if (count != APPLE_T7000_PCIE_NUM_REGIONS)
+-		return dev_err_probe(dev, -EINVAL,
+-				     "expected %d register windows, found %d\n",
+-				     APPLE_T7000_PCIE_NUM_REGIONS, count);
+-
+-	count = platform_irq_count(pdev);
+-	if (count < 0)
+-		return count;
+-	if (count != APPLE_T7000_PCIE_NUM_PORTS)
+-		return dev_err_probe(dev, -EINVAL,
+-				     "expected %d port interrupts, found %d\n",
+-				     APPLE_T7000_PCIE_NUM_PORTS, count);
+-
+-	return 0;
+-}
+-
+ static int apple_t7000_pcie_probe(struct platform_device *pdev)
+ {
++	struct pci_host_bridge *bridge;
+ 	int ret;
+
+-	ret = apple_t7000_pcie_validate_firmware(pdev);
+-	if (ret)
+-		return ret;
++	dev_info(&pdev->dev,
++		 "t7000-pcie full-probe-test: probe entry, about to call pci_host_common_init()\n");
+
+-	return dev_err_probe(&pdev->dev, -EOPNOTSUPP,
+-			     "link bring-up is not implemented\n");
++	bridge = devm_pci_alloc_host_bridge(&pdev->dev, 0);
++	if (!bridge)
++		return -ENOMEM;
++
++	ret = pci_host_common_init(pdev, bridge, &apple_t7000_pcie_ecam_ops);
++
++	dev_info(&pdev->dev,
++		 "t7000-pcie full-probe-test: pci_host_common_init() returned %d\n",
++		 ret);
++
++	return ret;
+ }
+
+ static const struct of_device_id apple_t7000_pcie_of_match[] = {
+@@ -69,5 +81,5 @@
+ };
+ module_platform_driver(apple_t7000_pcie_driver);
+
+-MODULE_DESCRIPTION("Compile-only Apple T7000 PCIe host bridge groundwork");
++MODULE_DESCRIPTION("Apple T7000 PCIe isolated pci_host_common_init() test (no register writes, no PERST, no DART)");
+ MODULE_LICENSE("GPL");
+--- a/arch/arm64/boot/dts/apple/t7001.dtsi
++++ b/arch/arm64/boot/dts/apple/t7001.dtsi
+@@ -376,13 +376,25 @@
+ 				     <AIC_IRQ 218 IRQ_TYPE_LEVEL_HIGH>,
+ 				     <AIC_IRQ 221 IRQ_TYPE_LEVEL_HIGH>;
+
+-			msi-controller;
+-			msi-parent = <&pcie>;
+-			msi-ranges = <&aic AIC_IRQ 224 IRQ_TYPE_EDGE_RISING 32>;
++			/*
++			 * Isolated pci_host_common_init() test
++			 * (docs/plans/2026-09-13-j81-wifi-pcie.md's
++			 * "Multi-offset ECAM read test: hardware-verified
++			 * clean" section): no MSI domain, no IOMMU. This
++			 * driver's probe() calls pci_host_common_init() with a
++			 * bare ECAM ops struct and nothing else, so
++			 * msi-controller/msi-parent/msi-ranges and
++			 * iommu-map/iommu-map-mask are deliberately omitted --
++			 * this driver implements no MSI domain, and iommu-map
++			 * would pull in an of_iommu_configure() lookup against
++			 * dart_apcie1 this test needs to avoid to keep DART
++			 * fully out of the picture. No reset-gpios child node
++			 * either -- pci_host_common_init() never calls the
++			 * PERST-deassert helper on its own (see 0018's file
++			 * comment for the real source verification), so this
++			 * test's isolation doesn't need one.
++			 */
+
+-			iommu-map = <0x100 &dart_apcie1 0 1>;
+-			iommu-map-mask = <0xff00>;
+-
+ 			bus-range = <0 4>;
+ 			#address-cells = <3>;
+ 			#size-cells = <2>;
+@@ -392,6 +404,6 @@
+ 				  0x7 0xc0000000 0x0 0x40000000>;
+
+ 			power-domains = <&ps_pcie>;
+-			status = "disabled";
++			status = "okay";
+ 		};
+

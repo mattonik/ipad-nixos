@@ -358,6 +358,24 @@
             hoolockConfig = patchedHoolockPcieEcamMultiTestConfig;
           };
 
+          # docs/plans/2026-09-13-j81-wifi-pcie.md's "Multi-offset ECAM
+          # read test: hardware-verified clean" section: the final
+          # diagnostic step -- every raw MMIO read tried anywhere on this
+          # controller is now safe, so this tests the one remaining
+          # untested code path: pci_host_common_init() itself, in complete
+          # isolation from everything else 0018 also did. Same
+          # CONFIG_PCIE_APPLE_T7000=y, but
+          # kernel/hoolock-pcie-hostcommon-test.nix applies patch 0023
+          # instead -- a bare pci_host_common_init() call and nothing else.
+          patchedHoolockPcieHostcommonTestConfig = pkgs.runCommand "ipad-t7001-hoolock-pcie-hostcommon-test-defconfig-4k" {} ''
+            cat ${patchedHoolockConfig} > "$out"
+            echo 'CONFIG_PCIE_APPLE_T7000=y' >> "$out"
+          '';
+          hoolockPcieHostcommonTestKernel = pkgsCross.callPackage ./kernel/hoolock-pcie-hostcommon-test.nix {
+            source = inputs.hoolockLinux;
+            hoolockConfig = patchedHoolockPcieHostcommonTestConfig;
+          };
+
           # BT-1 (docs/plans/2026-09-08-j81-bluetooth-battery-adt.md):
           # The transport-only UART3 DT patch deliberately has no Bluetooth
           # child. This userspace tool attaches the raw HCI UART independently;
@@ -450,6 +468,11 @@
         # payload below; exposed on its own for the same reason
         # hoolock-pcie-ecam-read-test-kernel is.
         hoolock-pcie-ecam-multi-test-kernel = hoolockPcieEcamMultiTestKernel;
+
+        # Kernel backing the combined m1n1-hoolock-pcie-hostcommon-test
+        # payload below; exposed on its own for the same reason
+        # hoolock-pcie-ecam-multi-test-kernel is.
+        hoolock-pcie-hostcommon-test-kernel = hoolockPcieHostcommonTestKernel;
 
         # Kernel, the published multi-device DTB pack, and debug initramfs in
         # the exact file layout consumed by the historical PongoOS loader.
@@ -995,6 +1018,64 @@
           gzip -n -c ${hoolockPcieEcamMultiTestKernel}/Image > "$out/Image.gz"
 
           dtc -I dtb -O dts ${hoolockPcieEcamMultiTestKernel}/dtbs/apple/t7001-j81.dtb \
+            | sed -e '/^\tchosen {$/,/^\t};$/ s/framebuffer@0 {/framebuffer {/' \
+            | dtc -I dts -O dtb -p 0x10000 -o "$out/t7001-j81.dtb"
+
+          gzip -dc ${inputs.linuxAppleResources}/debug_initrd.img > initramfs.cpio
+          mkdir -p original-etc overlay/etc overlay/usr/bin
+          (cd original-etc && cpio -id --no-absolute-filenames etc/deviceinfo < ../initramfs.cpio)
+          cp original-etc/etc/deviceinfo overlay/etc/deviceinfo
+          printf '\ndeviceinfo_usb_rndis_function="ecm.usb0"\n' >> overlay/etc/deviceinfo
+          touch -d @1 overlay/etc/deviceinfo
+
+          cp ${btattachPkg}/bin/btattach overlay/usr/bin/btattach
+          chmod 755 overlay/usr/bin/btattach
+          touch -d @1 overlay/usr/bin/btattach
+
+          for f in ${i2cToolsPkg}/bin/*; do
+            cp "$f" "overlay/usr/bin/$(basename "$f")"
+            chmod 755 "overlay/usr/bin/$(basename "$f")"
+            touch -d @1 "overlay/usr/bin/$(basename "$f")"
+          done
+
+          (cd overlay
+           { printf '%s\0' "etc/deviceinfo" "usr/bin/btattach"
+             for f in ${i2cToolsPkg}/bin/*; do
+               printf 'usr/bin/%s\0' "$(basename "$f")"
+             done
+           } | cpio --null -o -H newc --owner=0:0 --reproducible
+          ) >> initramfs.cpio
+          gzip -n -c initramfs.cpio > "$out/initramfs.gz"
+
+          printf '%s\n' 'chosen.bootargs=console=tty0 loglevel=8 ignore_loglevel rdinit=/init PMOS_NO_OUTPUT_REDIRECT pd_ignore_unused clk_ignore_unused' \
+            > "$out/bootargs"
+          cat "$out/m1n1.bin" "$out/bootargs" "$out/t7001-j81.dtb" \
+            "$out/Image.gz" "$out/initramfs.gz" > "$out/m1n1-linux.bin"
+          sha256sum "$out/Pongo.bin" "$out/m1n1.bin" "$out/m1n1-linux.bin" \
+            > "$out/SHA256SUMS"
+        '';
+
+        # Isolated pci_host_common_init() test payload -- identical to
+        # m1n1-hoolock-pcie-ecam-multi-test above in every respect except
+        # the kernel (hoolockPcieHostcommonTestKernel instead of
+        # hoolockPcieEcamMultiTestKernel).
+        # docs/plans/2026-09-13-j81-wifi-pcie.md's "Multi-offset ECAM read
+        # test: hardware-verified clean" section: every raw MMIO read
+        # tried anywhere on this controller is now safe. This payload's
+        # driver calls the one remaining untested code path --
+        # pci_host_common_init() itself, with a bare ECAM ops struct and
+        # nothing else -- in complete isolation from the shared-window
+        # writes, PERST/GPIO handling, and DART the original hanging 0018
+        # attempts also had.
+        m1n1-hoolock-pcie-hostcommon-test = pkgs.runCommand "ipad-air2-m1n1-hoolock-pcie-hostcommon-test" {
+          nativeBuildInputs = [ pkgs.gzip pkgs.dtc pkgs.cpio ];
+        } ''
+          mkdir -p "$out"
+          cp ${inputs.hoolockDocs}/binaries/Pongo.bin "$out/Pongo.bin"
+          cp ${inputs.hoolockM1n1}/m1n1.bin "$out/m1n1.bin"
+          gzip -n -c ${hoolockPcieHostcommonTestKernel}/Image > "$out/Image.gz"
+
+          dtc -I dtb -O dts ${hoolockPcieHostcommonTestKernel}/dtbs/apple/t7001-j81.dtb \
             | sed -e '/^\tchosen {$/,/^\t};$/ s/framebuffer@0 {/framebuffer {/' \
             | dtc -I dts -O dtb -p 0x10000 -o "$out/t7001-j81.dtb"
 
