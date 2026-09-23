@@ -601,6 +601,39 @@ order makes it active. First recover PCIE/AUX/REF gate ownership and
 record in `docs/plans/2026-09-13-j81-wifi-pcie.md`'s "Post-attempt
 implementation review" section.
 
+**T7000 PCIe: PMGR-only test hardware-verified clean, 2026-09-23.**
+Independently re-verified the "PERST never deasserted" claim above against
+the real pinned `pci-host-common.c` source directly (fetched from GitHub at
+the exact locked rev) -- confirmed accurate: `pci_host_common_init()` never
+calls `pci_host_common_parse_ports()`; that helper is opt-in only.
+Implemented the review's proposed next step: `kernel/patches/0019-...`
+(layered on `0016`, a clean branch, not on top of `0018` -- `0018` stays as
+a record of the earlier inconclusive attempts). The driver's `probe()` does
+nothing but `dev_info()` and return; the DT flips only `pcie` to `"okay"`
+(`dart_apcie1` stays disabled) and drops `iommu-map` so DART is never even
+looked up. New isolated build (`kernel/hoolock-pcie-pmgr-test.nix`,
+`m1n1-hoolock-pcie-pmgr-test`). Cross-build verified after a real
+infrastructure detour: the Linux-builder VM's disk was corrupted by an
+earlier hard-kill and wouldn't boot at all for about a day across many
+restart attempts; recreated it from scratch (Martin's explicit go-ahead --
+~43 GB of disposable cached build state, not project work) and the guest
+came back up cleanly.
+
+**Hardware result: boots exactly like the unmodified control payload** --
+postmarketOS, working USB networking (`172.16.42.1`, 0% ping loss), debug
+shell reachable by telnet, and `dmesg` confirms the probe actually ran
+(`t7000-pcie pmgr-only-test: probe reached (no MMIO, no PCI core, no
+DART)`). This is the first PCIe-node hardware result that isn't a hang. It
+rules out the `status = "okay"` DT flip and the automatic
+`power-domains = <&ps_pcie>` genpd power-up as causes on their own. The
+real suspect is now narrowed to `pci_host_common_init()`'s ECAM mapping /
+generic PCI bus scan, which this working test deliberately never calls but
+both hanging `0018` attempts did. Next diagnostic step (not yet attempted):
+a single bounded shared-window MMIO read, still without ever calling
+`pci_host_common_init()` or mapping ECAM. Full record in
+`docs/plans/2026-09-13-j81-wifi-pcie.md`'s "PMGR-only test: hardware-verified
+clean" section.
+
 **Buttons hardware-verified, 2026-09-21.** `evtest /dev/input/event0` on
 the existing `gpio-keys` device captured clean press/release events for
 Home (`KEY_HOMEPAGE`), Power, Volume Up and Volume Down. No driver work
