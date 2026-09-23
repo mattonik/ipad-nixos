@@ -35,12 +35,12 @@ at multiple points, and the complete generic PCI bus scan itself
 follow-up payloads (`0019` through `0024`) deliberately kept
 `dart_apcie1` disabled and removed `iommu-map`; both hanging `0018`
 attempts enabled them. DART probe/reset and PCIe-to-DART IOMMU attachment
-are the one thing left untested. This matters because the pinned DART
-driver programs MMIO at probe time, while Apple invokes
-`function-dart_force_active` only *after* port hardware setup -- a real,
-concrete reason DART activation could behave differently than expected if
-probed on its own, standalone, with the wrong ordering relative to the
-controller.
+are the one thing left untested. The pinned Linux DART driver programs MMIO
+at probe time, so that is meaningful even before an endpoint exists. Apple
+requests `function-dart_force_active` early in port enable (after gate
+requests, before controller writes), but Linux does not implement Apple's
+separate on-demand-availability model; a Linux DART probe characterizes its
+own reset path rather than replaying Apple's platform function.
 
 **Two secondary corrections, also load-bearing for anyone continuing this
 work**:
@@ -295,33 +295,38 @@ the port object. Both gate-enable calls in `enableGated()`
 this leaf driver code never separately references the other two
 `clock-gates` entries (`58`/`PCIE_AUX`, `56`/`PCIE_REF`).
 
-**This strongly implies** those two additional gates are walked
-automatically by the underlying platform/PMGR power-state machinery as a
-side effect of the same "enable my power state" call, not by explicit
-per-gate driver code -- i.e. Apple's own `clock-gates` ADT array convention
-is likely handled generically below this driver, not hand-rolled per gate.
-**Practical implication for this project**: whether the existing Linux DT
-`power-domains = <&ps_pcie>` genpd binding (already hardware-proven "clean"
-by `0019`) also walks all three PMGR gates the same generic way is a real,
-unverified assumption -- it should be checked against the actual
-Apple-PMGR/genpd driver source in the pinned Hoolock kernel before treating
-`0019`'s clean result as covering `PCIE_AUX`/`PCIE_REF` too, not just the
-single `PCIE` gate.
+The pinned [Linux PMGR implementation](https://github.com/HoolockLinux/linux/blob/6831bc701a6ce059e71e5aaa9488c9195bea6927/drivers/pmdomain/apple/pmgr-pwrstate.c)
+resolves the Linux side. It registers one genpd per DT power-state node and
+adds a parent only for each node's explicit `power-domains` property. In the
+pinned [T7001 PMGR DTS](https://github.com/HoolockLinux/linux/blob/6831bc701a6ce059e71e5aaa9488c9195bea6927/arch/arm64/boot/dts/apple/t7001-pmgr.dtsi),
+`ps_pcie`, `ps_pcie_aux`, and `ps_pcie_ref` have no parent links.
+Consequently, `power-domains = <&ps_pcie>` powers **only** `ps_pcie`; it
+cannot implicitly power either sibling. `0019` proves that one domain safe,
+but not that AUX/REF are enabled or unnecessary.
+
+Apple may still handle its ADT `clock-gates` array below the port driver.
+The current Linux DT does not model the two sibling PMGR states, however.
+Recovering their Apple ownership remains necessary for a production
+controller driver, but it does not prevent a narrow probe of the existing
+Linux DART reset path.
 
 ### Practical takeaway for the next hardware test
 
-A DART-only Linux test (`dart_apcie1` enabled, `pcie` left disabled, no
-`iommu-map` consumer) is simpler to build than any of the PCIe test
-payloads so far -- it just needs the DT status flip, no custom driver code
-at all, since it only needs to exercise the stock Linux DART/IOMMU driver
-already in the pinned kernel. But interpreting its result cleanly depends
-on the two open points above: confirm (from the Hoolock kernel's own PMGR
-driver source) whether enabling `ps_pcie` already implies all three gates,
-and be explicit that this test says nothing about the
-`_manualAvailabilityEnabled` question, which has no equivalent concept in
-mainline Linux's IOMMU/DART driver model at all -- that gap is specific to
-Apple's own closed-source "available on demand" DART design, not something
-a Linux DART probe would need to replicate.
+The next payload should preserve the PMGR state used by both hanging builds
+while changing only DART probe behavior: keep the proven `0019` PCIe node
+enabled with its no-MMIO diagnostic driver, enable `dart_apcie1`, and omit
+`iommu-map`. That lets the stock Linux DART driver map, reset, and register
+its IRQ while the PCIe driver remains inert. It is a better isolation than
+enabling DART with PCIe disabled, because the DART node has no power-domain
+reference of its own and that alternative would also remove `ps_pcie`.
+
+If this payload is clean, repeat it with only `iommu-map` restored. This
+separates the DART driver's reset path from the PCIe-to-IOMMU attachment
+performed before PCIe driver probe. Neither payload should add AUX/REF
+domains, controller MMIO, PERST handling, or PCI enumeration. The
+`_manualAvailabilityEnabled` question remains relevant to reproducing
+Apple's full controller sequence, but not to characterizing Linux DART
+probe.
 
 ## Infrastructure notes worth keeping
 
