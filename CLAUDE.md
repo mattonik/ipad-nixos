@@ -634,6 +634,25 @@ a single bounded shared-window MMIO read, still without ever calling
 `docs/plans/2026-09-13-j81-wifi-pcie.md`'s "PMGR-only test: hardware-verified
 clean" section.
 
+**T7000 PCIe: bounded shared-window read test also hardware-verified clean,
+2026-09-23.** Implemented `kernel/patches/0020-...` (layered on `0016`, a
+clean branch like `0019`): `probe()` maps only the shared register window
+(reg index 9) via `devm_ioremap_resource()`, does one bounded `readl()` at
+board port 1's LTSSM-start offset, logs it, returns -- no ECAM, no PCI
+core, no DART. Cross-build verified clean. **Hardware result: boots
+exactly like every other clean payload so far** -- postmarketOS, working
+USB networking, and `dmesg` confirms the whole sequence including the
+actual read: `window 9 at [mem 0x600000000-0x600001fff]` (matches the DT
+`reg` entry exactly) then `port 1 ltssm=0x00000000` -- a sane "not yet
+enabled" value, not a bus fault. This rules out the shared-window MMIO
+access itself as a cause. Two clean tests in a row (`0019`, `0020`) now
+leave only `pci_host_common_init()`'s remaining two pieces as suspects --
+ECAM mapping and the generic PCI bus scan -- both of which the hanging
+`0018` attempts called and neither working test does. Next diagnostic
+step (not yet attempted): a bounded ECAM-only read, still without the
+generic bus scan. Full record in `docs/plans/2026-09-13-j81-wifi-pcie.md`'s
+"Bounded shared-window read test: hardware-verified clean" section.
+
 **Buttons hardware-verified, 2026-09-21.** `evtest /dev/input/event0` on
 the existing `gpio-keys` device captured clean press/release events for
 Home (`KEY_HOMEPAGE`), Power, Volume Up and Volume Down. No driver work
