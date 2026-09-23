@@ -1,0 +1,133 @@
+--- a/drivers/pci/controller/pcie-apple-t7000.c
++++ b/drivers/pci/controller/pcie-apple-t7000.c
+@@ -1,59 +1,44 @@
+ // SPDX-License-Identifier: GPL-2.0-only
+ /*
+- * Compile-only groundwork for the Apple T7000-family PCIe host controller.
++ * Apple T7000-family PCIe -- PMGR-only probe test.
+  *
+- * The real J81 ADT describes four ports, four port interrupts and twelve
+- * register windows. Corellium's older H9P driver confirms the four-port
+- * controller shape, but its register layout, SART and hard-coded PHY sequence
+- * are not valid for T7000. The disabled device tree preserves J81's exact
+- * resource ordering without naming the unresolved small-window roles. Keep
+- * this driver inert until those roles, DART attachment and ADT-provided
+- * tunables have been implemented.
++ * Two real hardware attempts with `0018` (both the write-capable version
++ * and the version documented as a "read-only diagnostic") hung identically
++ * to each other. A source-level review afterwards found that "diagnostic"
++ * was never actually passive: `apple_t7000_pcie_probe()` still called
++ * `pci_host_common_init()`, which maps the ECAM config-space window and
++ * runs `pci_host_probe()` -- a full generic PCI bus scan issuing real
++ * config-space reads over MMIO. Neither hardware attempt isolated the
++ * platform power-domain attachment (`power-domains = <&ps_pcie>`, which
++ * the DT's `status = "okay"` flip triggers automatically via genpd, before
++ * any driver `.probe()` runs at all) from PCI-core/ECAM/DART activity. See
++ * docs/plans/2026-09-13-j81-wifi-pcie.md's "Post-attempt implementation
++ * review" section for the full analysis, including a real bug found in
++ * `0018`'s file comment: `pci_host_common_init()` does not call
++ * `pci_host_common_parse_ports()` -- that helper is opt-in and must be
++ * called explicitly by a driver, so PERST# was never actually deasserted
++ * by either previous hardware attempt despite the DT carrying a
++ * `reset-gpios` child node.
++ *
++ * This driver maps nothing and calls no PCI, ECAM or DART code at all --
++ * it exists solely to test whether enabling this DT node (and the genpd
++ * power-up of `ps_pcie` that follows automatically) hangs the boot on its
++ * own, with DART left disabled and no `iommu-map` dependency pulled in.
++ * `dmesg` should show the probe log below if this test's job -- confirming
++ * or ruling out the power-domain attachment as the hang's real cause --
++ * succeeds.
+  */
+
+-#include <linux/errno.h>
+ #include <linux/module.h>
+-#include <linux/of.h>
+-#include <linux/of_address.h>
+ #include <linux/platform_device.h>
+
+-#define APPLE_T7000_PCIE_NUM_PORTS	4
+-#define APPLE_T7000_PCIE_NUM_REGIONS	12
+-
+-static int apple_t7000_pcie_validate_firmware(struct platform_device *pdev)
++static int apple_t7000_pcie_probe(struct platform_device *pdev)
+ {
+-	struct device *dev = &pdev->dev;
+-	int count;
+-
+-	count = of_address_count(dev->of_node);
+-	if (count != APPLE_T7000_PCIE_NUM_REGIONS)
+-		return dev_err_probe(dev, -EINVAL,
+-				     "expected %d register windows, found %d\n",
+-				     APPLE_T7000_PCIE_NUM_REGIONS, count);
+-
+-	count = platform_irq_count(pdev);
+-	if (count < 0)
+-		return count;
+-	if (count != APPLE_T7000_PCIE_NUM_PORTS)
+-		return dev_err_probe(dev, -EINVAL,
+-				     "expected %d port interrupts, found %d\n",
+-				     APPLE_T7000_PCIE_NUM_PORTS, count);
+-
++	dev_info(&pdev->dev,
++		 "t7000-pcie pmgr-only-test: probe reached (no MMIO, no PCI core, no DART)\n");
+ 	return 0;
+ }
+
+-static int apple_t7000_pcie_probe(struct platform_device *pdev)
+-{
+-	int ret;
+-
+-	ret = apple_t7000_pcie_validate_firmware(pdev);
+-	if (ret)
+-		return ret;
+-
+-	return dev_err_probe(&pdev->dev, -EOPNOTSUPP,
+-			     "link bring-up is not implemented\n");
+-}
+-
+ static const struct of_device_id apple_t7000_pcie_of_match[] = {
+ 	{ .compatible = "apple,t7000-pcie" },
+ 	{ }
+@@ -69,5 +54,5 @@
+ };
+ module_platform_driver(apple_t7000_pcie_driver);
+
+-MODULE_DESCRIPTION("Compile-only Apple T7000 PCIe host bridge groundwork");
++MODULE_DESCRIPTION("Apple T7000 PCIe PMGR-only probe test (no MMIO, no PCI core)");
+ MODULE_LICENSE("GPL");
+--- a/arch/arm64/boot/dts/apple/t7001.dtsi
++++ b/arch/arm64/boot/dts/apple/t7001.dtsi
+@@ -376,13 +376,18 @@
+ 				     <AIC_IRQ 218 IRQ_TYPE_LEVEL_HIGH>,
+ 				     <AIC_IRQ 221 IRQ_TYPE_LEVEL_HIGH>;
+
+-			msi-controller;
+-			msi-parent = <&pcie>;
+-			msi-ranges = <&aic AIC_IRQ 224 IRQ_TYPE_EDGE_RISING 32>;
++			/*
++			 * PMGR-only test (docs/plans/2026-09-13-j81-wifi-pcie.md's
++			 * "Post-attempt implementation review", step 2): no MSI
++			 * domain, no IOMMU. This driver's probe() maps nothing
++			 * and calls no PCI/ECAM/DART code, so msi-controller/
++			 * msi-parent/msi-ranges and iommu-map/iommu-map-mask are
++			 * deliberately omitted -- iommu-map alone would pull in
++			 * an of_iommu_configure() lookup against dart_apcie1
++			 * before probe() even runs, which this test needs to
++			 * avoid to keep DART fully out of the picture.
++			 */
+
+-			iommu-map = <0x100 &dart_apcie1 0 1>;
+-			iommu-map-mask = <0xff00>;
+-
+ 			bus-range = <0 4>;
+ 			#address-cells = <3>;
+ 			#size-cells = <2>;
+@@ -392,6 +397,6 @@
+ 				  0x7 0xc0000000 0x0 0x40000000>;
+
+ 			power-domains = <&ps_pcie>;
+-			status = "disabled";
++			status = "okay";
+ 		};
+
