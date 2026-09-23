@@ -711,6 +711,38 @@ writes, no PERST/GPIO, no DART/iommu-map) to test that one remaining code
 path directly. Full record in `docs/plans/2026-09-13-j81-wifi-pcie.md`'s
 "Multi-offset ECAM read test: hardware-verified clean" section.
 
+**T7000 PCIe: isolated pci_host_common_init() test hardware-verified
+clean -- investigation conclusively narrowed, 2026-09-23.** Implemented
+`kernel/patches/0023-...` (layered on `0016`, same clean-branch pattern):
+`probe()` calls `devm_pci_alloc_host_bridge()` + `pci_host_common_init()`
+with a bare ECAM ops struct and nothing else -- no shared-window writes,
+no PERST/GPIO, no DART. This is the exact code path both hanging `0018`
+attempts called. Cross-build verified clean. **Hardware result: boots
+cleanly, `pci_host_common_init()` returns 0** -- postmarketOS, working USB
+networking, `dmesg` shows the full generic PCI probe running to
+completion (host bridge ranges parsed, ECAM mapped for buses 00-04, "PCI
+host bridge to bus 0000:00" logged, clean return).
+
+**This conclusively narrows the whole investigation.** Five clean
+hardware tests in a row (`0019`-`0023`) have now individually verified
+*every* piece of `pci_host_common_init()`: the DT status flip, the
+power-domain attachment, the shared-window MMIO access, ECAM mapping and
+reads at multiple bus offsets, and now the complete generic PCI bus scan
+itself (including its BAR-sizing config-space writes and bus-number
+programming). All safe. The only thing either hanging `0018` attempt did
+that none of these five tests did is the actual hardware enable-sequence
+**writes** to the shared window: `REFCLK_EN` (`0x100`), `PERST_INTERNAL`
+(`0x108`), the undocumented `0x10c`, `LINK_ENABLE` (`0x118`), and the
+final LTSSM-start write (`writel(3, ...)`) -- traced from the real
+`_enablePortHardware`/`enableGated` kernelcache functions, never tested in
+isolation by any payload so far. That write sequence is now the sole
+remaining, well-evidenced suspect. Next diagnostic step (not yet
+attempted): those writes in isolation (shared-window access only, no
+ECAM/PCI-core/DART), staged one at a time the same way `0022` staged
+multiple reads, to localize which specific write (if any) is unsafe. Full
+record in `docs/plans/2026-09-13-j81-wifi-pcie.md`'s "Isolated
+pci_host_common_init() test: hardware-verified clean" section.
+
 **Buttons hardware-verified, 2026-09-21.** `evtest /dev/input/event0` on
 the existing `gpio-keys` device captured clean press/release events for
 Home (`KEY_HOMEPAGE`), Power, Volume Up and Volume Down. No driver work
