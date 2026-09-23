@@ -1,8 +1,7 @@
 # J81 active-work priority
 
-**Reviewed:** 2026-09-21 (supersedes the 2026-09-15 version -- charging is
-now fully resolved and PCIe has moved from "evidence-gathering" to
-"implementation-ready")
+**Reviewed:** 2026-09-23 (PCIe's generic host path is now hardware-proven;
+DART activation and the complete Apple controller sequence remain open.)
 
 This is the live backlog distilled from `docs/project-status.md`, the
 subsystem plans, and the driver-gap research. It excludes completed
@@ -16,7 +15,7 @@ substituted with guessed software writes.
 
 | Order | Work item | Certainty | Ease | Impact | Current gate |
 | --- | --- | ---: | ---: | ---: | --- |
-| 1 | PCIe: implement and cross-build the isolated link/enumeration test payload | 4 | 3 | 5 | Register-level enable sequence fully recovered from real firmware (exact offsets, bit positions, microsecond delays). Not yet implemented as real driver code or cross-built. No hardware attempt until it compiles clean and is reviewed. |
+| 1 | PCIe: close DART and controller-sequence evidence gates | 4 | 3 | 5 | PMGR, selected shared reads, ECAM, and generic enumeration are hardware-clean. First read four remaining shared offsets with DART disabled; then recover force-active and PCIE/AUX/REF gate semantics before a DART-only probe. |
 | 2 | Charging Stage 2: writable `input_current_limit` kernel property | 5 | 4 | 3 | Approved plan (`kernel/patches/0017-...`), fully backed by a live tier-validation sweep across all five tiers. Not started. Charging itself already works via the console tool; this is a convenience/permanence upgrade, not a new capability. |
 | 3 | Repeat ANS1's intentionally read-only hardware observation | 4 | 4 | 3 | Requires the separate observation-only payload; never mount or write it. |
 | 4 | Touch: resolve firmware/calibration delivery and power ownership | 3 | 2 | 5 | Blocked by the non-persistent D2207 LDO/GPIO state and private touch data. |

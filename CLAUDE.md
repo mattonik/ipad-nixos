@@ -723,25 +723,17 @@ networking, `dmesg` shows the full generic PCI probe running to
 completion (host bridge ranges parsed, ECAM mapped for buses 00-04, "PCI
 host bridge to bus 0000:00" logged, clean return).
 
-**This conclusively narrows the whole investigation.** Five clean
-hardware tests in a row (`0019`-`0023`) have now individually verified
-*every* piece of `pci_host_common_init()`: the DT status flip, the
-power-domain attachment, the shared-window MMIO access, ECAM mapping and
-reads at multiple bus offsets, and now the complete generic PCI bus scan
-itself (including its BAR-sizing config-space writes and bus-number
-programming). All safe. The only thing either hanging `0018` attempt did
-that none of these five tests did is the actual hardware enable-sequence
-**writes** to the shared window: `REFCLK_EN` (`0x100`), `PERST_INTERNAL`
-(`0x108`), the undocumented `0x10c`, `LINK_ENABLE` (`0x118`), and the
-final LTSSM-start write (`writel(3, ...)`) -- traced from the real
-`_enablePortHardware`/`enableGated` kernelcache functions, never tested in
-isolation by any payload so far. That write sequence is now the sole
-remaining, well-evidenced suspect. Next diagnostic step (not yet
-attempted): those writes in isolation (shared-window access only, no
-ECAM/PCI-core/DART), staged one at a time the same way `0022` staged
-multiple reads, to localize which specific write (if any) is unsafe. Full
-record in `docs/plans/2026-09-13-j81-wifi-pcie.md`'s "Isolated
-pci_host_common_init() test: hardware-verified clean" section.
+**This clears the generic PCI path, but not DART.** Five clean hardware
+tests (`0019`-`0023`) verify the DT status flip, power-domain attachment,
+the shared-window read at `0x860`, ECAM mapping/reads, and generic PCI bus
+scan. All intentionally kept `dart_apcie1` disabled and removed
+`iommu-map`; both hanging `0018` variants enabled them. Read-only `0018`
+also read four shared offsets that `0020` did not isolate. The remaining
+differences are therefore DART/IOMMU activation, those four passive reads,
+and the shared-window enable writes. Do not stage writes now. First run the
+four missing reads sequentially with DART still disabled; then recover
+`function-dart_force_active` and PCIE/AUX/REF gates before a DART-only test.
+Full record in `research/t7000-pcie-hardware-findings.md`.
 
 **Buttons hardware-verified, 2026-09-21.** `evtest /dev/input/event0` on
 the existing `gpio-keys` device captured clean press/release events for

@@ -29,14 +29,13 @@ raw MMIO reads of both the shared window and ECAM at multiple points, and
 the complete generic PCI bus scan itself (including its BAR-sizing
 config-space writes and bus-number programming).
 
-**The only thing either hanging `0018` attempt did that no clean test did
-is the hardware enable-sequence writes** to the shared window: `REFCLK_EN`
-(offset `0x100`), `PERST_INTERNAL` (`0x108`), the undocumented `0x10c`,
-`LINK_ENABLE` (`0x118`), and the final LTSSM-start write
-(`writel(3, ...)` at `0x820 + port*0x40`) -- traced from the real
-`AppleT7000PCIe::_enablePortHardware`/`AppleEmbeddedPCIEPort::enableGated`
-kernelcache functions. That write sequence is the sole remaining,
-well-evidenced suspect. It has never been tested in isolation.
+The former conclusion that only the shared-window enable writes remained is
+incorrect. All five clean follow-up payloads deliberately kept
+`dart_apcie1` disabled and removed `iommu-map`; the failed read-only `0018`
+test enabled both. Therefore DART probe/reset and PCIe-to-DART IOMMU
+attachment remain a common differential alongside the shared-window writes.
+This matters because the pinned DART driver programs MMIO at probe time, while
+Apple invokes `function-dart_force_active` only after port hardware setup.
 
 **Two secondary corrections, also load-bearing for anyone continuing this
 work**:
@@ -148,11 +147,17 @@ of these tests.
 
 ## Next step
 
-Test the enable-sequence writes in isolation: shared-window write access
-only (no ECAM, no `pci_host_probe()`, no DART), staged one write at a
-time in the same graduated style `0022` used for multiple reads, to
-localize which specific write in the sequence -- if any -- is what
-actually hangs the boot. Not yet implemented as of this writing.
+First close the last passive difference: read the four shared-window offsets
+that read-only `0018` logged but `0020` did not (`0x180`, `0x188`, `0x18c`,
+and `0x198` for port 1), sequentially and with a log before each read. Keep
+DART disabled, omit `iommu-map`, and do not write or enumerate PCI.
+
+If that boot is clean, DART is the sole remaining common difference. Before a
+DART boot, recover Apple's `function-dart_force_active` and PCIE/AUX/REF gate
+operations offline. Then run one DART-probe-only payload: DART enabled, PCIe
+inert, no `iommu-map` consumer. Only after that result and the missing gate
+evidence should controller writes, explicit PERST handling, and link training
+be attempted.
 
 ## Infrastructure notes worth keeping
 
