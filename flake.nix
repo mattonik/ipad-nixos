@@ -326,6 +326,22 @@
             hoolockConfig = patchedHoolockPcieSharedReadTestConfig;
           };
 
+          # docs/plans/2026-09-13-j81-wifi-pcie.md's "Bounded shared-window
+          # read test: hardware-verified clean" section: the next
+          # diagnostic step after 0020 (above) proved the shared window is
+          # safely readable. Same CONFIG_PCIE_APPLE_T7000=y, but
+          # kernel/hoolock-pcie-ecam-read-test.nix applies patch 0021
+          # instead -- a bare ECAM-window devm_ioremap_resource() + single
+          # readl(), still no pci_ecam_create()/pci_host_probe()/DART.
+          patchedHoolockPcieEcamReadTestConfig = pkgs.runCommand "ipad-t7001-hoolock-pcie-ecam-read-test-defconfig-4k" {} ''
+            cat ${patchedHoolockConfig} > "$out"
+            echo 'CONFIG_PCIE_APPLE_T7000=y' >> "$out"
+          '';
+          hoolockPcieEcamReadTestKernel = pkgsCross.callPackage ./kernel/hoolock-pcie-ecam-read-test.nix {
+            source = inputs.hoolockLinux;
+            hoolockConfig = patchedHoolockPcieEcamReadTestConfig;
+          };
+
           # BT-1 (docs/plans/2026-09-08-j81-bluetooth-battery-adt.md):
           # The transport-only UART3 DT patch deliberately has no Bluetooth
           # child. This userspace tool attaches the raw HCI UART independently;
@@ -408,6 +424,11 @@
         # payload below; exposed on its own for the same reason
         # hoolock-pcie-pmgr-test-kernel is.
         hoolock-pcie-shared-read-test-kernel = hoolockPcieSharedReadTestKernel;
+
+        # Kernel backing the combined m1n1-hoolock-pcie-ecam-read-test
+        # payload below; exposed on its own for the same reason
+        # hoolock-pcie-shared-read-test-kernel is.
+        hoolock-pcie-ecam-read-test-kernel = hoolockPcieEcamReadTestKernel;
 
         # Kernel, the published multi-device DTB pack, and debug initramfs in
         # the exact file layout consumed by the historical PongoOS loader.
@@ -835,6 +856,65 @@
           gzip -n -c ${hoolockPcieSharedReadTestKernel}/Image > "$out/Image.gz"
 
           dtc -I dtb -O dts ${hoolockPcieSharedReadTestKernel}/dtbs/apple/t7001-j81.dtb \
+            | sed -e '/^\tchosen {$/,/^\t};$/ s/framebuffer@0 {/framebuffer {/' \
+            | dtc -I dts -O dtb -p 0x10000 -o "$out/t7001-j81.dtb"
+
+          gzip -dc ${inputs.linuxAppleResources}/debug_initrd.img > initramfs.cpio
+          mkdir -p original-etc overlay/etc overlay/usr/bin
+          (cd original-etc && cpio -id --no-absolute-filenames etc/deviceinfo < ../initramfs.cpio)
+          cp original-etc/etc/deviceinfo overlay/etc/deviceinfo
+          printf '\ndeviceinfo_usb_rndis_function="ecm.usb0"\n' >> overlay/etc/deviceinfo
+          touch -d @1 overlay/etc/deviceinfo
+
+          cp ${btattachPkg}/bin/btattach overlay/usr/bin/btattach
+          chmod 755 overlay/usr/bin/btattach
+          touch -d @1 overlay/usr/bin/btattach
+
+          for f in ${i2cToolsPkg}/bin/*; do
+            cp "$f" "overlay/usr/bin/$(basename "$f")"
+            chmod 755 "overlay/usr/bin/$(basename "$f")"
+            touch -d @1 "overlay/usr/bin/$(basename "$f")"
+          done
+
+          (cd overlay
+           { printf '%s\0' "etc/deviceinfo" "usr/bin/btattach"
+             for f in ${i2cToolsPkg}/bin/*; do
+               printf 'usr/bin/%s\0' "$(basename "$f")"
+             done
+           } | cpio --null -o -H newc --owner=0:0 --reproducible
+          ) >> initramfs.cpio
+          gzip -n -c initramfs.cpio > "$out/initramfs.gz"
+
+          printf '%s\n' 'chosen.bootargs=console=tty0 loglevel=8 ignore_loglevel rdinit=/init PMOS_NO_OUTPUT_REDIRECT pd_ignore_unused clk_ignore_unused' \
+            > "$out/bootargs"
+          cat "$out/m1n1.bin" "$out/bootargs" "$out/t7001-j81.dtb" \
+            "$out/Image.gz" "$out/initramfs.gz" > "$out/m1n1-linux.bin"
+          sha256sum "$out/Pongo.bin" "$out/m1n1.bin" "$out/m1n1-linux.bin" \
+            > "$out/SHA256SUMS"
+        '';
+
+        # PCIe bounded ECAM-window read test payload -- identical to
+        # m1n1-hoolock-pcie-shared-read-test above in every respect except
+        # the kernel (hoolockPcieEcamReadTestKernel instead of
+        # hoolockPcieSharedReadTestKernel).
+        # docs/plans/2026-09-13-j81-wifi-pcie.md's "Bounded shared-window
+        # read test: hardware-verified clean" section: that test proved the
+        # shared register window is safely readable. This payload's driver
+        # adds back a real ECAM-window devm_ioremap_resource() + single
+        # readl() at config-space offset 0, with still no
+        # pci_ecam_create()/pci_host_probe() bus scan and no DART, so a
+        # hang here (or its absence) isolates whether the ECAM window
+        # itself is safely readable before the controller's enable
+        # sequence has ever run.
+        m1n1-hoolock-pcie-ecam-read-test = pkgs.runCommand "ipad-air2-m1n1-hoolock-pcie-ecam-read-test" {
+          nativeBuildInputs = [ pkgs.gzip pkgs.dtc pkgs.cpio ];
+        } ''
+          mkdir -p "$out"
+          cp ${inputs.hoolockDocs}/binaries/Pongo.bin "$out/Pongo.bin"
+          cp ${inputs.hoolockM1n1}/m1n1.bin "$out/m1n1.bin"
+          gzip -n -c ${hoolockPcieEcamReadTestKernel}/Image > "$out/Image.gz"
+
+          dtc -I dtb -O dts ${hoolockPcieEcamReadTestKernel}/dtbs/apple/t7001-j81.dtb \
             | sed -e '/^\tchosen {$/,/^\t};$/ s/framebuffer@0 {/framebuffer {/' \
             | dtc -I dts -O dtb -p 0x10000 -o "$out/t7001-j81.dtb"
 
