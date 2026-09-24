@@ -946,6 +946,15 @@ open. Trace the 12B410 `+0xe8` store and then hook `+0x5e8` if the calls are
 unsupported; do not run `0026` or build another DART payload yet. Full
 record: `research/t7000-pcie-hardware-findings.md`.
 
+**DART helper resolved, later 2026-09-24.** Exact 12B410 tracing proves
+`+0xe8` is the DART provider cast to `AppleARMIODevice`; its `+0x560` and
+`+0x568` calls are `clock-gates[0]`/`power-gates[0]` wrappers. J81 declares
+neither array, both return unsupported, and Apple ignores both. The first
+remaining hardware path is `_dartRecoverFromPowerdown()`: Apple writes
+`0x0020ffff` to DART `+0x24` and restores state before Linux first reads
+`+0x00`. Implement and cross-verify only an evidence-gated first-write
+payload next; do not run it or `0026` until hardware testing is requested.
+
 **Buttons hardware-verified, 2026-09-21.** `evtest /dev/input/event0` on
 the existing `gpio-keys` device captured clean press/release events for
 Home (`KEY_HOMEPAGE`), Power, Volume Up and Volume Down. No driver work

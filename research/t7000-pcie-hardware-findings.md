@@ -763,6 +763,49 @@ which is the first unresolved operation after availability changes. Do not
 build another DART payload, add a DT power domain, or run `0026` from this
 evidence alone.
 
+### Helper and recovery path resolved, 2026-09-24
+
+The exact 12B410 trace now resolves the remaining helper ambiguity. The
+kernel is SHA-256
+`19c277d60e0a1185b1e4a1b72cda4f1f550c0b0bf670791542234a6dbbcc28bf`.
+`IODARTFamily::start()` stores its provider at `this+0x88` at
+`0xffffff80026b2fec`. `AppleS5L8960XDART` then loads that provider,
+performs `OSMetaClassBase::safeMetaCast` at `0xffffff80026c31d0` against
+`AppleARMIODevice::gMetaClass` (`0xffffff80026938c0`), and stores the
+result at `this+0xe8` at `0xffffff80026c31d4`. The AppleARMPlatform static
+constructor at `0xffffff8002665d0c` names that metaclass
+`AppleARMIODevice`. The helper is therefore the DART provider cast to
+`AppleARMIODevice` (or a subclass), not a property lookup and not
+`AppleARMPerformanceController`.
+
+The resolved exact vtable slots are `+0x560` =
+`AppleARMIODevice::enableDeviceClock` at `0xffffff80026656d8` and `+0x568`
+= `AppleARMIODevice::enableDevicePower` at `0xffffff8002665788`. They use
+`clock-gates[index]` and `power-gates[index]` respectively. J81's captured
+`dart-apcie1` ADT node has neither array, so both index-zero calls return
+`kIOReturnUnsupported` (`0xe00002c7`). The DART transition handler at
+`0xffffff80026c5b38` ignores both results, sets available, and continues.
+These calls cannot be the missing J81 DART gate or explain the Linux hang.
+
+The first remaining hardware-facing path is now resolved too. The DART
+vtable at `0xffffff80026c7140` maps `+0x5e8` to
+`0xffffff80026c5d40`, matching `_dartRecoverFromPowerdown(bool)` against
+two unstripped Apple references. After availability becomes true, Apple
+writes `DART+0x24 = error-reflector >> 12` first; J81's ADT value
+`0x20ffff000` gives `0x0020ffff`. It then restores mappings and
+configuration, including cached TCR at `+0x0c`, `fetch-config` at `+0x30`,
+`diag-config` at `+0x20`, `+0x1000` and related values, then clears/polls
+the TLB. Linux instead begins `apple_dart_hw_reset()` with a read of
+`DART+0x00` and does not perform this recovery ordering.
+
+**Current best hypothesis:** the recovered write-first initialization
+sequence, not a missing `clock-gates`/`power-gates` declaration, is the
+meaningful difference behind `0025`. It is still a hypothesis until an
+isolated test succeeds. The next implementation task is a compile-only J81
+initialization quirk and an evidence-gated payload that performs only the
+first Apple write (`+0x24 = 0x0020ffff`) before aborting probe, with no
+`iommu-map`; do not run it until hardware testing is explicitly requested.
+
 ## Infrastructure notes worth keeping
 
 - **`gaster pwn` + raw `irecovery -f`/`-c go` does not reliably reach
