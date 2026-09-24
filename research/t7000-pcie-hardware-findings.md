@@ -1145,6 +1145,42 @@ investigation), the next step after DART succeeds is restoring `pcie`'s
 returning to the full Apple controller sequence (DART active → tunables →
 PERST release → link start → PCI enumeration).
 
+### `iommu-map` restoration implemented and cross-build verified, 2026-09-24
+
+`kernel/patches/0032-pcie-apple-t7000-dart-pspcie-fix-iommu-map-test.patch`,
+layered directly on `0016` (an independent branch, not stacked on any
+earlier DART patch). `dart_apcie1` keeps `0031`'s exact fix (real
+compatible strings, `power-domains = <&ps_pcie>`, status `okay`). `pcie`
+is unchanged from `0019`'s inert probe except for one restored property:
+`iommu-map = <0x100 &dart_apcie1 0 1>` and `iommu-map-mask = <0xff00>`
+-- the one thing `0025`/`0031` deliberately omitted, and `0026`'s
+original (never hardware-tested) scope. This establishes the real
+PCIe-to-DART IOMMU consumer relationship: `of_iommu_configure()` runs
+automatically when the `pcie` platform device is created, before any
+driver `.probe()` executes, so this exercises DT/OF plumbing this
+project's PCIe testing has not touched before, distinct from (and
+potentially more than) the DART's own bare probe path `0031` already
+proved safe.
+
+Built via the same reconstruct/diff/verify methodology as every prior
+patch; applied cleanly with no fuzz, both touched files byte-verified
+against the intended content. No new Kconfig/Makefile/driver-file changes
+needed -- `CONFIG_APPLE_DART` is already `=y`, and `pcie`'s own inert
+driver file is unchanged from `0019`'s in every respect but its header
+comment.
+
+New isolated build (`kernel/hoolock-pcie-dart-pspcie-fix-iommu-map-test.nix`,
+`m1n1-hoolock-pcie-dart-pspcie-fix-iommu-map-test` payload in
+`flake.nix`). **Cross-build verified clean**, 2026-09-24: exit 0, complete
+real payload, only the same benign pre-existing `dtc` advisory warnings.
+Verified beyond the exit code: the built DTB's raw strings carry the real
+`apple,t7000-dart`/`apple,s5l8960x-dart` compatible strings, and `dtc`'s
+clean compile confirms both the `power-domains` and `iommu-map` phandle
+references resolve correctly (either being invalid would be a hard
+compile failure, not a warning).
+
+**Not yet hardware-tested.** `result` now points to this payload.
+
 ## Infrastructure notes worth keeping
 
 - **`gaster pwn` + raw `irecovery -f`/`-c go` does not reliably reach

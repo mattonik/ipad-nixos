@@ -1052,6 +1052,19 @@ carried over) before returning to the full four-step Apple controller
 sequence. Full record in `research/t7000-pcie-hardware-findings.md`'s
 "`0031` hardware result: clean" section.
 
+**`iommu-map` restoration implemented and cross-build verified,
+2026-09-24.** `kernel/patches/0032-...` keeps `0031`'s exact DART fix and
+restores `pcie`'s `iommu-map` (`0026`'s original, never-tested scope) --
+establishing the real PCIe-to-DART IOMMU consumer relationship via
+`of_iommu_configure()`. `pcie`'s own driver otherwise unchanged from
+`0019`'s inert probe. **Cross-build verified clean**: exit 0, complete
+payload, only the same benign `dtc` warnings. Verified beyond the exit
+code: the built DTB carries the real DART compatible strings, and the
+clean `dtc` compile confirms both the `power-domains` and `iommu-map`
+phandle references resolve. `result` points to this payload. **Not yet
+hardware-tested.** Full record in `research/t7000-pcie-hardware-findings.md`'s
+"`iommu-map` restoration implemented and cross-build verified" section.
+
 **Buttons hardware-verified, 2026-09-21.** `evtest /dev/input/event0` on
 the existing `gpio-keys` device captured clean press/release events for
 Home (`KEY_HOMEPAGE`), Power, Volume Up and Volume Down. No driver work
