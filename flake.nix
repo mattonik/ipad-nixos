@@ -521,6 +521,21 @@
             hoolockConfig = patchedHoolockPcieDartPspcieFixIommuMapTestConfig;
           };
 
+          # Stage 1 of the real PCIe host-controller implementation
+          # (docs/plans/2026-09-13-j81-wifi-pcie.md,
+          # research/t7000-pcie-hardware-findings.md): the recovered
+          # AppleT7000PCIe::_enablePortHardware shared-window write
+          # sequence for board port 1. No PERST, no per-port window, no
+          # link start, no enumeration.
+          patchedHoolockPcieEnableSequenceTestConfig = pkgs.runCommand "ipad-t7001-hoolock-pcie-enable-sequence-test-defconfig-4k" {} ''
+            cat ${patchedHoolockConfig} > "$out"
+            echo 'CONFIG_PCIE_APPLE_T7000=y' >> "$out"
+          '';
+          hoolockPcieEnableSequenceTestKernel = pkgsCross.callPackage ./kernel/hoolock-pcie-enable-sequence-test.nix {
+            source = inputs.hoolockLinux;
+            hoolockConfig = patchedHoolockPcieEnableSequenceTestConfig;
+          };
+
           # BT-1 (docs/plans/2026-09-08-j81-bluetooth-battery-adt.md):
           # The transport-only UART3 DT patch deliberately has no Bluetooth
           # child. This userspace tool attaches the raw HCI UART independently;
@@ -652,6 +667,11 @@
         # exposed on its own for the same reason
         # hoolock-pcie-dart-pspcie-fix-test-kernel is.
         hoolock-pcie-dart-pspcie-fix-iommu-map-test-kernel = hoolockPcieDartPspcieFixIommuMapTestKernel;
+
+        # Kernel backing the combined m1n1-hoolock-pcie-enable-sequence-test
+        # payload below; exposed on its own for the same reason
+        # hoolock-pcie-dart-pspcie-fix-test-kernel is.
+        hoolock-pcie-enable-sequence-test-kernel = hoolockPcieEnableSequenceTestKernel;
 
         # Kernel, the published multi-device DTB pack, and debug initramfs in
         # the exact file layout consumed by the historical PongoOS loader.
@@ -1672,6 +1692,59 @@
           gzip -n -c ${hoolockPcieDartPspcieFixTestKernel}/Image > "$out/Image.gz"
 
           dtc -I dtb -O dts ${hoolockPcieDartPspcieFixTestKernel}/dtbs/apple/t7001-j81.dtb \
+            | sed -e '/^\tchosen {$/,/^\t};$/ s/framebuffer@0 {/framebuffer {/' \
+            | dtc -I dts -O dtb -p 0x10000 -o "$out/t7001-j81.dtb"
+
+          gzip -dc ${inputs.linuxAppleResources}/debug_initrd.img > initramfs.cpio
+          mkdir -p original-etc overlay/etc overlay/usr/bin
+          (cd original-etc && cpio -id --no-absolute-filenames etc/deviceinfo < ../initramfs.cpio)
+          cp original-etc/etc/deviceinfo overlay/etc/deviceinfo
+          printf '\ndeviceinfo_usb_rndis_function="ecm.usb0"\n' >> overlay/etc/deviceinfo
+          touch -d @1 overlay/etc/deviceinfo
+
+          cp ${btattachPkg}/bin/btattach overlay/usr/bin/btattach
+          chmod 755 overlay/usr/bin/btattach
+          touch -d @1 overlay/usr/bin/btattach
+
+          for f in ${i2cToolsPkg}/bin/*; do
+            cp "$f" "overlay/usr/bin/$(basename "$f")"
+            chmod 755 "overlay/usr/bin/$(basename "$f")"
+            touch -d @1 "overlay/usr/bin/$(basename "$f")"
+          done
+
+          (cd overlay
+           { printf '%s\0' "etc/deviceinfo" "usr/bin/btattach"
+             for f in ${i2cToolsPkg}/bin/*; do
+               printf 'usr/bin/%s\0' "$(basename "$f")"
+             done
+           } | cpio --null -o -H newc --owner=0:0 --reproducible
+          ) >> initramfs.cpio
+          gzip -n -c initramfs.cpio > "$out/initramfs.gz"
+
+          printf '%s\n' 'chosen.bootargs=console=tty0 loglevel=8 ignore_loglevel rdinit=/init PMOS_NO_OUTPUT_REDIRECT pd_ignore_unused clk_ignore_unused' \
+            > "$out/bootargs"
+          cat "$out/m1n1.bin" "$out/bootargs" "$out/t7001-j81.dtb" \
+            "$out/Image.gz" "$out/initramfs.gz" > "$out/m1n1-linux.bin"
+          sha256sum "$out/Pongo.bin" "$out/m1n1.bin" "$out/m1n1-linux.bin" \
+            > "$out/SHA256SUMS"
+        '';
+
+        # Stage 1 of the real PCIe host-controller implementation
+        # (docs/plans/2026-09-13-j81-wifi-pcie.md,
+        # research/t7000-pcie-hardware-findings.md): the recovered
+        # AppleT7000PCIe::_enablePortHardware shared-window write
+        # sequence for board port 1. Identical in every respect to the
+        # payload above except the kernel
+        # (hoolockPcieEnableSequenceTestKernel).
+        m1n1-hoolock-pcie-enable-sequence-test = pkgs.runCommand "ipad-air2-m1n1-hoolock-pcie-enable-sequence-test" {
+          nativeBuildInputs = [ pkgs.gzip pkgs.dtc pkgs.cpio ];
+        } ''
+          mkdir -p "$out"
+          cp ${inputs.hoolockDocs}/binaries/Pongo.bin "$out/Pongo.bin"
+          cp ${inputs.hoolockM1n1}/m1n1.bin "$out/m1n1.bin"
+          gzip -n -c ${hoolockPcieEnableSequenceTestKernel}/Image > "$out/Image.gz"
+
+          dtc -I dtb -O dts ${hoolockPcieEnableSequenceTestKernel}/dtbs/apple/t7001-j81.dtb \
             | sed -e '/^\tchosen {$/,/^\t};$/ s/framebuffer@0 {/framebuffer {/' \
             | dtc -I dts -O dtb -p 0x10000 -o "$out/t7001-j81.dtb"
 

@@ -1084,6 +1084,35 @@ single-variable test so far, and worth its own explicit go-ahead. Full
 record in `research/t7000-pcie-hardware-findings.md`'s "`0032` hardware
 result: clean" section.
 
+**Real host-controller driver: Stage 1 (enable-sequence write test)
+implemented and cross-build verified, 2026-09-24/25 overnight.** Go-ahead
+received for the real driver, then explicit authorization to "continue
+with the build and research over night" -- proceeding autonomously
+through staged, cross-build-only (no hardware access) work. Split into
+four single-variable stages rather than one combined change: Stage 1 (the
+recovered `_enablePortHardware` shared-window write sequence alone, no
+PERST/per-port-window/link-start/enumeration), Stage 2 (Stage 1 plus
+generic `pci_host_common_init()` ECAM enumeration, still no PERST so the
+scan is expected to find nothing), Stage 3 (Stage 2 plus PERST
+deassertion via the already-confirmed-present `pci@0,0`/`reset-gpios`
+mechanism), Stage 4 (Stage 3 plus the per-port controller window and its
+link-start bit -- the final piece of Apple's recovered order, never
+implemented in any prior attempt including the original `0018`).
+
+**Stage 1 (`kernel/patches/0033-...`) cross-build verified clean**: exit
+0, complete real payload, only the same benign pre-existing `dtc`
+warnings. Verified beyond the exit code: the DTB's `pcie`/`dart_apcie1`
+nodes carry the expected content, `System.map` has the new driver's
+probe/init/exit symbols and driver struct, and the built `Image` contains
+every one of the driver's own diagnostic `dev_info()` strings verbatim
+(confirming the code is genuinely compiled in, not just patched into a
+file that got dropped). `result` now points to this payload. **Not yet
+hardware-tested** -- staged for the user, since the overnight
+authorization is explicitly understood not to extend to hardware access
+(no DFU without the user physically present). Full record in
+`research/t7000-pcie-hardware-findings.md`'s "Real PCIe host-controller
+driver, Stage 1" section.
+
 **Buttons hardware-verified, 2026-09-21.** `evtest /dev/input/event0` on
 the existing `gpio-keys` device captured clean press/release events for
 Home (`KEY_HOMEPAGE`), Power, Volume Up and Volume Down. No driver work

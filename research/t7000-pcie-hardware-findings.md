@@ -1223,6 +1223,73 @@ This is a materially larger, more complex change than any single-variable
 DT test in this investigation and deserves its own explicit go-ahead
 before implementation starts.
 
+### Real PCIe host-controller driver, Stage 1: enable-sequence write test implemented and cross-build verified, 2026-09-24/25
+
+Explicit go-ahead received, then "continue with the build and research
+over night" -- proceeding through staged, cross-build-only (no hardware)
+steps autonomously. Implementing the real driver as four single-variable
+stages rather than one combined change, matching this investigation's own
+established discipline:
+
+- **Stage 1** (`0033`): the recovered `_enablePortHardware` shared-window
+  write sequence alone -- no PERST, no per-port window, no link-start bit,
+  no enumeration.
+- **Stage 2** (`0034`): Stage 1 plus `pci_host_common_init()`'s generic
+  ECAM bus scan -- still no PERST, so the scan is expected to find nothing
+  (all-Fs reads), but this tests that *combining* the write sequence with
+  real enumeration (which also performs config-space writes during
+  BAR-sizing, unlike any bounded read test so far) doesn't hang.
+- **Stage 3**: Stage 2 plus PERST deassertion via the `pci@0,0`/
+  `reset-gpios` child node (`pci_host_common_parse_ports()`'s own built-in
+  mechanism, already confirmed present in the pinned kernel source).
+- **Stage 4**: Stage 3 plus the per-port controller window (ADT index 3)
+  and its link-start bit -- the final piece of Apple's recovered order,
+  never implemented in any prior attempt including the original `0018`.
+
+**Stage 1 (`0033`) implemented.** Layered on `0016` (a clean branch, not
+stacked on `0032` or any other test), matching every prior test in this
+series. DTS portion identical to `0032`'s verified content (real DART
+compatible strings, `power-domains = <&ps_pcie>` on `dart_apcie1`,
+`iommu-map` restored on `pcie`) -- only comments updated to describe this
+stage. Driver portion (`drivers/pci/controller/pcie-apple-t7000.c`) fully
+rewritten: maps the shared window (reg index 9), writes the complete
+recovered enable sequence for board port 1 (clear `LINK_ENABLE` bit 0; set
+`PERST_INTERNAL` bit 0; `udelay(10)`; clear `UNKNOWN_10C` bit 0; set
+`REFCLK_EN` bit 0 then bit 20; `udelay(100)`; set `LINK_ENABLE` bit 0;
+clear `PERST_INTERNAL` bit 8; write `3` to the LTSSM-start register twice,
+matching `enableGated`'s own repeat), logs before/after register state,
+returns 0. No PERST, no per-port window, no `pci_host_common_init()`, no
+bus enumeration.
+
+Verified byte-exact via the established reconstruct/diff/verify
+methodology before writing the real patch file (both the driver source and
+the DTS region matched the intended content exactly when the diff was
+re-applied to a fresh reconstruction of the `0016` baseline).
+
+**Cross-build verified clean, 2026-09-25**: `nix build
+.#packages.x86_64-linux.m1n1-hoolock-pcie-enable-sequence-test --no-link
+-L` exits 0 -- complete real payload (`Pongo.bin`, `m1n1.bin`,
+`t7001-j81.dtb`, `Image.gz`, `initramfs.gz`, `m1n1-linux.bin`, real
+`SHA256SUMS`), only the same benign pre-existing `dtc` `power-domains`/
+`gpios` advisory warnings this DTS has emitted since `0031`, zero `error:`
+lines. Verified beyond the exit code: the built DTB's decompiled `pcie`/
+`dart_apcie1` nodes carry the expected `reg`/`compatible` values, and the
+kernel's `System.map` has `apple_t7000_pcie_probe`/`_driver_init`/
+`_driver_exit`/`apple_t7000_pcie_driver` -- confirming the new driver is
+genuinely compiled and linked in (the two small `static` helper functions,
+`t7000_pcie_enable_port_hardware`/`apple_t7000_pcie_map_window`, don't
+appear as separate symbols, consistent with ordinary compiler inlining of
+single-call-site statics, not a sign the code was dropped -- confirmed by
+also grepping the built `Image` for this driver's own `dev_info()` format
+strings, e.g. `"t7000-pcie enable-seq-test: about to write the recovered
+enable sequence for port %d"`, all present verbatim). `result` now points
+to this payload.
+
+**Not yet hardware-tested -- staged for the user to test once they
+return, per their explicit "continue... overnight" authorization not
+extending to hardware access.** Full patch:
+`kernel/patches/0033-pcie-apple-t7000-enable-sequence-write-test.patch`.
+
 ## Infrastructure notes worth keeping
 
 - **`gaster pwn` + raw `irecovery -f`/`-c go` does not reliably reach
