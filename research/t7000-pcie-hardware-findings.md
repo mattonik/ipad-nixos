@@ -502,12 +502,93 @@ DTS), or to a distinct gate index Linux's DT doesn't model at all. The
 helper's own `OSSymbol*` property-name lookup resolves through live,
 pre-linked kernel data this legacy (`no __DATA_CONST`) kernelcache doesn't
 expose as static strings -- the same class of wall the TOUCH-3 investigation
-hit repeatedly on this same kernelcache generation. Resolving the helper's
-class (by decompiling `vtable+0x560`/`+0x568` once its own vtable is found,
-via the same memory-scan technique used here) is the next offline task.
-**Do not build another DART hardware payload or DT change until that gate
-identity is known** -- the standing gate from the prior pass still holds,
-now for a sharper reason.
+hit repeatedly on this same kernelcache generation.
+
+### Helper object identified: `AppleARMPerformanceController`, 2026-09-24
+
+Rather than chase the on-disk `OSSymbol*` chain further (the same dead end
+TOUCH-3 hit repeatedly on this kernelcache generation), identified the
+helper by **where it lives**, not what it's named. Read the raw bytes at
+the cached property-lookup target's own address (`0xffffff80026938c0`,
+the value `_forceAvailable`'s helper lookup resolves against) directly:
+offset `+0x0` held a real, non-null pointer into other kernel code, and
+offset `+0x10`/`+0x18` were null -- the shape of an on-disk `OSMetaClass`
+instance whose `className`/`superClassLink` fields are populated only by
+the kext's C++ static constructor at load time, not present in the file.
+That's consistent with a *real* metaclass singleton, just not one whose
+name is readable statically.
+
+Cross-referenced that address against the real per-kext load-address table
+(`ipsw kernel kexts -j`, the same tool used for the touch investigation)
+against the exact pinned iPad5,3 12B410 kernelcache: `0xffffff80026938c0`
+falls inside **`com.apple.driver.AppleARMPlatform`**'s own address range
+(`0xffffff800265e000`-`0xffffff80026b2000`, immediately before
+`IODARTFamily`) -- the same kext this project's TOUCH-3 fifth pass already
+opened for the `KLCT` gate-dispatch trace. A prelinktext-wide scan also
+found ~30 *other* kexts each caching a reference to this same metaclass
+address, confirming it's a widely shared utility class, not something
+DART-specific.
+
+Fetched a real, unstripped `AppleARMPlatform.kext` (iOS 10.3, s8000/A9 --
+different build, same class family, the identical technique TOUCH-3 used
+for `KLCT`) from
+[userlandkernel/ios-unstripped-kexts](https://github.com/userlandkernel/ios-unstripped-kexts)
+via a sparse clone (a few hundred KB, not the whole repo) and read its real
+C++ symbol table with `nm`. It defines **`AppleARMPerformanceController`**
+with exactly two public, non-workloop-internal methods matching our call
+shapes precisely:
+
+```
+AppleARMPerformanceController::enableDeviceClock(unsigned long, unsigned long)
+AppleARMPerformanceController::enableDevicePower(unsigned long, unsigned long, unsigned long*)
+```
+
+-- a 2-argument and a 3-argument method, in that order, exactly matching
+the become-available handler's two calls (`+0x560` with 2 args, `+0x568`
+with 3 args). This is the **same class family** already reverse-engineered
+in this project's TOUCH-3 investigation (`AppleT7000PerformanceController`,
+the T7000-specific subclass, is where the clock-gate register formula
+`ioBase + 0x20000 + gate_index*8`, bit 28 enable, across a 101-entry table,
+was independently recovered) -- the DART's own gate request and the
+touchscreen's `KLCT` clock gate both ultimately go through the same
+SoC-wide performance-controller singleton.
+
+The call-site arguments are consistent and readable across both
+directions: become-available calls `enableDeviceClock(1, 0)` then
+`enableDevicePower(1, 0, 0)`; become-unavailable calls
+`enableDeviceClock(0, 0)` then `enableDevicePower(0, 0, 0)`. The first
+argument tracks availability directly (1 = enable, 0 = disable) in both
+calls; the second argument is a constant `0` in both directions and both
+methods -- most likely a device/gate-index selector into
+`AppleARMPerformanceController`'s own internal table, fixed for this
+particular DART instance, distinct from the raw PMGR register gate index
+found for touch (that translation happens inside `enableDeviceClock`/
+`enableDevicePower` themselves, not visible at the DART's call site).
+
+**Net conclusion, now solid**: Apple's DART requests its own clock *and*
+power gate through the same shared performance-controller framework every
+other SoC IP block (including touch's `KLCT`) uses -- not through the PCIe
+port's `ps_pcie`/`PCIE_AUX`/`PCIE_REF` PMGR domains at all, and not through
+anything Linux's current `power-domains = <&ps_pcie>` binding reaches.
+This is a materially different -- and more specific -- root cause than
+either the original AUX/REF-gate guess or a generic "missing power domain"
+framing: it's a **whole different gate-request path** the Linux DT and
+driver have no representation of.
+
+**Still open**: the exact device/gate-index value (`0` at the call site,
+but not yet confirmed as the physical PMGR gate index -- that translation
+lives inside `enableDeviceClock`/`enableDevicePower`'s own bodies, which
+weren't decompiled this pass) and its resulting physical register address.
+Decompiling those two methods in *this exact* 8.1/T7000 kernelcache (not
+just the iOS 10.3/A9 reference used for symbol identification) is the next
+offline task, and can likely reuse the already-known clock-gate formula
+from the touch investigation as a starting hypothesis for at least the
+clock half.
+
+**Do not build another DART hardware payload or DT change until the
+physical gate is known.** The standing gate holds, now against a
+concretely named class and two concretely named methods rather than an
+unresolved virtual call.
 
 ## Infrastructure notes worth keeping
 

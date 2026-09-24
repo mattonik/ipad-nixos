@@ -872,11 +872,40 @@ no equivalent concept at all and resets the unit unconditionally on probe
 with no gate of its own ever requested (`dart_apcie1` has no
 `power-domains` property). If the DART's own gate is genuinely required
 before any register access lands, that fully explains the observed hang.
-**Not yet resolved**: the offset-`0xe8` helper's own class, and therefore
-which actual PMGR gate its `+0x560`/`+0x568` calls request. **Still do not
-run `0026` or build another DART payload** until that's known. Full
-record in `research/t7000-pcie-hardware-findings.md`'s "Availability
-transition fully decompiled" section.
+**Helper object identified, 2026-09-24: `AppleARMPerformanceController`.**
+Found by where it lives rather than chasing the unreadable on-disk
+`OSSymbol*` chain further: the cached lookup target's address falls inside
+`com.apple.driver.AppleARMPlatform`'s load range in the pinned kernelcache
+(cross-checked via `ipsw kernel kexts -j`) -- the same kext this project's
+TOUCH-3 investigation already opened for the `KLCT` gate trace, and one
+~30 other kexts also reference, confirming a widely shared utility class.
+Fetched a real unstripped `AppleARMPlatform.kext` (different build, same
+technique TOUCH-3 used for `KLCT`) from
+`github.com/userlandkernel/ios-unstripped-kexts` and read its real symbols
+with `nm`: `AppleARMPerformanceController::enableDeviceClock(unsigned long,
+unsigned long)` and `::enableDevicePower(unsigned long, unsigned long,
+unsigned long*)` -- a 2-arg and 3-arg method matching `+0x560`/`+0x568`'s
+call shapes exactly, in the same order. This is the same
+performance-controller family already partially reverse-engineered for
+touch's `KLCT` (`ioBase + 0x20000 + gate_index*8`, bit 28 enable, 101-entry
+table).
+
+**Conclusion, now solid**: the DART requests its own clock and power gate
+through the SoC-wide performance-controller framework -- the same one
+touch's `KLCT` uses -- not through `ps_pcie`/`PCIE_AUX`/`PCIE_REF` at all.
+Linux's current DT and driver have no representation of this gate-request
+path whatsoever; it isn't a "missing power domain," it's a different
+mechanism entirely. Call-site arguments are readable: become-available
+calls `enableDeviceClock(1, 0)` then `enableDevicePower(1, 0, 0)`;
+become-unavailable calls the same two with `0`. First arg tracks
+availability directly; second arg (constant `0`) is most likely a
+device/gate-index selector, not yet confirmed against a physical register.
+**Still not resolved**: the physical PMGR gate/register these two methods
+translate that index to -- decompiling their bodies in the exact 8.1/T7000
+kernelcache (not just the reference build used for symbol ID) is next.
+**Still do not run `0026` or build another DART payload** until that's
+known. Full record in `research/t7000-pcie-hardware-findings.md`'s
+"Helper object identified" section.
 
 **Buttons hardware-verified, 2026-09-21.** `evtest /dev/input/event0` on
 the existing `gpio-keys` device captured clean press/release events for

@@ -1,8 +1,9 @@
 # J81 active-work priority
 
 **Reviewed:** 2026-09-24 (PCIe's generic host path is now hardware-proven;
-DART's availability-transition mechanism is fully decompiled -- identifying
-its own gate is the one remaining unknown before another DART payload.)
+DART's gate-request helper is identified as `AppleARMPerformanceController`
+-- the exact physical gate/register it resolves to is the one remaining
+unknown before another DART payload.)
 
 This is the live backlog distilled from `docs/project-status.md`, the
 subsystem plans, and the driver-gap research. It excludes completed
@@ -16,7 +17,7 @@ substituted with guessed software writes.
 
 | Order | Work item | Certainty | Ease | Impact | Current gate |
 | --- | --- | ---: | ---: | ---: | --- |
-| 1 | PCIe: identify the DART's own PMGR gate | 5 | 3 | 5 | `0025` proved stock Linux DART probe/reset hangs. Availability transition now fully decompiled: `_updateAvailability()` -> "become available" handler requests its own power/clock gate via a cached helper object *before* marking itself available -- a mechanism stock Linux never replicates. Remaining unknown: the helper object's class, i.e. which actual PMGR gate it requests. Resolve that before another DART payload or DT change; keep `0026` untested. |
+| 1 | PCIe: resolve the DART's physical gate register | 5 | 3 | 5 | `0025` proved stock Linux DART probe/reset hangs. Availability transition fully decompiled and its gate helper identified as `AppleARMPerformanceController::enableDeviceClock`/`enableDevicePower` -- the same SoC-wide performance-controller framework already used for touch's `KLCT` gate, not `ps_pcie`/AUX/REF at all. Remaining unknown: the physical PMGR register these two methods resolve to. Resolve that before another DART payload or DT change; keep `0026` untested. |
 | 2 | Charging Stage 2: writable `input_current_limit` kernel property | 5 | 4 | 3 | Approved plan (`kernel/patches/0017-...`), fully backed by a live tier-validation sweep across all five tiers. Not started. Charging itself already works via the console tool; this is a convenience/permanence upgrade, not a new capability. |
 | 3 | Repeat ANS1's intentionally read-only hardware observation | 4 | 4 | 3 | Requires the separate observation-only payload; never mount or write it. |
 | 4 | Touch: resolve firmware/calibration delivery and power ownership | 3 | 2 | 5 | Blocked by the non-persistent D2207 LDO/GPIO state and private touch data. |
