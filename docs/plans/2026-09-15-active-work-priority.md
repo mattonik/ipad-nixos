@@ -1,9 +1,9 @@
 # J81 active-work priority
 
-**Reviewed:** 2026-09-24 (PCIe's generic host path is now hardware-proven;
-DART's gate-request helper is identified as `AppleARMPerformanceController`
--- the exact physical gate/register it resolves to is the one remaining
-unknown before another DART payload.)
+**Reviewed:** 2026-09-24 (PCIe's generic host path is now hardware-proven,
+and the DART hang is now resolved: `dart_apcie1` needs its own
+`power-domains = <&ps_pcie>` reference, hardware-confirmed clean. Next is
+restoring the stock `apple-dart` driver with that same fix.)
 
 This is the live backlog distilled from `docs/project-status.md`, the
 subsystem plans, and the driver-gap research. It excludes completed
@@ -17,7 +17,7 @@ substituted with guessed software writes.
 
 | Order | Work item | Certainty | Ease | Impact | Current gate |
 | --- | --- | ---: | ---: | ---: | --- |
-| 1 | PCIe: isolate DART PM-domain ordering | 5 | 3 | 5 | `0027` proves even the first recovered DART write hangs. J81's DART has no direct power domain, so test direct `<&ps_pcie>` attachment before probe; then test AUX and REF independently with no DART MMIO before pairing either with the one-write test. Keep `0026` untested. |
+| 1 | PCIe: restore the stock DART driver with the power-domains fix | 5 | 4 | 5 | Resolved, 2026-09-24: `0028` (single-write driver + `dart_apcie1` given `power-domains = <&ps_pcie>`) hardware-verified clean -- the exact write that hung in `0027` completed in 14us once the DART got its own domain reference, ahead of (not just alongside) `pcie`'s. Not a missing AUX/REF gate; `0029`/`0030` are no longer needed. Next: restore the real `apple-dart` compatible strings on `dart_apcie1` with this same fix (undo only the test redirect) -- effectively `0025` fixed. Keep `0026` untested until then. |
 | 2 | Charging Stage 2: writable `input_current_limit` kernel property | 5 | 4 | 3 | Approved plan (`kernel/patches/0017-...`), fully backed by a live tier-validation sweep across all five tiers. Not started. Charging itself already works via the console tool; this is a convenience/permanence upgrade, not a new capability. |
 | 3 | Repeat ANS1's intentionally read-only hardware observation | 4 | 4 | 3 | Requires the separate observation-only payload; never mount or write it. |
 | 4 | Touch: resolve firmware/calibration delivery and power ownership | 3 | 2 | 5 | Blocked by the non-persistent D2207 LDO/GPIO state and private touch data. |

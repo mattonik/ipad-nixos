@@ -1004,9 +1004,24 @@ cross-build verified clean**: exit 0, complete payloads; verified beyond
 the exit code (DTB strings carry the correct compatible string per test,
 `System.map` has each driver's probe symbol and driver struct). `0029`/
 `0030` are built and staged ahead of time but must not run on hardware
-unless Test A hangs. `result` points to Test A. **Not yet
-hardware-tested.** Full record in `research/t7000-pcie-hardware-findings.md`'s
-"Domain-gate plan implemented and cross-build verified" section.
+unless Test A hangs. `result` points to Test A.
+
+**Test A hardware result: clean -- the hang is resolved, 2026-09-24.**
+postmarketOS visible, USB networking up (0% ping loss), debug shell
+reachable. `dmesg` confirms the DART write to `+0x24` completed in 14
+microseconds and boot continued normally -- the exact same driver and
+write that hung in `0027`, the only change being `dart_apcie1` gaining
+its own `power-domains = <&ps_pcie>` reference. **This resolves the
+investigation**: not a missing AUX/REF gate, not read-before-write
+ordering -- genpd power-up ordering is scoped per consumer device, and
+`pcie`'s own `power-domains` reference never guaranteed `ps_pcie` stayed
+powered for the DART's own, later probe. `ps_pcie_aux`/`ps_pcie_ref` were
+never the answer; **Tests B1/B2 (`0029`/`0030`) are no longer needed and
+should not be run.** Natural next step, not yet built: restore the stock
+`apple-dart` driver on `dart_apcie1` (undo the test compatible redirect)
+while keeping `power-domains = <&ps_pcie>` -- effectively `0025` with this
+one fix. Full record in `research/t7000-pcie-hardware-findings.md`'s
+"Test A (`0028`) hardware result: clean" section.
 
 **Buttons hardware-verified, 2026-09-21.** `evtest /dev/input/event0` on
 the existing `gpio-keys` device captured clean press/release events for

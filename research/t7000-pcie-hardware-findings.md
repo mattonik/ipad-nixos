@@ -998,6 +998,54 @@ Tests B1/B2 are built and staged ahead of time (avoiding a second
 build-wait cycle later, the same reasoning `0025`/`0026` used) but must
 not be *run* on hardware unless Test A hangs, per the ordered plan above.
 
+### Test A (`0028`) hardware result: clean -- the hang is resolved, 2026-09-24
+
+Ran on real hardware: same DFU/palera1n recipe as every prior round,
+`05ac:4141` confirmed, `m1n1-linux.bin` uploaded via `boot/load_m1n1.py`.
+**Result: clean boot.** postmarketOS visible on screen, USB networking up
+(`172.16.42.1`, 0% ping loss over 3 packets), debug shell reachable by
+telnet. `dmesg`:
+
+```
+[    0.064188] apple-t7000-dart-recovery-test 602002000.iommu: t7000-dart recovery-write-test: about to write error-reflector (offset 0x24) = 0x0020ffff
+[    0.064202] apple-t7000-dart-recovery-test 602002000.iommu: t7000-dart recovery-write-test: write completed, aborting probe
+[    0.126592] pcie-apple-t7000 610000000.pcie: t7000-pcie pmgr-only-test: probe reached (no MMIO, no PCI core; DART recovery-write test enabled separately)
+```
+
+The write to `DART+0x24` completed in 14 microseconds (`0.064202` -
+`0.064188`) and boot continued normally through `pcie`'s own probe and the
+rest of the kernel's startup to a fully working shell. **This is the exact
+same driver and the exact same single write that hung in `0027`** -- the
+only change between the two patches is `dart_apcie1` gaining its own
+`power-domains = <&ps_pcie>` reference.
+
+**This resolves the investigation's central question.** It was never
+about a missing AUX/REF gate, and it was never about read-before-write
+ordering inside the DART's own recovery sequence (both `0025`'s read-first
+stock driver and `0027`'s write-only test hung identically). It was about
+**genpd power-up ordering relative to the DART's own device probe**:
+`pcie`'s `power-domains = <&ps_pcie>` reference only guarantees `ps_pcie`
+is powered before *`pcie`'s own* probe runs -- it says nothing about
+whether `ps_pcie` is still (or yet) powered when a *different* device's
+(`dart_apcie1`'s) probe runs later, since Linux's genpd core scopes that
+guarantee per consumer device, not globally. Once `dart_apcie1` gets its
+own direct reference, genpd guarantees `ps_pcie` is active before *its*
+probe runs too, and the exact same MMIO write that previously hung
+succeeds instantly. `ps_pcie_aux`/`ps_pcie_ref` were never the answer --
+Tests B1/B2 (`0029`/`0030`) are no longer needed and should not be run.
+
+**What this means for the real driver**: the stock Linux `apple-dart`
+driver (`drivers/iommu/apple-dart.c`) never gave `dart_apcie1` a
+`power-domains` reference either -- exactly the same gap `0025` (which
+hung) shared with `0027`. The natural next test, not yet built, is
+restoring the *stock* `apple-dart` driver's real compatible strings on
+`dart_apcie1` (undoing the `0025`/`0027`/`0028` compatible-string
+redirect) while keeping the new `power-domains = <&ps_pcie>` reference --
+i.e. repeating `0025` itself with this one fix applied. If that boots
+clean too, DART's own full probe/reset/IRQ path is unblocked, and the
+project can return to the deferred four-step plan (DART active → tunables
+→ PERST release → link start → PCI enumeration).
+
 ## Infrastructure notes worth keeping
 
 - **`gaster pwn` + raw `irecovery -f`/`-c go` does not reliably reach
