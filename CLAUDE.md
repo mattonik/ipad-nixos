@@ -955,6 +955,27 @@ remaining hardware path is `_dartRecoverFromPowerdown()`: Apple writes
 `+0x00`. Implement and cross-verify only an evidence-gated first-write
 payload next; do not run it or `0026` until hardware testing is requested.
 
+**Recovery-write evidence gate implemented and cross-build verified,
+2026-09-24.** `kernel/patches/0027-...` layers on `0016` like every prior
+DART/PCIe test: `pcie` is `0019`'s unchanged inert probe, `dart_apcie1`
+stays enabled but its `compatible` is redirected to a new
+`"apple,t7000-dart-recovery-test"` string so the stock `apple-dart` driver
+(proven to hang in `0025`) can never bind to this node. A new dedicated
+driver maps the DART's register window, writes `0x0020ffff` to offset
+`0x24` (Apple's exact recovered formula), logs before/after, and aborts
+probe -- nothing else. New isolated build
+(`kernel/hoolock-pcie-dart-recovery-test.nix`,
+`m1n1-hoolock-pcie-dart-recovery-test`). **Cross-build verified clean**:
+exit 0, complete payload, only the same benign pre-existing `dtc`
+warnings -- and verified beyond the exit code, matching this project's
+standard: the built DTB's strings carry the new compatible string (not
+the real DART one), and the kernel's `System.map` has the new driver's
+probe/init/exit symbols and driver struct, confirming it's genuinely
+compiled and linked in. `result` now points to this payload.
+**Not yet hardware-tested.** Full record in
+`research/t7000-pcie-hardware-findings.md`'s "Recovery-write evidence
+gate implemented and cross-build verified" section.
+
 **Buttons hardware-verified, 2026-09-21.** `evtest /dev/input/event0` on
 the existing `gpio-keys` device captured clean press/release events for
 Home (`KEY_HOMEPAGE`), Power, Volume Up and Volume Down. No driver work

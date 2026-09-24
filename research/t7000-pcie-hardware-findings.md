@@ -806,6 +806,67 @@ initialization quirk and an evidence-gated payload that performs only the
 first Apple write (`+0x24 = 0x0020ffff`) before aborting probe, with no
 `iommu-map`; do not run it until hardware testing is explicitly requested.
 
+### Recovery-write evidence gate implemented and cross-build verified, 2026-09-24
+
+`kernel/patches/0027-pcie-apple-t7000-dart-recovery-write-test.patch`,
+layered directly on `0016` (a clean branch, same pattern as `0019`-`0026`
+-- not stacked on `0025`/`0026`). `pcie` is unchanged from `0019`'s exact
+inert PMGR-only probe. `dart_apcie1` stays flipped to `"okay"` as in
+`0025`, but its `compatible` property is redirected from the real
+`"apple,t7000-dart", "apple,s5l8960x-dart"` to a new,
+test-specific `"apple,t7000-dart-recovery-test"` string, so the stock
+`apple-dart` driver (already proven to hang here in `0025`) never binds to
+this node at all -- there is no ambiguity in which driver wins, since
+`apple-dart.c`'s own `of_match_table` simply doesn't recognize the new
+compatible string.
+
+A new, dedicated driver, `drivers/iommu/apple-dart-t7000-recovery-test.c`
+(wired into `drivers/iommu/Kconfig`/`Makefile` as
+`CONFIG_APPLE_DART_T7000_RECOVERY_TEST`, the same pattern `0016` used to
+wire in the PCIe skeleton), does exactly one thing: `devm_platform_
+ioremap_resource()`s the DART's register window, writes `0x0020ffff` to
+offset `0x24` (Apple's own `_dartRecoverFromPowerdown()` formula, the
+real J81 ADT `error-reflector` value `0x20ffff000` right-shifted 12 bits
+-- not guessed, cited from the "Helper and recovery path resolved"
+section above), logs before and after, and returns `-ENODEV` to abort
+probe. No reset sequence, no IRQ registration, no IOMMU domain setup, no
+further register access of any kind.
+
+Built via the same reconstruct/diff/verify methodology used for every
+patch this session: reconstructed the pre-patch (`0016`-baseline) state
+of all four touched files (`drivers/pci/controller/pcie-apple-t7000.c`,
+`arch/arm64/boot/dts/apple/t7001.dtsi`, plus -- new for this patch --
+`drivers/iommu/Kconfig` and `Makefile`, fetched fresh from the pinned
+commit since nothing before `0027` touches them), wrote the intended
+post-patch content, generated the diff, then applied the assembled patch
+to a fresh copy of the reconstruction and confirmed all five resulting
+files (including the new `apple-dart-t7000-recovery-test.c`) byte-match
+the intended content exactly. One real mistake caught by this process
+before it reached the repo: the first assembled patch's DTS hunk had a
+spurious three-hunk split (a trailing-blank-line mismatch between the
+`before`/`after` reconstructions) that failed to apply cleanly on the
+builder with "Hunk #3 FAILED at 407" -- fixed by matching the trailing
+newline exactly, then re-verified clean.
+
+New isolated build (`kernel/hoolock-pcie-dart-recovery-test.nix`,
+`hoolock-pcie-dart-recovery-test-kernel`, `m1n1-hoolock-pcie-dart-
+recovery-test` payload in `flake.nix`, config adds both
+`CONFIG_PCIE_APPLE_T7000=y` and the new `CONFIG_APPLE_
+DART_T7000_RECOVERY_TEST=y`). **Cross-build verified clean**, 2026-09-24:
+exit 0, complete real payload (`Pongo.bin`/`m1n1.bin`/`t7001-j81.dtb`/
+`Image.gz`/`initramfs.gz`/`m1n1-linux.bin`/`SHA256SUMS` all present, only
+the same benign pre-existing `dtc` advisory warnings every prior payload
+has produced). Verified beyond just the exit code, matching this
+project's own standard: the built DTB's raw strings contain
+`apple,t7000-dart-recovery-test` and not the real `apple,t7000-dart`/
+`apple,s5l8960x-dart` compatible strings, and the built kernel's
+`System.map` contains `apple_t7000_dart_recovery_test_probe`,
+`_of_match`, `_driver_init`/`_driver_exit`, and the `_driver` struct
+itself -- the new driver is genuinely compiled and linked in, not merely
+present in source.
+
+**Not yet hardware-tested.** `result` now points to this payload.
+
 ## Infrastructure notes worth keeping
 
 - **`gaster pwn` + raw `irecovery -f`/`-c go` does not reliably reach
