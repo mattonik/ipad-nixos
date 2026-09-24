@@ -419,6 +419,96 @@ and cross-build-verified (`result-dart-b`) but untested; running it now
 would only add a second, less-isolated variable on top of an already-
 failing base, not new evidence.
 
+### Availability transition fully decompiled, 2026-09-24
+
+Picked up exactly where the trace above stopped: the virtual `+0x610`
+target. Found `_updateAvailability()`'s own concrete function body directly
+-- `DumpStrings` output already on hand from the earlier Ghidra pass
+includes the literal pretty-function string
+`"virtual bool AppleS5L8960XDART::_updateAvailability()"` at
+`0xffffff80026c6663`, and it has exactly one cross-reference, from
+`FUN_ffffff80026c49b8`. That is the function: it uses its own name string
+as a `REQUIRE`-style assert argument, the same pattern every other
+recovered function in this kext uses.
+
+Decompiled it in full. It first asserts the object's lock is held, then
+computes the new availability state: if `_manualAvailabilityEnabled`
+(`0xf5`) is false, it polls up to four registered IOMMU mapper slots
+(vtable `+0x600`) for activity, exactly as summarized before; if true, it
+takes the forced flag Apple's `_forceAvailable` wrote at `0xf6` directly,
+skipping the mapper poll entirely -- confirmed mechanism, not inference,
+and directly applicable here since the captured ADT sets
+`manual-availability = 1`. It then compares the new state against a cached
+current-availability flag at `0xf4`; if unchanged, it does nothing further.
+If changed, it dispatches **one of two further virtual calls**: vtable
+`+0x5d8` on a false->true transition ("become available"), vtable `+0x5d0`
+on true->false ("become unavailable").
+
+Neither handler has its own name string in this kext (a second string
+search came up empty), so the earlier session's assumption that they might
+be inherited from `IODARTFamily` was reasonable -- but wrong. Rather than
+trace the C++ constructor chain to find the real instance vtable, searched
+process memory directly for the already-known `_updateAvailability` pointer
+value at its confirmed `+0x610` offset. Exactly one match:
+vtable base `0xffffff80026c7140`. Reading `+0x5d8` and `+0x5d0` from that
+base resolves both handlers to concrete addresses inside this same kext:
+`FUN_ffffff80026c5b38` (become available) and `FUN_ffffff80026c5c48`
+(become unavailable). Both decompiled cleanly.
+
+**Become available**, in exact order: asserts not-yet-available and the
+lock held; calls **two operations on a cached helper sub-object** (object
+offset `0xe8`, obtained once during `init()` via what reads as an
+`OSDictionary`-style property lookup) with enable-flag arguments -- `(helper,
+1, 0)` then `(helper, 1, 0, 0)`. This is the same two-call shape already
+established for the PCIe port's own `enableGated()` (power gate, then clock
+gate) -- strong circumstantial evidence this is the DART's **own, separate**
+power/clock gate request, not a reuse of the PCIe port's `ps_pcie` gate.
+Only *after* that does it mark `_available = true`, call one more virtual
+hook on itself (`+0x5e8`, args `(this, 1)` -- plausibly a powerup-adjacent
+step, not independently confirmed), and finally **enable its interrupt
+event source** (vtable `+0xa8` on a cached `IOInterruptEventSource`-shaped
+object) -- and a second event source too, conditionally on a capability
+flag. **The DART's own interrupt is not enabled until this transition
+completes.**
+
+**Become unavailable** is the exact mirror: disables the interrupt
+source(s) first, marks unavailable, then releases the same two gates last
+(`(helper, 0, 0)` then `(helper, 0, 0, 0)`).
+
+**This is a materially stronger, more mechanistic explanation than the
+AUX/REF-gate hypothesis it replaces.** It's not that Linux is missing a
+specific named PMGR domain reference -- it's that Apple's DART has its own
+dedicated availability state machine, gated by `manual-availability` (ADT)
+plus an explicit `_forceAvailable(true)` call (the PCIe port driver's job,
+part of `enableGated()`), and that state machine's own "become available"
+step is what actually requests the DART's power/clock gate -- separately
+from, and before, anything else touches DART hardware. The stock Linux
+`apple-dart` driver has no equivalent concept at all: `apple_dart_probe()`
+maps registers and resets the unit unconditionally during platform probe,
+with no availability transition, no gate request beyond whatever
+`power-domains` the DT declares (nothing at all, for `dart_apcie1`), and no
+ordering tie between "becoming usable" and enabling its own interrupt. If
+the DART's own gate genuinely must be requested through this exact
+transition before the silicon responds to any register access, Linux's
+immediate reset in `apple_dart_probe()` would hit ungated hardware -- fully
+consistent with, and now mechanistically explaining, the observed hang.
+
+**Not resolved this pass**: the identity of the offset-`0xe8` helper
+object's own class, and therefore what its `vtable+0x560`/`+0x568` calls
+actually do at the PMGR/register level -- whether they resolve to the same
+`ps_pcie` gate the PCIe port already requests, to `ps_pcie_aux`/
+`ps_pcie_ref` (the orphaned genpd nodes already found in the pinned PMGR
+DTS), or to a distinct gate index Linux's DT doesn't model at all. The
+helper's own `OSSymbol*` property-name lookup resolves through live,
+pre-linked kernel data this legacy (`no __DATA_CONST`) kernelcache doesn't
+expose as static strings -- the same class of wall the TOUCH-3 investigation
+hit repeatedly on this same kernelcache generation. Resolving the helper's
+class (by decompiling `vtable+0x560`/`+0x568` once its own vtable is found,
+via the same memory-scan technique used here) is the next offline task.
+**Do not build another DART hardware payload or DT change until that gate
+identity is known** -- the standing gate from the prior pass still holds,
+now for a sharper reason.
+
 ## Infrastructure notes worth keeping
 
 - **`gaster pwn` + raw `irecovery -f`/`-c go` does not reliably reach

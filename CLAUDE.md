@@ -836,23 +836,47 @@ virtual dispatch. The unresolved work is now runtime vtable/superclass
 resolution and its first hardware action. Do not run `0026` or add another
 DART payload before that evidence exists.
 
-**Leading hypothesis, not yet confirmed:** `dart_apcie1`'s DT node has no
-`power-domains` property at all (checked against the trusted baseline DTS
-source), and the pinned T7001 PMGR DTS defines `ps_pcie_aux`/`ps_pcie_ref`
-genpd nodes that nothing in the current Linux DT references -- only
-`ps_pcie` is wired up, and only to `pcie`, not to `dart_apcie1`. If the
-DART's silicon is actually gated by AUX/REF rather than (or in addition to)
-`PCIE`, its first register access would hit unclocked hardware, which tends
-to hang the bus outright on this SoC class rather than fault gracefully --
-matching the observed total silence. The captured ADT confirms a distinct
-`dart-apcie1` node exists but its binary `power-gates`/`clock-gates` index
-values weren't decoded this pass. **Test 2 (`0026`) does not run next** --
-the plan's own gate was "if that boots, repeat with iommu-map restored," and
-it did not boot. Next is research (ADT binary parsing, or another Ghidra
-pass on `AppleS5L8960XDART`'s own platform-function setup) to find the
-DART's real gate dependency before any further hardware attempt. Full
-record in `research/t7000-pcie-hardware-findings.md`'s "`0025` DART-enable
-test: hangs" section.
+**Superseded (kept for the record):** the paragraph above originally
+speculated an AUX/REF PMGR-gate cause. The captured J81 ADT is textual and
+directly disproves it -- `dart-apcie1` has no `power-gates`/`clock-gates`
+property at all; it has `manual-availability = 1` instead, matching the
+recovered `_manualAvailabilityEnabled` field. See the two entries below for
+what actually explains the hang.
+
+**Availability transition fully decompiled, 2026-09-24.** Picked up
+exactly where the entry above stopped: resolved the virtual `+0x610`
+target. It's `_updateAvailability()` itself -- found directly via its own
+pretty-function string (`FUN_ffffff80026c49b8`, one xref, no constructor
+tracing needed). Decompiled in full: with `manual-availability` set (true
+here), it takes `_forceAvailable`'s forced flag directly (skipping the
+mapper-poll fallback), compares it against a cached state, and on a change
+dispatches one of two further virtual calls -- `+0x5d8` on becoming
+available, `+0x5d0` on becoming unavailable. Found the real instance
+vtable by scanning process memory for the already-known
+`_updateAvailability` pointer at its confirmed offset (one clean,
+unambiguous match at `0xffffff80026c7140`), then read both slots directly
+-- both resolve to concrete functions inside the same kext, no superclass
+tracing needed after all.
+
+**Become available**, decompiled: asserts not-yet-available and the lock
+held, then calls **two enable-flagged operations on a cached helper
+sub-object** (object offset `0xe8`) -- the same two-call shape already
+established for the PCIe port's own `enableGated()` (power gate, then
+clock gate). Only *after* that does it mark itself available and enable
+its own interrupt event source(s). Become-unavailable is the exact
+mirror (disable IRQ first, release the same two gates last). **This gives
+a concrete mechanism, not just a corrected guess**: Apple's DART has its
+own dedicated availability state machine that requests its own power/clock
+gate as part of becoming available; the stock Linux `apple-dart` driver has
+no equivalent concept at all and resets the unit unconditionally on probe
+with no gate of its own ever requested (`dart_apcie1` has no
+`power-domains` property). If the DART's own gate is genuinely required
+before any register access lands, that fully explains the observed hang.
+**Not yet resolved**: the offset-`0xe8` helper's own class, and therefore
+which actual PMGR gate its `+0x560`/`+0x568` calls request. **Still do not
+run `0026` or build another DART payload** until that's known. Full
+record in `research/t7000-pcie-hardware-findings.md`'s "Availability
+transition fully decompiled" section.
 
 **Buttons hardware-verified, 2026-09-21.** `evtest /dev/input/event0` on
 the existing `gpio-keys` device captured clean press/release events for
