@@ -865,7 +865,58 @@ project's own standard: the built DTB's raw strings contain
 itself -- the new driver is genuinely compiled and linked in, not merely
 present in source.
 
-**Not yet hardware-tested.** `result` now points to this payload.
+### `0027` hardware result: hangs, 2026-09-24
+
+Ran on real hardware: same DFU/palera1n recipe as every prior round,
+`05ac:4141` confirmed, `m1n1-linux.bin` uploaded via `boot/load_m1n1.py`.
+**Result: hung.** Black screen, backlight only; no USB re-enumeration and
+no `ping 172.16.42.1` response over 30+ seconds, then reconfirmed still
+black after the device was replugged. Same observable signature as `0018`
+(both attempts) and `0025`.
+
+**This is a genuinely informative negative result, not just a repeat.**
+`0027`'s driver performs *only* a single write to `DART+0x24` -- no read
+of any kind, no reset sequence, nothing else -- yet the hang reproduced on
+the very first register touch. `0025`'s stock `apple-dart` driver begins
+with a *read* of `DART+0x00`. If the hang were specifically about
+read-before-write ordering, `0027` should have been clean. It wasn't.
+**The most consistent reading now is that essentially any MMIO access to
+the DART's register window hangs the bus**, independent of which
+operation or which offset is touched first -- not a specific
+sequencing defect in Apple's recovery formula.
+
+This reopens, rather than closes, the power/clock-gating question --
+but points at a **different, untested mechanism** than the one already
+ruled out. The `AppleARMIODevice`-family `clock-gates[index]`/
+`power-gates[index]` wrapper calls are a confirmed dead end for J81 (no
+array on `dart-apcie1`'s ADT node, calls return unsupported, Apple's own
+driver ignores that and proceeds) -- but that only shows Apple's *software*
+never explicitly requests a per-device gate through *that* mechanism. It
+does not show the underlying silicon needs no gate at all: real hardware
+commonly relies on a gate already being active via a parent domain, a
+board-level default, or iBoot/SecureROM's own early power sequencing --
+none of which this project's checkm8-based boot chain (which skips iBoot
+entirely) can be assumed to replicate.
+
+**The specific, never-tested angle**: `dart_apcie1` has no `power-domains`
+property of its own anywhere in the current DT -- confirmed directly
+against the trusted `0016`-baseline reconstruction. `pcie` is the only
+node in this whole block with `power-domains = <&ps_pcie>`. Every DART
+test so far (`0025`, `0027`) enabled `dart_apcie1` alongside `pcie`
+without ever giving the DART node its own domain reference -- meaning the
+one straightforward, standard-Linux-binding hypothesis (does the DART's
+own MMIO window require `power-domains = <&ps_pcie>`, or one of the
+already-known-to-exist-but-unreferenced `ps_pcie_aux`/`ps_pcie_ref` genpd
+nodes in the pinned PMGR DTS) has never actually been tried on hardware.
+This is a different, more basic mechanism than the disproven
+`AppleARMIODevice` gate-wrapper theory, and the natural next controlled
+test: same `0027` driver unchanged (a single bounded write, no reset, no
+read), with `dart_apcie1` given an explicit `power-domains` reference.
+
+**Do not build or run another DART payload without an explicit go-ahead.**
+Test 2 (`0026`, `iommu-map` restored) stays untested and is now doubly
+premature -- both the recovery-write and the gate-wrapper theories it
+would have followed from are no longer live leads on their own.
 
 ## Infrastructure notes worth keeping
 

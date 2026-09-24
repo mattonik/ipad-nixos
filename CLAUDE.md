@@ -972,9 +972,23 @@ standard: the built DTB's strings carry the new compatible string (not
 the real DART one), and the kernel's `System.map` has the new driver's
 probe/init/exit symbols and driver struct, confirming it's genuinely
 compiled and linked in. `result` now points to this payload.
-**Not yet hardware-tested.** Full record in
-`research/t7000-pcie-hardware-findings.md`'s "Recovery-write evidence
-gate implemented and cross-build verified" section.
+**`0027` hardware result: hangs -- an informative negative result,
+2026-09-24.** Same signature as `0018`/`0025`: black screen, no USB
+re-enumeration, no networking over 30+ seconds, reconfirmed after a
+replug. This is more informative than a repeat: `0027`'s driver performs
+*only* a write to `DART+0x24`, no read at all -- if the hang were about
+read-before-write ordering, this should have been clean. It wasn't. The
+most consistent reading is that essentially any MMIO touch to the DART's
+register window hangs, regardless of operation order. That reopens the
+power/clock-gating question through a **different, never-tested**
+mechanism than the disproven `AppleARMIODevice` gate-wrapper theory:
+`dart_apcie1` has no `power-domains` property of its own anywhere in the
+DT (only `pcie` has one, `<&ps_pcie>`). Whether the DART's own MMIO window
+needs an explicit `power-domains` reference has never actually been
+tried on hardware. **Do not build or run another DART payload without an
+explicit go-ahead** -- `0026` stays untested and doubly premature now.
+Full record in `research/t7000-pcie-hardware-findings.md`'s "`0027`
+hardware result: hangs" section.
 
 **Buttons hardware-verified, 2026-09-21.** `evtest /dev/input/event0` on
 the existing `gpio-keys` device captured clean press/release events for
