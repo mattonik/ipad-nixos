@@ -729,6 +729,40 @@ this project's TOUCH-3 investigation hit and explicitly stopped at
 investigation") rather than push through with a guess.** Not pursuing
 further via static analysis alone; matching that precedent here too.
 
+### Review correction: helper class remains unproven, 2026-09-24
+
+The availability transition result above survives review: the exact J81
+kernelcache proves the manual-availability path, the two state-transition
+handlers, their ordering, and the two opaque helper calls. The later claim
+that this helper is `AppleARMPerformanceController` does **not** survive at
+the same confidence level. Locating the *cast target or property symbol*
+at `0xffffff80026938c0` inside `AppleARMPlatform.kext` establishes its
+owning kext, but does not name the object returned to the DART at `+0xe8`.
+
+An independently checked reference binary gives a more specific result:
+`AppleARMIODevice::enableDeviceClock(enable, index)` and
+`AppleARMIODevice::enableDevicePower(enable, out, index)` occupy exactly
+the helper vtable slots `+0x560` and `+0x568` and have the DART call shapes.
+The reference is `AppleARMPlatform.kext/AppleARMPlatform` from
+`userlandkernel/ios-unstripped-kexts` commit `96ca2b7f`
+(`kexts/10.3/s8000`, SHA-256
+`8c098e3cec752cecbb4ff590ace675be7c20e6910898b99e74b22ca3f18b4533`).
+They select index zero from a device's `clock-gates` and `power-gates`
+arrays before forwarding the physical ID to the performance controller.
+This makes `AppleARMIODevice`-family behavior a better candidate than
+direct `AppleARMPerformanceController` calls, but it does not close the
+case: J81's `dart-apcie1` has neither property, so the calls may return
+unsupported or operate on another provider.
+
+Treat the helper class, physical gate, and the assertion that it is
+independent of `ps_pcie`/AUX/REF as **open**. The next bounded offline task
+is to trace the exact store into DART `this+0xe8` in 12B410, establish
+whether it is the DART provider cast to `AppleARMIODevice`, and capture the
+two return values. If both are unsupported, trace virtual hook `+0x5e8`,
+which is the first unresolved operation after availability changes. Do not
+build another DART payload, add a DT power domain, or run `0026` from this
+evidence alone.
+
 ## Infrastructure notes worth keeping
 
 - **`gaster pwn` + raw `irecovery -f`/`-c go` does not reliably reach

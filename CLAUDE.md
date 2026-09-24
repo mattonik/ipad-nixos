@@ -935,6 +935,17 @@ another DART payload. Full record in
 `research/t7000-pcie-hardware-findings.md`'s "Scoped auto-analysis pass
 and real-symbol disassembly" section.
 
+**DART helper review correction, 2026-09-24.** The manual-availability
+state-machine and its ordered helper calls are proven. The helper is *not*
+proven to be `AppleARMPerformanceController`: a reference binary maps the
+same `+0x560`/`+0x568` slots to `AppleARMIODevice` gate-wrapper methods,
+which use a provider's `clock-gates`/`power-gates` arrays. J81's PCIe DART
+has neither property. Treat the helper class, its return values, the
+physical gate, and the claim that it is independent of PCIe PMGR domains as
+open. Trace the 12B410 `+0xe8` store and then hook `+0x5e8` if the calls are
+unsupported; do not run `0026` or build another DART payload yet. Full
+record: `research/t7000-pcie-hardware-findings.md`.
+
 **Buttons hardware-verified, 2026-09-21.** `evtest /dev/input/event0` on
 the existing `gpio-keys` device captured clean press/release events for
 Home (`KEY_HOMEPAGE`), Power, Volume Up and Volume Down. No driver work
