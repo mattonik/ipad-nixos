@@ -1046,6 +1046,43 @@ clean too, DART's own full probe/reset/IRQ path is unblocked, and the
 project can return to the deferred four-step plan (DART active → tunables
 → PERST release → link start → PCI enumeration).
 
+### Power-domains fix implemented and cross-build verified, 2026-09-24
+
+`kernel/patches/0031-pcie-apple-t7000-dart-pspcie-fix-test.patch`,
+layered directly on `0016` (an independent branch, not stacked on
+`0025`/`0027`/`0028`/`0029`/`0030`). `pcie` is unchanged from `0019`'s
+inert probe. `dart_apcie1`'s `compatible` is **restored** to the real
+`"apple,t7000-dart", "apple,s5l8960x-dart"` strings -- undoing the
+test-driver redirect every `0025`/`0027`/`0028` variant used -- so the
+stock Linux `apple-dart` driver binds for real this time: register map,
+reset, IRQ registration, the works. The only other change from `0025` is
+the one fix Test A proved: `power-domains = <&ps_pcie>` added directly to
+`dart_apcie1`. Still no `iommu-map` -- this isolates the DART's own real
+probe/reset/IRQ path with the fix applied, before ever restoring the
+PCIe-to-DART IOMMU consumer relationship (that remains a separate,
+later test, matching the original `0025`/`0026` pairing).
+
+Built via the same reconstruct/diff/verify methodology as every prior
+patch; applied cleanly with no fuzz, both touched files byte-verified
+against the intended content. No new Kconfig/Makefile/driver-file changes
+were needed this time -- `CONFIG_APPLE_DART` is already `=y` in the base
+Hoolock defconfig, and this test uses the existing stock driver rather
+than a new dedicated one.
+
+New isolated build (`kernel/hoolock-pcie-dart-pspcie-fix-test.nix`,
+`m1n1-hoolock-pcie-dart-pspcie-fix-test` payload in `flake.nix`).
+**Cross-build verified clean**, 2026-09-24: exit 0, complete real payload,
+only the same benign pre-existing `dtc` advisory warnings every prior
+payload has produced. Verified beyond the exit code: the built DTB's raw
+strings now carry the **real** `apple,t7000-dart`/`apple,s5l8960x-dart`
+compatible strings (not a test-specific redirect), confirming the stock
+driver genuinely binds to this node in this build; `dtc`'s clean compile
+also confirms the `power-domains = <&ps_pcie>` phandle resolves correctly
+(an invalid reference would have been a hard compile failure, not a
+warning).
+
+**Not yet hardware-tested.** `result` now points to this payload.
+
 ## Infrastructure notes worth keeping
 
 - **`gaster pwn` + raw `irecovery -f`/`-c go` does not reliably reach

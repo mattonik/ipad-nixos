@@ -1023,6 +1023,21 @@ while keeping `power-domains = <&ps_pcie>` -- effectively `0025` with this
 one fix. Full record in `research/t7000-pcie-hardware-findings.md`'s
 "Test A (`0028`) hardware result: clean" section.
 
+**Power-domains fix implemented and cross-build verified, 2026-09-24.**
+`kernel/patches/0031-...` repeats `0025` (real stock `apple-dart` driver,
+`dart_apcie1`'s real compatible strings restored, no `iommu-map`) with
+`power-domains = <&ps_pcie>` added directly to `dart_apcie1` -- the fix
+Test A proved. `pcie` unchanged. No new Kconfig/driver-file changes
+needed. **Cross-build verified clean**: exit 0, complete payload, only
+the same benign `dtc` warnings. Verified beyond the exit code: the built
+DTB now carries the *real* `apple,t7000-dart`/`apple,s5l8960x-dart`
+compatible strings (the stock driver genuinely binds, not a test
+redirect), and the clean `dtc` compile confirms the `power-domains`
+phandle resolves. `result` points to this payload. **Not yet
+hardware-tested.** Full record in
+`research/t7000-pcie-hardware-findings.md`'s "Power-domains fix
+implemented and cross-build verified" section.
+
 **Buttons hardware-verified, 2026-09-21.** `evtest /dev/input/event0` on
 the existing `gpio-keys` device captured clean press/release events for
 Home (`KEY_HOMEPAGE`), Power, Volume Up and Volume Down. No driver work
