@@ -1033,10 +1033,24 @@ the same benign `dtc` warnings. Verified beyond the exit code: the built
 DTB now carries the *real* `apple,t7000-dart`/`apple,s5l8960x-dart`
 compatible strings (the stock driver genuinely binds, not a test
 redirect), and the clean `dtc` compile confirms the `power-domains`
-phandle resolves. `result` points to this payload. **Not yet
-hardware-tested.** Full record in
-`research/t7000-pcie-hardware-findings.md`'s "Power-domains fix
-implemented and cross-build verified" section.
+phandle resolves. `result` points to this payload.
+
+**`0031` hardware result: clean -- the real DART driver works,
+2026-09-24.** postmarketOS visible, USB networking up (0% ping loss),
+debug shell reachable. `dmesg`:
+`apple-dart 602002000.iommu: DART [pagesize 1000, 4 streams, bypass
+support: 0, bypass forced: 0, AS 32 -> 36] initialized` -- the **stock,
+unmodified Linux `apple-dart` driver's own success message**: real
+register map, real hardware capability registers read, real reset,
+genuine initialization. No hang. **This closes the investigation that
+began with `0018`'s two hangs.** DART is now provably usable under Linux
+on this hardware; the cause was never a missing gate or read/write
+ordering, but `dart_apcie1` needing its own `power-domains = <&ps_pcie>`
+reference for correct genpd ordering. **Next, not yet decided**:
+restoring `pcie`'s `iommu-map` (`0026`'s original scope, with the fix
+carried over) before returning to the full four-step Apple controller
+sequence. Full record in `research/t7000-pcie-hardware-findings.md`'s
+"`0031` hardware result: clean" section.
 
 **Buttons hardware-verified, 2026-09-21.** `evtest /dev/input/event0` on
 the existing `gpio-keys` device captured clean press/release events for

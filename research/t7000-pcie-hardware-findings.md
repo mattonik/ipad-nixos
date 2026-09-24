@@ -1083,6 +1083,68 @@ warning).
 
 **Not yet hardware-tested.** `result` now points to this payload.
 
+### `0031` hardware result: clean -- the real DART driver works, 2026-09-24
+
+Ran on real hardware: same DFU/palera1n recipe as every prior round,
+`05ac:4141` confirmed, `m1n1-linux.bin` uploaded via `boot/load_m1n1.py`.
+**Result: clean boot.** postmarketOS visible on screen, USB networking up
+(`172.16.42.1`, 0% ping loss over 3 packets), debug shell reachable by
+telnet. `dmesg`:
+
+```
+[    0.065412] apple-dart 602002000.iommu: DART [pagesize 1000, 4 streams, bypass support: 0, bypass forced: 0, AS 32 -> 36] initialized
+[    0.130263] pcie-apple-t7000 610000000.pcie: t7000-pcie pmgr-only-test: probe reached (no MMIO, no PCI core; DART power-domains fix enabled separately)
+```
+
+This is the **stock, unmodified Linux `apple-dart` driver's own success
+message** -- not a diagnostic stand-in. `apple_dart_probe()` genuinely ran
+to completion: mapped the register window, read the DART's real hardware
+capability registers (4 KiB page size, 4 translation streams, no bypass
+support, 32-to-36-bit address space extension -- all real values read off
+the hardware, not guessed or hardcoded anywhere in this project's patches),
+reset the unit, and registered successfully. No hang, no timeout, no
+missing boot text -- the exact opposite of `0025`'s black screen with this
+one DT property added.
+
+**This closes the investigation that began with `0018`'s two hangs.** The
+complete causal chain, now fully evidenced end to end:
+
+1. `0018` (full enable sequence, DART/`iommu-map` live) hung -- twice,
+   identically.
+2. `0019`-`0024` isolated every other piece of the PCIe enable path
+   (DT status, `power-domains = <&ps_pcie>` on `pcie` itself, shared-window
+   reads, ECAM reads, the full generic PCI bus scan, all remaining
+   shared-window offsets) as safe in isolation, narrowing the difference to
+   DART activation alone.
+3. `0025` (DART enabled, stock driver, no `iommu-map`) reproduced the hang
+   in isolation -- confirming DART was the cause, not incidental to `0018`'s
+   other changes.
+4. Offline Ghidra tracing of the exact 12B410 kernelcache found Apple's own
+   `AppleS5L8960XDART` performs a `_dartRecoverFromPowerdown()` write-first
+   sequence as part of becoming available, and separately that its
+   `clock-gates`/`power-gates` gate-wrapper calls are a dead end for J81
+   (no array declared, Apple's own driver ignores the failure).
+5. `0027` (an isolated single write, no read at all) also hung, ruling out
+   read-before-write ordering as the explanation.
+6. `0028` (the same single write, `dart_apcie1` given its own
+   `power-domains = <&ps_pcie>` reference) booted clean -- identifying the
+   real cause: genpd power-up ordering scoped per consumer device, not a
+   missing gate.
+7. `0031` (this test): the same fix applied to the real, unmodified stock
+   driver. Clean. **DART is now provably usable under Linux on this
+   hardware.**
+
+**Next, not yet built or decided**: `dart_apcie1` still has no `iommu-map`
+consumer relationship declared to `pcie` -- this test characterizes the
+DART's own probe/reset/IRQ path in isolation, the same scope `0025` always
+had. Per the user's own four-step plan (recorded earlier this
+investigation), the next step after DART succeeds is restoring `pcie`'s
+`iommu-map` (establishing the real IOMMU-consumer relationship via
+`of_iommu_configure()`, which was `0026`'s original, still-untested scope)
+-- now with the `power-domains` fix carried over -- before eventually
+returning to the full Apple controller sequence (DART active → tunables →
+PERST release → link start → PCI enumeration).
+
 ## Infrastructure notes worth keeping
 
 - **`gaster pwn` + raw `irecovery -f`/`-c go` does not reliably reach

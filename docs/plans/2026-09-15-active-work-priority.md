@@ -1,9 +1,9 @@
 # J81 active-work priority
 
-**Reviewed:** 2026-09-24 (PCIe's generic host path is now hardware-proven,
-and the DART hang is now resolved: `dart_apcie1` needs its own
-`power-domains = <&ps_pcie>` reference, hardware-confirmed clean. Next is
-restoring the stock `apple-dart` driver with that same fix.)
+**Reviewed:** 2026-09-24 (DART is now hardware-confirmed working: the
+real, unmodified `apple-dart` driver initializes cleanly with
+`dart_apcie1` given its own `power-domains = <&ps_pcie>` reference. Next
+is restoring `pcie`'s `iommu-map` with this fix carried over.)
 
 This is the live backlog distilled from `docs/project-status.md`, the
 subsystem plans, and the driver-gap research. It excludes completed
@@ -17,7 +17,7 @@ substituted with guessed software writes.
 
 | Order | Work item | Certainty | Ease | Impact | Current gate |
 | --- | --- | ---: | ---: | ---: | --- |
-| 1 | PCIe: restore the stock DART driver with the power-domains fix | 5 | 4 | 5 | Resolved, 2026-09-24: `0028` (single-write driver + `dart_apcie1` given `power-domains = <&ps_pcie>`) hardware-verified clean -- the exact write that hung in `0027` completed in 14us once the DART got its own domain reference, ahead of (not just alongside) `pcie`'s. Not a missing AUX/REF gate; `0029`/`0030` are no longer needed. Next: restore the real `apple-dart` compatible strings on `dart_apcie1` with this same fix (undo only the test redirect) -- effectively `0025` fixed. Keep `0026` untested until then. |
+| 1 | PCIe: restore `iommu-map` with the power-domains fix | 5 | 4 | 5 | Resolved, 2026-09-24: `0031` (real, unmodified `apple-dart` driver + `dart_apcie1` given `power-domains = <&ps_pcie>`) hardware-verified clean -- `dmesg` shows genuine `DART ... initialized`, real register map/reset/IRQ, postmarketOS boots with working networking. Root cause of every hang since `0018`: genpd ordering scoped per consumer device, not a missing AUX/REF gate. Next: restore `pcie`'s `iommu-map` (`0026`'s original scope) with this fix carried over, then the full controller sequence. |
 | 2 | Charging Stage 2: writable `input_current_limit` kernel property | 5 | 4 | 3 | Approved plan (`kernel/patches/0017-...`), fully backed by a live tier-validation sweep across all five tiers. Not started. Charging itself already works via the console tool; this is a convenience/permanence upgrade, not a new capability. |
 | 3 | Repeat ANS1's intentionally read-only hardware observation | 4 | 4 | 3 | Requires the separate observation-only payload; never mount or write it. |
 | 4 | Touch: resolve firmware/calibration delivery and power ownership | 3 | 2 | 5 | Blocked by the non-persistent D2207 LDO/GPIO state and private touch data. |
