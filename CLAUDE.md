@@ -1113,6 +1113,41 @@ authorization is explicitly understood not to extend to hardware access
 `research/t7000-pcie-hardware-findings.md`'s "Real PCIe host-controller
 driver, Stage 1" section.
 
+**Stage 2 (`0034`, enable sequence + generic ECAM enumeration)
+cross-build verified clean, 2026-09-25.** Custom `pci_ecam_ops.init`
+callback runs Stage 1's enable sequence, then returns to let
+`pci_host_common_init()` run a real generic bus scan -- still no PERST,
+so the scan is expected to find nothing, but this tests that combining
+the write sequence with real enumeration (which performs config-space
+writes during BAR-sizing, unlike any prior bounded-read test) doesn't
+hang. Verified beyond the exit code the same way as Stage 1, plus
+confirming the generic ECAM/host-common machinery
+(`pci_host_common_init`, `pci_ecam_create`, `pci_generic_config_read`/
+`_write`) is genuinely linked in. `result` now points to this payload.
+Not yet hardware-tested.
+
+**Stage 3 design correction caught before building, 2026-09-25**: the
+original plan assumed `pci_host_common_init()` automatically deasserts
+PERST# for any DT child node with `reset-gpios`, via
+`pci_host_common_parse_ports()` -- a claim carried over from the very
+first `0018` attempt. Checked directly against the real pinned
+`pci-host-common.c` source before writing Stage 3: **wrong**. That
+helper is opt-in; nothing calls it automatically. Found the real usage
+pattern in the kernel's own `pci-imx6.c` (call
+`pci_host_common_parse_ports()` explicitly, then walk the resulting
+`bridge->ports`/`port->perst` lists and call `gpiod_direction_output()`
+directly) and rewrote Stage 3 (`0035`) around it: `probe()` calls
+`pci_host_common_parse_ports()` before `pci_host_common_init()`; `.init()`
+recovers the `bridge` pointer via `platform_get_drvdata()` (already set
+by `pci_host_common_init()` before `.init()` runs) and, after the enable
+sequence, deasserts PERST# itself with a single
+`gpiod_direction_output(desc, 0)` call (matching Apple's own recovered
+single-deassert order, not an imx6-style assert-then-deassert sequence),
+followed by the standard 100ms `PCIE_RESET_CONFIG_WAIT_MS` settle delay.
+Verified byte-exact via reconstruct/diff/verify; cross-build in
+progress. Full record in `research/t7000-pcie-hardware-findings.md`'s
+"Real PCIe host-controller driver, Stage 2" and "...Stage 3" sections.
+
 **Buttons hardware-verified, 2026-09-21.** `evtest /dev/input/event0` on
 the existing `gpio-keys` device captured clean press/release events for
 Home (`KEY_HOMEPAGE`), Power, Volume Up and Volume Down. No driver work

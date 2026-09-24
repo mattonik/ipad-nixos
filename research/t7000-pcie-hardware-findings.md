@@ -1290,6 +1290,95 @@ return, per their explicit "continue... overnight" authorization not
 extending to hardware access.** Full patch:
 `kernel/patches/0033-pcie-apple-t7000-enable-sequence-write-test.patch`.
 
+### Real PCIe host-controller driver, Stage 2: enable-sequence + generic ECAM enumeration test implemented and cross-build verified, 2026-09-25
+
+**Stage 2 (`0034`) implemented.** Layered on `0016` (a clean branch, not
+stacked on `0033`). DTS portion identical to `0033`'s -- only comments
+updated. Driver portion rewritten around a custom `pci_ecam_ops.init`
+callback (modeled on the minimal `pci_ecam_ops` pattern `0023` already
+proved safe standalone, combined with the original `660645d` commit's
+`apple_t7000_pcie_init(struct pci_config_window *cfg)` shape): `.init()`
+maps the shared window and runs Stage 1's exact enable sequence for port
+1, then returns 0 so `pci_host_common_init()`'s normal
+`devm_pci_alloc_host_bridge()` + `pci_host_probe()` path runs a real
+generic bus scan. Still no PERST deassertion (no `reset-gpios` child
+node this stage) and no per-port controller window, so the scan is
+expected to find nothing (all-Fs reads) -- the purpose of this stage is
+confirming that *combining* the write sequence with the real generic
+enumeration path (which, unlike any bounded-read test in this
+investigation, also performs config-space *writes* during BAR-sizing
+while walking every device/function slot) doesn't hang on its own,
+before PERST is added in Stage 3.
+
+Verified byte-exact via the established reconstruct/diff/verify
+methodology before writing the real patch file.
+
+**Cross-build verified clean, 2026-09-25**: `nix build
+.#packages.x86_64-linux.m1n1-hoolock-pcie-enable-enumeration-test
+--no-link -L` exits 0 -- complete real payload, only the same benign
+pre-existing `dtc` advisory warnings. Verified beyond the exit code: the
+built DTB's `pcie` node carries the expected content, `System.map` has
+`apple_t7000_pcie_init`/`apple_t7000_pcie_ecam_ops`/`apple_t7000_pcie_probe`
+plus confirmation that the generic ECAM/host-common machinery
+(`pci_host_common_init`, `pci_ecam_create`,
+`pci_generic_config_read`/`_write`) is genuinely linked into this build
+(not merely declared), and the built `Image` contains every one of the
+driver's own diagnostic `dev_info()` strings verbatim. `result` now
+points to this payload.
+
+**Not yet hardware-tested -- staged for the user.** Full patch:
+`kernel/patches/0034-pcie-apple-t7000-enable-enumeration-test.patch`.
+
+### Real PCIe host-controller driver, Stage 3: a design correction caught before building -- `pci_host_common_parse_ports()` is not automatic, 2026-09-25
+
+While drafting Stage 3 (Stage 2 plus PERST deassertion via a
+`pci@0,0`/`reset-gpios` DT child node), the original plan relied on a
+claim carried over from the very first `0018` attempt's commit message:
+that `pci_host_common_init()` automatically deasserts PERST# for any
+DT child node with a `reset-gpios` property, via
+`pci_host_common_parse_ports()`. Before building or committing anything,
+this was checked directly against the real pinned
+`drivers/pci/controller/pci-host-common.c` source (already cached from
+an earlier fetch this session, and independently re-confirmed
+byte-identical against the actual pinned kernel source tree in the Nix
+store) -- **the claim is wrong**. `pci_host_common_parse_ports()` is
+opt-in: `pci_host_common_init()` never calls it, and no Apple driver in
+this kernel tree calls it either (only `drivers/pci/controller/dwc/
+pci-imx6.c` does). This matches and reconfirms this project's own
+earlier, already-documented correction of the same misconception (see
+the "PMGR-only test" era notes above) -- this session independently
+re-derived and re-verified it while designing Stage 3 specifically,
+rather than assuming the DT node alone would work.
+
+Found the real usage pattern in `pci-imx6.c`'s
+`imx_pcie_host_init()`/`imx_pcie_assert_perst()`: a driver must call
+`pci_host_common_parse_ports(dev, bridge)` itself (guarded by
+`list_empty(&bridge->ports)`), then explicitly walk the resulting
+`bridge->ports`/`port->perst` lists and call `gpiod_direction_output()`
+itself to actually drive the GPIO -- the helper only *discovers* the
+descriptor (via `devm_fwnode_gpiod_get(..., GPIOD_ASIS, ...)`, which
+does not touch the pin).
+
+**Stage 3 (`0035`) implemented correctly, accounting for this.**
+`probe()` now calls `pci_host_common_parse_ports()` explicitly before
+`pci_host_common_init()` (safe to do before the enable-sequence write,
+since it only fetches the descriptor); the `.init()` callback recovers
+the `bridge` pointer via `platform_get_drvdata()` (set by
+`pci_host_common_init()` itself before it creates the ECAM window/calls
+`.init()`), runs Stage 1/2's enable sequence unchanged, then walks
+`bridge->ports` and calls `gpiod_direction_output(desc, 0)` once to
+deassert PERST# -- a single deassert, not an imx6-style assert-then-
+deassert power-sequencing dance, matching Apple's own recovered call
+trace (a single `function-perst(0)` deassert, no separate assert step
+recovered). Followed by `msleep(PCIE_RESET_CONFIG_WAIT_MS)` (100 ms),
+the same generic PCIe-spec settle constant `pci-host-common.h`'s own
+`pci_host_common_link_train_delay()` and `pci-imx6.c` use -- a standard
+margin, not an Apple-recovered value.
+
+Verified byte-exact via the established methodology; cross-build in
+progress. Full patch:
+`kernel/patches/0035-pcie-apple-t7000-enable-enumeration-perst-test.patch`.
+
 ## Infrastructure notes worth keeping
 
 - **`gaster pwn` + raw `irecovery -f`/`-c go` does not reliably reach
