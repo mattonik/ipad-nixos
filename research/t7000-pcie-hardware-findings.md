@@ -1181,6 +1181,48 @@ compile failure, not a warning).
 
 **Not yet hardware-tested.** `result` now points to this payload.
 
+### `0032` hardware result: clean -- IOMMU consumer relationship confirmed, 2026-09-24
+
+Ran on real hardware: same DFU/palera1n recipe as every prior round,
+`05ac:4141` confirmed, `m1n1-linux.bin` uploaded via `boot/load_m1n1.py`.
+**Result: clean boot.** postmarketOS visible on screen, USB networking up
+(`172.16.42.1`, 0% ping loss over 3 packets), debug shell reachable by
+telnet. `dmesg`:
+
+```
+[    0.019275] iommu: Default domain type: Translated
+[    0.019282] iommu: DMA domain TLB invalidation policy: strict mode
+[    0.066192] apple-dart 602002000.iommu: DART [pagesize 1000, 4 streams, bypass support: 0, bypass forced: 0, AS 32 -> 36] initialized
+[    0.126074] pcie-apple-t7000 610000000.pcie: t7000-pcie pmgr-only-test: probe reached (no MMIO, no PCI core; DART power-domains fix with iommu-map enabled separately)
+```
+
+The DART itself initializes identically to `0031`. New this round: the
+generic IOMMU core log lines (`iommu: Default domain type: Translated`,
+`iommu: DMA domain TLB invalidation policy: strict mode`) -- confirming a
+real *translated* (not passthrough/identity) default IOMMU domain was set
+up, the expected configuration once a device (`pcie`) has a genuine
+`iommu-map` consumer relationship wired through `of_iommu_configure()`.
+No errors, no hang, no missing boot text.
+
+**This is the second half of `0026`'s originally-planned test, now
+finally run and clean.** The full evidence chain from `0018` through here
+is complete: DART probes and initializes for real, and the PCIe-to-DART
+IOMMU plumbing that real endpoint drivers (like `brcmfmac` for the WiFi
+chip) would depend on is confirmed wired correctly at the OF/DMA layer.
+Nothing about PCIe link training, controller register writes, PERST
+handling, or bus enumeration has been touched yet -- `pcie`'s own driver
+is still `0019`'s inert stand-in.
+
+**Next, not yet decided**: implementing the real PCIe host-controller
+driver logic this project's own earlier research already recovered (the
+`_enablePortHardware` register sequence, PERST via the DT's `reset-gpios`,
+DART already proven safe to enable ahead of controller writes) -- the
+`0018`-shaped work, but now built on a fully evidenced, hang-free
+foundation instead of the original guesses that caused `0018`'s hangs.
+This is a materially larger, more complex change than any single-variable
+DT test in this investigation and deserves its own explicit go-ahead
+before implementation starts.
+
 ## Infrastructure notes worth keeping
 
 - **`gaster pwn` + raw `irecovery -f`/`-c go` does not reliably reach

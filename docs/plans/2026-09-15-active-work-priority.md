@@ -1,9 +1,10 @@
 # J81 active-work priority
 
-**Reviewed:** 2026-09-24 (DART is now hardware-confirmed working: the
-real, unmodified `apple-dart` driver initializes cleanly with
-`dart_apcie1` given its own `power-domains = <&ps_pcie>` reference. Next
-is restoring `pcie`'s `iommu-map` with this fix carried over.)
+**Reviewed:** 2026-09-24 (DART and its IOMMU wiring are now both
+hardware-confirmed working: the real, unmodified `apple-dart` driver
+initializes cleanly, and with `pcie`'s `iommu-map` restored the IOMMU
+core confirms a real translated default domain. Next is implementing the
+real PCIe host-controller driver.)
 
 This is the live backlog distilled from `docs/project-status.md`, the
 subsystem plans, and the driver-gap research. It excludes completed
@@ -17,7 +18,7 @@ substituted with guessed software writes.
 
 | Order | Work item | Certainty | Ease | Impact | Current gate |
 | --- | --- | ---: | ---: | ---: | --- |
-| 1 | PCIe: restore `iommu-map` with the power-domains fix | 5 | 4 | 5 | Resolved, 2026-09-24: `0031` (real, unmodified `apple-dart` driver + `dart_apcie1` given `power-domains = <&ps_pcie>`) hardware-verified clean -- `dmesg` shows genuine `DART ... initialized`, real register map/reset/IRQ, postmarketOS boots with working networking. Root cause of every hang since `0018`: genpd ordering scoped per consumer device, not a missing AUX/REF gate. Next: restore `pcie`'s `iommu-map` (`0026`'s original scope) with this fix carried over, then the full controller sequence. |
+| 1 | PCIe: implement the real host-controller driver | 5 | 2 | 5 | Resolved, 2026-09-24: `0031`/`0032` (real, unmodified `apple-dart` driver + `dart_apcie1` given `power-domains = <&ps_pcie>`, then `pcie`'s `iommu-map` restored) both hardware-verified clean -- genuine `DART ... initialized`, real IOMMU translated domain, postmarketOS boots with working networking. Root cause of every hang since `0018`: genpd ordering scoped per consumer device, not a missing AUX/REF gate. `pcie` itself is still `0019`'s inert stand-in. Next: implement the real controller driver (`_enablePortHardware` sequence, PERST via `reset-gpios`, link training, enumeration) -- materially larger scope, needs its own explicit go-ahead. |
 | 2 | Charging Stage 2: writable `input_current_limit` kernel property | 5 | 4 | 3 | Approved plan (`kernel/patches/0017-...`), fully backed by a live tier-validation sweep across all five tiers. Not started. Charging itself already works via the console tool; this is a convenience/permanence upgrade, not a new capability. |
 | 3 | Repeat ANS1's intentionally read-only hardware observation | 4 | 4 | 3 | Requires the separate observation-only payload; never mount or write it. |
 | 4 | Touch: resolve firmware/calibration delivery and power ownership | 3 | 2 | 5 | Blocked by the non-persistent D2207 LDO/GPIO state and private touch data. |

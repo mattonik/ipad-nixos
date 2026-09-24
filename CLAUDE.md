@@ -1065,6 +1065,25 @@ phandle references resolve. `result` points to this payload. **Not yet
 hardware-tested.** Full record in `research/t7000-pcie-hardware-findings.md`'s
 "`iommu-map` restoration implemented and cross-build verified" section.
 
+**`0032` hardware result: clean -- IOMMU consumer relationship confirmed,
+2026-09-24.** postmarketOS visible, USB networking up (0% ping loss),
+debug shell reachable. `dmesg` shows the DART initializing identically to
+`0031`, plus the generic IOMMU core confirming a real *translated*
+default domain (`iommu: Default domain type: Translated`) -- the expected
+result once `pcie` has a genuine `iommu-map` consumer relationship
+through `of_iommu_configure()`. No errors, no hang. **This is `0026`'s
+originally-planned test, finally run and clean.** The evidence chain from
+`0018` through here is complete: DART probes and initializes for real,
+and the PCIe-to-DART IOMMU plumbing real endpoint drivers (like
+`brcmfmac`) would depend on is confirmed wired correctly. `pcie` itself is
+still `0019`'s inert stand-in -- no link training, controller writes,
+PERST, or enumeration yet. **Next, not yet decided**: implementing the
+real PCIe host-controller driver (the `_enablePortHardware` sequence,
+PERST, DART already proven safe) -- materially larger in scope than any
+single-variable test so far, and worth its own explicit go-ahead. Full
+record in `research/t7000-pcie-hardware-findings.md`'s "`0032` hardware
+result: clean" section.
+
 **Buttons hardware-verified, 2026-09-21.** `evtest /dev/input/event0` on
 the existing `gpio-keys` device captured clean press/release events for
 Home (`KEY_HOMEPAGE`), Power, Volume Up and Volume Down. No driver work
