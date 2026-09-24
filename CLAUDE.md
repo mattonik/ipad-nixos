@@ -900,12 +900,25 @@ calls `enableDeviceClock(1, 0)` then `enableDevicePower(1, 0, 0)`;
 become-unavailable calls the same two with `0`. First arg tracks
 availability directly; second arg (constant `0`) is most likely a
 device/gate-index selector, not yet confirmed against a physical register.
-**Still not resolved**: the physical PMGR gate/register these two methods
-translate that index to -- decompiling their bodies in the exact 8.1/T7000
-kernelcache (not just the reference build used for symbol ID) is next.
-**Still do not run `0026` or build another DART payload** until that's
-known. Full record in `research/t7000-pcie-hardware-findings.md`'s
-"Helper object identified" section.
+**Physical register: attempted, genuinely not resolved, 2026-09-24.**
+Three independent techniques each hit a real wall: a memory-scan
+vtable-offset read (anchored on `AppleT7000PerformanceController::
+callPlatformFunction`, already known from TOUCH-3) resolved `+0x560`/
+`+0x568` to a trivial "unsupported" stub and an unrelated voltage-state
+lookup, not the real gate writes -- the offset math that worked near the
+vtable's base didn't transfer reliably 150+ slots in. A string-xref search
+did confirm `"enableDeviceClockGated() Exec Time"` is a genuine,
+instrumented telemetry label in *this exact* kernelcache (not just the
+reference build), but its only reference is a statistics-registration
+function, not the worker. A whole-kext function-cluster search found the
+right per-device data structure (`0x328` offset, `0x350`-byte stride) and
+one promising lead, but no confirmed register write. **Do not treat any
+of this pass's specific offsets as confirmed** -- they're leads, not
+conclusions. Recommended next step: a full (not `-noanalysis`) Ghidra pass
+on `AppleARMPlatform.kext` + `AppleT7000.kext` together. **Still do not
+run `0026` or build another DART payload.** Full record in
+`research/t7000-pcie-hardware-findings.md`'s "Physical register:
+attempted, genuinely not resolved" section.
 
 **Buttons hardware-verified, 2026-09-21.** `evtest /dev/input/event0` on
 the existing `gpio-keys` device captured clean press/release events for

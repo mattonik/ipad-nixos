@@ -590,6 +590,78 @@ physical gate is known.** The standing gate holds, now against a
 concretely named class and two concretely named methods rather than an
 unresolved virtual call.
 
+### Physical register: attempted, genuinely not resolved this pass, 2026-09-24
+
+Tried to close the last gap directly. Result is a real, honest wall, not a
+found answer -- worth recording precisely so the next pass doesn't repeat
+dead ends.
+
+**The offset-based vtable read didn't hold up.** Reused the
+memory-scan-for-a-known-pointer technique that worked cleanly for DART's
+own vtable, anchored this time on `AppleT7000PerformanceController::
+callPlatformFunction` (`0xffffff80031e921c`, already known from this
+project's TOUCH-3 fifth pass, confirmed still valid by re-decompiling it --
+same `KLCT`-dispatching body). One clean match at vtable base
+`0xffffff80031f2090`. But reading `+0x560`/`+0x568` from that base and
+force-decompiling both targets gave results inconsistent with
+`enableDeviceClock`/`enableDevicePower`: `+0x560` is a trivial 3-instruction
+stub (`mov w0,#0xe0000000; movk w0,#0x2c7; ret` -- unconditionally returns
+an "unsupported"-shaped IOKit error, ignoring its arguments entirely), and
+`+0x568` is a per-device state-matching lookup (walks a bitmask array
+against a table entry, no MMIO access, and its Ghidra-inferred signature
+took only 2 explicit parameters where `enableDevicePower` needs 3). A
+`callPlatformFunction`-anchored offset that works reliably near the base
+of the vtable does not reliably transfer this far into a ~150+ method
+class -- the earlier "arg-count matches" reasoning was a real, useful
+structural clue but not sufficient on its own to prove the exact slot
+number, and this pass shows it doesn't.
+
+**Found stronger, independent confirmation the mechanism is real,
+though.** Searched `AppleARMPlatform.kext`'s own address range in *this
+exact* kernelcache (not the iOS 10.3/A9 reference) for gate-related
+strings and found `"enableDeviceClockGated() Exec Time"` and
+`"Clock Gate Control"` -- genuine `IOReportChannel` telemetry labels,
+proving `_enableDeviceClockGated` is a real, actively-instrumented
+function in this exact build, not just an assumption carried over from a
+different kernelcache. Their only cross-reference is the statistics-
+registration function (`FUN_ffffff800266e3ec`, part of
+`publishStatistics`/`initVoltageAndPerformanceStates`), which registers a
+named performance counter but doesn't itself call the worker function --
+a dead end for finding the entry point directly, but solid evidence the
+function exists and matters.
+
+**Located the right neighborhood, not yet the exact register.** A full
+decompile pass across `AppleARMPlatform.kext`'s ~30,000 lines (all
+defined functions) found a cluster of six functions that all read the
+same per-device table already seen at `+0x568` (base pointer at object
+offset `0x328`, `0x350`-byte stride per device) -- consistent with this
+being the real device-state table `enableDeviceClock`/`enableDevicePower`
+operate on. One of them
+(`FUN_ffffff800266c57c`) dispatches a call shaped like an enable trigger
+-- `helperObj->vtable[0x100](&deviceEntry[0x300], 1)`, where `helperObj`
+is a *separate* cached object read from `this+0x298` -- the most promising
+lead for the actual low-level register-write engine, but that helper
+object's own class wasn't identified this pass, and none of the six
+functions decompiled contain an obviously MMIO-shaped write (no large
+constant resembling a PMGR base address such as the already-known
+`0x20e000000`).
+
+**Honest conclusion**: the mechanism, the class, and the two real method
+names are solid, evidence-backed facts. The exact physical PMGR register
+they resolve to is not -- three independent techniques (vtable-offset
+math, string-xref, and a whole-kext function-cluster search) were tried
+this pass and each hit a genuine wall, the same class of wall this
+project's TOUCH-3 investigation documented explicitly rather than pushing
+through with a guess. **Do not treat the per-device table offsets or
+`FUN_ffffff800266c57c` as confirmed** -- they are leads for the next pass,
+not conclusions. The most likely productive next step is a full (not
+`-noanalysis`) Ghidra auto-analysis pass scoped to just
+`AppleARMPlatform.kext` and `AppleT7000.kext` together, so Ghidra's own
+RTTI/vtable-recovery and call-graph analysis can resolve this far more
+reliably than manual offset-guessing -- a real, ~10-minute-class cost,
+same order as the original full-`__PRELINK_TEXT` import this project
+already paid once.
+
 ## Infrastructure notes worth keeping
 
 - **`gaster pwn` + raw `irecovery -f`/`-c go` does not reliably reach
