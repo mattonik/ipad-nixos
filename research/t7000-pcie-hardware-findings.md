@@ -913,6 +913,22 @@ This is a different, more basic mechanism than the disproven
 test: same `0027` driver unchanged (a single bounded write, no reset, no
 read), with `dart_apcie1` given an explicit `power-domains` reference.
 
+**Required test order if hardware work resumes:** begin with only
+`power-domains = <&ps_pcie>` on `dart_apcie1`, leaving `0027` otherwise
+byte-for-byte unchanged. This is not redundant with the existing PCIe-node
+reference: the DART test driver may bind before the inert PCIe driver has
+acquired `ps_pcie`, whereas a direct DART reference makes genpd power it
+before the DART probe. A clean boot would establish a real lifecycle/order
+dependency. A repeat hang would rule out only that direct-domain ordering,
+not AUX/REF.
+
+Before assigning `ps_pcie_aux` or `ps_pcie_ref` to a DART MMIO test, test
+each domain individually with the DART node bound to a no-MMIO logging
+driver. That isolates whether merely powering the sibling domain is safe.
+Only after each clean result may it be paired, one at a time, with the
+single-write `0027` driver. Never attach all three domains in one payload:
+that would make either outcome uninterpretable.
+
 **Do not build or run another DART payload without an explicit go-ahead.**
 Test 2 (`0026`, `iommu-map` restored) stays untested and is now doubly
 premature -- both the recovery-write and the gate-wrapper theories it
