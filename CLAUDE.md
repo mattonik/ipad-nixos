@@ -990,6 +990,24 @@ explicit go-ahead** -- `0026` stays untested and doubly premature now.
 Full record in `research/t7000-pcie-hardware-findings.md`'s "`0027`
 hardware result: hangs" section.
 
+**Domain-gate plan implemented and cross-build verified, 2026-09-24.**
+Three new patches matching the ordered plan exactly: `0028` (Test A,
+`0027`'s driver unchanged plus `power-domains = <&ps_pcie>` directly on
+`dart_apcie1` -- tests the real genpd-ordering guarantee a device's own
+domain reference gives, which `pcie`'s reference never provided for the
+DART's own probe), `0029`/`0030` (Tests B1/B2, a new no-MMIO logging
+driver mirroring `0019`'s inert probe exactly, with `ps_pcie_aux`/
+`ps_pcie_ref` respectively -- never combined, never with `ps_pcie`). All
+three layered directly on `0016`, independent branches, same
+reconstruct/diff/verify methodology as every prior patch. **All
+cross-build verified clean**: exit 0, complete payloads; verified beyond
+the exit code (DTB strings carry the correct compatible string per test,
+`System.map` has each driver's probe symbol and driver struct). `0029`/
+`0030` are built and staged ahead of time but must not run on hardware
+unless Test A hangs. `result` points to Test A. **Not yet
+hardware-tested.** Full record in `research/t7000-pcie-hardware-findings.md`'s
+"Domain-gate plan implemented and cross-build verified" section.
+
 **Buttons hardware-verified, 2026-09-21.** `evtest /dev/input/event0` on
 the existing `gpio-keys` device captured clean press/release events for
 Home (`KEY_HOMEPAGE`), Power, Volume Up and Volume Down. No driver work

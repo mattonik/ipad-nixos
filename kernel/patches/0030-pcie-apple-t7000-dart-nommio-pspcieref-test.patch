@@ -1,0 +1,255 @@
+diff --git a/drivers/iommu/Kconfig b/drivers/iommu/Kconfig
+--- a/drivers/iommu/Kconfig
++++ b/drivers/iommu/Kconfig
+@@ -314,7 +314,21 @@
+ 	  the main memory.
+ 
+ 	  Say Y here if you are using an Apple SoC.
++
++config APPLE_DART_T7000_NOMMIO_TEST
++	tristate "Apple T7000 DART sibling power-domain isolation test (test only)"
++	depends on ARCH_APPLE || COMPILE_TEST
++	depends on OF
++	help
++	  Diagnostic-only driver that maps nothing and touches no DART
++	  register at all -- it only confirms probe() is reached while a
++	  sibling PMGR power domain (ps_pcie_aux or ps_pcie_ref, never both
++	  in the same build) is powered. Isolates whether merely powering
++	  that domain is safe, before it is ever paired with a real
++	  MMIO-touching DART test. Not a real DART driver.
+ 
++	  If unsure, say N.
++
+ config S390_IOMMU
+ 	def_bool y if S390 && PCI
+ 	depends on S390 && PCI
+diff --git a/drivers/iommu/Makefile b/drivers/iommu/Makefile
+--- a/drivers/iommu/Makefile
++++ b/drivers/iommu/Makefile
+@@ -36,5 +36,6 @@
+ obj-$(CONFIG_IOMMU_IOPF) += io-pgfault.o
+ obj-$(CONFIG_SPRD_IOMMU) += sprd-iommu.o
+ obj-$(CONFIG_APPLE_DART) += apple-dart.o
++obj-$(CONFIG_APPLE_DART_T7000_NOMMIO_TEST) += apple-dart-t7000-nommio-test.o
+ obj-$(CONFIG_VSI_IOMMU) += vsi-iommu.o
+ obj-$(CONFIG_IOMMU_DEBUG_PAGEALLOC) += iommu-debug-pagealloc.o
+diff --git a/drivers/iommu/apple-dart-t7000-nommio-test.c b/drivers/iommu/apple-dart-t7000-nommio-test.c
+new file mode 100644
+--- /dev/null
++++ b/drivers/iommu/apple-dart-t7000-nommio-test.c
+@@ -0,0 +1,57 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * J81 DART sibling power-domain isolation test: ps_pcie_ref, no MMIO.
++ *
++ * `0027` (a single write to DART+0x24, no read, nothing else) hung on real
++ * hardware -- the same signature as `0025`'s stock-driver hang. Since
++ * `0027` touches no read at all, the hang cannot be about read-before-write
++ * ordering; the most consistent reading is that essentially any MMIO
++ * access to the DART's register window hangs, independent of operation.
++ * `0028` tests whether directly attaching `dart_apcie1` to `power-domains
++ * = <&ps_pcie>` (a real, previously-untried genpd-ordering guarantee, not
++ * redundant with `pcie`'s own reference -- see that patch's own comments)
++ * fixes it. This patch is the next, independent step in that same ordered
++ * plan (research/t7000-pcie-hardware-findings.md's "Required test order if
++ * hardware work resumes" section): before ever attaching `ps_pcie_aux` or
++ * `ps_pcie_ref` to a real MMIO-touching DART test, first confirm each
++ * sibling domain is safe to power *at all*, in isolation, with a driver
++ * that touches no DART register whatsoever.
++ *
++ * This driver is deliberately identical in spirit to `0019`'s inert PCIe
++ * probe: it maps nothing, reads nothing, writes nothing -- it only proves
++ * the boot reaches probe() and returns successfully with `ps_pcie_ref`
++ * powered. If this hangs, powering `ps_pcie_ref` alone is unsafe and no
++ * further DART payload should reference it. If it is clean, the next step
++ * (not part of this patch) pairs `ps_pcie_ref` with `0027`'s single-write
++ * driver -- never combined with `ps_pcie_ref` or `ps_pcie` in the same
++ * payload.
++ */
++
++#include <linux/module.h>
++#include <linux/platform_device.h>
++
++static int apple_t7000_dart_nommio_test_probe(struct platform_device *pdev)
++{
++	dev_info(&pdev->dev,
++		 "t7000-dart nommio-test: probe reached (no MMIO, no register access; ps_pcie_ref powered)\n");
++	return 0;
++}
++
++static const struct of_device_id apple_t7000_dart_nommio_test_of_match[] = {
++	{ .compatible = "apple,t7000-dart-nommio-test" },
++	{ }
++};
++MODULE_DEVICE_TABLE(of, apple_t7000_dart_nommio_test_of_match);
++
++static struct platform_driver apple_t7000_dart_nommio_test_driver = {
++	.probe = apple_t7000_dart_nommio_test_probe,
++	.driver = {
++		.name = "apple-t7000-dart-nommio-test",
++		.of_match_table = apple_t7000_dart_nommio_test_of_match,
++		.suppress_bind_attrs = true,
++	},
++};
++module_platform_driver(apple_t7000_dart_nommio_test_driver);
++
++MODULE_DESCRIPTION("J81 DART sibling power-domain isolation test, ps_pcie_ref variant (no MMIO, not a real DART driver)");
++MODULE_LICENSE("GPL");
+diff --git a/drivers/pci/controller/pcie-apple-t7000.c b/drivers/pci/controller/pcie-apple-t7000.c
+--- a/drivers/pci/controller/pcie-apple-t7000.c
++++ b/drivers/pci/controller/pcie-apple-t7000.c
+@@ -1,59 +1,43 @@
+ // SPDX-License-Identifier: GPL-2.0-only
+ /*
+- * Compile-only groundwork for the Apple T7000-family PCIe host controller.
++ * Apple T7000-family PCIe -- PMGR-only probe test, DART sibling
++ * power-domain isolation variant (ps_pcie_ref).
+  *
+- * The real J81 ADT describes four ports, four port interrupts and twelve
+- * register windows. Corellium's older H9P driver confirms the four-port
+- * controller shape, but its register layout, SART and hard-coded PHY sequence
+- * are not valid for T7000. The disabled device tree preserves J81's exact
+- * resource ordering without naming the unresolved small-window roles. Keep
+- * this driver inert until those roles, DART attachment and ADT-provided
+- * tunables have been implemented.
++ * The PCIe driver here is byte-for-byte the same as `0019`'s (the
++ * PMGR-only test that hardware-verified clean, 2026-09-23) and every
++ * later DART test's: probe() maps nothing and calls no PCI, ECAM or DART
++ * code at all. This patch's only changes are the device tree
++ * (`dart_apcie1` redirected to a new no-MMIO logging driver, with
++ * `power-domains = <&ps_pcie_ref>`) and the new
++ * `apple-dart-t7000-nommio-test.c` driver itself.
++ *
++ * `0027` (a single write to DART+0x24, no read, nothing else) hung on real
++ * hardware, ruling out read-before-write ordering as the cause -- the most
++ * consistent reading is that essentially any MMIO access to the DART's
++ * register window hangs. `0028` tests directly attaching `dart_apcie1` to
++ * `power-domains = <&ps_pcie>`. This patch is the next, independent step
++ * in that same ordered plan: before ever pairing `ps_pcie_ref` with a real
++ * MMIO-touching DART test, confirm merely powering that sibling domain is
++ * safe with a driver that touches no DART register at all. See
++ * `research/t7000-pcie-hardware-findings.md`'s "Required test order if
++ * hardware work resumes" section for the full reasoning.
++ *
++ * No controller register writes, no PERST change, no PCI enumeration, no
++ * DART register access, no IOMMU domain, no `iommu-map` consumer -- only
++ * the DART DT status/compatible/power-domains change and the new no-MMIO
++ * test driver.
+  */
+ 
+-#include <linux/errno.h>
+ #include <linux/module.h>
+-#include <linux/of.h>
+-#include <linux/of_address.h>
+ #include <linux/platform_device.h>
+ 
+-#define APPLE_T7000_PCIE_NUM_PORTS	4
+-#define APPLE_T7000_PCIE_NUM_REGIONS	12
+-
+-static int apple_t7000_pcie_validate_firmware(struct platform_device *pdev)
++static int apple_t7000_pcie_probe(struct platform_device *pdev)
+ {
+-	struct device *dev = &pdev->dev;
+-	int count;
+-
+-	count = of_address_count(dev->of_node);
+-	if (count != APPLE_T7000_PCIE_NUM_REGIONS)
+-		return dev_err_probe(dev, -EINVAL,
+-				     "expected %d register windows, found %d\n",
+-				     APPLE_T7000_PCIE_NUM_REGIONS, count);
+-
+-	count = platform_irq_count(pdev);
+-	if (count < 0)
+-		return count;
+-	if (count != APPLE_T7000_PCIE_NUM_PORTS)
+-		return dev_err_probe(dev, -EINVAL,
+-				     "expected %d port interrupts, found %d\n",
+-				     APPLE_T7000_PCIE_NUM_PORTS, count);
+-
++	dev_info(&pdev->dev,
++		 "t7000-pcie pmgr-only-test: probe reached (no MMIO, no PCI core; DART sibling-domain isolation test enabled separately)\n");
+ 	return 0;
+ }
+ 
+-static int apple_t7000_pcie_probe(struct platform_device *pdev)
+-{
+-	int ret;
+-
+-	ret = apple_t7000_pcie_validate_firmware(pdev);
+-	if (ret)
+-		return ret;
+-
+-	return dev_err_probe(&pdev->dev, -EOPNOTSUPP,
+-			     "link bring-up is not implemented\n");
+-}
+-
+ static const struct of_device_id apple_t7000_pcie_of_match[] = {
+ 	{ .compatible = "apple,t7000-pcie" },
+ 	{ }
+@@ -69,5 +53,5 @@
+ };
+ module_platform_driver(apple_t7000_pcie_driver);
+ 
+-MODULE_DESCRIPTION("Compile-only Apple T7000 PCIe host bridge groundwork");
++MODULE_DESCRIPTION("Apple T7000 PCIe PMGR-only probe test, DART sibling power-domain isolation variant (no MMIO, no PCI core, no iommu-map)");
+ MODULE_LICENSE("GPL");
+diff --git a/arch/arm64/boot/dts/apple/t7001.dtsi b/arch/arm64/boot/dts/apple/t7001.dtsi
+--- a/arch/arm64/boot/dts/apple/t7001.dtsi
++++ b/arch/arm64/boot/dts/apple/t7001.dtsi
+@@ -342,10 +342,23 @@
+ 		dart_apcie1: iommu@602002000 {
+-			compatible = "apple,t7000-dart", "apple,s5l8960x-dart";
++			/*
++			 * DART sibling power-domain isolation test, ps_pcie_ref
++			 * variant (docs/plans/2026-09-13-j81-wifi-pcie.md,
++			 * research/t7000-pcie-hardware-findings.md): redirected
++			 * to a new, no-MMIO logging driver (never the stock
++			 * apple-dart driver, and not 0027/0028's single-write
++			 * driver either) so this test isolates whether merely
++			 * powering ps_pcie_ref is safe, before any DART
++			 * register is ever touched. reg/interrupts are
++			 * unchanged and still accurately describe the real
++			 * hardware.
++			 */
++			compatible = "apple,t7000-dart-nommio-test";
+ 			reg = <0x6 0x02002000 0x0 0x00200000>;
+ 			#iommu-cells = <1>;
+ 			interrupt-parent = <&aic>;
+ 			interrupts = <AIC_IRQ 216 IRQ_TYPE_LEVEL_HIGH>;
+-			status = "disabled";
++			power-domains = <&ps_pcie_ref>;
++			status = "okay";
+ 		};
+ 
+ 		pcie: pcie@610000000 {
+@@ -376,13 +389,16 @@
+ 				     <AIC_IRQ 218 IRQ_TYPE_LEVEL_HIGH>,
+ 				     <AIC_IRQ 221 IRQ_TYPE_LEVEL_HIGH>;
+ 
+-			msi-controller;
+-			msi-parent = <&pcie>;
+-			msi-ranges = <&aic AIC_IRQ 224 IRQ_TYPE_EDGE_RISING 32>;
++			/*
++			 * DART sibling power-domain isolation test: this
++			 * driver's probe() still maps nothing and calls no
++			 * PCI/ECAM/DART code itself, so
++			 * msi-controller/msi-parent/msi-ranges stay omitted
++			 * (no MSI domain implemented) and
++			 * iommu-map/iommu-map-mask stay omitted deliberately --
++			 * pcie itself is unchanged from 0019/0027/0028.
++			 */
+ 
+-			iommu-map = <0x100 &dart_apcie1 0 1>;
+-			iommu-map-mask = <0xff00>;
+-
+ 			bus-range = <0 4>;
+ 			#address-cells = <3>;
+ 			#size-cells = <2>;
+@@ -392,6 +408,6 @@
+ 				  0x7 0xc0000000 0x0 0x40000000>;
+ 
+ 			power-domains = <&ps_pcie>;
+-			status = "disabled";
++			status = "okay";
+ 		};
+ 

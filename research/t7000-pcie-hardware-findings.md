@@ -934,6 +934,70 @@ Test 2 (`0026`, `iommu-map` restored) stays untested and is now doubly
 premature -- both the recovery-write and the gate-wrapper theories it
 would have followed from are no longer live leads on their own.
 
+### Domain-gate plan implemented and cross-build verified, 2026-09-24
+
+Three new patches, matching the exact ordered plan above.
+
+**`kernel/patches/0028-pcie-apple-t7000-dart-recovery-write-pspcie-test.patch`**
+(Test A, run first). Layered directly on `0016`, reproducing `0027`'s
+Kconfig/Makefile/driver-file changes in full (an independent branch, not
+stacked on `0027`) plus one new DT line: `dart_apcie1` gets
+`power-domains = <&ps_pcie>` in addition to its existing redirect away
+from the stock `apple-dart` driver. The single-write driver itself
+(`apple-dart-t7000-recovery-test.c`) is otherwise byte-for-byte unchanged
+from `0027`. `pcie` is unchanged from `0019`'s inert probe. This tests the
+real, previously-untried genpd-ordering guarantee: a device's own
+`power-domains` reference makes Linux power that domain before *that
+device's* probe() runs, which `0027` alone never guaranteed (`pcie`'s own
+reference only orders against `pcie`'s probe, a different device).
+
+**`kernel/patches/0029-pcie-apple-t7000-dart-nommio-pspcieaux-test.patch`**
+and **`0030-...-pspcieref-test.patch`** (Tests B1/B2, run only if A still
+hangs). Both layered directly on `0016`, each an independent branch. Both
+introduce a new, dedicated no-MMIO logging driver
+(`drivers/iommu/apple-dart-t7000-nommio-test.c`, new
+`CONFIG_APPLE_DART_T7000_NOMMIO_TEST`) that mirrors `0019`'s own inert PCIe
+probe exactly: `dev_info()` then `return 0`, no `ioremap`, no register
+access of any kind. `dart_apcie1` is redirected to this driver via yet
+another dedicated compatible string (`"apple,t7000-dart-nommio-test"`,
+distinct from `0027`/`0028`'s) and given `power-domains = <&ps_pcie_aux>`
+(`0029`) or `<&ps_pcie_ref>` (`0030`) -- never both, never combined with
+`ps_pcie`, matching the plan's explicit requirement. `pcie` is unchanged
+in both. These test whether merely powering each sibling domain is safe
+at all, before either is ever paired with a real MMIO-touching DART test.
+
+All three built via the same reconstruct/diff/verify methodology as every
+prior patch: pre-patch state reconstructed for every touched file
+(`pcie-apple-t7000.c`, `t7001.dtsi`, `drivers/iommu/Kconfig`/`Makefile`),
+intended post-patch content written, diffs generated and offset-corrected,
+then each assembled patch applied to a fresh copy of the reconstruction
+and every resulting file byte-verified against the intended content
+before being written into the repo. All three applied cleanly with no
+fuzz.
+
+New isolated builds (`kernel/hoolock-pcie-dart-recovery-pspcie-test.nix`,
+`kernel/hoolock-pcie-dart-nommio-pspcieaux-test.nix`,
+`kernel/hoolock-pcie-dart-nommio-pspcieref-test.nix`, three matching
+`m1n1-hoolock-pcie-dart-*-test` payloads in `flake.nix`, each config
+adding the relevant new `CONFIG_APPLE_DART_T7000_*_TEST=y` on top of the
+usual `CONFIG_PCIE_APPLE_T7000=y`). **All three cross-build verified
+clean**, 2026-09-24: exit 0, complete real payloads, only the same benign
+pre-existing `dtc` advisory warnings every prior payload has produced.
+Verified beyond the exit code: each built DTB's raw strings carry the
+correct dedicated compatible string (`apple,t7000-dart-recovery-test` for
+A, `apple,t7000-dart-nommio-test` for B1/B2 -- and `dtc` itself would have
+hard-failed, not merely warned, had either sibling domain's phandle
+reference been invalid, so the successful compile is itself confirmation
+`&ps_pcie_aux`/`&ps_pcie_ref` resolve correctly); each built kernel's
+`System.map` contains the relevant new driver's probe symbol and driver
+struct, confirming genuine compilation, not just source presence.
+
+**Not yet hardware-tested.** `result` now points to Test A
+(`m1n1-hoolock-pcie-dart-recovery-pspcie-test`), the required first step.
+Tests B1/B2 are built and staged ahead of time (avoiding a second
+build-wait cycle later, the same reasoning `0025`/`0026` used) but must
+not be *run* on hardware unless Test A hangs, per the ordered plan above.
+
 ## Infrastructure notes worth keeping
 
 - **`gaster pwn` + raw `irecovery -f`/`-c go` does not reliably reach

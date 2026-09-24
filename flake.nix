@@ -444,6 +444,52 @@
             hoolockConfig = patchedHoolockPcieDartRecoveryTestConfig;
           };
 
+          # DART recovery-write test, ps_pcie direct-attach variant
+          # (docs/plans/2026-09-13-j81-wifi-pcie.md,
+          # research/t7000-pcie-hardware-findings.md): 0027 hung, ruling
+          # out read-before-write ordering. First step of the ordered
+          # domain-gate plan -- same CONFIG_APPLE_DART_T7000_RECOVERY_TEST
+          # driver as 0027, patch 0028 only adds power-domains = <&ps_pcie>
+          # to dart_apcie1 itself.
+          patchedHoolockPcieDartRecoveryPspcieTestConfig = pkgs.runCommand "ipad-t7001-hoolock-pcie-dart-recovery-pspcie-test-defconfig-4k" {} ''
+            cat ${patchedHoolockConfig} > "$out"
+            echo 'CONFIG_PCIE_APPLE_T7000=y' >> "$out"
+            echo 'CONFIG_APPLE_DART_T7000_RECOVERY_TEST=y' >> "$out"
+          '';
+          hoolockPcieDartRecoveryPspcieTestKernel = pkgsCross.callPackage ./kernel/hoolock-pcie-dart-recovery-pspcie-test.nix {
+            source = inputs.hoolockLinux;
+            hoolockConfig = patchedHoolockPcieDartRecoveryPspcieTestConfig;
+          };
+
+          # DART sibling power-domain isolation tests
+          # (docs/plans/2026-09-13-j81-wifi-pcie.md,
+          # research/t7000-pcie-hardware-findings.md's "Required test order
+          # if hardware work resumes" section): no-MMIO logging driver
+          # (CONFIG_APPLE_DART_T7000_NOMMIO_TEST) bound to dart_apcie1 with
+          # ps_pcie_aux or ps_pcie_ref, never both -- confirms merely
+          # powering that sibling domain is safe before it is ever paired
+          # with a real MMIO-touching DART test. Only run if
+          # hoolock-pcie-dart-recovery-pspcie-test also hangs.
+          patchedHoolockPcieDartNommioPspcieauxTestConfig = pkgs.runCommand "ipad-t7001-hoolock-pcie-dart-nommio-pspcieaux-test-defconfig-4k" {} ''
+            cat ${patchedHoolockConfig} > "$out"
+            echo 'CONFIG_PCIE_APPLE_T7000=y' >> "$out"
+            echo 'CONFIG_APPLE_DART_T7000_NOMMIO_TEST=y' >> "$out"
+          '';
+          hoolockPcieDartNommioPspcieauxTestKernel = pkgsCross.callPackage ./kernel/hoolock-pcie-dart-nommio-pspcieaux-test.nix {
+            source = inputs.hoolockLinux;
+            hoolockConfig = patchedHoolockPcieDartNommioPspcieauxTestConfig;
+          };
+
+          patchedHoolockPcieDartNommioPspcierefTestConfig = pkgs.runCommand "ipad-t7001-hoolock-pcie-dart-nommio-pspcieref-test-defconfig-4k" {} ''
+            cat ${patchedHoolockConfig} > "$out"
+            echo 'CONFIG_PCIE_APPLE_T7000=y' >> "$out"
+            echo 'CONFIG_APPLE_DART_T7000_NOMMIO_TEST=y' >> "$out"
+          '';
+          hoolockPcieDartNommioPspcierefTestKernel = pkgsCross.callPackage ./kernel/hoolock-pcie-dart-nommio-pspcieref-test.nix {
+            source = inputs.hoolockLinux;
+            hoolockConfig = patchedHoolockPcieDartNommioPspcierefTestConfig;
+          };
+
           # BT-1 (docs/plans/2026-09-08-j81-bluetooth-battery-adt.md):
           # The transport-only UART3 DT patch deliberately has no Bluetooth
           # child. This userspace tool attaches the raw HCI UART independently;
@@ -557,6 +603,13 @@
         # payload below; exposed on its own for the same reason
         # hoolock-pcie-dart-noiommu-test-kernel is.
         hoolock-pcie-dart-recovery-test-kernel = hoolockPcieDartRecoveryTestKernel;
+
+        # Kernels backing the three combined m1n1-hoolock-pcie-dart-*-test
+        # payloads below (ordered domain-gate plan); exposed on their own
+        # for the same reason hoolock-pcie-dart-recovery-test-kernel is.
+        hoolock-pcie-dart-recovery-pspcie-test-kernel = hoolockPcieDartRecoveryPspcieTestKernel;
+        hoolock-pcie-dart-nommio-pspcieaux-test-kernel = hoolockPcieDartNommioPspcieauxTestKernel;
+        hoolock-pcie-dart-nommio-pspcieref-test-kernel = hoolockPcieDartNommioPspcierefTestKernel;
 
         # Kernel, the published multi-device DTB pack, and debug initramfs in
         # the exact file layout consumed by the historical PongoOS loader.
@@ -1371,6 +1424,159 @@
           gzip -n -c ${hoolockPcieDartRecoveryTestKernel}/Image > "$out/Image.gz"
 
           dtc -I dtb -O dts ${hoolockPcieDartRecoveryTestKernel}/dtbs/apple/t7001-j81.dtb \
+            | sed -e '/^\tchosen {$/,/^\t};$/ s/framebuffer@0 {/framebuffer {/' \
+            | dtc -I dts -O dtb -p 0x10000 -o "$out/t7001-j81.dtb"
+
+          gzip -dc ${inputs.linuxAppleResources}/debug_initrd.img > initramfs.cpio
+          mkdir -p original-etc overlay/etc overlay/usr/bin
+          (cd original-etc && cpio -id --no-absolute-filenames etc/deviceinfo < ../initramfs.cpio)
+          cp original-etc/etc/deviceinfo overlay/etc/deviceinfo
+          printf '\ndeviceinfo_usb_rndis_function="ecm.usb0"\n' >> overlay/etc/deviceinfo
+          touch -d @1 overlay/etc/deviceinfo
+
+          cp ${btattachPkg}/bin/btattach overlay/usr/bin/btattach
+          chmod 755 overlay/usr/bin/btattach
+          touch -d @1 overlay/usr/bin/btattach
+
+          for f in ${i2cToolsPkg}/bin/*; do
+            cp "$f" "overlay/usr/bin/$(basename "$f")"
+            chmod 755 "overlay/usr/bin/$(basename "$f")"
+            touch -d @1 "overlay/usr/bin/$(basename "$f")"
+          done
+
+          (cd overlay
+           { printf '%s\0' "etc/deviceinfo" "usr/bin/btattach"
+             for f in ${i2cToolsPkg}/bin/*; do
+               printf 'usr/bin/%s\0' "$(basename "$f")"
+             done
+           } | cpio --null -o -H newc --owner=0:0 --reproducible
+          ) >> initramfs.cpio
+          gzip -n -c initramfs.cpio > "$out/initramfs.gz"
+
+          printf '%s\n' 'chosen.bootargs=console=tty0 loglevel=8 ignore_loglevel rdinit=/init PMOS_NO_OUTPUT_REDIRECT pd_ignore_unused clk_ignore_unused' \
+            > "$out/bootargs"
+          cat "$out/m1n1.bin" "$out/bootargs" "$out/t7001-j81.dtb" \
+            "$out/Image.gz" "$out/initramfs.gz" > "$out/m1n1-linux.bin"
+          sha256sum "$out/Pongo.bin" "$out/m1n1.bin" "$out/m1n1-linux.bin" \
+            > "$out/SHA256SUMS"
+        '';
+
+        # DART recovery-write test, ps_pcie direct-attach variant
+        # (docs/plans/2026-09-13-j81-wifi-pcie.md,
+        # research/t7000-pcie-hardware-findings.md): first step of the
+        # ordered domain-gate plan after 0027 hung. Identical to
+        # m1n1-hoolock-pcie-dart-recovery-test except the kernel
+        # (hoolockPcieDartRecoveryPspcieTestKernel).
+        m1n1-hoolock-pcie-dart-recovery-pspcie-test = pkgs.runCommand "ipad-air2-m1n1-hoolock-pcie-dart-recovery-pspcie-test" {
+          nativeBuildInputs = [ pkgs.gzip pkgs.dtc pkgs.cpio ];
+        } ''
+          mkdir -p "$out"
+          cp ${inputs.hoolockDocs}/binaries/Pongo.bin "$out/Pongo.bin"
+          cp ${inputs.hoolockM1n1}/m1n1.bin "$out/m1n1.bin"
+          gzip -n -c ${hoolockPcieDartRecoveryPspcieTestKernel}/Image > "$out/Image.gz"
+
+          dtc -I dtb -O dts ${hoolockPcieDartRecoveryPspcieTestKernel}/dtbs/apple/t7001-j81.dtb \
+            | sed -e '/^\tchosen {$/,/^\t};$/ s/framebuffer@0 {/framebuffer {/' \
+            | dtc -I dts -O dtb -p 0x10000 -o "$out/t7001-j81.dtb"
+
+          gzip -dc ${inputs.linuxAppleResources}/debug_initrd.img > initramfs.cpio
+          mkdir -p original-etc overlay/etc overlay/usr/bin
+          (cd original-etc && cpio -id --no-absolute-filenames etc/deviceinfo < ../initramfs.cpio)
+          cp original-etc/etc/deviceinfo overlay/etc/deviceinfo
+          printf '\ndeviceinfo_usb_rndis_function="ecm.usb0"\n' >> overlay/etc/deviceinfo
+          touch -d @1 overlay/etc/deviceinfo
+
+          cp ${btattachPkg}/bin/btattach overlay/usr/bin/btattach
+          chmod 755 overlay/usr/bin/btattach
+          touch -d @1 overlay/usr/bin/btattach
+
+          for f in ${i2cToolsPkg}/bin/*; do
+            cp "$f" "overlay/usr/bin/$(basename "$f")"
+            chmod 755 "overlay/usr/bin/$(basename "$f")"
+            touch -d @1 "overlay/usr/bin/$(basename "$f")"
+          done
+
+          (cd overlay
+           { printf '%s\0' "etc/deviceinfo" "usr/bin/btattach"
+             for f in ${i2cToolsPkg}/bin/*; do
+               printf 'usr/bin/%s\0' "$(basename "$f")"
+             done
+           } | cpio --null -o -H newc --owner=0:0 --reproducible
+          ) >> initramfs.cpio
+          gzip -n -c initramfs.cpio > "$out/initramfs.gz"
+
+          printf '%s\n' 'chosen.bootargs=console=tty0 loglevel=8 ignore_loglevel rdinit=/init PMOS_NO_OUTPUT_REDIRECT pd_ignore_unused clk_ignore_unused' \
+            > "$out/bootargs"
+          cat "$out/m1n1.bin" "$out/bootargs" "$out/t7001-j81.dtb" \
+            "$out/Image.gz" "$out/initramfs.gz" > "$out/m1n1-linux.bin"
+          sha256sum "$out/Pongo.bin" "$out/m1n1.bin" "$out/m1n1-linux.bin" \
+            > "$out/SHA256SUMS"
+        '';
+
+        # DART sibling power-domain isolation test, ps_pcie_aux variant
+        # (docs/plans/2026-09-13-j81-wifi-pcie.md,
+        # research/t7000-pcie-hardware-findings.md): no-MMIO logging driver,
+        # confirms merely powering ps_pcie_aux is safe before it is ever
+        # paired with a real MMIO-touching DART test. Only run if
+        # m1n1-hoolock-pcie-dart-recovery-pspcie-test also hangs.
+        m1n1-hoolock-pcie-dart-nommio-pspcieaux-test = pkgs.runCommand "ipad-air2-m1n1-hoolock-pcie-dart-nommio-pspcieaux-test" {
+          nativeBuildInputs = [ pkgs.gzip pkgs.dtc pkgs.cpio ];
+        } ''
+          mkdir -p "$out"
+          cp ${inputs.hoolockDocs}/binaries/Pongo.bin "$out/Pongo.bin"
+          cp ${inputs.hoolockM1n1}/m1n1.bin "$out/m1n1.bin"
+          gzip -n -c ${hoolockPcieDartNommioPspcieauxTestKernel}/Image > "$out/Image.gz"
+
+          dtc -I dtb -O dts ${hoolockPcieDartNommioPspcieauxTestKernel}/dtbs/apple/t7001-j81.dtb \
+            | sed -e '/^\tchosen {$/,/^\t};$/ s/framebuffer@0 {/framebuffer {/' \
+            | dtc -I dts -O dtb -p 0x10000 -o "$out/t7001-j81.dtb"
+
+          gzip -dc ${inputs.linuxAppleResources}/debug_initrd.img > initramfs.cpio
+          mkdir -p original-etc overlay/etc overlay/usr/bin
+          (cd original-etc && cpio -id --no-absolute-filenames etc/deviceinfo < ../initramfs.cpio)
+          cp original-etc/etc/deviceinfo overlay/etc/deviceinfo
+          printf '\ndeviceinfo_usb_rndis_function="ecm.usb0"\n' >> overlay/etc/deviceinfo
+          touch -d @1 overlay/etc/deviceinfo
+
+          cp ${btattachPkg}/bin/btattach overlay/usr/bin/btattach
+          chmod 755 overlay/usr/bin/btattach
+          touch -d @1 overlay/usr/bin/btattach
+
+          for f in ${i2cToolsPkg}/bin/*; do
+            cp "$f" "overlay/usr/bin/$(basename "$f")"
+            chmod 755 "overlay/usr/bin/$(basename "$f")"
+            touch -d @1 "overlay/usr/bin/$(basename "$f")"
+          done
+
+          (cd overlay
+           { printf '%s\0' "etc/deviceinfo" "usr/bin/btattach"
+             for f in ${i2cToolsPkg}/bin/*; do
+               printf 'usr/bin/%s\0' "$(basename "$f")"
+             done
+           } | cpio --null -o -H newc --owner=0:0 --reproducible
+          ) >> initramfs.cpio
+          gzip -n -c initramfs.cpio > "$out/initramfs.gz"
+
+          printf '%s\n' 'chosen.bootargs=console=tty0 loglevel=8 ignore_loglevel rdinit=/init PMOS_NO_OUTPUT_REDIRECT pd_ignore_unused clk_ignore_unused' \
+            > "$out/bootargs"
+          cat "$out/m1n1.bin" "$out/bootargs" "$out/t7001-j81.dtb" \
+            "$out/Image.gz" "$out/initramfs.gz" > "$out/m1n1-linux.bin"
+          sha256sum "$out/Pongo.bin" "$out/m1n1.bin" "$out/m1n1-linux.bin" \
+            > "$out/SHA256SUMS"
+        '';
+
+        # DART sibling power-domain isolation test, ps_pcie_ref variant --
+        # same as above with ps_pcie_ref instead of ps_pcie_aux. Never
+        # combined with it in the same payload.
+        m1n1-hoolock-pcie-dart-nommio-pspcieref-test = pkgs.runCommand "ipad-air2-m1n1-hoolock-pcie-dart-nommio-pspcieref-test" {
+          nativeBuildInputs = [ pkgs.gzip pkgs.dtc pkgs.cpio ];
+        } ''
+          mkdir -p "$out"
+          cp ${inputs.hoolockDocs}/binaries/Pongo.bin "$out/Pongo.bin"
+          cp ${inputs.hoolockM1n1}/m1n1.bin "$out/m1n1.bin"
+          gzip -n -c ${hoolockPcieDartNommioPspcierefTestKernel}/Image > "$out/Image.gz"
+
+          dtc -I dtb -O dts ${hoolockPcieDartNommioPspcierefTestKernel}/dtbs/apple/t7001-j81.dtb \
             | sed -e '/^\tchosen {$/,/^\t};$/ s/framebuffer@0 {/framebuffer {/' \
             | dtc -I dts -O dtb -p 0x10000 -o "$out/t7001-j81.dtb"
 
