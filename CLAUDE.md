@@ -900,25 +900,40 @@ calls `enableDeviceClock(1, 0)` then `enableDevicePower(1, 0, 0)`;
 become-unavailable calls the same two with `0`. First arg tracks
 availability directly; second arg (constant `0`) is most likely a
 device/gate-index selector, not yet confirmed against a physical register.
-**Physical register: attempted, genuinely not resolved, 2026-09-24.**
-Three independent techniques each hit a real wall: a memory-scan
-vtable-offset read (anchored on `AppleT7000PerformanceController::
-callPlatformFunction`, already known from TOUCH-3) resolved `+0x560`/
-`+0x568` to a trivial "unsupported" stub and an unrelated voltage-state
-lookup, not the real gate writes -- the offset math that worked near the
-vtable's base didn't transfer reliably 150+ slots in. A string-xref search
-did confirm `"enableDeviceClockGated() Exec Time"` is a genuine,
-instrumented telemetry label in *this exact* kernelcache (not just the
-reference build), but its only reference is a statistics-registration
-function, not the worker. A whole-kext function-cluster search found the
-right per-device data structure (`0x328` offset, `0x350`-byte stride) and
-one promising lead, but no confirmed register write. **Do not treat any
-of this pass's specific offsets as confirmed** -- they're leads, not
-conclusions. Recommended next step: a full (not `-noanalysis`) Ghidra pass
-on `AppleARMPlatform.kext` + `AppleT7000.kext` together. **Still do not
-run `0026` or build another DART payload.** Full record in
-`research/t7000-pcie-hardware-findings.md`'s "Physical register:
-attempted, genuinely not resolved" section.
+**Physical register: four independent techniques tried, genuinely not
+resolved, 2026-09-24.** After the first three static-analysis attempts
+(vtable-offset math, string-xref, function-cluster search) each hit a
+wall, ran a real (not `-noanalysis`) Ghidra auto-analysis pass scoped to
+just `AppleARMPlatform.kext` + `AppleT7000.kext` (12 seconds, not the
+~10 minutes a full-image re-analysis would cost). It confirmed the
+earlier function boundaries were already correct -- ruling out "bad
+analysis" as the explanation, and revealing the earlier `+0x560`/`+0x568`
+identification itself was likely wrong (the confirmed 2-parameter shape
+at `+0x568` doesn't match `enableDevicePower`'s 3-parameter signature).
+
+Pivoted to the real, unstripped reference binary and disassembled
+`enableDeviceClock`/`enableDevicePower` directly by symbol name
+(`llvm-objdump --disassemble-symbols=...`, no decompiler ambiguity).
+**Both are thin delegating shims, confirmed byte-for-byte**: each checks
+its own presence flag, then forwards to a *shared cached delegate object*
+via the *same* vtable slot (`+0xe0`) for both clock and power requests.
+This is genuine new architectural insight -- the real gate toggle lives in
+a separate delegate object, not inside `AppleARMPerformanceController`
+itself -- explaining the earlier "unsupported stub" finding exactly (the
+shared fallback when no delegate is configured). A similar
+delegate-dispatch shape exists in our own kernelcache too, but wasn't
+confirmed as these exact methods (different field offset, mismatched
+argument count).
+
+**Do not treat any offset from this investigation as confirmed** -- they
+are leads, not conclusions. Four independent techniques across two
+research passes have narrowed the picture (mechanism, class, and now the
+delegate architecture are solid) without landing on the final register.
+Matching this project's own TOUCH-3 precedent, **not pursuing this
+further via static analysis alone.** Still do not run `0026` or build
+another DART payload. Full record in
+`research/t7000-pcie-hardware-findings.md`'s "Scoped auto-analysis pass
+and real-symbol disassembly" section.
 
 **Buttons hardware-verified, 2026-09-21.** `evtest /dev/input/event0` on
 the existing `gpio-keys` device captured clean press/release events for

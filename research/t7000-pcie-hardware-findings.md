@@ -654,13 +654,80 @@ this pass and each hit a genuine wall, the same class of wall this
 project's TOUCH-3 investigation documented explicitly rather than pushing
 through with a guess. **Do not treat the per-device table offsets or
 `FUN_ffffff800266c57c` as confirmed** -- they are leads for the next pass,
-not conclusions. The most likely productive next step is a full (not
-`-noanalysis`) Ghidra auto-analysis pass scoped to just
-`AppleARMPlatform.kext` and `AppleT7000.kext` together, so Ghidra's own
-RTTI/vtable-recovery and call-graph analysis can resolve this far more
-reliably than manual offset-guessing -- a real, ~10-minute-class cost,
-same order as the original full-`__PRELINK_TEXT` import this project
-already paid once.
+not conclusions.
+
+### Scoped auto-analysis pass and real-symbol disassembly, 2026-09-24
+
+Ran a real (not `-noanalysis`) Ghidra auto-analysis pass, but scoped to
+just `AppleARMPlatform.kext` + `AppleT7000.kext`'s address ranges via
+`AutoAnalysisManager.reAnalyzeAll()` on a restricted `AddressSet` -- 12
+seconds, not the ~10 minutes a full-image re-analysis would cost. **Result:
+the earlier function boundaries at `+0x560`/`+0x568` were already correct**
+-- re-decompiling them afterward produced byte-identical output. This
+rules out "bad function boundary from `-noanalysis`" as the explanation
+for the earlier mismatch; the functions genuinely are what they looked
+like (a 3-instruction "unsupported" stub, and a 2-explicit-parameter
+state-matching lookup). That itself is new information: `+0x568`'s
+confirmed 2-parameter shape does not match `enableDevicePower`'s declared
+3-parameter signature, so the earlier vtable-offset identification of
+`+0x560`/`+0x568` as `enableDeviceClock`/`enableDevicePower` specifically
+was very likely wrong, even though the broader claim (DART's helper is
+some `AppleARMPerformanceController`-family object, not `ps_pcie`) still
+stands on kext-ownership and class-existence evidence independent of this
+specific offset reasoning.
+
+Pivoted to a more reliable source: disassembled `enableDeviceClock` and
+`enableDevicePower` directly by symbol name in the real, unstripped
+reference `AppleARMPlatform` binary (`llvm-objdump
+--disassemble-symbols=...`, no ambiguity since these are real exported
+C++ symbols, not decompiler guesses). **Both are thin delegating shims**,
+confirmed byte-for-byte:
+
+```
+enableDeviceClock(gateArg, enable):
+  if (*(this + 0x298) == 0) return 0xe00002c7;      // "unsupported"
+  delegate = *(this + 0x290);
+  tail-call delegate->vtable[0xe0](delegate, gateArg, enable, 0, 0);
+
+enableDevicePower(gateArg, enable, outPtr):
+  if (*(this + 0x2a0) == 0) return 0xe00002c7;       // same stub, same constant
+  delegate = *(this + 0x290);
+  tail-call delegate->vtable[0xe0](delegate, gateArg, enable, outPtr, 0);
+```
+
+Both check their own presence flag (`+0x298` for clock, `+0x2a0` for
+power -- separate flags), then forward to the **same cached delegate
+object** at `+0x290`, dispatching through the **same vtable slot `+0xe0`**
+on it, arguments zero-padded to a fixed 4-parameter shape. This explains
+the earlier "unsupported" stub exactly: it's the shared fallback when no
+delegate is configured for that operation -- not evidence the mechanism
+is unused, just evidence of *which* build/config has it wired up.
+
+Searched our own 8.1/T7000 kernelcache for the same "delegate cached at a
+fixed offset, dispatch via `+0xe0`" shape and found one real match
+(`FUN_ffffff800266888c`, using offset `0x298` directly rather than the
+reference build's separate flag/delegate pair at `0x298`/`0x290` -- plausible
+given field layouts can shift between OS versions) -- but its own argument
+shape (one parameter, forwarding a fixed field rather than the caller's own
+arguments) doesn't cleanly match either enable method, so it is *not*
+confirmed as `enableDeviceClock`/`enableDevicePower` itself, only
+supporting evidence that the same delegate-shim architecture exists in
+this build too.
+
+**Net result of this pass**: a genuine, symbol-verified architectural
+fact -- the real gate toggle happens inside a **separate delegate object**
+(cached once, shared by both clock and power requests, invoked through one
+common vtable slot), not inside `AppleARMPerformanceController` itself.
+This is new, solid information, but it does not by itself locate the
+delegate's own class or its `+0xe0` handler's register write in our exact
+kernelcache. Four independent techniques across two research passes
+(vtable-offset math, string-xref, function-cluster search, and now
+real-symbol delegate-shim disassembly) have each narrowed the picture
+without landing on the final address. **This is the same class of wall
+this project's TOUCH-3 investigation hit and explicitly stopped at
+("finding the offset from here means opening a new kext, a new
+investigation") rather than push through with a guess.** Not pursuing
+further via static analysis alone; matching that precedent here too.
 
 ## Infrastructure notes worth keeping
 
