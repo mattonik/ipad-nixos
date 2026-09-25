@@ -18,15 +18,14 @@ the endpoint still never appears on the bus.
 
 ## Current status in one paragraph
 
-Every step of Apple's recovered `enableGated()` sequence has now been
-ported to Linux and hardware-tested individually, in order, with no
-crash at any point: port-hardware enable → generic ECAM host-bridge
-init → PERST# deassertion → per-port link-start write → DBI-overrides
-RMW (gated through a separate ECAM-relative accessor) → apcie-config-
-tunables RMW (through the direct per-port window). All confirmed safe.
-**But no downstream PCIe device has ever enumerated on bus 01, in any
-test.** The root port itself (`106b:1002`, Apple's own vendor ID)
-always self-identifies correctly. This is the open problem.
+The Linux implementation has hardware-confirmed that port-hardware enable,
+generic ECAM host-bridge init, PERST# deassertion, the per-port link-start
+write, DBI-overrides RMW, and `apcie-config-tunables` RMW are individually
+tolerated. **It has not yet reproduced Apple's ordering or the remaining
+port-controller programming immediately before and while the link trains.**
+No downstream PCIe device has enumerated on bus 01 in any test.
+The root port itself (`106b:1002`, Apple's own vendor ID) always
+self-identifies correctly. This is the open problem.
 
 ## Hardware / boot chain (for reproducing any test yourself)
 
@@ -226,35 +225,105 @@ hardware-driven status/side-effect bit at this specific ECAM offset
 link/PHY status register) reacting to something in the write sequence.
 **Not yet explained.**
 
+## Stage 5D research correction and next experiment design, 2026-09-25
+
+The initial handoff overstated the scope of Stage 5C. Re-reading the saved
+decompile of `AppleEmbeddedPCIEPort::enableGated()` shows that Apple applies
+the DBI lists and tunables, then performs this further ordered sequence
+before it marks the port as enabled:
+
+```
+port + 0x114 = 0
+port + 0x104 = 0xff70afff
+port + 0x100 = 0x008f5000
+invoke the callback object cached at port + 0x100
+call FUN_ffffff8002befa14(port)
+if applicable, call controller vtable slot + 0x570
+advance the port state to 1
+...
+call FUN_ffffff8002befb10(port, 0)
+port + 0x80 |= 1
+advance the port state to 2
+```
+
+Stage 5C only contains the final `port + 0x80 |= 1` part of that tail, and
+currently performs it **before** its DBI/tunable RMWs. Apple performs the
+DBI/tunable RMWs first and `+0x80 |= 1` last. Stage 5C therefore proves the
+individual writes are tolerated, but not that their sequencing matches
+Apple. The fixed value at `+0x104` is not inferred: port initialization assigns
+`0xff70afff` to its cached `+0x1b0` field. The three preceding direct writes
+and their callbacks are therefore the best-supported missing work, ahead of
+any new guessed gate, DART, MSI, or firmware change.
+
+There is already strong evidence for a non-invasive link-state probe. In the
+same Apple driver, `waitForLinkUpGated()` repeatedly calls the direct-window
+read helper at `+0x88` and treats bit 6 as its completion condition. Its
+disable path also polls `+0x8c` bit 0 and records bit 5 as an error/timeout
+condition. The pinned upstream DesignWare header supplies a secondary,
+independent diagnostic candidate: DBI `+0x728` exposes LTSSM state in bits
+0:5 (L0 is `0x11`), while `+0x72c` has link-up bit 4 and training bit 29.
+The DesignWare addresses are useful only as read-only corroboration until
+their relation to this Apple port's ECAM/DBI view is verified.
+
+**Recommended next payload: Stage 5D, read-only only.** Keep the existing
+Stage 5C write order for this diagnostic-only build and add no new writes.
+Sample direct-window `+0x088`,
+`+0x08c`, `+0x100`, `+0x104`, and `+0x114` at the current post-enable point,
+then after 10 ms, 100 ms, and 1 s. If the existing ECAM mapping can read
+them without a new access mechanism, also log the port-1 DBI candidates at
+`ECAM + 0x8728` and `ECAM + 0x872c`; otherwise omit those two reads. The
+result distinguishes a link that never leaves reset/detect from one that
+trains and fails, without changing hardware state.
+
+Do **not** implement the three `+0x100/+0x104/+0x114` writes yet. First
+finish offline decompilation of `FUN_ffffff8002befa14`,
+`FUN_ffffff8002befb10`, the callback at the object stored in `port+0x100`,
+and the controller's `+0x570` slot. Those calls may be load-bearing and are
+not safe to replace with a delay. The local Ghidra installation currently
+lacks a Java runtime, so this remaining decompile is recorded as an explicit
+research prerequisite rather than guessed around.
+
+### Findings removed from the candidate list
+
+- **Second DBI list:** ruled out for J81. The port-init trace and raw ADT
+  inspection already establish one controller-level three-record list and
+  no port-local `dbi-overrides` property. The earlier suggestion to check it
+  again was stale.
+- **MSI programming:** cannot make an absent endpoint answer its first
+  configuration read. It becomes relevant only after link-up and enumeration
+  are established, so it should not be included in Stage 5D or the first
+  missing-tail experiment.
+
+### Live-session confirmation
+
+Read-only USB-network inspection on 2026-09-25 confirmed that the iPad is
+currently running the Stage 5C test image: its log contains all three gated
+DBI RMWs and all three direct tunable RMWs, followed by a root port at
+`0000:00:01.0` and an empty bus 01. `/sys/bus/pci/devices` contains only the
+root port. A 64-byte root config dump identifies it as `106b:1002`, class
+`060400`, consistent with the boot log. No device state was changed during
+this check.
+
 ## Leading hypotheses for why no endpoint enumerates (not yet tested)
 
-1. **Missing link-up poll/settle delay.** No poll for link training
-   completion has ever been implemented -- only a fixed 100ms delay
-   after PERST# deassertion, then immediate enumeration. Real PCIe link
-   training can take longer and has a definite completion signal
-   (LTSSM state, or a `DL_Active`/link-up bit) that hasn't been
-   identified in this controller's register set yet.
-2. **A second `dbi-overrides` pass.** The decompiled dispatcher
-   (`FUN_ffffff8002bef8d8`) checks *two* separate cached pointers
-   (`port_obj+0x1c0` and `+0x1c8`) and calls the DBI-overrides applier
-   once per non-null pointer -- i.e., potentially a controller-level
-   list *and* a port-level list, applied as two separate passes. This
-   driver has only ever applied one pass (from the shared ADT
-   properties). Whether J81 genuinely has a second, port-level DBI list
-   is unconfirmed -- worth checking the real ADT again for a
-   `dbi-overrides` property specifically on the port child node (as
-   opposed to the controller/bridge node already read).
+1. **Missing Apple port-controller tail.** The exact writes at `+0x114`,
+   `+0x104`, and `+0x100`, and their callbacks, are absent from Stage 5C.
+   Stage 5C also starts the link before its DBI/tunable records, the reverse
+   of Apple's order. This is the leading hypothesis; resolve the callbacks
+   before a write-stage payload is made.
+2. **Link-state evidence is missing.** The driver has no measured signal for
+   whether the endpoint is held in reset/detect, training, or has reached
+   L0. Stage 5D is designed to obtain that evidence without adding writes.
 3. **The `0x8024` anomaly is itself diagnostic** of some link/PHY state
    machine this driver isn't accounting for -- e.g., if bit 16 is a
    "link training active" or "waiting for something" status bit, that
    might mean the link genuinely started training but got stuck, which
    a register dump immediately after (rather than a fixed delay + poll)
    might catch mid-transition.
-4. **MSI setup or another un-ported step.** Apple's driver almost
-   certainly does more before/around enumeration (interrupt/MSI
-   controller setup, a PCI capability walk) that this staged
-   implementation has deliberately never ported (explicitly out of
-   scope per every prior stage's own header comments).
+4. **Other Apple callbacks in the missing tail.** The callback object at
+   `port+0x100`, `FUN_ffffff8002befa14`, and controller vtable slot `+0x570`
+   could contain a required readiness action. This is a narrower and more
+   testable question than adding general MSI or capability code.
 
 ## Where everything lives
 
