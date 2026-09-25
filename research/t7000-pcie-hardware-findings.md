@@ -1787,7 +1787,18 @@ writes. Reuses the exact ADT-recovered offsets from the table above;
 no values guessed or borrowed from another SoC.
 
 Verified byte-exact via the established reconstruct/diff/verify
-methodology. Cross-build in progress. Full patch:
+methodology.
+
+**Cross-build verified clean, 2026-09-25**: exit 0, complete payload,
+only the same benign `dtc` warning class. Verified beyond the exit
+code: `System.map` confirms `apple_t7000_pcie_probe`/
+`apple_t7000_pcie_init`, and the built `Image` contains the new
+tuning-baseline format string with all seven offsets
+(`"port %d tuning baseline: 0x024=... 0x07c=... 0x090=... 0x0bc=...
+0x130=... 0x134=... 0xb44=..."`), confirming the baseline-capture code
+genuinely compiled in. Available as
+`m1n1-hoolock-pcie-tuning-baseline-test`; `result` now points to this
+payload. **Not yet hardware-tested.** Full patch:
 `kernel/patches/0040-pcie-apple-t7000-tuning-baseline-test.patch`.
 
 ### Real PCIe host-controller driver, Stage 4b: per-port link-start write, built ahead of Stage 4a's hardware gate, 2026-09-25

@@ -1277,6 +1277,26 @@ excluded steps or a link-training poll, not a blind retry.** Full
 record in `research/t7000-pcie-hardware-findings.md`'s "Real PCIe
 host-controller driver, Stage 4b" section.
 
+**Stage 5A implemented (Martin's own plan-B research, committed as
+`abc90ea`), 2026-09-25.** Since the current path's 100ms post-PERST
+delay plus two manual rescans found no endpoint, a longer delay alone
+isn't a credible fix. The captured J81 ADT supplies the exact
+`apcie-config-tunables`/`dbi-overrides` records Apple's driver applies
+through the per-port window before enumeration (12-byte
+`(offset, clear-mask, set-value)` triples at `0x090`/`0x130`/`0x134`
+and `0x024`/`0x07c`/`0xb44`, with DBI write-enable gated at `0x0bc`).
+`0040` adds a read-only baseline capture of all seven offsets on top of
+the already-confirmed Stage 4b v2 sequence -- no new writes, matching
+this project's read-before-write discipline. Stage 5B (the actual RMW)
+is gated on resolving whether `dbi-overrides` precede or follow
+`apcie-config-tunables` and whether either is conditional on a
+discovered PCI capability. **Cross-build verified clean, 2026-09-25**:
+exit 0, `System.map` confirms the driver symbols, built `Image` has the
+new tuning-baseline format string with all seven offsets. `result` now
+points to this payload. Not yet hardware-tested. Full record in
+`research/t7000-pcie-hardware-findings.md`'s "What the no-endpoint
+result rules out" and "Stage 5A implemented" sections.
+
 **Stage 4b (per-port link-start write) implemented, built ahead of
 Stage 4a's hardware gate, 2026-09-25.** `0037`
 adds the last piece of Apple's recovered order: setting bit 0 of the
