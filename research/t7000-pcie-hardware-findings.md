@@ -1743,11 +1743,10 @@ step:
 
 Each record is a little-endian `(offset, clear-mask, set-value)` triple; the
 recovered Apple helper implements `new = (old & ~clear-mask) | set-value`.
-It accesses these values through port 1's already-proven controller window
-and temporarily enables DBI writes at offset `0x0bc`, restoring its prior
-value afterwards. Those two mechanical facts are solid. What remains open is
-the precise grouping and ordering of the two controller-node properties
-relative to Apple capability discovery and root-port/MSI programming.
+The original claim that both lists use the port-controller window, with a
+direct DBI gate at port-window offset `0x0bc`, is corrected below: only the
+`apcie-config-tunables` list uses that direct window. `dbi-overrides` uses
+Apple's separate configuration accessor.
 
 **Stage 5A — baseline only.** Build a payload from the Stage 4b-v2 branch
 that performs no new write. After the existing link-start readback, log the
@@ -1760,13 +1759,11 @@ It deliberately does not claim link status or attempt a fourth blind rescan.
 **Stage 5B — exact Apple records, after the remaining trace check.** Recover
 from the pinned Apple driver whether `dbi-overrides` precede or follow
 `apcie-config-tunables`, whether either set is conditional on a discovered
-capability, and the DBI-enable bit semantics at `0x0bc`. Only then add one
-small RMW helper to the already-working port-window code: read the DBI gate,
-enable it exactly as Apple does, apply the confirmed records in the confirmed
-order, restore the gate even on an error, log old/new values, and continue
-with the existing PERST/link-start/enumeration sequence. Do not add MSI or
-firmware work to this experiment: MSI cannot make an endpoint answer the
-first configuration read, and firmware cannot load before enumeration.
+capability, and the DBI-enable bit semantics. Only then add the minimum
+RMW helper, with the DBI access kept separate from the already-working
+port-window helper. Do not add MSI or firmware work to this experiment: MSI
+cannot make an endpoint answer the first configuration read, and firmware
+cannot load before enumeration.
 
 This makes the next hardware run evidence-producing in either outcome. If
 Stage 5A faults or shows implausible data, stop at the mapping/ownership
@@ -1799,7 +1796,7 @@ tuning-baseline format string with all seven offsets
 genuinely compiled in. Available as
 `m1n1-hoolock-pcie-tuning-baseline-test`.
 
-**Hardware result: clean, all seven offsets read real, plausible
+**Hardware result: clean, all seven direct port-window offsets read real, plausible
 values, 2026-09-25.** postmarketOS booted normally, USB networking up
 (0% ping loss), debug shell reachable. `dmesg`:
 
@@ -1810,9 +1807,9 @@ values, 2026-09-25.** postmarketOS booted normally, USB networking up
 No fault, no implausible/garbage pattern (no `0xffffffff`, nothing
 suggesting a floating bus), no new dmesg errors. Two offsets are
 non-zero at rest (`0x090=0x00000004`, `0x130=0x00000004`); the rest
-read `0x00000000`, including the DBI write-enable gate at `0x0bc`
-(currently closed/disabled, as expected for a port that has never had
-DBI writes enabled).
+read `0x00000000`. The then-current interpretation of port-window `0x0bc`
+as the DBI gate is corrected in the next section: this experiment did **not**
+read the DBI control through Apple's configuration-access path.
 
 **Applying Apple's recovered `(offset, clear-mask, set-value)` records
 to this real baseline, for reference (not yet written)**:
@@ -1833,13 +1830,50 @@ it would clear is already clear), which is itself useful confirmation
 that the record's semantics are being read correctly, not a sign
 anything is missing. **This closes Stage 5A's hardware gate.**
 
-**Stage 5B remains gated** on the same open question the plan already
-identified: whether `dbi-overrides` precede or follow
-`apcie-config-tunables`, whether either is conditional on a discovered
-PCI capability, and the DBI-enable bit semantics at `0x0bc` (baseline
-confirms the gate is currently closed, but not what value opens it).
-Full patch:
-`kernel/patches/0040-pcie-apple-t7000-tuning-baseline-test.patch`.
+Full patch: `kernel/patches/0040-pcie-apple-t7000-tuning-baseline-test.patch`.
+
+### Stage 5B offline trace: ordering, conditions, and DBI access resolved, 2026-09-25
+
+Re-extracted the exact pinned iPad5,3 iOS 8.1 (`12B410`) kernelcache and
+verified SHA-256 `19c277d60e0a1185b1e4a1b72cda4f1f550c0b0bf670791542234a6dbbcc28bf`.
+Focused Ghidra decompilation of `AppleEmbeddedPCIEPort::init()` and
+`enableGated()` resolves the outstanding Stage 5B questions:
+
+1. Port initialization retains `dbi-overrides` from the controller first and
+   then from the port, if either property exists. J81 has the three-record
+   controller list and no port-local list. It retains
+   `apcie-config-tunables` from the controller independently.
+2. During enable, a present maximum-link-speed property is handled first.
+   Apple then applies controller DBI overrides, then optional port DBI
+   overrides, and finally applies controller tunables. The record lists are
+   conditional only on their property's presence, not on discovered endpoint
+   capabilities. J81 supplies both required controller properties.
+3. The DBI helper reads a saved control value through the parent controller's
+   configuration accessor with selector bit `0x08000000` and low offset
+   `0x0bc`, writes `saved | 1`, applies every `(offset, clear-mask,
+   set-value)` record, then restores the saved control value exactly. The
+   high selector is part of the accessor address; it is **not** a direct
+   `port_window + 0x0bc` operation.
+4. Tunables use the already-proven direct per-port controller mapping and the
+   same RMW formula, after the DBI lists. Apple does not toggle the DBI gate
+   around these tunable writes.
+
+This also explains an initially plausible but incorrect inference from Stage
+5A. The standard DesignWare definition places its DBI read-only-write control
+at `0x8bc`, bit 0; Apple's selector-plus-`0x0bc` configuration transaction is
+consistent with that DBI access model, but not yet proven to have the same
+physical address calculation under Linux. Stage 5A's direct
+`port_window + 0x0bc` read neither proves nor disproves the DBI gate state.
+The six actual target-register baselines remain valid.
+
+**Revised implementation gate.** Do not write the six records yet. First
+derive and cross-build a read-only configuration-view probe matching Apple's
+selector (`port-1 configuration address | 0x08000000`, low offset `0x0bc`).
+It must log the saved DBI control value and make no write. That confirms the
+Linux ECAM calculation reaches the same view before Stage 5B writes
+`saved | 1`, applies the three DBI records, restores the saved value, and
+then applies the three direct tunables in Apple's confirmed order. This is
+now an implementation-mapping gate, not a reverse-engineering-order gate.
 
 ### Real PCIe host-controller driver, Stage 4b: per-port link-start write, built ahead of Stage 4a's hardware gate, 2026-09-25
 

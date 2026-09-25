@@ -1281,10 +1281,11 @@ host-controller driver, Stage 4b" section.
 `abc90ea`), 2026-09-25.** Since the current path's 100ms post-PERST
 delay plus two manual rescans found no endpoint, a longer delay alone
 isn't a credible fix. The captured J81 ADT supplies the exact
-`apcie-config-tunables`/`dbi-overrides` records Apple's driver applies
-through the per-port window before enumeration (12-byte
+`apcie-config-tunables`/`dbi-overrides` records (12-byte
 `(offset, clear-mask, set-value)` triples at `0x090`/`0x130`/`0x134`
-and `0x024`/`0x07c`/`0xb44`, with DBI write-enable gated at `0x0bc`).
+and `0x024`/`0x07c`/`0xb44`). The later Stage 5B trace corrects the
+access-path assumption here: tunables use the direct port window, while
+DBI overrides use a selected configuration view.
 `0040` adds a read-only baseline capture of all seven offsets on top of
 the already-confirmed Stage 4b v2 sequence -- no new writes, matching
 this project's read-before-write discipline. Stage 5B (the actual RMW)
@@ -1304,11 +1305,12 @@ baseline produces small, well-formed deltas at every offset (`0x090:
 0x04→0x28`, `0x130: 0x04→0x07`, `0x134: 0x00→0x01`, `0x024: 0x00→0x01`,
 `0xb44: 0x00→0x02`; `0x07c` is a genuine no-op given this baseline) --
 nothing suggesting the offsets or records are wrong. **Stage 5A's
-hardware gate is closed.** Stage 5B remains gated on the same open
-question already identified: `dbi-overrides`/`apcie-config-tunables`
-ordering, capability-conditionality, and the `0x0bc` DBI-enable bit
-value (baseline confirms the gate reads closed, `0x00000000`, but not
-what value opens it). Full record in
+hardware gate is closed.** The later Stage 5B offline trace resolves
+ordering and DBI semantics: controller DBI overrides first, then
+direct-port tunables; DBI saves its selected configuration-view control,
+writes `saved | 1`, and restores it. Stage 5A's direct `0x0bc` read was
+not the DBI control access. One read-only ECAM-view probe remains before
+any DBI write. Full record in
 `research/t7000-pcie-hardware-findings.md`'s "What the no-endpoint
 result rules out" and "Stage 5A implemented" sections.
 
