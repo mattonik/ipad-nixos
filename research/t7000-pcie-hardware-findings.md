@@ -1993,6 +1993,51 @@ gate value, or apply a tunable. Its expected marker begins
 hardware observation of that marker and its `dbi_control=...` value is the only
 remaining gate before a separately reviewed Stage 5B write implementation.
 
+**Independently re-verified before hardware, 2026-09-25.** Decompiled the
+port-init function (`FUN_ffffff8002bed5bc`) directly: it sets offset `0x1b4`
+via `(*(param_1+0xa8) & 0x1f) << 0xb`, where `param_1+0xa8` is loaded
+straight from the ADT `apcie-port` property -- confirms `port_selector_base
+= 1<<11 = 0x800` for port 1 exactly as derived above, independent of the
+committed writeup. Re-ran the `configRead32` address formula by hand with
+`selector=0x08000800`, `low_offset=0xbc` and got `0x88bc`, matching.
+
+**Stage 5B hardware result: clean, marker observed exactly as predicted,
+2026-09-25.** postmarketOS booted normally, USB networking up (0% ping
+loss after a boot-recipe fix below), debug shell reachable. `dmesg`:
+`t7000-pcie dbi-ecam-read-test: port 1 selector=0x08000800 ecam+0x088bc
+dbi_control=0x00000000` -- no fault, boot continued straight through
+generic PCI enumeration (root port self-ID unchanged from every prior
+stage) and userspace init, no new dmesg errors beyond the same
+pre-existing benign lines seen on every clean boot this project has had
+(`g_multi` probe failure, `iommu-map` translation notice, PMIC `Bad cell
+count`). `dbi_control` reading `0x00000000` at rest is a plausible
+baseline: Apple's own DBI applier does `saved = read(gate); write(gate,
+saved|1); ...; write(gate, saved)`, so an untouched `0` is exactly what
+"never yet touched" should look like. **Stage 5B's read-only hardware
+gate is closed.** Next, not yet built: the actual gated RMW -- set the
+gate (`saved|1`), apply the three DBI override records at ECAM offsets
+`0x8024`/`0x807c`/`0x8b44` using the confirmed selector/offset
+decomposition, restore the gate to `saved` -- likely followed by
+`apcie-config-tunables` at the already-hardware-proven direct-window
+offsets, matching Apple's own confirmed ordering (DBI first, then
+tunables).
+
+**Boot-recipe bug found and fixed along the way, 2026-09-25**: the
+checked-in `boot/Pongo.bin` was the original pre-m1n1 PongoOS 2.6.1
+build (unchanged since project start) and has no `bootm` command at
+all -- only `bootl`/`bootr`/`bootux`/`bootx`. Every documented
+`--override-pongo "$PWD/boot/Pongo.bin"` recipe in this project's docs
+points at that exact stale file, so `boot/load_m1n1.py`'s `bootm`
+request silently no-opped three times in a row (`Bad command: bootm` on
+PongoOS's own console -- invisible to the script's own success check,
+which only verifies the USB transfer itself didn't error). Fixed by
+overwriting `boot/Pongo.bin` in place with a current flake payload's own
+bundled `Pongo.bin` (every `m1n1-hoolock-*` payload bundles an identical
+one, real `bootm` support confirmed via `strings`: `boots m1n1`) --
+see `docs/project-status.md`'s "`boot/Pongo.bin` replaced with an
+m1n1-aware build" section for the full writeup. No script depends on
+this file's exact bytes, so the fix needed no path changes.
+
 ### Real PCIe host-controller driver, Stage 4b: per-port link-start write, built ahead of Stage 4a's hardware gate, 2026-09-25
 
 The final piece of Apple's recovered order: after PERST# is deasserted,
