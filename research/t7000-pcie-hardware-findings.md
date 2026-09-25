@@ -1490,7 +1490,43 @@ link-training-completion poll (a genuine Stage 4c, not yet designed)
 would be the next evidence-gated step -- not a blind retry.
 
 Verified byte-exact via the established reconstruct/diff/verify
-methodology. Cross-build in progress. Full patch:
+methodology.
+
+**Cross-build verified clean, 2026-09-25, after a real Nix store
+corruption detour.** The first two attempts failed with `gzip:
+.../Image: No such file or directory` -- not a code problem. The
+Linux-builder VM's GC (run by the operator to clear disk space from
+earlier in this session) raced with an in-flight build: the kernel
+derivation finished compiling and was registered valid, but GC deleted
+its `Image` file before the payload-assembly step could read it back --
+a gap in Nix's temp-root protection during that handoff. Worse, the
+corrupted (registered-valid-but-incomplete) store path existed on
+**both** the local Mac and the remote builder, and each side kept
+re-populating the other with the same broken bits on retry until both
+were cleared in the right order (remote first, confirmed by real
+`nix-store --delete` output showing paths actually removed, then
+local). Once both were genuinely clean, the retry did a real recompile
+and succeeded: exit 0, complete payload, only the same benign `dtc`
+warning class. Verified beyond the exit code: the kernel's `Image` file
+is genuinely present (18 MB, not missing/empty), `System.map` confirms
+`apple_t7000_pcie_probe`/`apple_t7000_pcie_init` plus
+`pci_host_common_parse_ports`/`gpiod_direction_output` are linked in,
+and the built `Image` contains every diagnostic string including the
+new per-port controller window before/after log lines around the
+link-start write.
+
+**Reminder for future sessions**: if a Nix build fails with a file
+genuinely missing from a store path that Nix otherwise treats as valid
+(no rebuild attempted, or a rebuild that just re-copies the same broken
+bits), suspect store corruption before suspecting the code -- especially
+if GC ran on the builder recently. `nix-store --delete <path>
+<path>-dev` (and any other referencing outputs the error names) on
+*both* the local machine and the remote builder, in that order, is the
+fix; a single-sided delete just gets re-corrupted from the still-broken
+other side.
+
+**Not yet hardware-tested -- and must not be, before Stage 4a's own
+read comes back clean.** Full patch:
 `kernel/patches/0037-pcie-apple-t7000-link-start-write-test.patch`.
 
 ## Infrastructure notes worth keeping

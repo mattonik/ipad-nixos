@@ -1196,8 +1196,23 @@ link-start write with no documented settle/poll delay in Apple's own
 recovered order -- if the endpoint doesn't enumerate on this stage even
 after Stage 4a reads clean, a link-training-completion poll (a genuine
 Stage 4c, not yet designed) is the next evidence-gated step, not a
-blind retry. Verified byte-exact via reconstruct/diff/verify;
-cross-build in progress. Full record in
+blind retry. **Cross-build verified clean, 2026-09-25**, after a real
+Nix store corruption detour: the builder VM's GC (run to clear disk
+space) raced with an in-flight build and left a registered-valid-but-
+incomplete kernel output (missing `Image`) on *both* the local Mac and
+the remote builder, each re-corrupting the other on retry until both
+were cleared with `nix-store --delete` in the right order (remote,
+confirmed by its actual deletion output, then local) -- see
+`docs/build-infrastructure.md`'s new "GC-vs-build race" section for the
+full mechanism and fix, worth knowing for any future session that hits
+the same symptom. Once genuinely clean, verified beyond the exit code:
+`Image` is genuinely present, `System.map` confirms the driver symbols
+and `pci_host_common_parse_ports`/`gpiod_direction_output` are linked
+in, and the built `Image` has every diagnostic string including the new
+per-port controller window before/after log lines. Available as
+`m1n1-hoolock-pcie-link-start-write-test`; `result` deliberately still
+points at Stage 4a, not this payload -- **do not hardware-test Stage 4b
+before Stage 4a reads clean.** Full record in
 `research/t7000-pcie-hardware-findings.md`'s "Real PCIe host-controller
 driver, Stage 4b" section.
 

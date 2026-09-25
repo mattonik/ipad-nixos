@@ -142,3 +142,41 @@ path and tries to read the key with the calling user's own
 permissions). An autonomous session without interactive sudo access
 cannot self-recover from this -- flag it and wait for the operator
 rather than attempting to work around the credential boundary.
+
+## GC-vs-build race can corrupt a store path on both ends, 2026-09-25
+
+Running `nix-collect-garbage` on the builder VM *while* a `nix build` is
+in flight can delete an intermediate derivation's output file(s) after
+Nix has already registered that path as valid but before a downstream
+derivation reads it back -- a real gap in Nix's temp-root protection
+during that handoff, not something specific to this project's kernel
+builds. Symptom: a build fails with a file genuinely missing from a
+store path (e.g. `gzip: .../Image: No such file or directory`), and
+retrying just reproduces the same failure -- Nix trusts its database
+that the path is valid and never re-verifies file-by-file, so it either
+skips rebuilding entirely or (worse) copies the same incomplete bits
+from wherever else it exists.
+
+The corruption can exist on **both** the local (invoking) machine and
+the remote builder simultaneously, since build outputs get copied back
+to the local store as they complete. Fixing only one side causes the
+other to re-corrupt it on the next attempt (the still-broken side gets
+copied to the just-fixed side). The reliable fix, needing the
+operator's `sudo` on both ends:
+
+```bash
+# remote builder first
+sudo ssh builder@linux-builder 'nix-store --delete <bad-path> <bad-path>-dev'
+# then local
+sudo nix-store --delete <bad-path> <bad-path>-dev
+```
+
+Order matters -- fixing local first just lets a subsequent retry
+re-fetch the still-broken bits from the remote. `nix-store --delete`
+will name any other referencing output (e.g. a `-modules` split) it
+refuses to delete alongside; add those to the command. Confirm success
+from the printed output (`N store paths deleted, ... freed`), not just
+the absence of an error -- and don't trust a `--repair` shortcut here,
+since that flag requires `trusted-users` membership neither the
+operator's shell account nor an autonomous session has by default on
+this setup.
