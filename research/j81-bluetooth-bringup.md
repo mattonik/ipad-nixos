@@ -257,6 +257,43 @@ patch to satisfy the lookup.
 Firmware cannot explain the current zero-RX failure: lookup occurs only after
 the controller answers HCI Reset and version commands.
 
+### iOS BlueTool review, 2026-09-25
+
+The matching iPad5,3 iOS 8.1 root filesystem was decrypted and mounted
+read-only in private scratch space. Apple binaries and firmware remain outside
+the repository. This resolves two software integration details that were
+previously only assumptions.
+
+- The image runs `/usr/sbin/BlueTool` as `com.apple.BlueTool` and `BTServer`
+  as the Bluetooth service. `BTServer` opens the Bluetooth UART service, while
+  BlueTool owns controller identification and its board/firmware table.
+- BlueTool's `device -S` path reads the Bluetooth node's
+  `transport-speed`. The captured J81 ADT value is 3,000,000, so it explicitly
+  supports opening this board at 3 Mbaud. Its default `device -D` path is
+  115,200. Static inspection does not establish which path iPadOS uses for a
+  truly cold controller; do not turn this into a Linux baud-rate guess yet.
+- Its HCI local-version mapping names subversion `0x610c` **BCM4350C2**. The
+  current Linux `btbcm` table calls the same UART subversion `BCM4354`.
+  Therefore a responding J81 controller will need a board-local firmware-name
+  override rather than a global replacement of Linux's shared `0x610c` entry.
+- BlueTool selects a firmware record using the private 20-byte product ID,
+  the HCI chip identity, and the WLAN module vendor. The J81 record points to
+  the private candidate filename
+  `BCM4350C2_12.2.253.457_Riesling_OS_MUR_STC_20140916.hcd`. The product ID is
+  intentionally not reproduced here. This is a precise acquisition target,
+  pending the controller's own version response.
+- The mounted filesystem contains **no standalone `.hcd` file**. It contains
+  the filenames and selection metadata in BlueTool, plus separate BCM4350
+  Wi-Fi assets. Those Wi-Fi files must not be repurposed as Bluetooth firmware.
+
+There is one concrete follow-up after the PMIC power condition is understood:
+make an isolated J81 `hci_bcm` integration accept a proven 3 Mbaud *initial*
+speed and the exact private HCD filename. Today the driver reads `max-speed`
+as an operational speed, then falls back to its 115,200 default when no reset
+resource exists -- exactly J81's ADT shape. No patch should be built or tried
+until the powered controller provides its version response; it would otherwise
+only encode an untested assumption.
+
 ## Safest next experiment
 
 The next experiment should remain fully offline and read-only:
