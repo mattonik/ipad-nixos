@@ -1285,9 +1285,40 @@ strings, e.g. `"t7000-pcie enable-seq-test: about to write the recovered
 enable sequence for port %d"`, all present verbatim). `result` now points
 to this payload.
 
-**Not yet hardware-tested -- staged for the user to test once they
-return, per their explicit "continue... overnight" authorization not
-extending to hardware access.** Full patch:
+**Hardware result: clean, 2026-09-25.** Same DFU/palera1n recipe.
+postmarketOS booted normally, USB networking up (0% ping loss over 3
+packets), debug shell reachable. `dmesg` confirms the complete write
+sequence ran and the register transitions match the recovered order
+exactly:
+
+```
+[    0.128002] pcie-apple-t7000 610000000.pcie: t7000-pcie enable-seq-test: probe entry
+[    0.128102] pcie-apple-t7000 610000000.pcie: t7000-pcie enable-seq-test: window 9 at [mem 0x600000000-0x600001fff]
+[    0.128200] pcie-apple-t7000 610000000.pcie: t7000-pcie enable-seq-test: before port 1 refclk_en=0x11010100 perst_internal=0x00000100 unknown_10c=0x00000001 link_enable=0x00000000 ltssm=0x00000000
+[    0.128340] pcie-apple-t7000 610000000.pcie: t7000-pcie enable-seq-test: about to write the recovered enable sequence for port 1
+[    0.128538] pcie-apple-t7000 610000000.pcie: t7000-pcie enable-seq-test: enable sequence write completed
+[    0.128618] pcie-apple-t7000 610000000.pcie: t7000-pcie enable-seq-test: after port 1 refclk_en=0x11110101 perst_internal=0x00000001 unknown_10c=0x00000000 link_enable=0x00000001 ltssm=0x00000000
+[    0.128661] pcie-apple-t7000 610000000.pcie: t7000-pcie enable-seq-test: probe complete -- no PERST, no per-port window, no link-start bit, no enumeration
+```
+
+Verified register-by-register against the recovered sequence:
+`unknown_10c` clears (`0x1`→`0x0`, matches step 4), `refclk_en` gains
+both bit 0 and bit 20 (`0x11010100`→`0x11110101`, matches steps 5-6),
+`link_enable` sets bit 0 (`0x0`→`0x1`, matches step 8), and
+`perst_internal` loses bit 8 while keeping bit 0 set from the earlier
+write (`0x100`→`0x1`, matches steps 2 and 9). One genuinely informative
+detail: `ltssm` reads back `0x00000000` after the sequence, even though
+step 10 writes `3` to it twice -- the write did not visibly "stick".
+This is not a fault; a link-start register plausibly only latches once
+its preconditions (PERST deasserted, the per-port window's own
+link-start bit) are also satisfied, both intentionally still absent in
+this stage. Worth re-checking once Stage 3/4b add those pieces, not a
+sign anything is wrong here.
+
+No new dmesg errors beyond the pre-existing, unrelated `g_multi` gadget
+probe failure (`failed to start g_multi: -22`) already seen in every
+prior clean boot on this kernel. **This closes out Stage 1's hardware
+gate -- proceed to Stage 2.** Full patch:
 `kernel/patches/0033-pcie-apple-t7000-enable-sequence-write-test.patch`.
 
 ### Real PCIe host-controller driver, Stage 2: enable-sequence + generic ECAM enumeration test implemented and cross-build verified, 2026-09-25

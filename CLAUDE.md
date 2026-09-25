@@ -1106,12 +1106,21 @@ nodes carry the expected content, `System.map` has the new driver's
 probe/init/exit symbols and driver struct, and the built `Image` contains
 every one of the driver's own diagnostic `dev_info()` strings verbatim
 (confirming the code is genuinely compiled in, not just patched into a
-file that got dropped). `result` now points to this payload. **Not yet
-hardware-tested** -- staged for the user, since the overnight
-authorization is explicitly understood not to extend to hardware access
-(no DFU without the user physically present). Full record in
-`research/t7000-pcie-hardware-findings.md`'s "Real PCIe host-controller
-driver, Stage 1" section.
+file that got dropped).
+
+**Stage 1 hardware result: clean, 2026-09-25.** postmarketOS booted
+normally, USB networking up, debug shell reachable. `dmesg` confirms
+the write sequence ran and the register transitions match the recovered
+order exactly (`unknown_10c` clears, `refclk_en` gains bits 0+20,
+`link_enable` sets bit 0, `perst_internal` loses bit 8) -- one
+informative detail, the `ltssm` register reads back `0x0` even after
+writing `3` twice, plausibly because a link-start register doesn't
+latch until PERST is deasserted and the per-port window's own
+link-start bit is also set, both still intentionally absent at this
+stage. No new dmesg errors beyond the pre-existing unrelated `g_multi`
+gadget probe failure. **Stage 1's hardware gate is closed -- proceed to
+Stage 2.** Full record in `research/t7000-pcie-hardware-findings.md`'s
+"Real PCIe host-controller driver, Stage 1" section.
 
 **Stage 2 (`0034`, enable sequence + generic ECAM enumeration)
 cross-build verified clean, 2026-09-25.** Custom `pci_ecam_ops.init`
