@@ -281,6 +281,29 @@ followed by a Settings toggle. Look for `03 e6 02` and immediately preceding
 transactions. This is observational and avoids another blind PMIC write. A
 toggle-only capture is insufficient.
 
+## Live read-only baseline, 2026-09-25
+
+A fixed-command USB-network snapshot was collected from the running
+postmarketOS payload. It made no configuration, PMIC, GPIO, or UART writes;
+the D2207 reads use an I2C combined read transaction only. The private,
+address-redacted capture is deliberately ignored by Git.
+
+- The device identifies as J81 on Linux `7.3.0-rc1`.
+- `ttySAC1` remains the registered UART3 device at `0x20a0cc000`, IRQ 48,
+  with RTS/CTS flow control, and its counters are still `tx:0 rx:0`.
+- No `hci*` device, `btattach` process, or previous attach log exists. The
+  kernel has the generic H4 and Broadcom HCI UART protocols registered, so
+  this is still pre-transport, rather than a failed firmware upload.
+- D2207 configuration address `0x03e6` reads `00 00`, and GPIO data register
+  `0x0063` reads `0x20`; its GPIO2 bit is low. This repeats the established
+  no-power state without attempting to alter it.
+- This minimal image does not mount debugfs, so it cannot provide fresh
+  pinctrl or generic-power-domain detail. That absence is diagnostic-only and
+  does not weaken the ADT and earlier live evidence.
+
+This is a comparison baseline only. It supplies no rationale for another
+PMIC write; the cold-iPadOS bus capture remains the next evidence gate.
+
 ## Evidence versus inference
 
 | Statement | Status |

@@ -228,6 +228,19 @@ unbounded finger walk, and short-firmware-header read. This is independent
 confirmation that the local hardening is not redundant with a newer upstream
 driver revision.
 
+### Live read-only confirmation, 2026-09-25
+
+The running postmarketOS payload was inspected over USB networking without
+altering device configuration. The `20a08c000.spi` platform device is present,
+is bound to `apple-spi`, and has supplier links to the expected PMGR controller
+and pinctrl provider. Its modalias is `apple,s5l8960x-spi`.
+
+There is still no SPI child below that controller, no touchscreen input device,
+and no live touchscreen DT node. This is the intended state: the current
+payload proves SPI3 registration only and has not introduced a touch child.
+It adds no reason to relax the offline gate below. Debugfs is not mounted in
+the minimal image, so live pinmux detail was unavailable in this pass.
+
 ## Safest next experiment
 
 The next experiment should remain **offline and read-only**:
