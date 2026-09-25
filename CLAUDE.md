@@ -1220,9 +1220,13 @@ physically falls inside `dart_apcie1`'s own already-exclusively-claimed
 correctly refused the overlapping reservation. Not a bug in the
 recovered ADT index. **Fixed as `0038` (Stage 4a v2)**: a non-exclusive
 `devm_ioremap()` for just this one window. `0036` kept as the
-historical record. Verified byte-exact; cross-build in progress. Full
-record in `research/t7000-pcie-hardware-findings.md`'s "Real PCIe
-host-controller driver, Stage 4a" section.
+historical record. **Cross-build verified clean, 2026-09-25**: exit 0,
+complete payload, `System.map` confirms `apple_t7000_pcie_probe`/
+`apple_t7000_pcie_init`, and the built `Image` contains the
+success-path controller-window format string. `result` now points to
+this payload. Not yet hardware-tested. Full record in
+`research/t7000-pcie-hardware-findings.md`'s "Real PCIe host-controller
+driver, Stage 4a" section.
 
 **Stage 4b (per-port link-start write) implemented, built ahead of
 Stage 4a's hardware gate, 2026-09-25.** `0037`

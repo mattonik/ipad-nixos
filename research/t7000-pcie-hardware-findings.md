@@ -1590,8 +1590,22 @@ itself is kept as the historical record of this finding, not amended in
 place, matching this project's convention for patches that reached
 hardware and produced a real result.
 
-Verified byte-exact via reconstruct/diff/verify. Cross-build in
-progress.
+Verified byte-exact via reconstruct/diff/verify.
+
+**Cross-build verified clean, 2026-09-25**: exit 0, complete payload,
+only the same benign `dtc` warning class. Verified beyond the exit
+code: `System.map` confirms `apple_t7000_pcie_probe`/
+`apple_t7000_pcie_init` are present (the new
+`apple_t7000_pcie_map_window_shared()` helper itself is small and
+single-call-site, so it inlines like every other small static helper
+in this driver family -- confirmed indirectly instead via the built
+`Image` containing every diagnostic string including the success-path
+`"port %d controller window: 0x00=0x%08x 0x80=0x%08x"` format string,
+meaning the corrected mapping path genuinely compiles through to the
+read). Available as
+`m1n1-hoolock-pcie-port-controller-window-read-test-v2`; `result` now
+points to this payload. **Not yet hardware-tested -- next stage to
+test.**
 
 ### Real PCIe host-controller driver, Stage 4b: per-port link-start write, built ahead of Stage 4a's hardware gate, 2026-09-25
 
