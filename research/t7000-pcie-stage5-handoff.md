@@ -304,12 +304,15 @@ device state was changed.
   for Apple’s asynchronous link-up/link-down handling, but is not a hidden
   controller register write. A first Linux experiment can use bounded
   polling of the already identified status registers instead.
-- The optional object at `port+0xb0`, vtable slot `+0x570`, remains the one
-  unresolved call. It is deliberately conditional in Apple’s code. It must
-  be identified before claiming a byte-for-byte port, but it does not block a
-  minimal, observable link-training experiment because the documented
-  register writes, MSI setup, PERST ordering, and interrupt-free polling are
-  now independently known.
+- The optional object at `port+0xb0` is now identified: it is the PCI nub
+  assigned by `AppleEmbeddedPCIEPort::setNub(IOPCIDevice *)`, not a PCIe
+  controller helper or a DART object. Apple conditionally calls vtable slot
+  `+0x570` on that root-port `IOPCIDevice` with argument zero. The exact
+  `IOPCIDevice` virtual-method name is stripped from the iOS 8.1 kernelcache,
+  so its semantic effect remains unlabelled. This is an Apple PCI-framework
+  call on the already-created root-port object, not evidence for another
+  unknown controller register write. Linux's PCI core owns the equivalent
+  root-port object; do not imitate this opaque Apple vtable call directly.
 
 This changes the practical next write-stage design. After the read-only
 Stage 5D baseline, a minimal Stage 5E should: keep PERST asserted; apply the
@@ -317,8 +320,9 @@ already validated DBI overrides then tunables; write `+0x114 = 0`,
 `+0x104 = 0xff70afff`, `+0x100 = 0x008f5000`, `+0x124 = 0x31`, and
 `+0x128 = 0x00080008`; deassert PERST; set `+0x80` bit 0; then poll `+0x88`
 bit 6 with a bounded timeout and log `+0x8c`. It must keep the unimplemented
-Apple interrupt event source and optional `+0xb0/+0x570` call explicitly
-out of scope, rather than silently pretending they were reproduced.
+Apple interrupt event source explicitly out of scope. The opaque
+`IOPCIDevice` vtable call is Linux PCI-core territory and must not be copied
+as a controller MMIO operation.
 
 ### Findings removed from the candidate list
 
