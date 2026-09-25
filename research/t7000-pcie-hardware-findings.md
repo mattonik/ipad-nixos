@@ -1812,23 +1812,31 @@ as the DBI gate is corrected in the next section: this experiment did **not**
 read the DBI control through Apple's configuration-access path.
 
 **Applying Apple's recovered `(offset, clear-mask, set-value)` records
-to this real baseline, for reference (not yet written)**:
+to this real baseline, for reference (not yet written) -- corrected
+below**: only the three `apcie-config-tunables` rows apply directly to
+these baseline reads. The independent Stage 5B verification pass (next
+section) found that each `dbi-overrides` record's own "offset" field is
+**not** a flat register offset in this window at all -- it decomposes
+into a controller-level selector nibble and a separate low byte offset,
+reached through a completely different access mechanism (see below).
+Stage 5A's baseline reads at raw offsets `0x024`/`0x07c`/`0xb44` were
+therefore not reading the same physical registers Apple's DBI mechanism
+targets; the deltas originally listed for those three rows are not
+meaningful and have been removed.
 
 | Offset | Baseline | Clear mask | Set value | Predicted after |
 | ---: | ---: | ---: | ---: | ---: |
 | `0x090` | `0x00000004` | `0x000000ff` | `0x00000028` | `0x00000028` |
 | `0x130` | `0x00000004` | `0x00000003` | `0x00000003` | `0x00000007` |
 | `0x134` | `0x00000000` | `0x00000001` | `0x00000001` | `0x00000001` |
-| `0x024` | `0x00000000` | `0x00000001` | `0x00000001` | `0x00000001` |
-| `0x07c` | `0x00000000` | `0x00000400` | `0x00000000` | `0x00000000` (no-op) |
-| `0xb44` | `0x00000000` | `0x00000003` | `0x00000002` | `0x00000002` |
 
-Every record produces a plausible, small, well-formed delta from this
-real baseline -- nothing suggesting the offsets or records are wrong.
-`0x07c`'s record is a genuine no-op given the current baseline (the bit
-it would clear is already clear), which is itself useful confirmation
-that the record's semantics are being read correctly, not a sign
-anything is missing. **This closes Stage 5A's hardware gate.**
+Every tunables record produces a plausible, small, well-formed delta
+from this real baseline -- nothing suggesting the offsets or records
+are wrong. **This closes Stage 5A's hardware gate for the three
+tunables offsets.** The three `dbi-overrides` offsets (`0x024`, `0x07c`,
+`0xb44`) were read at this stage, and the values were real and
+non-faulting, but do not represent Apple's actual DBI target registers
+-- see the next section for what does.
 
 Full patch: `kernel/patches/0040-pcie-apple-t7000-tuning-baseline-test.patch`.
 
@@ -1864,7 +1872,12 @@ at `0x8bc`, bit 0; Apple's selector-plus-`0x0bc` configuration transaction is
 consistent with that DBI access model, but not yet proven to have the same
 physical address calculation under Linux. Stage 5A's direct
 `port_window + 0x0bc` read neither proves nor disproves the DBI gate state.
-The six actual target-register baselines remain valid.
+
+**Correction, independently verified below**: only the three
+`apcie-config-tunables` baselines (`0x090`/`0x130`/`0x134`) remain valid
+-- they go through the direct per-port window, confirmed unchanged. The
+three `dbi-overrides` baselines (`0x024`/`0x07c`/`0xb44`) do **not**
+represent Apple's real DBI targets; see below for why.
 
 **Revised implementation gate.** Do not write the six records yet. First
 derive and cross-build a read-only configuration-view probe matching Apple's
@@ -1874,6 +1887,98 @@ Linux ECAM calculation reaches the same view before Stage 5B writes
 `saved | 1`, applies the three DBI records, restores the saved value, and
 then applies the three direct tunables in Apple's confirmed order. This is
 now an implementation-mapping gate, not a reverse-engineering-order gate.
+
+### Independent verification of the Stage 5B trace, and one refinement, 2026-09-25
+
+Re-traced the same functions fresh (not by reading the notes above) using
+the same pinned kernelcache and the Ghidra project already set up this
+session, to cross-check before anything gets written to real DBI
+registers. Confirmed, precisely:
+
+- **Ordering.** `FUN_ffffff8002bee6cc` (`enableGated`) calls
+  `FUN_ffffff8002bef8d8` (checks the port object's cached controller
+  `dbi-overrides` pointer at offset `0x1c0`, then its cached port-level
+  `dbi-overrides` pointer at `0x1c8`, calling the same apply-function
+  `FUN_ffffff8002bf07d8` for each if present) strictly before the
+  `apcie-config-tunables` check at offset `0x1d0`
+  (`FUN_ffffff8002bf09a0` if non-null). Matches claim 2 exactly.
+- **Tunables mechanism.** `FUN_ffffff8002bf09a0` (the tunables applier)
+  reads/writes through `FUN_ffffff8002befd78`/`FUN_ffffff8002bef92c`,
+  which are literally `*(u32 *)(ctrl_base + offset)` on the port
+  object's own direct MMIO mapping (`param_1 + 0xd0`, the same virtual
+  address our driver's `readl`/`writel` on the per-port window use).
+  Confirms tunables need no new access primitive.
+- **DBI gate mechanism.** `FUN_ffffff8002bf07d8` (the DBI applier)
+  never touches the direct MMIO mapping at all. It calls two vtable
+  methods (slots `0x5e0` = read, `0x5e8` = write) on the *controller*
+  object (`*(long **)(param_1 + 0xa0)`, not the port), with the gate
+  access at `selector = (port_selector_base & 0xf0ffffff) | 0x08000000`,
+  low offset `0xbc` -- matches claim 3's selector bit and low offset
+  exactly.
+- **New refinement claim 3 didn't spell out**: each `dbi-overrides`
+  record's own "offset" field, inside the same apply loop, is *not* a
+  flat register offset -- it decomposes into a selector-nibble
+  (`(record_offset & 0xf00) << 16`, OR'd into the *record* selector,
+  which does **not** include the gate's `0x08000000` bit -- a different
+  selector composition than the gate access) and a low byte offset
+  (`record_offset & 0xff`). For J81's three records: `0x024` -> nibble
+  `0`, low `0x24`; `0x07c` -> nibble `0`, low `0x7c`; `0xb44` -> nibble
+  `0xb000000`, low `0x44`. None of these three raw offsets are ever used
+  as a direct MMIO offset anywhere in Apple's own driver -- confirming
+  Stage 5A's `0x024`/`0x07c`/`0xb44` baseline reads, while real and
+  non-faulting, were reading unrelated registers, not the DBI targets.
+- **Cross-checked against the real J81 ADT capture directly**
+  (`artifacts/adt/20260908T082112Z-j81.adt`, private, git-ignored): the
+  populated port's own `apcie-port` property is `0x00000001`, matching
+  this driver's `T7000_PCIE_TEST_PORT` exactly (one open question this
+  investigation hadn't explicitly closed before). The raw
+  `dbi-overrides`/`apcie-config-tunables` byte arrays decode to exactly
+  the six records already documented above -- independently re-derived
+  from the raw hex, not just re-read from the prior write-up.
+
+**Vtable slots `0x5e0`/`0x5e8` resolved, 2026-09-25**: found real debug
+strings `configRead32`/`configWrite32`/`configRead16`/`configWrite16`/
+`configRead8`/`configWrite8` in the kext and traced their cross-references
+-- `configRead32` referenced only from `FUN_ffffff8002bece24`,
+`configWrite32` only from `FUN_ffffff8002becef0`. Decompiled both in
+full; they are genuinely the vtable-slot implementations (matching
+calling convention `(controller, selector, low_offset[, value])` exactly)
+and reveal the real address formula:
+
+```
+addr_offset = (selector >> 0x10 & 0xf00) | low_offset
+            | ((selector << 4) & 0x7000)
+            | ((selector << 4) & 0xf8000)
+            | ((selector << 4) & 0xff00000)
+value = *(u32 *)(*(controller + 0xb0) + addr_offset)     // read
+*(u32 *)(*(controller + 0xb0) + addr_offset) = value     // write
+```
+
+This is a classic ECAM-style bitfield composition (`bus<<20 | dev<<15 |
+func<<12 | reg`, `selector`'s shifted bits supplying bus/dev/func,
+`low_offset` supplying the low config-register bits) accessed through
+`*(controller + 0xb0)` -- a **separate MMIO base from the direct
+per-port window at `+0xd0`** that `apcie-config-tunables` uses. In other
+words: DBI overrides are genuinely an ECAM-relative config-space
+access through the controller's own config window, not a register in
+the per-port controller window at all -- confirming the "ECAM-view
+probe" framing directly. Both functions also conditionally call
+`FUN_ffffff8002becd88` (the previously-identified "unlock" dispatcher)
+around the access, gated on the return value of a small helper
+(`FUN_ffffff8002becc84`) -- not yet decomposed, but structurally an
+optional unlock/relock wrapping the raw access, consistent with
+`_unlockConfigSpace`'s earlier-identified role as an adjacent mechanism
+rather than the primitive itself.
+
+**This closes the "still open" question from the two passes above.**
+The next safe step is a read-only probe: map the controller's ECAM/
+config-space window at `+0xb0`'s physical target (needs locating in the
+ADT -- most likely the same `pci-bridge1`/`apcie` ECAM window
+(`reg` index 0) already mapped for generic bus enumeration, not a new
+window), compute the DBI gate's address with the confirmed formula
+(`selector = port_selector_base & 0xf0ffffff | 0x08000000`, `low_offset
+= 0xbc`), and read it -- comparing against Stage 5A's already-recorded
+(and now known-irrelevant) direct-window read at raw offset `0xbc`.
 
 ### Real PCIe host-controller driver, Stage 4b: per-port link-start write, built ahead of Stage 4a's hardware gate, 2026-09-25
 
