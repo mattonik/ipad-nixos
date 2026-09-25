@@ -1144,9 +1144,17 @@ sequence, deasserts PERST# itself with a single
 `gpiod_direction_output(desc, 0)` call (matching Apple's own recovered
 single-deassert order, not an imx6-style assert-then-deassert sequence),
 followed by the standard 100ms `PCIE_RESET_CONFIG_WAIT_MS` settle delay.
-Verified byte-exact via reconstruct/diff/verify; cross-build in
-progress. Full record in `research/t7000-pcie-hardware-findings.md`'s
-"Real PCIe host-controller driver, Stage 2" and "...Stage 3" sections.
+**Cross-build verified clean, 2026-09-25**: exit 0, complete payload,
+only the same benign `dtc` warning class (now also on `pci@0,0`'s own
+`reset-gpios`). Verified beyond the exit code: the DTB's `pci@0,0` node
+resolves `reset-gpios` to a real phandle (`<0x1c 0xb3 0x01>`, `0xb3` =
+179 = the confirmed OIPG PERST pin), `System.map` confirms
+`pci_host_common_parse_ports`/`gpiod_direction_output` are genuinely
+linked in, and the built `Image` has every diagnostic string from both
+branches of the PERST-deassert helper. `result` now points to this
+payload. Not yet hardware-tested. Full record in
+`research/t7000-pcie-hardware-findings.md`'s "Real PCIe host-controller
+driver, Stage 2" and "...Stage 3" sections.
 
 **Buttons hardware-verified, 2026-09-21.** `evtest /dev/input/event0` on
 the existing `gpio-keys` device captured clean press/release events for

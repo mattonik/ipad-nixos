@@ -1375,8 +1375,24 @@ the same generic PCIe-spec settle constant `pci-host-common.h`'s own
 `pci_host_common_link_train_delay()` and `pci-imx6.c` use -- a standard
 margin, not an Apple-recovered value.
 
-Verified byte-exact via the established methodology; cross-build in
-progress. Full patch:
+**Cross-build verified clean, 2026-09-25**: `nix build
+.#packages.x86_64-linux.m1n1-hoolock-pcie-enable-enumeration-perst-test
+--no-link -L` exits 0 -- complete real payload, only the same benign
+pre-existing `dtc` warning class (now including one new instance for
+`pci@0,0`'s own `reset-gpios` property, the same "cell 0 is not a
+phandle reference" advisory this DTS already emits for `gpio-keys`
+buttons). Verified beyond the exit code: the built DTB's `pci@0,0` node
+resolves `reset-gpios` to a real phandle reference (`<0x1c 0xb3 0x01>` --
+`0xb3` = 179 decimal, the confirmed OIPG PERST pin), `System.map` has
+`apple_t7000_pcie_probe`/`apple_t7000_pcie_init` plus confirmation that
+`pci_host_common_parse_ports` and `gpiod_direction_output` are genuinely
+linked in (not dead-code-eliminated), and the built `Image` contains
+every diagnostic string from both branches of the PERST-deassert helper
+(the success path and the "no PERST# GPIO found" fallback), confirming
+the corrected logic is genuinely compiled in intact. `result` now points
+to this payload.
+
+**Not yet hardware-tested -- staged for the user.** Full patch:
 `kernel/patches/0035-pcie-apple-t7000-enable-enumeration-perst-test.patch`.
 
 ## Infrastructure notes worth keeping
