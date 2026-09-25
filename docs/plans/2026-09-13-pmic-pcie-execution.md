@@ -583,6 +583,41 @@ and earlier sessions. The device is currently running at the highest tier,
 kernel-level writable property) is now well-motivated by a complete tier
 validation sweep, not just the single 1000 mA data point it had before.
 
+### Stage 2 implemented and cross-build verified, 2026-09-25
+
+Picked up during the same overnight autonomous session as the PCIe
+driver staging work, once that thread reached a point (Stage 4b) that
+needed a hardware result before proceeding further. `kernel/patches/0017-j81-d2207-charger-writable-input-current-limit.patch`
+adds `set_property`/`property_is_writeable` callbacks to CHG-1's
+existing read-only `j81_d2207_charger.c` driver, exposing
+`POWER_SUPPLY_PROP_INPUT_CURRENT_LIMIT` as writable. The encode formula
+(`code = DIV_ROUND_CLOSEST((ma - 75) * 8 - 7, 100)`, clamped to
+`[0, 0xfd]`) is not independently re-derived -- it matches
+`boot/ipad_console.py`'s own `_charging_current_code()` exactly, the
+same formula already round-trip validated live against all five tested
+tiers. The kernel driver adds no new safety policy of its own (no
+thermal abort, no auto-restore) -- that remains userspace policy in the
+console tool, deliberately not duplicated in the kernel. Also updated
+the DTS node's own comment (`arch/arm64/boot/dts/apple/t7001-air2.dtsi`),
+which previously said "no PMIC writes are exposed" and would otherwise
+go stale.
+
+Verified byte-exact via the same reconstruct/diff/verify methodology
+used throughout the PCIe work, with one correction along the way: the
+first reconstruction attempt used the wrong base source (a stale nix
+store path that turned out to already have patches 0001-0011 applied,
+not the pristine pre-patch tree), causing spurious "previously applied"
+`patch` errors. Caught before trusting any output by checking
+`kernel/hoolock.nix`'s own `runCommand` name (`linux-hoolock-7.3-t7001-source`)
+against the confusing nix store path -- they matched exactly, confirming
+it as the real post-0001-0011 tree, at which point verification
+proceeded directly against it (no reconstruction needed) and succeeded
+cleanly. New isolated build
+(`kernel/hoolock-charging-writable-test.nix`, mirroring
+`kernel/hoolock-ans1-test.nix`'s pattern exactly -- everything
+`kernel/hoolock.nix` has, plus `0017` on top, its own dedicated payload,
+never touching the default `m1n1-hoolock-control` build).
+
 ## Acceptance criteria for this pass
 
 - D2207: either identify an evidence-backed write transaction, or document

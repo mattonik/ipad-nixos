@@ -275,6 +275,18 @@
             hoolockConfig = patchedHoolockAns1TestConfig;
           };
 
+          # Charging Stage 2 (docs/plans/2026-09-13-pmic-pcie-execution.md):
+          # a writable input_current_limit property on the D2207 charger
+          # driver. No new CONFIG needed -- CONFIG_CHARGER_J81_D2207 is
+          # already =y in patchedHoolockConfig for CHG-1's read-only
+          # driver, and this only adds functions to that same file -- so
+          # this reuses patchedHoolockConfig directly rather than
+          # deriving a new one.
+          hoolockChargingWritableTestKernel = pkgsCross.callPackage ./kernel/hoolock-charging-writable-test.nix {
+            source = inputs.hoolockLinux;
+            hoolockConfig = patchedHoolockConfig;
+          };
+
           # docs/plans/2026-09-13-j81-wifi-pcie.md's link/enumeration-test
           # kernel, per the approved plan
           # (/Users/martinp/.claude/plans/mighty-snuggling-cocke.md):
@@ -652,6 +664,11 @@
         # without pulling apart the assembled payload archive.
         hoolock-ans1-test-kernel = hoolockAns1TestKernel;
 
+        # Kernel backing the combined m1n1-hoolock-charging-writable-test
+        # payload below; exposed on its own for the same reason
+        # hoolock-ans1-test-kernel is.
+        hoolock-charging-writable-test-kernel = hoolockChargingWritableTestKernel;
+
         # Kernel backing the combined m1n1-hoolock-pcie-test payload below;
         # exposed on its own for the same reason hoolock-ans1-test-kernel is.
         hoolock-pcie-test-kernel = hoolockPcieTestKernel;
@@ -991,6 +1008,58 @@
           gzip -n -c ${hoolockAns1TestKernel}/Image > "$out/Image.gz"
 
           dtc -I dtb -O dts ${hoolockAns1TestKernel}/dtbs/apple/t7001-j81.dtb \
+            | sed -e '/^\tchosen {$/,/^\t};$/ s/framebuffer@0 {/framebuffer {/' \
+            | dtc -I dts -O dtb -p 0x10000 -o "$out/t7001-j81.dtb"
+
+          gzip -dc ${inputs.linuxAppleResources}/debug_initrd.img > initramfs.cpio
+          mkdir -p original-etc overlay/etc overlay/usr/bin
+          (cd original-etc && cpio -id --no-absolute-filenames etc/deviceinfo < ../initramfs.cpio)
+          cp original-etc/etc/deviceinfo overlay/etc/deviceinfo
+          printf '\ndeviceinfo_usb_rndis_function="ecm.usb0"\n' >> overlay/etc/deviceinfo
+          touch -d @1 overlay/etc/deviceinfo
+
+          cp ${btattachPkg}/bin/btattach overlay/usr/bin/btattach
+          chmod 755 overlay/usr/bin/btattach
+          touch -d @1 overlay/usr/bin/btattach
+
+          for f in ${i2cToolsPkg}/bin/*; do
+            cp "$f" "overlay/usr/bin/$(basename "$f")"
+            chmod 755 "overlay/usr/bin/$(basename "$f")"
+            touch -d @1 "overlay/usr/bin/$(basename "$f")"
+          done
+
+          (cd overlay
+           { printf '%s\0' "etc/deviceinfo" "usr/bin/btattach"
+             for f in ${i2cToolsPkg}/bin/*; do
+               printf 'usr/bin/%s\0' "$(basename "$f")"
+             done
+           } | cpio --null -o -H newc --owner=0:0 --reproducible
+          ) >> initramfs.cpio
+          gzip -n -c initramfs.cpio > "$out/initramfs.gz"
+
+          printf '%s\n' 'chosen.bootargs=console=tty0 loglevel=8 ignore_loglevel rdinit=/init PMOS_NO_OUTPUT_REDIRECT pd_ignore_unused clk_ignore_unused' \
+            > "$out/bootargs"
+          cat "$out/m1n1.bin" "$out/bootargs" "$out/t7001-j81.dtb" \
+            "$out/Image.gz" "$out/initramfs.gz" > "$out/m1n1-linux.bin"
+          sha256sum "$out/Pongo.bin" "$out/m1n1.bin" "$out/m1n1-linux.bin" \
+            > "$out/SHA256SUMS"
+        '';
+
+        # Charging Stage 2 test payload
+        # (docs/plans/2026-09-13-pmic-pcie-execution.md) -- identical to
+        # m1n1-hoolock-control above in every respect except the kernel
+        # (hoolockChargingWritableTestKernel instead of hoolockKernel),
+        # so the new writable input_current_limit property is exercised
+        # only when this payload is deliberately chosen.
+        m1n1-hoolock-charging-writable-test = pkgs.runCommand "ipad-air2-m1n1-hoolock-charging-writable-test" {
+          nativeBuildInputs = [ pkgs.gzip pkgs.dtc pkgs.cpio ];
+        } ''
+          mkdir -p "$out"
+          cp ${inputs.hoolockDocs}/binaries/Pongo.bin "$out/Pongo.bin"
+          cp ${inputs.hoolockM1n1}/m1n1.bin "$out/m1n1.bin"
+          gzip -n -c ${hoolockChargingWritableTestKernel}/Image > "$out/Image.gz"
+
+          dtc -I dtb -O dts ${hoolockChargingWritableTestKernel}/dtbs/apple/t7001-j81.dtb \
             | sed -e '/^\tchosen {$/,/^\t};$/ s/framebuffer@0 {/framebuffer {/' \
             | dtc -I dts -O dtb -p 0x10000 -o "$out/t7001-j81.dtb"
 
