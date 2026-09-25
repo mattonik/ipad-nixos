@@ -2136,3 +2136,77 @@ read comes back clean.** Full patch:
   base, each swapped in via its own `kernel/hoolock-pcie-*.nix` file and
   `flake.nix` output. This keeps every test's driver and DT change fully
   self-contained and lets any of them be rebuilt or reread independently.
+
+### Real PCIe host-controller driver, Stage 5C: dbi-overrides/apcie-config-tunables RMW, 2026-09-25
+
+Implements the actual gated write, per Apple's confirmed order: `dbi`
+gate saved, set to `saved|1`, three `dbi-overrides` records applied
+through the ECAM window at `0x8024`/`0x807c`/`0x8b44`, gate restored to
+`saved` -- then three `apcie-config-tunables` records applied through
+the already-mapped direct port-controller window at `0x090`/`0x130`/
+`0x134`. All six `(offset, clear-mask, set-value)` triples are the exact
+ADT-recovered values, no new guessing. `kernel/patches/0042-...`.
+**Cross-build verified clean, 2026-09-25**: exit 0, checksums match,
+`System.map` has `t7000_pcie_rmw`/`apple_t7000_pcie_probe` linked, built
+`Image` contains all four new `dbi-write-test` log format strings.
+
+**Hardware result: clean write, no crash, but still no downstream
+endpoint, 2026-09-25.** postmarketOS booted normally, USB networking up.
+`dmesg`:
+
+```
+dbi gate saved=0x00000000, setting saved|1
+dbi-override 0x08024: 0x00000000 -> 0x00010001
+dbi-override 0x0807c: 0x00733c12 -> 0x00733812
+dbi-override 0x08b44: 0x000000d3 -> 0x000000d2
+dbi gate restored to 0x00000000 (readback 0x00000000)
+config-tunable 0x00090: 0x00000004 -> 0x00000028
+config-tunable 0x00130: 0x00000004 -> 0x00000007
+config-tunable 0x00134: 0x00000000 -> 0x00000001
+```
+
+Two of the three `dbi-overrides` records and all three `apcie-config-
+tunables` records match the simple `(old & ~clear-mask) | set-value`
+formula exactly (`0x807c`: bit 10 cleared as expected; `0x8b44`: low two
+bits go from `0b11` to `0b10` as expected; all three tunables land
+exactly on their predicted values). **One genuine anomaly**: `0x8024`'s
+computed value should be `0x00000001` (clear-mask/set-value both `0x1`
+against a `0` baseline), but the readback immediately after the write
+shows `0x00010001` -- bit 16 set, which this driver never wrote. Since
+the gate write/restore bracketing this record succeeded cleanly (`saved`
+read back as `0x00000000` again afterward, unaffected), this isn't a
+gate-timing artifact on our side; it looks like a real hardware-driven
+status/side-effect bit at this specific ECAM offset, reacting to
+something in the write sequence (most plausibly the gate being active
+during this specific write, or a PCIe-core response triggered by
+`0x8024` itself, which was `dbi-overrides`' own first raw ADT offset
+`0x024` -- a plausible DesignWare-PCIe "port logic" link/PHY status
+register). Not yet explained; worth revisiting with a targeted read-only
+probe of `0x8024` alone if this stage's overall no-endpoint result isn't
+resolved another way first.
+
+Bus enumeration (boot-time and after a manual `echo 1 >
+/sys/bus/pci/rescan` ~60s later) still found only the root port itself
+(`00:01.0`, unchanged `106b:1002` self-ID) -- **no BCM4350 on bus 01**,
+matching Stage 4b v2's own no-endpoint result exactly. No new dmesg
+errors related to PCIe (one unrelated, likely-transient HDQ battery-gauge
+read timeout appeared this boot -- a known-flaky protocol per
+`research/j81-battery-hdq.md`'s own BAT-4 history, on a completely
+separate bus with no relation to PCIe ECAM access).
+
+**This is now the second stage (after Stage 4b v2) to confirm the write
+side of this investigation is safe end-to-end while still not producing
+enumeration.** Apple's `enableGated()` order recovered so far (DBI
+overrides, tunables, then the link-start write already implemented in
+Stage 4b) has now been fully reproduced on real hardware with no fault
+-- meaning either: (a) a genuine link-training/settle delay is still
+missing after these writes (no poll for link-up was attempted this
+stage), (b) some other step in Apple's recovered order runs between
+these writes and generic enumeration that this staged implementation
+hasn't ported yet (MSI setup, a capability-conditional step, or a second
+pass through `enableGated()`'s own dispatcher noted earlier -- it checks
+*two* cached DBI-overrides pointers, `param_1+0x1c0` and `+0x1c8`,
+calling the apply function up to twice), or (c) the `0x8024` anomaly
+above is itself diagnostic of something not yet understood about this
+register's real role. Next is investigating one of these leads with
+static analysis or a targeted read-only probe, not a blind rescan retry.
