@@ -1343,10 +1343,29 @@ full 30s), current stable ~100-115 mA net charging, temperature flat at
 in the same ~100-115 mA band, suggesting the battery's own
 charge-acceptance rate, not the input-current ceiling, is the real
 bottleneck once it clears system draw. **All five planned tiers now
-validated live; currently running at 2400 mA by explicit choice.** Stage
-2 (kernel-level writable sysfs property, `kernel/patches/0017-...`) is
-now well-motivated by a complete sweep, not started -- pick that up next
-if asked to continue this thread. Full record in
+validated live; currently running at 2400 mA by explicit choice.**
+
+**Charging Stage 2 implemented, 2026-09-25.** `kernel/patches/0017-...`
+adds `set_property`/`property_is_writeable` to CHG-1's existing
+read-only `j81_d2207_charger.c` driver, exposing
+`POWER_SUPPLY_PROP_INPUT_CURRENT_LIMIT` as writable -- the same encode
+formula `boot/ipad_console.py`'s own already-validated
+`_charging_current_code()` uses, not re-derived, with no new
+kernel-side safety policy (the thermal-abort/auto-restore behavior
+stays userspace-only in the console tool). New isolated payload
+(`kernel/hoolock-charging-writable-test.nix`, mirroring
+`kernel/hoolock-ans1-test.nix`'s pattern), never touching the default
+control build. Verified byte-exact via reconstruct/diff/verify -- one
+correction along the way, a wrong assumed base source (a nix store path
+that already had patches 0001-0011 applied) was caught before trusting
+any diff, resolved by confirming it against `kernel/hoolock.nix`'s own
+`runCommand` name. **Cross-build blocked, not a code issue**: the
+Linux-builder VM's 40 GB disk filled from five back-to-back kernel
+builds this session (the PCIe Stages plus this one); the build failed
+mid-`rsync` with `No space left on device`. Clearing it needs `sudo`
+credentials this autonomous session doesn't have -- flagged rather than
+worked around; see `docs/build-infrastructure.md`'s "Disk exhaustion
+from many builds in one session" section. Full record in
 `docs/plans/2026-09-13-pmic-pcie-execution.md`.
 
 **BAT-4 hardware gate: real result, 2026-09-10.** UART5 (`ttySAC2`) registers

@@ -113,3 +113,32 @@ for a VM that was never the real builder. Only ever delete the *wrong*
 location's files; never touch the canonical `ipad-nixos/` copy without
 first confirming (`ps aux | grep vzvm`, check which `vzvm.json` path it's
 running) that nothing is actively using it.
+
+## Disk exhaustion from many builds in one session, 2026-09-25
+
+Five full kernel builds back-to-back in one overnight session (PCIe
+Stages 1-4a, then the charging Stage 2 test) filled the VM's 40 GB disk:
+the 5th build (`m1n1-hoolock-charging-writable-test`) failed mid-`rsync`
+with `No space left on device`, not a code or patch error -- `nix build`
+still printed `[exited with code 0]` in its own wrapper output because
+that's the exit code of the `tee` pipeline, not of the underlying build;
+always check the log body for `error:`, not just the reported exit code,
+when a build result looks suspiciously fast or thin. This is **not** the
+previously-documented `CONFIG_DEBUG_INFO` cause (confirmed already
+disabled in `patchedHoolockConfig`, `flake.nix:171-173`) -- just ordinary
+accumulated store paths from several real builds never garbage-collected
+in between.
+
+**Recovery needs the operator's own credentials and hasn't been run
+yet.** `nix store gc`/`nix-collect-garbage` on the builder needs either
+`sudo ssh builder@linux-builder '...'` (interactive password) or `nix
+store gc --store ssh-ng://builder@linux-builder` (which, tried directly,
+still fails with `Load key "/etc/nix/builder_ed25519": Permission
+denied` -- that key is root-owned; regular `nix build` invocations work
+because the nix-daemon, running as root, makes the delegated-builder SSH
+connection on the caller's behalf, but a direct client-side `nix store
+gc --store ssh-ng://...` does not go through that same daemon-mediated
+path and tries to read the key with the calling user's own
+permissions). An autonomous session without interactive sudo access
+cannot self-recover from this -- flag it and wait for the operator
+rather than attempting to work around the credential boundary.
