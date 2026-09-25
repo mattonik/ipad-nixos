@@ -1132,8 +1132,19 @@ writes during BAR-sizing, unlike any prior bounded-read test) doesn't
 hang. Verified beyond the exit code the same way as Stage 1, plus
 confirming the generic ECAM/host-common machinery
 (`pci_host_common_init`, `pci_ecam_create`, `pci_generic_config_read`/
-`_write`) is genuinely linked in. `result` now points to this payload.
-Not yet hardware-tested.
+`_write`) is genuinely linked in.
+
+**Stage 2 hardware result: clean, 2026-09-25.** postmarketOS booted
+normally, USB networking up, debug shell reachable. `dmesg` confirms
+real generic PCI enumeration ran through the *entire* core, not just
+register writes: the root port's own config space responded and
+self-identified with Apple's real vendor ID (`[106b:1002]` type 01,
+class `0x060400`, "PCIe Root Port"), got bridge-configured onto bus 01.
+No downstream device found (expected -- PERST still asserted). One
+benign line (`no iommu-map translation for id 0x8`, the root port's
+pre-renumbering requester ID not covered by this DT's single-entry
+iommu-map -- not an error). No other new dmesg errors. **Stage 2's
+hardware gate is closed -- proceed to Stage 3.**
 
 **Stage 3 design correction caught before building, 2026-09-25**: the
 original plan assumed `pci_host_common_init()` automatically deasserts

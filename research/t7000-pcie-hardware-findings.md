@@ -1357,7 +1357,40 @@ plus confirmation that the generic ECAM/host-common machinery
 driver's own diagnostic `dev_info()` strings verbatim. `result` now
 points to this payload.
 
-**Not yet hardware-tested -- staged for the user.** Full patch:
+**Hardware result: clean, 2026-09-25.** postmarketOS booted normally,
+USB networking up (0% ping loss), debug shell reachable. `dmesg`
+confirms the same register transitions as Stage 1 (unchanged, as
+expected), followed by real generic PCI enumeration:
+
+```
+[    0.126391] pcie-apple-t7000 610000000.pcie: PCI host bridge to bus 0000:00
+[    0.126714] pci 0000:00:01.0: [106b:1002] type 01 class 0x060400 PCIe Root Port
+[    0.126752] pci 0000:00:01.0: PCI bridge to [bus 00]
+[    0.126777] pci 0000:00:01.0:   bridge window [io  0x0000-0x0fff]
+[    0.126803] pci 0000:00:01.0:   bridge window [mem 0x00000000-0x000fffff]
+[    0.126830] pci 0000:00:01.0:   bridge window [mem 0x00000000-0x000fffff pref]
+[    0.126888] pci 0000:00:01.0: PME# supported from D0 D3hot D3cold
+[    0.127023] OF: /soc/pcie@610000000: no iommu-map translation for id 0x8 on (null)
+[    0.128164] pci 0000:00:01.0: bridge configuration invalid ([bus 00-00]), reconfiguring
+[    0.128496] pci 0000:00:01.0: PCI bridge to [bus 01]
+```
+
+**This is a genuinely new, positive result beyond "didn't hang"**: the
+root port's own config space responded correctly and identified itself
+with Apple's real vendor ID -- `[106b:1002]`, type 01 (PCI-to-PCI
+bridge), class `0x060400` (PCI bridge) -- confirming the ECAM/config
+access path works correctly through the *entire* generic PCI core
+(`pci_host_probe()`'s full bus-walk, bridge discovery, and BAR-sizing
+config writes), not just the register-level reads/writes prior tests
+exercised. No downstream device was found behind the bridge, exactly as
+expected -- PERST is still asserted in this stage, so the link cannot
+train. The `no iommu-map translation for id 0x8` line is benign: the
+generic PCI/IOMMU glue looks up a translation for the root port's own
+requester ID before bus renumbering, and this DT's `iommu-map` only
+declares the expected post-renumbering downstream device ID (`0x100`),
+not the root port's own -- not an error, no OF/IOMMU code path
+faulted. No other new dmesg errors. **Stage 2's hardware gate is closed
+-- proceed to Stage 3.** Full patch:
 `kernel/patches/0034-pcie-apple-t7000-enable-enumeration-test.patch`.
 
 ### Real PCIe host-controller driver, Stage 3: a design correction caught before building -- `pci_host_common_parse_ports()` is not automatic, 2026-09-25
