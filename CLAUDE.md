@@ -1223,10 +1223,28 @@ recovered ADT index. **Fixed as `0038` (Stage 4a v2)**: a non-exclusive
 historical record. **Cross-build verified clean, 2026-09-25**: exit 0,
 complete payload, `System.map` confirms `apple_t7000_pcie_probe`/
 `apple_t7000_pcie_init`, and the built `Image` contains the
-success-path controller-window format string. `result` now points to
-this payload. Not yet hardware-tested. Full record in
-`research/t7000-pcie-hardware-findings.md`'s "Real PCIe host-controller
-driver, Stage 4a" section.
+success-path controller-window format string.
+
+**Stage 4a v2 hardware result: clean, 2026-09-25 -- the fix works.**
+postmarketOS booted normally, USB networking up. `dmesg` (checked
+against both log prefixes this time) shows the per-port controller
+window read succeeding for the first time: `port 1 controller window:
+0x00=0x00000000 0x80=0x00000000` -- no `-EBUSY`, no probe failure,
+`probe()` returned 0. Both offsets reading `0x00000000` is a plausible
+at-rest value, not a fault: offset `0x80` bit 0 is exactly the
+link-start bit Stage 4b sets, correctly reading clear since it's never
+been written. Generic bus enumeration proceeded normally afterward, no
+new dmesg errors. **Stage 4a's hardware gate is closed for real.** Full
+record in `research/t7000-pcie-hardware-findings.md`'s "Real PCIe
+host-controller driver, Stage 4a" section.
+
+**Stage 4b v2 implemented, 2026-09-25.** `0037` (the original Stage 4b,
+built ahead of Stage 4a's hardware result per this project's precedent)
+was never itself tested, but carries the identical exclusive-mapping
+bug Stage 4a hit -- it would have failed the same `-EBUSY` way.
+Implemented `0039`: the same non-exclusive `devm_ioremap()` fix applied
+to the write path before this stage is ever tested for the first time.
+Verified byte-exact; cross-build in progress.
 
 **Stage 4b (per-port link-start write) implemented, built ahead of
 Stage 4a's hardware gate, 2026-09-25.** `0037`
