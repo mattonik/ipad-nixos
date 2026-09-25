@@ -1456,7 +1456,37 @@ every diagnostic string from both branches of the PERST-deassert helper
 the corrected logic is genuinely compiled in intact. `result` now points
 to this payload.
 
-**Not yet hardware-tested -- staged for the user.** Full patch:
+**Hardware result: clean, 2026-09-25.** postmarketOS booted normally,
+USB networking up (0% ping loss), debug shell reachable. `dmesg`
+confirms the corrected PERST-handling code genuinely executed, not just
+compiled:
+
+```
+[    0.128072] pcie-apple-t7000 610000000.pcie: t7000-pcie enable-enum-perst-test: deasserting PERST#
+[    0.231319] pcie-apple-t7000 610000000.pcie: t7000-pcie enable-enum-perst-test: init complete, handing back to generic ECAM core
+```
+
+The ~103ms gap between these two lines is strong direct evidence the
+deassertion path genuinely ran, not just logged: it matches the
+`msleep(PCIE_RESET_CONFIG_WAIT_MS)` (100ms) call immediately after
+`gpiod_direction_output()` almost exactly. The "no PERST# GPIO found,
+nothing to deassert" fallback message did **not** appear, confirming
+`pci_host_common_parse_ports()` genuinely discovered the `pci@0,0`
+node's `reset-gpios` property and `gpiod_direction_output()` was
+actually called on a real descriptor -- this is the first hardware
+confirmation that the corrected Stage 3 design (the fix for the
+disproven "automatic PERST deassertion" assumption) is not just
+theoretically right but actually works end to end on this hardware.
+
+Generic PCI enumeration proceeded exactly as in Stage 2 -- same root
+port self-identification (`[106b:1002]` type 01, class `0x060400`),
+same bridge reconfiguration onto bus 01, same benign `no iommu-map
+translation for id 0x8` line, still **no downstream device found**.
+This is the expected result, not a failure: Apple's own recovered order
+has PERST deassertion as the second-to-last step, with the per-port
+controller window's own link-start bit write (Stage 4b) still needed
+before the link can actually train. No other new dmesg errors. **Stage
+3's hardware gate is closed -- proceed to Stage 4a.** Full patch:
 `kernel/patches/0035-pcie-apple-t7000-enable-enumeration-perst-test.patch`.
 
 ### Real PCIe host-controller driver, Stage 4a: bounded per-port controller window read (no write yet), 2026-09-25

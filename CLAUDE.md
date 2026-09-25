@@ -1172,9 +1172,21 @@ resolves `reset-gpios` to a real phandle (`<0x1c 0xb3 0x01>`, `0xb3` =
 `pci_host_common_parse_ports`/`gpiod_direction_output` are genuinely
 linked in, and the built `Image` has every diagnostic string from both
 branches of the PERST-deassert helper. `result` now points to this
-payload. Not yet hardware-tested. Full record in
-`research/t7000-pcie-hardware-findings.md`'s "Real PCIe host-controller
-driver, Stage 2" and "...Stage 3" sections.
+payload.
+
+**Stage 3 hardware result: clean, 2026-09-25.** postmarketOS booted
+normally, USB networking up. `dmesg` shows a ~103ms gap between
+`deasserting PERST#` and the next log line -- matching the added
+`msleep(100ms)` almost exactly, real direct evidence the corrected
+PERST-handling code genuinely ran (the "no PERST# GPIO found" fallback
+did *not* appear, confirming `pci_host_common_parse_ports()` genuinely
+found the `reset-gpios` descriptor). Bus enumeration proceeded exactly
+as Stage 2 -- same root port self-ID, still no downstream device found,
+exactly as expected since the per-port link-start write (Stage 4b) is
+still needed before the link can train. No other new dmesg errors.
+**Stage 3's hardware gate is closed -- proceed to Stage 4a.** Full
+record in `research/t7000-pcie-hardware-findings.md`'s "Real PCIe
+host-controller driver, Stage 2" and "...Stage 3" sections.
 
 **Stage 4a (bounded per-port controller window read, no write yet)
 implemented, 2026-09-25.** Apple's recovered order's final step sets bit
