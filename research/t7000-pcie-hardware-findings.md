@@ -1395,6 +1395,51 @@ to this payload.
 **Not yet hardware-tested -- staged for the user.** Full patch:
 `kernel/patches/0035-pcie-apple-t7000-enable-enumeration-perst-test.patch`.
 
+### Real PCIe host-controller driver, Stage 4a: bounded per-port controller window read (no write yet), 2026-09-25
+
+Apple's recovered order finishes with one more step this project hasn't
+implemented yet: after PERST is deasserted, set bit 0 of the *per-port
+controller window's* own config register at offset `0x80` to start the
+actual link attempt (`docs/plans/2026-09-13-j81-wifi-pcie.md`'s
+"Enable-sequence checkpoint", step 5). That per-port window (ADT reg
+index `2 * port + 1` = 3 for port 1, physical address `0x602004000`) has
+never been touched by any test in this investigation -- every prior
+register access (`0019`-`0035`) was either the shared window (reg index
+9) or the ECAM/config-space window (reg index 0), both independently
+proven safe to read *and* write across many rounds before any write was
+attempted on them (`0020`/`0024` read the shared window repeatedly
+before `0027`/`0028` ever wrote to the DART; `0021`/`0022` read ECAM
+before `0023`/`0018` ever ran a full bus scan). Rather than write to the
+per-port window on the very first touch, this stage applies that same
+discipline: it adds exactly one new variable, a single bounded, logged
+read of that window (offsets `0x00` and `0x80`), still no write. The
+actual link-start write is deliberately deferred to a later stage (4b),
+gated on this read succeeding cleanly.
+
+**ADT index derivation double-checked before committing to it.** The
+existing plan doc's own register-window table (see
+"Window-role checkpoint" above) labels ADT entries by the literal
+address digit -- entry 3 (`0x602004000`) is called "port 2" there, since
+"2" appears in the address. This looks like it could contradict using
+index 3 for "port 1," but it's a different, purely descriptive labeling
+convention from Apple's own 0-indexed `port` C variable, which this
+driver already uses consistently for the shared-window stride
+(`base + port * 0x80`) -- and the shared window's `port = 1` stride
+block was already hardware-confirmed populated by `0024`'s real
+non-trivial register readback. `AppleEmbeddedPCIEPort` maps
+controller-window resource `2 * port + 1` using that same variable, so
+`port = 1` (the confirmed populated port) maps to ADT index 3, matching
+what every implementation note in this project has already stated. No
+correction was needed here, but resolving the apparent conflict
+explicitly (rather than leaving it as a coincidence) is itself part of
+why this stage reads before writing: a plausible register value at
+offset `0x80` is further evidence the index is right, and an obvious
+fault would be a reason to re-derive it.
+
+Verified byte-exact via the established reconstruct/diff/verify
+methodology. Cross-build in progress. Full patch:
+`kernel/patches/0036-pcie-apple-t7000-port-controller-window-read-test.patch`.
+
 ## Infrastructure notes worth keeping
 
 - **`gaster pwn` + raw `irecovery -f`/`-c go` does not reliably reach

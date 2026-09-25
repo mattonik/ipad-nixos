@@ -1156,6 +1156,26 @@ payload. Not yet hardware-tested. Full record in
 `research/t7000-pcie-hardware-findings.md`'s "Real PCIe host-controller
 driver, Stage 2" and "...Stage 3" sections.
 
+**Stage 4a (bounded per-port controller window read, no write yet)
+implemented, 2026-09-25.** Apple's recovered order's final step sets bit
+0 of the *per-port controller window's* own config register at offset
+`0x80` to start the link attempt -- but that window (ADT index `2 *
+port + 1` = 3 for port 1) has never been touched by any test in this
+investigation, unlike the shared/ECAM windows which both had many
+bounded reads before any write. Applying that same discipline: `0036`
+adds one bounded, logged read (offsets `0x00` and `0x80`) of the
+per-port window, still no write -- the link-start write is a later,
+separately gated stage (4b). Also explicitly resolved an apparent
+labeling conflict before trusting the ADT index: the plan doc's own
+register table labels index 3 as "port 2" (by literal address digit),
+which looked like it could contradict using it for "port 1," but that's
+a different, address-digit-based convention from Apple's own 0-indexed
+`port` variable (already used for the shared-window stride, where
+`port = 1` was hardware-confirmed populated by `0024`) -- no correction
+needed, index 3 is right. Verified byte-exact; cross-build in progress.
+Full record in `research/t7000-pcie-hardware-findings.md`'s "Real PCIe
+host-controller driver, Stage 4a" section.
+
 **Buttons hardware-verified, 2026-09-21.** `evtest /dev/input/event0` on
 the existing `gpio-keys` device captured clean press/release events for
 Home (`KEY_HOMEPAGE`), Power, Volume Up and Volume Down. No driver work

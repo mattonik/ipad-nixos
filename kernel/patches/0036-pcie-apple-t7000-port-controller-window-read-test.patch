@@ -1,0 +1,404 @@
+diff --git a/drivers/pci/controller/pcie-apple-t7000.c b/drivers/pci/controller/pcie-apple-t7000.c
+--- a/drivers/pci/controller/pcie-apple-t7000.c
++++ b/drivers/pci/controller/pcie-apple-t7000.c
+@@ -1,59 +1,281 @@
+ // SPDX-License-Identifier: GPL-2.0-only
+ /*
+- * Compile-only groundwork for the Apple T7000-family PCIe host controller.
++ * Apple T7000-family PCIe -- enable-sequence + generic-enumeration +
++ * PERST + per-port controller window read test.
+  *
+- * The real J81 ADT describes four ports, four port interrupts and twelve
+- * register windows. Corellium's older H9P driver confirms the four-port
+- * controller shape, but its register layout, SART and hard-coded PHY sequence
+- * are not valid for T7000. The disabled device tree preserves J81's exact
+- * resource ordering without naming the unresolved small-window roles. Keep
+- * this driver inert until those roles, DART attachment and ADT-provided
+- * tunables have been implemented.
++ * Stage 4a of implementing the real host-controller driver. `0035`
++ * (Stage 3: the enable sequence + generic ECAM enumeration + PERST
++ * deassertion) is cross-build verified and awaiting its own hardware
++ * result. Apple's recovered order finishes with one more step this
++ * project hasn't implemented yet: after PERST is deasserted, set bit 0
++ * of the *per-port controller window's* own config register at offset
++ * 0x80 to start the actual link attempt (see
++ * docs/plans/2026-09-13-j81-wifi-pcie.md's "Enable-sequence checkpoint",
++ * step 5).
++ *
++ * That per-port controller window (ADT reg index `2 * port + 1` = 3 for
++ * port 1, physical address 0x602004000, 4 KiB) has never been touched
++ * by any test in this investigation -- every prior register access
++ * (`0019`-`0035`) was either the shared window (reg index 9) or the
++ * ECAM/config-space window (reg index 0), both independently proven
++ * safe to read *and* write across many rounds before this. The
++ * per-port window has had zero prior reads. Following this project's
++ * own established discipline (never write to a register region that
++ * hasn't first been read safely -- see how `0020`/`0021`/`0022`/`0024`
++ * all preceded any write to their respective windows), this stage adds
++ * exactly one new variable: a single bounded, logged *read* of that
++ * window's offset 0x80 (plus offset 0x00 as a baseline sanity check),
++ * still with no write. The actual link-start *write* is deliberately
++ * deferred to a later stage (4b), gated on this read succeeding
++ * cleanly.
++ *
++ * ADT index derivation: docs/plans/2026-09-13-j81-wifi-pcie.md's
++ * register-window table labels ADT entries 1/3/5/7 by the literal
++ * address digit (e.g. entry 3 = 0x602004000 is called "port 2" there,
++ * since "2" appears in the address) -- a different, purely descriptive
++ * convention from Apple's own 0-indexed `port` C variable used
++ * throughout this driver (and already hardware-confirmed: the shared
++ * window's port-1 stride block, offset 0x80 within reg index 9, was
++ * confirmed populated with real non-trivial register values by `0024`).
++ * `AppleEmbeddedPCIEPort` maps controller-window resource `2 * port + 1`
++ * using that same 0-indexed `port` variable, so port 1 (the confirmed
++ * populated port) maps to ADT index 2*1+1 = 3 -- not the doc table's
++ * "port 1" label (index 1), which is address-digit-1, a different port
++ * in Apple's own numbering. This bounded read is itself a direct test
++ * of that derivation: a plausible, non-fault register value here is
++ * evidence the index is right; an obvious fault or implausible pattern
++ * would be evidence to re-derive it before ever writing.
++ *
++ * Everything else is unchanged from Stage 3 -- see that patch's own
++ * header comment for the PERST-deassertion correction, and `0033`'s for
++ * the enable-sequence evidence trail.
+  */
+ 
+-#include <linux/errno.h>
++#include <linux/bitops.h>
++#include <linux/delay.h>
++#include <linux/err.h>
++#include <linux/gpio/consumer.h>
++#include <linux/io.h>
+ #include <linux/module.h>
+-#include <linux/of.h>
+ #include <linux/of_address.h>
++#include <linux/pci-ecam.h>
+ #include <linux/platform_device.h>
+ 
+-#define APPLE_T7000_PCIE_NUM_PORTS	4
+-#define APPLE_T7000_PCIE_NUM_REGIONS	12
++#include "pci-host-common.h"
+ 
+-static int apple_t7000_pcie_validate_firmware(struct platform_device *pdev)
++/*
++ * Shared root-complex register window (ADT reg index 9, 0x600000000,
++ * 0x2000 bytes): one 0x80-byte block per port. Offsets/bits/delays are
++ * recovered exactly, not guessed -- see the module comment above.
++ */
++#define T7000_PCIE_PORT_STRIDE			0x80
++#define T7000_PCIE_REFCLK_EN			0x100
++#define T7000_PCIE_PERST_INTERNAL		0x108
++#define T7000_PCIE_UNKNOWN_10C			0x10c
++#define T7000_PCIE_LINK_ENABLE			0x118
++#define T7000_PCIE_LTSSM_BASE			0x820
++#define T7000_PCIE_LTSSM_STRIDE		0x40
++
++#define T7000_PCIE_REFCLK_EN_MUXED_AUXCLK_AUTO_DIS	BIT(20)
++#define T7000_PCIE_PERST_INTERNAL_BIT8			BIT(8)
++
++#define T7000_PCIE_REG_SHARED			9
++
++/*
++ * Per-port controller window: ADT reg index 2*port+1. Port 1 (the
++ * confirmed populated port) is index 3, physical address 0x602004000 --
++ * see the module comment above for the full derivation.
++ */
++#define T7000_PCIE_REG_PORT_CONTROLLER(port)	(2 * (port) + 1)
++#define T7000_PCIE_PORT_CONFIG			0x80
++
++/* Board port 1 is J81's only populated port; this driver never touches
++ * ports 2-4.
++ */
++#define T7000_PCIE_TEST_PORT			1
++
++static void t7000_pcie_log_port(struct device *dev, void __iomem *shared,
++				 int port, const char *label)
+ {
+-	struct device *dev = &pdev->dev;
+-	int count;
++	u32 off = port * T7000_PCIE_PORT_STRIDE;
++	u32 ltssm_off = T7000_PCIE_LTSSM_BASE + port * T7000_PCIE_LTSSM_STRIDE;
+ 
+-	count = of_address_count(dev->of_node);
+-	if (count != APPLE_T7000_PCIE_NUM_REGIONS)
+-		return dev_err_probe(dev, -EINVAL,
+-				     "expected %d register windows, found %d\n",
+-				     APPLE_T7000_PCIE_NUM_REGIONS, count);
++	dev_info(dev,
++		 "t7000-pcie enable-enum-perst-portread-test: %s port %d refclk_en=0x%08x perst_internal=0x%08x unknown_10c=0x%08x link_enable=0x%08x ltssm=0x%08x\n",
++		 label, port,
++		 readl(shared + T7000_PCIE_REFCLK_EN + off),
++		 readl(shared + T7000_PCIE_PERST_INTERNAL + off),
++		 readl(shared + T7000_PCIE_UNKNOWN_10C + off),
++		 readl(shared + T7000_PCIE_LINK_ENABLE + off),
++		 readl(shared + ltssm_off));
++}
+ 
+-	count = platform_irq_count(pdev);
+-	if (count < 0)
+-		return count;
+-	if (count != APPLE_T7000_PCIE_NUM_PORTS)
+-		return dev_err_probe(dev, -EINVAL,
+-				     "expected %d port interrupts, found %d\n",
+-				     APPLE_T7000_PCIE_NUM_PORTS, count);
++static void t7000_pcie_enable_port_hardware(struct device *dev,
++					     void __iomem *shared, int port)
++{
++	u32 off = port * T7000_PCIE_PORT_STRIDE;
++	u32 ltssm_off = T7000_PCIE_LTSSM_BASE + port * T7000_PCIE_LTSSM_STRIDE;
++	u32 v;
+ 
++	v = readl(shared + T7000_PCIE_LINK_ENABLE + off);
++	writel(v & ~BIT(0), shared + T7000_PCIE_LINK_ENABLE + off);
++
++	v = readl(shared + T7000_PCIE_PERST_INTERNAL + off);
++	writel(v | BIT(0), shared + T7000_PCIE_PERST_INTERNAL + off);
++
++	udelay(10);
++
++	v = readl(shared + T7000_PCIE_UNKNOWN_10C + off);
++	writel(v & ~BIT(0), shared + T7000_PCIE_UNKNOWN_10C + off);
++
++	v = readl(shared + T7000_PCIE_REFCLK_EN + off);
++	writel(v | BIT(0), shared + T7000_PCIE_REFCLK_EN + off);
++
++	v = readl(shared + T7000_PCIE_REFCLK_EN + off);
++	writel(v | T7000_PCIE_REFCLK_EN_MUXED_AUXCLK_AUTO_DIS,
++	       shared + T7000_PCIE_REFCLK_EN + off);
++
++	udelay(100); /* t-refclk-to-perst, confirmed 100us on J81 */
++
++	v = readl(shared + T7000_PCIE_LINK_ENABLE + off);
++	writel(v | BIT(0), shared + T7000_PCIE_LINK_ENABLE + off);
++
++	v = readl(shared + T7000_PCIE_PERST_INTERNAL + off);
++	writel(v & ~T7000_PCIE_PERST_INTERNAL_BIT8,
++	       shared + T7000_PCIE_PERST_INTERNAL + off);
++
++	writel(3, shared + ltssm_off);
++
++	/* enableGated's own repeat of the final _enablePortHardware write. */
++	writel(3, shared + ltssm_off);
++}
++
++static int apple_t7000_pcie_map_window(struct device *dev, int index,
++					void __iomem **out)
++{
++	struct resource res;
++	int ret;
++
++	ret = of_address_to_resource(dev->of_node, index, &res);
++	if (ret)
++		return dev_err_probe(dev, ret,
++				     "missing register window %d\n", index);
++
++	*out = devm_ioremap_resource(dev, &res);
++	return PTR_ERR_OR_ZERO(*out);
++}
++
++static void t7000_pcie_deassert_perst(struct device *dev,
++				       struct pci_host_bridge *bridge)
++{
++	struct pci_host_port *port;
++	struct pci_host_perst *perst;
++	unsigned int count = 0;
++
++	list_for_each_entry(port, &bridge->ports, list) {
++		list_for_each_entry(perst, &port->perst, list) {
++			dev_info(dev, "t7000-pcie enable-enum-perst-portread-test: deasserting PERST#\n");
++			gpiod_direction_output(perst->desc, 0);
++			count++;
++		}
++	}
++
++	if (!count) {
++		dev_info(dev, "t7000-pcie enable-enum-perst-portread-test: no PERST# GPIO found, nothing to deassert\n");
++		return;
++	}
++
++	/*
++	 * PCIE_RESET_CONFIG_WAIT_MS: the same generic PCIe-spec settle
++	 * constant pci_host_common_link_train_delay() and pci-imx6.c use
++	 * after deasserting PERST#, before any config access. Not an
++	 * Apple-recovered value.
++	 */
++	msleep(PCIE_RESET_CONFIG_WAIT_MS);
++}
++
++static int t7000_pcie_read_port_controller_window(struct device *dev,
++						   int port)
++{
++	void __iomem *ctrl;
++	int ret;
++
++	ret = apple_t7000_pcie_map_window(dev,
++					   T7000_PCIE_REG_PORT_CONTROLLER(port),
++					   &ctrl);
++	if (ret)
++		return dev_err_probe(dev, ret,
++				     "failed to map port %d controller window\n",
++				     port);
++
++	dev_info(dev,
++		 "t7000-pcie enable-enum-perst-portread-test: port %d controller window: 0x00=0x%08x 0x80=0x%08x\n",
++		 port, readl(ctrl + 0x00), readl(ctrl + T7000_PCIE_PORT_CONFIG));
++
+ 	return 0;
+ }
+ 
+-static int apple_t7000_pcie_probe(struct platform_device *pdev)
++static int apple_t7000_pcie_init(struct pci_config_window *cfg)
+ {
++	struct device *dev = cfg->parent;
++	struct pci_host_bridge *bridge = platform_get_drvdata(to_platform_device(dev));
++	void __iomem *shared;
+ 	int ret;
+ 
+-	ret = apple_t7000_pcie_validate_firmware(pdev);
++	dev_info(dev, "t7000-pcie enable-enum-perst-portread-test: init entry\n");
++
++	ret = apple_t7000_pcie_map_window(dev, T7000_PCIE_REG_SHARED, &shared);
+ 	if (ret)
+ 		return ret;
+ 
+-	return dev_err_probe(&pdev->dev, -EOPNOTSUPP,
+-			     "link bring-up is not implemented\n");
++	t7000_pcie_log_port(dev, shared, T7000_PCIE_TEST_PORT, "before");
++
++	dev_info(dev, "t7000-pcie enable-enum-perst-portread-test: about to write the recovered enable sequence for port %d\n",
++		 T7000_PCIE_TEST_PORT);
++	t7000_pcie_enable_port_hardware(dev, shared, T7000_PCIE_TEST_PORT);
++	dev_info(dev, "t7000-pcie enable-enum-perst-portread-test: enable sequence write completed\n");
++
++	t7000_pcie_log_port(dev, shared, T7000_PCIE_TEST_PORT, "after");
++
++	t7000_pcie_deassert_perst(dev, bridge);
++
++	ret = t7000_pcie_read_port_controller_window(dev, T7000_PCIE_TEST_PORT);
++	if (ret)
++		return ret;
++
++	dev_info(dev, "t7000-pcie enable-enum-perst-portread-test: init complete, handing back to generic ECAM core (no link-start write this stage)\n");
++
++	return 0;
+ }
+ 
++static const struct pci_ecam_ops apple_t7000_pcie_ecam_ops = {
++	.init		= apple_t7000_pcie_init,
++	.pci_ops	= {
++		.map_bus	= pci_ecam_map_bus,
++		.read		= pci_generic_config_read,
++		.write		= pci_generic_config_write,
++	},
++};
++
++static int apple_t7000_pcie_probe(struct platform_device *pdev)
++{
++	struct pci_host_bridge *bridge;
++	int ret;
++
++	dev_info(&pdev->dev, "t7000-pcie enable-enum-perst-portread-test: probe entry\n");
++
++	bridge = devm_pci_alloc_host_bridge(&pdev->dev, 0);
++	if (!bridge)
++		return -ENOMEM;
++
++	ret = pci_host_common_parse_ports(&pdev->dev, bridge);
++	if (ret)
++		return dev_err_probe(&pdev->dev, ret,
++				     "failed to parse PERST# ports\n");
++
++	return pci_host_common_init(pdev, bridge, &apple_t7000_pcie_ecam_ops);
++}
++
+ static const struct of_device_id apple_t7000_pcie_of_match[] = {
+ 	{ .compatible = "apple,t7000-pcie" },
+ 	{ }
+@@ -69,5 +291,5 @@
+ };
+ module_platform_driver(apple_t7000_pcie_driver);
+ 
+-MODULE_DESCRIPTION("Compile-only Apple T7000 PCIe host bridge groundwork");
++MODULE_DESCRIPTION("Apple T7000 PCIe port-1 enable sequence + generic enumeration + PERST + bounded per-port controller window read test (no link-start write)");
+ MODULE_LICENSE("GPL");
+diff --git a/arch/arm64/boot/dts/apple/t7001.dtsi b/arch/arm64/boot/dts/apple/t7001.dtsi
+--- a/arch/arm64/boot/dts/apple/t7001.dtsi
++++ b/arch/arm64/boot/dts/apple/t7001.dtsi
+@@ -342,10 +342,26 @@
+ 		dart_apcie1: iommu@602002000 {
++			/*
++			 * DART power-domains fix + shared-window enable-seq test
++			 * restored (docs/plans/2026-09-13-j81-wifi-pcie.md,
++			 * research/t7000-pcie-hardware-findings.md): 0031
++			 * (real apple-dart driver + power-domains = <&ps_pcie>
++			 * on dart_apcie1 itself, no iommu-map) hardware-
++			 * verified clean -- the real driver's own "DART ...
++			 * initialized" success message, genuine register map/
++			 * reset/IRQ registration. This test restores pcie's
++			 * iommu-map, establishing the real PCIe-to-DART IOMMU
++			 * consumer relationship (of_iommu_configure(),
++			 * invoked automatically when pcie is created, before
++			 * any driver .probe() runs) -- 0026's original scope,
++			 * with the power-domains fix now carried over.
++			 */
+ 			compatible = "apple,t7000-dart", "apple,s5l8960x-dart";
+ 			reg = <0x6 0x02002000 0x0 0x00200000>;
+ 			#iommu-cells = <1>;
+ 			interrupt-parent = <&aic>;
+ 			interrupts = <AIC_IRQ 216 IRQ_TYPE_LEVEL_HIGH>;
+-			status = "disabled";
++			power-domains = <&ps_pcie>;
++			status = "okay";
+ 		};
+ 
+ 		pcie: pcie@610000000 {
+@@ -376,10 +392,18 @@
+ 				     <AIC_IRQ 218 IRQ_TYPE_LEVEL_HIGH>,
+ 				     <AIC_IRQ 221 IRQ_TYPE_LEVEL_HIGH>;
+ 
+-			msi-controller;
+-			msi-parent = <&pcie>;
+-			msi-ranges = <&aic AIC_IRQ 224 IRQ_TYPE_EDGE_RISING 32>;
+-
++			/*
++			 * Stage 4a (enable-sequence write + generic ECAM
++			 * enumeration + PERST + bounded per-port controller
++			 * window read, no link-start write yet): the DT is
++			 * unchanged from Stage 3 -- the per-port controller
++			 * window (reg index 3) this stage reads is already
++			 * declared in the reg list above, it just hasn't been
++			 * touched by any driver before now. msi-controller/
++			 * msi-parent/msi-ranges stay omitted (no MSI domain
++			 * implemented). iommu-map is kept from 0032-0035,
++			 * unchanged.
++			 */
+ 			iommu-map = <0x100 &dart_apcie1 0 1>;
+ 			iommu-map-mask = <0xff00>;
+ 
+@@ -392,6 +416,25 @@
+ 				  0x7 0xc0000000 0x0 0x40000000>;
+ 
+ 			power-domains = <&ps_pcie>;
+-			status = "disabled";
++			status = "okay";
++
++			/*
++			 * Board port 1, the only populated port on J81 --
++			 * function-perst's OIPG pin (179), decoded from the
++			 * real J81 ADT (docs/plans/2026-09-13-j81-wifi-pcie.md's
++			 * "pci-bridge1" evidence table). pci_host_common_parse_ports()
++			 * (called explicitly by this driver's probe(), see the
++			 * driver's own header comment) finds this via its
++			 * device_type = "pci" and reset-gpios property.
++			 * function-clkreq (confirmed endpoint/controller-
++			 * managed, not host-toggled) and function-device_wake
++			 * (not required for basic link-up) are deliberately
++			 * not added here.
++			 */
++			pci@0,0 {
++				device_type = "pci";
++				reg = <0x0 0x0 0x0 0x0 0x0>;
++				reset-gpios = <&pinctrl 179 GPIO_ACTIVE_LOW>;
++			};
+ 		};
+ 
