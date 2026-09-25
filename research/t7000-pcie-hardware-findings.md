@@ -2210,3 +2210,80 @@ calling the apply function up to twice), or (c) the `0x8024` anomaly
 above is itself diagnostic of something not yet understood about this
 register's real role. Next is investigating one of these leads with
 static analysis or a targeted read-only probe, not a blind rescan retry.
+
+### Real PCIe host-controller driver, Stage 5D: read-only link-state probe, 2026-09-25
+
+Martin's own decompile of `enableGated()`'s tail (research pass run in
+parallel with this work, see `research/t7000-pcie-stage5-handoff.md`'s
+"Stage 5D research correction and next experiment design" section)
+found that Apple performs three more direct port-window writes
+(`+0x114=0`, `+0x104=0xff70afff`, `+0x100=0x008f5000`) plus at least
+three callbacks (`FUN_ffffff8002befa14`, `FUN_ffffff8002befb10`, a
+callback object cached at `+0x100`, and controller vtable slot `+0x570`)
+between the DBI/tunables RMW and marking the port enabled -- none of
+which this driver has ever implemented. Also corrected: Stage 5C starts
+the link (`+0x80 |= 1`) *before* its DBI/tunables writes, the reverse of
+Apple's own order.
+
+Rather than guess the missing writes, `kernel/patches/0043-...`
+implements a strictly read-only diagnostic: after Stage 5C's existing
+writes, log the direct-window link-status registers Apple's own
+`waitForLinkUpGated()` polls (`+0x88` bit 6 = link up, `+0x8c` bit 0
+polled / bit 5 = error), the three not-yet-written tail offsets
+(`+0x100`/`+0x104`/`+0x114`, read-only), and two DesignWare-PCIe DBI
+corroboration candidates (`ECAM+0x8728`/`ECAM+0x872c`, LTSSM state and
+link-up/training bits per the pinned upstream `pcie-designware.h`) --
+sampled at t+0/10/100/1000ms to distinguish a link stuck in reset/detect
+from one that trains and fails. **Cross-build verified clean,
+2026-09-25**: exit 0, checksums match, `System.map` has
+`t7000_pcie_log_link_state`/`apple_t7000_pcie_probe` linked, built
+`Image` contains the new format string.
+
+**Stage 5D hardware result: clean, and directly diagnostic, 2026-09-25.**
+postmarketOS booted normally (with the added ~1s probe delay), USB
+networking up. `dmesg`:
+
+```
+t+0000ms 0x088=0x0000000c 0x08c=0x00000000 0x100=0x00000000 0x104=0x00ffffff 0x114=0x00000007 ecam+0x8728=0x00431100 ecam+0x872c=0x08200000
+t+0010ms 0x088=0x0000000c 0x08c=0x00000000 0x100=0x00000000 0x104=0x00ffffff 0x114=0x00000007 ecam+0x8728=0x001e0901 ecam+0x872c=0x08600000
+t+0100ms 0x088=0x0000000c 0x08c=0x00000000 0x100=0x00000000 0x104=0x00ffffff 0x114=0x00000007 ecam+0x8728=0x00b5aa00 ecam+0x872c=0x08200000
+t+1000ms 0x088=0x0000000c 0x08c=0x00000000 0x100=0x00000000 0x104=0x00ffffff 0x114=0x00000007 ecam+0x8728=0x00fbfa00 ecam+0x872c=0x08200000
+```
+
+**`+0x88` never changes across the full 1-second window: `0x0000000c`
+at every sample, bit 6 (Apple's own link-up signal) never set.** This is
+the clearest evidence yet for the leading hypothesis: the link
+genuinely never leaves whatever pre-training/detect state `0x0c`
+represents, fully consistent with the missing `+0x100`/`+0x104`/`+0x114`
+tail writes and callbacks being load-bearing prerequisites for training
+to even start -- not an optional cleanup step. `+0x8c` stays `0`
+throughout (no error/timeout flag either, consistent with the link never
+attempting training at all rather than attempting and failing).
+`+0x100`/`+0x104`/`+0x114` read real, non-zero-except-one baseline
+values at rest (`0x00000000`/`0x00ffffff`/`0x00000007`) -- useful
+reference for whoever implements the actual tail writes, to know the
+pre-write starting state.
+
+The two DesignWare corroboration candidates (`ECAM+0x8728`/`0x872c`)
+are **inconclusive**: `0x8728` changes chaotically between samples
+(`0x00431100` → `0x001e0901` → `0x00b5aa00` → `0x00fbfa00`, no
+incrementing or settling pattern), which doesn't look like a real LTSSM
+state register behaving sanely -- more consistent with this ECAM offset
+not actually mapping to meaningful DesignWare-compatible silicon on this
+Apple-customized controller (as already flagged as unverified when this
+probe was designed). `0x872c` stays mostly steady at `0x08200000` with
+one blip to `0x08600000` at t+10ms; neither its bit 4 (link-up) nor bit
+29 (training) per the upstream encoding is ever set, consistent with
+`+0x88`'s own result but not independently trustworthy given `0x8728`'s
+instability. Do not rely on these two offsets for anything beyond loose
+corroboration until their relation to this specific controller is
+independently confirmed.
+
+**Next, not yet built: the actual tail-write stage**, gated on finishing
+the decompile of the four missing callbacks (`FUN_ffffff8002befa14`,
+`FUN_ffffff8002befb10`, the `+0x100` callback object, controller vtable
+`+0x570`) -- in progress in parallel, per Martin's own research. Also
+worth correcting in that same stage: reorder Stage 5C's writes so the
+link-start write (`+0x80 |= 1`) happens *after* DBI/tunables and the new
+tail writes, matching Apple's own confirmed order, not before it as
+Stage 5C currently does.
