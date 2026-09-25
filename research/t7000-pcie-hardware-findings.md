@@ -1637,6 +1637,18 @@ hit the exact same `-EBUSY` if tested as-is. A Stage 4b v2 with the same
 non-exclusive-mapping fix is needed before this stage can be tested;
 `0037` stays as a historical record like `0036`.
 
+**`0039` (Stage 4b v2) implemented, verified byte-exact, and
+cross-build verified clean, 2026-09-25.** Exit 0, complete payload,
+only the same benign `dtc` warning class. Verified beyond the exit
+code: `System.map` confirms `apple_t7000_pcie_probe`/
+`apple_t7000_pcie_init` plus `pci_host_common_parse_ports`/
+`gpiod_direction_output` are genuinely linked in, and the built `Image`
+contains every diagnostic string including both the before/after
+controller-window log lines for the actual link-start write. Available
+as `m1n1-hoolock-pcie-link-start-write-test-v2`; `result` now points to
+this payload. **Not yet hardware-tested -- this is the final stage of
+the recovered enable sequence.**
+
 ### Real PCIe host-controller driver, Stage 4b: per-port link-start write, built ahead of Stage 4a's hardware gate, 2026-09-25
 
 The final piece of Apple's recovered order: after PERST# is deasserted,

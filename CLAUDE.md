@@ -1244,7 +1244,12 @@ was never itself tested, but carries the identical exclusive-mapping
 bug Stage 4a hit -- it would have failed the same `-EBUSY` way.
 Implemented `0039`: the same non-exclusive `devm_ioremap()` fix applied
 to the write path before this stage is ever tested for the first time.
-Verified byte-exact; cross-build in progress.
+**Cross-build verified clean, 2026-09-25**: exit 0, complete payload,
+`System.map` confirms the driver symbols and `pci_host_common_parse_ports`/
+`gpiod_direction_output` are linked in, built `Image` has every
+diagnostic string including both before/after controller-window log
+lines for the write. `result` now points to this payload -- the final
+stage of the recovered enable sequence, not yet hardware-tested.
 
 **Stage 4b (per-port link-start write) implemented, built ahead of
 Stage 4a's hardware gate, 2026-09-25.** `0037`
