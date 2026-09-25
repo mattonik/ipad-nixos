@@ -1797,8 +1797,48 @@ tuning-baseline format string with all seven offsets
 (`"port %d tuning baseline: 0x024=... 0x07c=... 0x090=... 0x0bc=...
 0x130=... 0x134=... 0xb44=..."`), confirming the baseline-capture code
 genuinely compiled in. Available as
-`m1n1-hoolock-pcie-tuning-baseline-test`; `result` now points to this
-payload. **Not yet hardware-tested.** Full patch:
+`m1n1-hoolock-pcie-tuning-baseline-test`.
+
+**Hardware result: clean, all seven offsets read real, plausible
+values, 2026-09-25.** postmarketOS booted normally, USB networking up
+(0% ping loss), debug shell reachable. `dmesg`:
+
+```
+[    0.231528] pcie-apple-t7000 610000000.pcie: t7000-pcie tuning-baseline-test: port 1 tuning baseline: 0x024=0x00000000 0x07c=0x00000000 0x090=0x00000004 0x0bc=0x00000000 0x130=0x00000004 0x134=0x00000000 0xb44=0x00000000
+```
+
+No fault, no implausible/garbage pattern (no `0xffffffff`, nothing
+suggesting a floating bus), no new dmesg errors. Two offsets are
+non-zero at rest (`0x090=0x00000004`, `0x130=0x00000004`); the rest
+read `0x00000000`, including the DBI write-enable gate at `0x0bc`
+(currently closed/disabled, as expected for a port that has never had
+DBI writes enabled).
+
+**Applying Apple's recovered `(offset, clear-mask, set-value)` records
+to this real baseline, for reference (not yet written)**:
+
+| Offset | Baseline | Clear mask | Set value | Predicted after |
+| ---: | ---: | ---: | ---: | ---: |
+| `0x090` | `0x00000004` | `0x000000ff` | `0x00000028` | `0x00000028` |
+| `0x130` | `0x00000004` | `0x00000003` | `0x00000003` | `0x00000007` |
+| `0x134` | `0x00000000` | `0x00000001` | `0x00000001` | `0x00000001` |
+| `0x024` | `0x00000000` | `0x00000001` | `0x00000001` | `0x00000001` |
+| `0x07c` | `0x00000000` | `0x00000400` | `0x00000000` | `0x00000000` (no-op) |
+| `0xb44` | `0x00000000` | `0x00000003` | `0x00000002` | `0x00000002` |
+
+Every record produces a plausible, small, well-formed delta from this
+real baseline -- nothing suggesting the offsets or records are wrong.
+`0x07c`'s record is a genuine no-op given the current baseline (the bit
+it would clear is already clear), which is itself useful confirmation
+that the record's semantics are being read correctly, not a sign
+anything is missing. **This closes Stage 5A's hardware gate.**
+
+**Stage 5B remains gated** on the same open question the plan already
+identified: whether `dbi-overrides` precede or follow
+`apcie-config-tunables`, whether either is conditional on a discovered
+PCI capability, and the DBI-enable bit semantics at `0x0bc` (baseline
+confirms the gate is currently closed, but not what value opens it).
+Full patch:
 `kernel/patches/0040-pcie-apple-t7000-tuning-baseline-test.patch`.
 
 ### Real PCIe host-controller driver, Stage 4b: per-port link-start write, built ahead of Stage 4a's hardware gate, 2026-09-25

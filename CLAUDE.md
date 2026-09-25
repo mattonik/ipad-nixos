@@ -1292,8 +1292,23 @@ is gated on resolving whether `dbi-overrides` precede or follow
 `apcie-config-tunables` and whether either is conditional on a
 discovered PCI capability. **Cross-build verified clean, 2026-09-25**:
 exit 0, `System.map` confirms the driver symbols, built `Image` has the
-new tuning-baseline format string with all seven offsets. `result` now
-points to this payload. Not yet hardware-tested. Full record in
+new tuning-baseline format string with all seven offsets.
+
+**Stage 5A hardware result: clean, all seven offsets read real,
+plausible values, 2026-09-25.** postmarketOS booted normally, USB
+networking up. `dmesg`: `port 1 tuning baseline: 0x024=0x00000000
+0x07c=0x00000000 0x090=0x00000004 0x0bc=0x00000000 0x130=0x00000004
+0x134=0x00000000 0xb44=0x00000000`. No fault, no garbage pattern, no
+new dmesg errors. Applying Apple's recovered RMW records to this real
+baseline produces small, well-formed deltas at every offset (`0x090:
+0x04→0x28`, `0x130: 0x04→0x07`, `0x134: 0x00→0x01`, `0x024: 0x00→0x01`,
+`0xb44: 0x00→0x02`; `0x07c` is a genuine no-op given this baseline) --
+nothing suggesting the offsets or records are wrong. **Stage 5A's
+hardware gate is closed.** Stage 5B remains gated on the same open
+question already identified: `dbi-overrides`/`apcie-config-tunables`
+ordering, capability-conditionality, and the `0x0bc` DBI-enable bit
+value (baseline confirms the gate reads closed, `0x00000000`, but not
+what value opens it). Full record in
 `research/t7000-pcie-hardware-findings.md`'s "What the no-endpoint
 result rules out" and "Stage 5A implemented" sections.
 
