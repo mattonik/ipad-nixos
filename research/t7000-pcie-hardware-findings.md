@@ -1437,7 +1437,21 @@ offset `0x80` is further evidence the index is right, and an obvious
 fault would be a reason to re-derive it.
 
 Verified byte-exact via the established reconstruct/diff/verify
-methodology. Cross-build in progress. Full patch:
+methodology.
+
+**Cross-build verified clean, 2026-09-25**: `nix build
+.#packages.x86_64-linux.m1n1-hoolock-pcie-port-controller-window-read-test
+--no-link -L` exits 0 -- complete real payload, only the same benign
+pre-existing `dtc` warning class. Verified beyond the exit code:
+`System.map` confirms `pci_host_common_parse_ports`/
+`gpiod_direction_output` are genuinely linked in, and the built `Image`
+contains every diagnostic string including the new
+`"port %d controller window: 0x00=0x%08x 0x80=0x%08x"` format string --
+confirming the bounded-read logic is genuinely compiled in, not just
+patched into a file that got dropped. `result` now points to this
+payload.
+
+**Not yet hardware-tested -- staged for the user.** Full patch:
 `kernel/patches/0036-pcie-apple-t7000-port-controller-window-read-test.patch`.
 
 ## Infrastructure notes worth keeping
