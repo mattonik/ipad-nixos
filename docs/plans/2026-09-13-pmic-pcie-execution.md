@@ -618,6 +618,29 @@ cleanly. New isolated build
 `kernel/hoolock.nix` has, plus `0017` on top, its own dedicated payload,
 never touching the default `m1n1-hoolock-control` build).
 
+**First cross-build attempt hit an infrastructure wall, not a code
+problem**: the Linux-builder VM's 40 GB disk had filled from five
+back-to-back kernel builds earlier the same session (the four PCIe
+stages plus this one) and the build failed mid-`rsync` with `No space
+left on device`. Recovery needed `sudo` on the host Mac, which this
+autonomous session didn't have -- flagged in
+`docs/build-infrastructure.md` rather than worked around. **A retry
+after some idle time succeeded cleanly** (exit 0, complete payload) --
+most likely Nix's own automatic cleanup of the failed build's partial
+outputs freed enough space; no manual GC was actually run. Verified
+beyond the exit code: `System.map` has `j81_d2207_set_property`/
+`j81_d2207_property_is_writeable` as real linked symbols (not
+dead-code-eliminated) and `j81_d2207_desc` (the `power_supply_desc`
+struct wiring them in). The DTB's `charger` node compiles correctly
+(source comments don't survive `dtc`, so the updated comment text
+itself isn't DTB-checkable, only the node structure is). This payload
+is available as `packages.x86_64-linux.m1n1-hoolock-charging-writable-test`;
+`result` was deliberately left pointing at the PCIe Stage 4a payload
+(the actual next thing to hardware-test), not overwritten by this
+build.
+
+**Not yet hardware-tested.**
+
 ## Acceptance criteria for this pass
 
 - D2207: either identify an evidence-backed write transaction, or document

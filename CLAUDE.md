@@ -1359,14 +1359,19 @@ control build. Verified byte-exact via reconstruct/diff/verify -- one
 correction along the way, a wrong assumed base source (a nix store path
 that already had patches 0001-0011 applied) was caught before trusting
 any diff, resolved by confirming it against `kernel/hoolock.nix`'s own
-`runCommand` name. **Cross-build blocked, not a code issue**: the
-Linux-builder VM's 40 GB disk filled from five back-to-back kernel
-builds this session (the PCIe Stages plus this one); the build failed
-mid-`rsync` with `No space left on device`. Clearing it needs `sudo`
-credentials this autonomous session doesn't have -- flagged rather than
-worked around; see `docs/build-infrastructure.md`'s "Disk exhaustion
-from many builds in one session" section. Full record in
-`docs/plans/2026-09-13-pmic-pcie-execution.md`.
+`runCommand` name. **First cross-build attempt hit a disk-full wall on
+the Linux-builder VM** (five back-to-back kernel builds this session
+exhausted its 40 GB disk; not a code issue, and not the previously-fixed
+`CONFIG_DEBUG_INFO` cause). **A retry after some idle time succeeded
+cleanly** -- Nix's own cleanup of the failed build's partial outputs
+most likely freed enough space; no manual GC was needed after all.
+Verified beyond the exit code: `System.map` has
+`j81_d2207_set_property`/`j81_d2207_property_is_writeable` as real
+linked symbols and `j81_d2207_desc` wiring them in. Available as
+`packages.x86_64-linux.m1n1-hoolock-charging-writable-test`; `result`
+deliberately left pointing at PCIe Stage 4a (the actual next thing to
+hardware-test), not overwritten by this build. Not yet hardware-tested.
+Full record in `docs/plans/2026-09-13-pmic-pcie-execution.md`.
 
 **BAT-4 hardware gate: real result, 2026-09-10.** UART5 (`ttySAC2`) registers
 cleanly on hardware, and independent cross-checks (live pinctrl debugfs, the
