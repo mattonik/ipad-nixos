@@ -1454,6 +1454,45 @@ payload.
 **Not yet hardware-tested -- staged for the user.** Full patch:
 `kernel/patches/0036-pcie-apple-t7000-port-controller-window-read-test.patch`.
 
+### Real PCIe host-controller driver, Stage 4b: per-port link-start write, built ahead of Stage 4a's hardware gate, 2026-09-25
+
+The final piece of Apple's recovered order: after PERST# is deasserted,
+set bit 0 of the per-port controller window's own config register at
+offset `0x80` to start the actual link attempt
+(`docs/plans/2026-09-13-j81-wifi-pcie.md`'s "Enable-sequence checkpoint",
+step 5). `0037` implements exactly this on top of Stage 4a, unchanged
+otherwise.
+
+**Built and staged ahead of Stage 4a's own hardware result** -- as of
+this patch's implementation, `0036`'s bounded read of the per-port
+window (never touched by any earlier test) has not yet been
+hardware-tested. This follows this project's own established precedent
+for building a next stage before its own gate clears (`0025`/`0026`,
+`0029`/`0030` were built and staged ahead of their respective earlier
+stages' hardware results too) -- but it means **this specific payload
+must not be tested on hardware before Stage 4a's read comes back
+clean**. Writing to a register window before confirming it's safe to
+read would repeat exactly the mistake this investigation has
+deliberately avoided at every other register region by always reading
+before writing. The driver's own header comment states this explicitly,
+as does the DTS comment and the Nix package description, so the
+constraint travels with the artifact itself, not just this doc.
+
+One additional open question flagged rather than resolved: after the
+link-start write, the generic `pci_host_probe()` bus scan runs
+immediately once `.init()` returns, and may issue its first
+config-space read before the physical link has actually finished
+training. Apple's own recovered call trace has no documented delay or
+poll loop between the bit-0 write and the next config access at this
+point, and none is invented here. If the endpoint still doesn't
+enumerate on this stage even after Stage 4a's read comes back clean, a
+link-training-completion poll (a genuine Stage 4c, not yet designed)
+would be the next evidence-gated step -- not a blind retry.
+
+Verified byte-exact via the established reconstruct/diff/verify
+methodology. Cross-build in progress. Full patch:
+`kernel/patches/0037-pcie-apple-t7000-link-start-write-test.patch`.
+
 ## Infrastructure notes worth keeping
 
 - **`gaster pwn` + raw `irecovery -f`/`-c go` does not reliably reach

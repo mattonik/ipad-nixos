@@ -1181,6 +1181,26 @@ this payload. Not yet hardware-tested. Full record in
 `research/t7000-pcie-hardware-findings.md`'s "Real PCIe host-controller
 driver, Stage 4a" section.
 
+**Stage 4b (per-port link-start write) implemented, built ahead of
+Stage 4a's hardware gate, 2026-09-25.** `0037`
+adds the last piece of Apple's recovered order: setting bit 0 of the
+per-port controller window's config register at offset `0x80` to
+actually start the link attempt. Built and staged ahead of Stage 4a's
+own hardware result, matching this project's precedent for building a
+next stage before its own gate clears -- **do NOT test this payload on
+hardware until Stage 4a's bounded read comes back clean**; the
+constraint is stated in the driver's own header comment, the DTS
+comment, and the Nix package description, not just here. Also flagged,
+not resolved: the generic bus scan runs immediately after the
+link-start write with no documented settle/poll delay in Apple's own
+recovered order -- if the endpoint doesn't enumerate on this stage even
+after Stage 4a reads clean, a link-training-completion poll (a genuine
+Stage 4c, not yet designed) is the next evidence-gated step, not a
+blind retry. Verified byte-exact via reconstruct/diff/verify;
+cross-build in progress. Full record in
+`research/t7000-pcie-hardware-findings.md`'s "Real PCIe host-controller
+driver, Stage 4b" section.
+
 **Buttons hardware-verified, 2026-09-21.** `evtest /dev/input/event0` on
 the existing `gpio-keys` device captured clean press/release events for
 Home (`KEY_HOMEPAGE`), Power, Volume Up and Volume Down. No driver work
