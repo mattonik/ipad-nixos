@@ -1717,6 +1717,63 @@ excluded steps (if any) the endpoint genuinely needs, or design a
 link-training-completion poll (a genuine Stage 4c) if timing alone
 turns out to be the gap.
 
+### What the no-endpoint result rules out, and the next bounded experiment, 2026-09-25
+
+The clean Stage 4b result is progress, but it does **not** show that the
+physical link trained. It does establish three facts that constrain the next
+step:
+
+1. The current Linux test path already includes a conservative 100 ms wait
+   after PERST# deassertion before the first configuration-space access.
+2. A second, manual bus rescan about five seconds later still found no
+   BCM4350. A longer wait before another otherwise identical scan is therefore
+   unlikely to be the missing action. A link-status poll may still be useful
+   as a diagnostic, but is not a credible standalone fix.
+3. The captured J81 ADT provides the exact controller records Apple selects;
+   no values need be guessed or borrowed from another SoC:
+
+   | ADT property | Offset | Clear mask | Set value |
+   | --- | ---: | ---: | ---: |
+   | `apcie-config-tunables` | `0x090` | `0x000000ff` | `0x00000028` |
+   | | `0x130` | `0x00000003` | `0x00000003` |
+   | | `0x134` | `0x00000001` | `0x00000001` |
+   | `dbi-overrides` | `0x024` | `0x00000001` | `0x00000001` |
+   | | `0x07c` | `0x00000400` | `0x00000000` |
+   | | `0xb44` | `0x00000003` | `0x00000002` |
+
+Each record is a little-endian `(offset, clear-mask, set-value)` triple; the
+recovered Apple helper implements `new = (old & ~clear-mask) | set-value`.
+It accesses these values through port 1's already-proven controller window
+and temporarily enables DBI writes at offset `0x0bc`, restoring its prior
+value afterwards. Those two mechanical facts are solid. What remains open is
+the precise grouping and ordering of the two controller-node properties
+relative to Apple capability discovery and root-port/MSI programming.
+
+**Stage 5A — baseline only.** Build a payload from the Stage 4b-v2 branch
+that performs no new write. After the existing link-start readback, log the
+seven 32-bit values at `0x024`, `0x07c`, `0x090`, `0x0bc`, `0x130`, `0x134`,
+and `0xb44` from the same non-exclusive port-1 mapping. Retain the ordinary
+generic enumeration and USB-network shell. This confirms every prospective
+offset is live on J81 and preserves a before-state for the later RMW results.
+It deliberately does not claim link status or attempt a fourth blind rescan.
+
+**Stage 5B — exact Apple records, after the remaining trace check.** Recover
+from the pinned Apple driver whether `dbi-overrides` precede or follow
+`apcie-config-tunables`, whether either set is conditional on a discovered
+capability, and the DBI-enable bit semantics at `0x0bc`. Only then add one
+small RMW helper to the already-working port-window code: read the DBI gate,
+enable it exactly as Apple does, apply the confirmed records in the confirmed
+order, restore the gate even on an error, log old/new values, and continue
+with the existing PERST/link-start/enumeration sequence. Do not add MSI or
+firmware work to this experiment: MSI cannot make an endpoint answer the
+first configuration read, and firmware cannot load before enumeration.
+
+This makes the next hardware run evidence-producing in either outcome. If
+Stage 5A faults or shows implausible data, stop at the mapping/ownership
+question. If Stage 5B remains endpoint-free, the remaining Apple capability
+and root-config programming become the isolated next target rather than an
+unbounded collection of PCIe writes.
+
 ### Real PCIe host-controller driver, Stage 4b: per-port link-start write, built ahead of Stage 4a's hardware gate, 2026-09-25
 
 The final piece of Apple's recovered order: after PERST# is deasserted,

@@ -1,10 +1,9 @@
 # J81 active-work priority
 
-**Reviewed:** 2026-09-24 (DART and its IOMMU wiring are now both
-hardware-confirmed working: the real, unmodified `apple-dart` driver
-initializes cleanly, and with `pcie`'s `iommu-map` restored the IOMMU
-core confirms a real translated default domain. Next is implementing the
-real PCIe host-controller driver.)
+**Reviewed:** 2026-09-25 (DART, its IOMMU wiring, and the recovered PCIe
+host enable sequence are hardware-confirmed working. Link start persists on
+the real port, but the BCM4350 still has not enumerated; the immediate work
+is a bounded controller-tuning baseline, then Apple-exact RMW records.)
 
 This is the live backlog distilled from `docs/project-status.md`, the
 subsystem plans, and the driver-gap research. It excludes completed
@@ -18,7 +17,7 @@ substituted with guessed software writes.
 
 | Order | Work item | Certainty | Ease | Impact | Current gate |
 | --- | --- | ---: | ---: | ---: | --- |
-| 1 | PCIe: implement the real host-controller driver | 5 | 2 | 5 | In progress, 2026-09-25. Stages 1-3 hardware-tested clean (write sequence, real PCI enumeration, corrected PERST handling all confirmed working). Stage 4a (`0036`) hit a real `-EBUSY` -- the per-port controller window physically overlaps `dart_apcie1`'s own MMIO region -- fixed as `0038` (non-exclusive mapping) and hardware-tested clean. **Full recovered sequence (Stages 1-4b v2) hardware-confirmed safe end to end, 2026-09-25**: the link-start write genuinely took and stuck, no crash/hang anywhere. No downstream WiFi endpoint enumerated yet after three scan attempts -- next is researching Apple's excluded cap-discovery/tunable/config-MSI steps or a link-training poll, not a blind retry. |
+| 1 | PCIe: implement the real host-controller driver | 5 | 2 | 5 | In progress, 2026-09-25. Stages 1-4b v2 are hardware-clean: port-1 link-start took and stuck, but BCM4350 did not answer three scans. The Linux test path already waits 100 ms after PERST# and a scan five seconds later was also empty, so delay alone is not the next fix. Stage 5A is a read-only baseline of the six ADT-selected tuning/DBI offsets plus the DBI gate; Stage 5B applies those exact RMW records only after the Apple-trace order is resolved. |
 | 2 | Charging Stage 2: writable `input_current_limit` kernel property | 5 | 4 | 3 | Implemented and cross-build verified clean, 2026-09-25 (`kernel/patches/0017-...`, isolated `m1n1-hoolock-charging-writable-test` payload, mirroring the ANS1-test pattern). First attempt hit the Linux-builder VM's disk being full from five back-to-back builds; a retry after idle time succeeded (see `docs/build-infrastructure.md`). Not yet hardware-tested. |
 | 3 | Repeat ANS1's intentionally read-only hardware observation | 4 | 4 | 3 | Requires the separate observation-only payload; never mount or write it. |
 | 4 | Touch: resolve firmware/calibration delivery and power ownership | 3 | 2 | 5 | Blocked by the non-persistent D2207 LDO/GPIO state and private touch data. |
