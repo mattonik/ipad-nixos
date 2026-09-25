@@ -128,12 +128,52 @@ recipe.
 - **E:** The J81 ADT contains a private `multi-touch-calibration` blob. The
   Linux binding also permits an `apple,z2-cal-blob` supplied by the
   bootloader. This repository must not publish the captured per-device data.
-- **E:** The Apple personality identifies firmware merge name `C1F15,2`, but
-  the reviewed kernelcache does not contain the matching filesystem payload.
-- **U:** The exact J81 firmware container, calibration wrapping, coordinate
-  maxima, and safe SPI rate remain unresolved. Display resolution is not a
-  substitute for the controller's raw `touchscreen-size-x/y`, and the ADT's
-  private values `5000` and `10000` are not established as dimensions.
+- **E:** A private, read-only extraction of the exact iPad5,3 iOS 8.1
+  `12B410` filesystem recovered
+  `usr/share/firmware/multitouch/J81.mtprops` (SHA-256
+  `4feb5081f071760d37b7cf8802b729f6bd36f48eb8a7890222c21ea2b1e5d1dc`).
+  Its `C1F15,2` entry has `PreconstructedBootloadPacketType = "Z2"`, version
+  `0x0381.bin`, reset interval `432000`, and a 59,288-byte `Constructed
+  Firmware` payload. The payload was copied only to private scratch space;
+  its SHA-256 is
+  `9948ce32f7ec68507d58a01392fc2ac8add5bfeace4c88310da2107b1e2d54e2`.
+- **E:** That payload starts with little-endian marker `0xe118`, is aligned to
+  four bytes, and contains no `Z2FW` magic. It is therefore an Apple
+  *preconstructed* Z2 boot packet, not a Linux `apple_z2` version-1 firmware
+  container.
+- **E:** The matching ship `AppleMultitouchSPI` code loads `Constructed
+  Firmware` separately from `Firmware`. Its Z2 bootloader transmits the
+  constructed value as one packet and checks the bootloader response; the
+  alternate unconstructed path creates `0xe118` packets in chunks. This
+  confirms the distinction is executable behavior, not a metadata label.
+- **I:** The recovered asset is the correct firmware input for J81 research,
+  but current upstream `apple_z2` cannot consume it directly. Do not wrap it
+  in a guessed `Z2FW` header or send it to hardware. A small N1/Z2 transport
+  adaptation must first reproduce Apple's packet and acknowledgement rules.
+- **U:** Calibration wrapping, coordinate maxima, SPI rate and the PMGR clock
+  gate remain unresolved. Display resolution is not a substitute for the
+  controller's raw `touchscreen-size-x/y`, and the ADT's private values `5000`
+  and `10000` are not established as dimensions.
+
+### Callback argument semantics confirmed 2026-09-25
+
+Fresh decompilation of the exact iPad5,3 driver resolved how the platform
+callbacks are invoked, while leaving their provider-level electrical polarity
+separate:
+
+- `function-clock_enable` passes literal `3` in its third argument to enable
+  the KLCT handler, and passes a zero first argument to disable it. This
+  matches the earlier KLCT arithmetic result but does not reveal its fixed
+  PMGR gate-table index.
+- `function-display_sync` uses the same enable/disable argument convention.
+- `function-enable_cs` passes its requested value through the callback and
+  waits 5 microseconds before enabling it. Linux's verified SPI3 pinctrl
+  establishes the CS peripheral mux, but this does not prove the callback is
+  redundant during power transitions.
+- `function-reset` receives the driver’s logical asserted/deasserted value
+  directly. The Apple GPIO provider’s mapping from that logical value to the
+  electrical level is still not recovered, so the current active-low DTS
+  draft remains an inference rather than a confirmed electrical fact.
 
 ## Linux driver applicability and hazards
 
@@ -192,17 +232,13 @@ driver revision.
 
 The next experiment should remain **offline and read-only**:
 
-1. From a legally obtained filesystem image matching iPad5,3 build `12B410`,
-   identify the assets selected by merge personality `C1F15,2`. Copy them to
-   private scratch storage, not Git.
-2. Write or reuse a host-side parser that rejects every out-of-range length,
-   address, and command before interpreting the asset. Determine whether it
-   can be represented by the upstream `Z2FW` version-1 command stream and
-   verify blob alignment and checksums.
-3. Recover the J81 SPI mode/rate, raw X/Y maxima, calibration envelope, and
+1. Write a host-only parser for the recovered preconstructed Z2 packet. It
+   must validate the `0xe118` framing and Apple acknowledgement assumptions
+   from the disassembly before any Linux transport code is considered.
+2. Recover the J81 SPI mode/rate, raw X/Y maxima, calibration envelope, and
    the missing KLCT gate index from Apple artifacts. Treat each as unresolved
    until two independent observations agree where possible.
-4. Have the build owner compile the already-added validation patch, then
+3. Have the build owner compile the already-added validation patch, then
    exercise the resulting driver with truncated, oversized, and maximum-length
    synthetic frames before creating a J81 DT child. This neither requires a
    device payload nor touches hardware.

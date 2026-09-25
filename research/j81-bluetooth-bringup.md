@@ -159,6 +159,25 @@ enable. The remaining owner/state/lock condition is unresolved.
 Do not repeat the write, try alternate PMIC bytes, or implement a GPIO
 provider around a write that demonstrably does not persist.
 
+### D2207 dependency result, 2026-09-25
+
+The additional static review closes a tempting but unsupported explanation:
+there is no evidence for a second J81 Bluetooth mux or supply callback hidden
+behind PMIC GPIO2. The captured ADT contains one radio-enable resource, and
+the exact AppleBluetooth start path invokes that resource with `1`; the D2207
+driver converts it to the already-tested `03 e6 02` transaction. The same
+Apple code has no GPIO-specific unlock, checksum, bank-select, or commit step.
+
+The current blocker is consequently not a Linux driver design gap that can be
+fixed safely in software. It is an unobserved PMIC state or bus interaction
+that prevents an otherwise Apple-correct write from persisting under the
+checkm8/Linux boot chain. The one evidence-producing next step is a passive
+SDA/SCL capture covering a *cold iPadOS boot* through AppleBluetooth startup.
+Record the transactions immediately preceding and following `03 e6 02`; a
+Settings-toggle-only capture is insufficient because Apple asserts the radio
+enable during driver start. Until that capture exists, no further PMIC write
+or mux implementation is justified.
+
 ## Linux driver and DT path
 
 The authoritative upstream pieces are already present in the pinned Hoolock
