@@ -2574,3 +2574,30 @@ charging action remains measurement, not a PMIC write.
 - [`research/j81-battery-hdq.md`](../research/j81-battery-hdq.md): battery
   wiring, protocol research and implementation gates.
 - [`research/`](../research/): hardware and driver research.
+
+## `boot/Pongo.bin` replaced with an m1n1-aware build, 2026-09-25
+
+The checked-in `boot/Pongo.bin` had been the stock, pre-m1n1 PongoOS 2.6.1
+build since the very first bring-up session (the "matches the official
+PongoOS 2.6.1 release byte-for-byte" note earlier in this doc describes
+that original file, not the current one). It has **no `bootm` command** --
+only `bootl`/`bootr`/`bootux`/`bootx`. Every payload built by this flake
+(`m1n1-hoolock-*`) bundles its own, different, m1n1-aware `Pongo.bin` with a
+real `bootm` command (verified via `strings`: `boots m1n1`), but nothing had
+ever pointed `palera1n --override-pongo` at a payload's own bundled copy --
+every documented recipe in this file uses the stale root-level
+`boot/Pongo.bin` instead. This went unnoticed because m1n1 payloads were
+apparently always launched some other way in past sessions (not yet
+identified) rather than through this exact path.
+
+Found and fixed 2026-09-25 during a Stage 5B PCIe hardware attempt: three
+consecutive `bootm` requests via `boot/load_m1n1.py` all silently no-opped
+(`Bad command: bootm` on PongoOS's own console, invisible to
+`load_m1n1.py`'s own success check, which only verifies the USB transfer
+itself didn't error). `boot/Pongo.bin` has been overwritten in place with
+the current `m1n1-hoolock-pcie-dbi-ecam-read-test` payload's own bundled
+`Pongo.bin` (identical across all current payloads, MD5 `242a4eb6...`) --
+every documented `--override-pongo "$PWD/boot/Pongo.bin"` recipe in this
+file now works as written, no path changes needed. If future work adds a
+payload built from a materially different m1n1/kernel base, re-sync this
+file from that payload's own bundled copy the same way.
