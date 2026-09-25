@@ -1970,15 +1970,28 @@ optional unlock/relock wrapping the raw access, consistent with
 `_unlockConfigSpace`'s earlier-identified role as an adjacent mechanism
 rather than the primitive itself.
 
-**This closes the "still open" question from the two passes above.**
-The next safe step is a read-only probe: map the controller's ECAM/
-config-space window at `+0xb0`'s physical target (needs locating in the
-ADT -- most likely the same `pci-bridge1`/`apcie` ECAM window
-(`reg` index 0) already mapped for generic bus enumeration, not a new
-window), compute the DBI gate's address with the confirmed formula
-(`selector = port_selector_base & 0xf0ffffff | 0x08000000`, `low_offset
-= 0xbc`), and read it -- comparing against Stage 5A's already-recorded
-(and now known-irrelevant) direct-window read at raw offset `0xbc`.
+**The final mapping gap is closed, 2026-09-25.** The parent controller's
+initialization maps its provider resource index `0` and stores that virtual
+base at `controller+0xb0`. J81's captured `apcie` ADT resource index `0` is
+exactly the `0x610000000`, `0x01000000` ECAM region that Linux already maps
+as `cfg->win` for generic enumeration. It is not a second, unrepresented
+window.
+
+The child `apcie-port = 1` produces Apple’s `port_selector_base = 1 << 11 =
+0x00000800`. The DBI control selector is therefore `0x08000800`; applying
+the recovered `configRead32` formula with low offset `0x0bc` gives **ECAM
+offset `0x000088bc`**. The three DBI records similarly resolve to
+`0x8024`, `0x807c`, and `0x8b44`. These are all inside the same already
+hardware-proven 16 MiB ECAM mapping.
+
+`kernel/patches/0041-pcie-apple-t7000-dbi-ecam-read-test.patch` implements
+the resulting Stage 5B mapping gate. It reuses `cfg->win`, logs the selected
+port-1 DBI control at `ECAM+0x88bc`, and makes **no new write**. In
+particular, it does not set the DBI gate, apply a DBI override, restore a
+gate value, or apply a tunable. Its expected marker begins
+`dbi-ecam-read-test: port 1 selector=0x08000800 ecam+0x088bc`. A clean
+hardware observation of that marker and its `dbi_control=...` value is the only
+remaining gate before a separately reviewed Stage 5B write implementation.
 
 ### Real PCIe host-controller driver, Stage 4b: per-port link-start write, built ahead of Stage 4a's hardware gate, 2026-09-25
 

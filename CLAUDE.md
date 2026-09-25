@@ -1309,8 +1309,11 @@ hardware gate is closed.** The later Stage 5B offline trace resolves
 ordering and DBI semantics: controller DBI overrides first, then
 direct-port tunables; DBI saves its selected configuration-view control,
 writes `saved | 1`, and restores it. Stage 5A's direct `0x0bc` read was
-not the DBI control access. One read-only ECAM-view probe remains before
-any DBI write. Full record in
+not the DBI control access. The final mapping result identifies Apple’s
+`controller+0xb0` as the existing ADT reg-0 ECAM mapping and resolves the
+port-1 DBI control to `cfg->win + 0x88bc`. `0041` is the corresponding
+read-only hardware gate: it logs that value and makes no DBI write. Full
+record in
 `research/t7000-pcie-hardware-findings.md`'s "What the no-endpoint
 result rules out" and "Stage 5A implemented" sections.
 
