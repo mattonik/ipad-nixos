@@ -1208,10 +1208,21 @@ needed, index 3 is right. **Cross-build verified clean, 2026-09-25**:
 exit 0, complete payload, only the same benign `dtc` warning class.
 `System.map` confirms `pci_host_common_parse_ports`/
 `gpiod_direction_output` are genuinely linked in, and the built `Image`
-contains the new bounded-read format string. `result` now points to
-this payload. Not yet hardware-tested. Full record in
-`research/t7000-pcie-hardware-findings.md`'s "Real PCIe host-controller
-driver, Stage 4a" section.
+contains the new bounded-read format string.
+
+**Stage 4a hardware result: a real, informative, non-fatal `-EBUSY`,
+2026-09-25** -- not a hang, though a first `dmesg` grep (matching only
+this driver's own log prefix) initially made it look that way; the
+system stayed fully responsive throughout. Real cause, confirmed from
+the address math: the per-port controller window (`0x602004000`)
+physically falls inside `dart_apcie1`'s own already-exclusively-claimed
+2 MiB MMIO region (`0x602002000`), so `devm_ioremap_resource()`
+correctly refused the overlapping reservation. Not a bug in the
+recovered ADT index. **Fixed as `0038` (Stage 4a v2)**: a non-exclusive
+`devm_ioremap()` for just this one window. `0036` kept as the
+historical record. Verified byte-exact; cross-build in progress. Full
+record in `research/t7000-pcie-hardware-findings.md`'s "Real PCIe
+host-controller driver, Stage 4a" section.
 
 **Stage 4b (per-port link-start write) implemented, built ahead of
 Stage 4a's hardware gate, 2026-09-25.** `0037`

@@ -1545,8 +1545,53 @@ confirming the bounded-read logic is genuinely compiled in, not just
 patched into a file that got dropped. `result` now points to this
 payload.
 
-**Not yet hardware-tested -- staged for the user.** Full patch:
-`kernel/patches/0036-pcie-apple-t7000-port-controller-window-read-test.patch`.
+**Hardware result: a real, informative, non-fatal failure --
+`-EBUSY`, not a hang, 2026-09-25.** postmarketOS booted normally, USB
+networking up, debug shell reachable throughout (initial worry that the
+probe had hung was wrong -- a first `dmesg` grep targeted only this
+driver's own `t7000-pcie ...-test:` log prefix and missed the actual
+failure, which used the device's own `pcie-apple-t7000 <addr>.pcie:`
+prefix via `dev_err_probe()`). The real log:
+
+```
+[    0.129657] pcie-apple-t7000 610000000.pcie: t7000-pcie enable-enum-perst-portread-test: deasserting PERST#
+[    0.231328] pcie-apple-t7000 610000000.pcie: error -EBUSY: can't request region for resource [mem 0x602004000-0x602004fff]
+[    0.231417] pcie-apple-t7000 610000000.pcie: error -EBUSY: failed to map port 1 controller window
+[    0.231456] pcie-apple-t7000 610000000.pcie: probe with driver pcie-apple-t7000 failed with error -16
+```
+
+The ~103ms gap before the `-EBUSY` confirms the PERST deassertion and
+its settle delay both completed normally (consistent with Stage 3's
+already-confirmed timing) -- the failure is specifically in mapping the
+per-port controller window itself, and it's a real diagnosis, not a
+mystery: `0x602004000` (this window's base) falls *inside*
+`dart_apcie1`'s own MMIO region (base `0x602002000`, size `0x200000`/2
+MiB -- covers up to `0x602202000`). The real, already-hardware-proven
+`apple-dart` driver exclusively claims that whole 2 MiB span on its own
+probe (`0031`), so `devm_ioremap_resource()`'s exclusive
+`devm_request_mem_region()` step correctly refuses to let this driver
+claim an overlapping sub-region. This is a genuine physical address
+overlap between two ADT nodes' declared `reg` windows in Apple's own
+SoC layout, not a bug in the recovered ADT-index derivation -- the
+index (`2*port+1 = 3` for port 1) is still believed correct; the
+problem is purely how Linux's resource-reservation model handles two
+drivers legitimately needing access to overlapping physical ranges.
+
+No other new dmesg errors; the rest of the boot proceeded completely
+normally after the clean probe failure.
+
+**Fix implemented and cross-build verified as `0038` (Stage 4a v2)**:
+uses a non-exclusive `devm_ioremap()` for just this one window instead
+of `devm_ioremap_resource()`, skipping the exclusive reservation --
+safe since the goal is only to read the window for diagnostic evidence,
+not to exclusively own it. The shared window (reg index 9, no known
+overlap) is unaffected, still mapped exclusively as before. `0036`
+itself is kept as the historical record of this finding, not amended in
+place, matching this project's convention for patches that reached
+hardware and produced a real result.
+
+Verified byte-exact via reconstruct/diff/verify. Cross-build in
+progress.
 
 ### Real PCIe host-controller driver, Stage 4b: per-port link-start write, built ahead of Stage 4a's hardware gate, 2026-09-25
 

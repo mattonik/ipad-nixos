@@ -595,6 +595,23 @@
             hoolockConfig = patchedHoolockPciePortControllerWindowReadTestConfig;
           };
 
+          # Stage 4a v2 (docs/plans/2026-09-13-j81-wifi-pcie.md,
+          # research/t7000-pcie-hardware-findings.md): the same bounded
+          # per-port controller window read as 0036, but mapped
+          # non-exclusively after the first attempt was hardware-tested
+          # and hit a real -EBUSY (the window overlaps dart_apcie1's
+          # own already-claimed MMIO region). No new CONFIG needed,
+          # reuses the same defconfig-plus-CONFIG_PCIE_APPLE_T7000
+          # pattern.
+          patchedHoolockPciePortControllerWindowReadTestV2Config = pkgs.runCommand "ipad-t7001-hoolock-pcie-port-controller-window-read-test-v2-defconfig-4k" {} ''
+            cat ${patchedHoolockConfig} > "$out"
+            echo 'CONFIG_PCIE_APPLE_T7000=y' >> "$out"
+          '';
+          hoolockPciePortControllerWindowReadTestV2Kernel = pkgsCross.callPackage ./kernel/hoolock-pcie-port-controller-window-read-test-v2.nix {
+            source = inputs.hoolockLinux;
+            hoolockConfig = patchedHoolockPciePortControllerWindowReadTestV2Config;
+          };
+
           # Stage 4b of the real PCIe host-controller implementation
           # (docs/plans/2026-09-13-j81-wifi-pcie.md,
           # research/t7000-pcie-hardware-findings.md): Stage 4a plus the
@@ -771,6 +788,12 @@
         # below; exposed on its own for the same reason
         # hoolock-pcie-enable-enumeration-perst-test-kernel is.
         hoolock-pcie-port-controller-window-read-test-kernel = hoolockPciePortControllerWindowReadTestKernel;
+
+        # Kernel backing the combined
+        # m1n1-hoolock-pcie-port-controller-window-read-test-v2 payload
+        # below; exposed on its own for the same reason
+        # hoolock-pcie-port-controller-window-read-test-kernel is.
+        hoolock-pcie-port-controller-window-read-test-v2-kernel = hoolockPciePortControllerWindowReadTestV2Kernel;
 
         # Kernel backing the combined m1n1-hoolock-pcie-link-start-write-test
         # payload below; exposed on its own for the same reason
@@ -2006,6 +2029,58 @@
           gzip -n -c ${hoolockPciePortControllerWindowReadTestKernel}/Image > "$out/Image.gz"
 
           dtc -I dtb -O dts ${hoolockPciePortControllerWindowReadTestKernel}/dtbs/apple/t7001-j81.dtb \
+            | sed -e '/^\tchosen {$/,/^\t};$/ s/framebuffer@0 {/framebuffer {/' \
+            | dtc -I dts -O dtb -p 0x10000 -o "$out/t7001-j81.dtb"
+
+          gzip -dc ${inputs.linuxAppleResources}/debug_initrd.img > initramfs.cpio
+          mkdir -p original-etc overlay/etc overlay/usr/bin
+          (cd original-etc && cpio -id --no-absolute-filenames etc/deviceinfo < ../initramfs.cpio)
+          cp original-etc/etc/deviceinfo overlay/etc/deviceinfo
+          printf '\ndeviceinfo_usb_rndis_function="ecm.usb0"\n' >> overlay/etc/deviceinfo
+          touch -d @1 overlay/etc/deviceinfo
+
+          cp ${btattachPkg}/bin/btattach overlay/usr/bin/btattach
+          chmod 755 overlay/usr/bin/btattach
+          touch -d @1 overlay/usr/bin/btattach
+
+          for f in ${i2cToolsPkg}/bin/*; do
+            cp "$f" "overlay/usr/bin/$(basename "$f")"
+            chmod 755 "overlay/usr/bin/$(basename "$f")"
+            touch -d @1 "overlay/usr/bin/$(basename "$f")"
+          done
+
+          (cd overlay
+           { printf '%s\0' "etc/deviceinfo" "usr/bin/btattach"
+             for f in ${i2cToolsPkg}/bin/*; do
+               printf 'usr/bin/%s\0' "$(basename "$f")"
+             done
+           } | cpio --null -o -H newc --owner=0:0 --reproducible
+          ) >> initramfs.cpio
+          gzip -n -c initramfs.cpio > "$out/initramfs.gz"
+
+          printf '%s\n' 'chosen.bootargs=console=tty0 loglevel=8 ignore_loglevel rdinit=/init PMOS_NO_OUTPUT_REDIRECT pd_ignore_unused clk_ignore_unused' \
+            > "$out/bootargs"
+          cat "$out/m1n1.bin" "$out/bootargs" "$out/t7001-j81.dtb" \
+            "$out/Image.gz" "$out/initramfs.gz" > "$out/m1n1-linux.bin"
+          sha256sum "$out/Pongo.bin" "$out/m1n1.bin" "$out/m1n1-linux.bin" \
+            > "$out/SHA256SUMS"
+        '';
+
+        # Stage 4a v2 (docs/plans/2026-09-13-j81-wifi-pcie.md,
+        # research/t7000-pcie-hardware-findings.md): the per-port
+        # controller window read, mapped non-exclusively after 0036's
+        # real -EBUSY. Identical in every other respect to the payload
+        # above except the kernel
+        # (hoolockPciePortControllerWindowReadTestV2Kernel).
+        m1n1-hoolock-pcie-port-controller-window-read-test-v2 = pkgs.runCommand "ipad-air2-m1n1-hoolock-pcie-port-controller-window-read-test-v2" {
+          nativeBuildInputs = [ pkgs.gzip pkgs.dtc pkgs.cpio ];
+        } ''
+          mkdir -p "$out"
+          cp ${inputs.hoolockDocs}/binaries/Pongo.bin "$out/Pongo.bin"
+          cp ${inputs.hoolockM1n1}/m1n1.bin "$out/m1n1.bin"
+          gzip -n -c ${hoolockPciePortControllerWindowReadTestV2Kernel}/Image > "$out/Image.gz"
+
+          dtc -I dtb -O dts ${hoolockPciePortControllerWindowReadTestV2Kernel}/dtbs/apple/t7001-j81.dtb \
             | sed -e '/^\tchosen {$/,/^\t};$/ s/framebuffer@0 {/framebuffer {/' \
             | dtc -I dts -O dtb -p 0x10000 -o "$out/t7001-j81.dtb"
 
