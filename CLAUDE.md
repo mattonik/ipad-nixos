@@ -1248,8 +1248,34 @@ to the write path before this stage is ever tested for the first time.
 `System.map` confirms the driver symbols and `pci_host_common_parse_ports`/
 `gpiod_direction_output` are linked in, built `Image` has every
 diagnostic string including both before/after controller-window log
-lines for the write. `result` now points to this payload -- the final
-stage of the recovered enable sequence, not yet hardware-tested.
+lines for the write.
+
+**Stage 4b v2 hardware result: clean boot, the write genuinely takes,
+but no downstream device enumerates yet, 2026-09-25.** postmarketOS
+booted normally, USB networking up. `dmesg` (both log prefixes
+checked): `port 1 controller window before: 0x00=0x00000000
+0x80=0x00000000` → `after: 0x00=0x00000000 0x80=0x00000001` -- the
+write genuinely took and stuck (unlike the shared window's LTSSM
+register, which never visibly stuck across any earlier stage). **No
+crash, no hang, anywhere across the entire now-complete staged
+sequence** (Stage 1 through this final write) -- closes out definitively
+whether writing to this hardware is safe at all. Bus enumeration
+proceeded as always (root port self-ID, bridge to bus 01), but **no
+downstream WiFi endpoint was found**, even after the boot-time scan, an
+immediate manual rescan, and a second rescan ~5s later. One ambiguous
+data point recorded but not over-interpreted: the root port's own
+`current_link_speed`/`current_link_width` sysfs report non-zero (`2.5
+GT/s`, width `1`), but it's unclear whether that reflects genuine
+downstream link-up or a default register value -- not treated as proof
+either way. Leading hypothesis: Apple's own recovered order includes
+steps this staged implementation deliberately excludes throughout
+(capability discovery, `apcie-config-tunables`/`dbi-overrides`,
+config+MSI programming) -- plausibly required before the endpoint
+responds, not yet ported to Linux. **The full staged sequence (1
+through 4b v2) is confirmed safe end to end; next is research into the
+excluded steps or a link-training poll, not a blind retry.** Full
+record in `research/t7000-pcie-hardware-findings.md`'s "Real PCIe
+host-controller driver, Stage 4b" section.
 
 **Stage 4b (per-port link-start write) implemented, built ahead of
 Stage 4a's hardware gate, 2026-09-25.** `0037`

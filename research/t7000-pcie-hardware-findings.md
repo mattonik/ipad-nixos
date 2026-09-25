@@ -1645,9 +1645,77 @@ code: `System.map` confirms `apple_t7000_pcie_probe`/
 `gpiod_direction_output` are genuinely linked in, and the built `Image`
 contains every diagnostic string including both the before/after
 controller-window log lines for the actual link-start write. Available
-as `m1n1-hoolock-pcie-link-start-write-test-v2`; `result` now points to
-this payload. **Not yet hardware-tested -- this is the final stage of
-the recovered enable sequence.**
+as `m1n1-hoolock-pcie-link-start-write-test-v2`.
+
+**Hardware result: clean boot, the write genuinely takes, but no
+downstream device enumerates yet, 2026-09-25.** postmarketOS booted
+normally, USB networking up (0% ping loss), debug shell reachable.
+`dmesg` (checked against both log prefixes):
+
+```
+[    0.231344] pcie-apple-t7000 610000000.pcie: t7000-pcie link-start-test-v2: port 1 controller window before: 0x00=0x00000000 0x80=0x00000000
+[    0.231381] pcie-apple-t7000 610000000.pcie: t7000-pcie link-start-test-v2: port 1 controller window after: 0x00=0x00000000 0x80=0x00000001
+[    0.231413] pcie-apple-t7000 610000000.pcie: t7000-pcie link-start-test-v2: init complete, handing back to generic ECAM core for bus enumeration
+```
+
+**The write genuinely took and stuck**: offset `0x80` bit 0 read back
+as `1` after the write, not reverted or pulsed away -- unlike the
+shared window's LTSSM register in every earlier stage, which read back
+`0` even after being written `3` twice. This is real, direct evidence
+the per-port controller window is not just readable (confirmed by Stage
+4a v2) but genuinely writable, and that this specific bit is a real,
+persistent control bit, not a self-clearing command/pulse register.
+
+**No crash, no hang, anywhere across the entire now-complete staged
+sequence** (Stage 1 through this final write) -- this closes out
+definitively whether writing to real, previously-untouched PCIe
+hardware registers is safe to attempt at all on this SoC, following
+this project's own read-before-write discipline at every step.
+
+Generic bus enumeration then proceeded exactly as in every prior stage
+-- the root port self-identified (`[106b:1002]`, bridge to bus 01) --
+but **no downstream device (the BCM4350 WiFi endpoint) was found**,
+even after: the initial boot-time scan, a manual `echo 1 >
+/sys/bus/pci/rescan` immediately after boot, and a second rescan after
+an additional ~5 second wait. `/proc/iomem` confirms all the expected
+windows (shared, ECAM, both `ranges` apertures) are correctly
+registered. `setpci` was not available in this minimal debug shell to
+probe bus 1 config space directly.
+
+**One genuinely ambiguous data point, reported precisely rather than
+over-interpreted**: the root port's own kernel-decoded link status
+(`/sys/bus/pci/devices/0000:00:01.0/current_link_speed` /
+`current_link_width`) reports `2.5 GT/s PCIe` / width `1` -- non-zero,
+not the all-zero/absent values a genuinely down link might be expected
+to show. This is *not* being treated as proof the physical link
+trained: it's unclear without further investigation whether these
+sysfs values reflect a real, active downstream link, a default/reset
+state the Link Status register happens to report regardless of link
+state, or something specific to this SoC's root complex that doesn't
+require a downstream device to report non-zero. Recorded as raw
+evidence for a future pass, not a conclusion either way.
+
+**Interpretation, not yet confirmed**: Apple's own recovered
+`enableGated` order includes several steps this staged implementation
+has deliberately excluded throughout
+(`docs/plans/2026-09-13-j81-wifi-pcie.md`'s "Enable-sequence
+checkpoint", steps 2-4) -- capability discovery, applying
+`apcie-config-tunables`/`dbi-overrides` through the per-port window,
+and config+MSI programming. It's plausible one or more of these, not
+yet ported to Linux anywhere in this project, are genuinely required
+before the endpoint will respond to config-space reads, not merely
+cosmetic. This is a well-motivated next research direction, not a dead
+end -- the core staged approach (enable sequence, PERST, and now the
+link-start write) is fully confirmed safe and working exactly as
+recovered; what's left is whichever additional step(s) make the
+endpoint actually answer.
+
+**Full staged sequence (Stages 1-4b v2) is complete and
+hardware-verified safe end to end.** `result` points to this payload.
+Next step is research, not a blind retry: identify which of the
+excluded steps (if any) the endpoint genuinely needs, or design a
+link-training-completion poll (a genuine Stage 4c) if timing alone
+turns out to be the gap.
 
 ### Real PCIe host-controller driver, Stage 4b: per-port link-start write, built ahead of Stage 4a's hardware gate, 2026-09-25
 
