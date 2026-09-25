@@ -1,5 +1,47 @@
 --- a/drivers/input/touchscreen/apple_z2.c	2026-09-12 21:00:00
-+++ b/drivers/input/touchscreen/apple_z2.c	2026-09-12 21:00:05
++++ b/drivers/input/touchscreen/apple_z2.c	2026-09-25 14:30:00
+@@ -26,6 +26,7 @@
+ #define LOAD_COMMAND_INIT_PAYLOAD        0
+ #define LOAD_COMMAND_SEND_BLOB           1
+ #define LOAD_COMMAND_SEND_CALIBRATION    2
++#define APPLE_Z2_RX_BUF_SIZE              4000
+ #define CAL_PROP_NAME                    "apple,z2-cal-blob"
+ 
+ struct apple_z2 {
+@@ -84,7 +85,10 @@ static void apple_z2_parse_touches(struct apple_z2 *z2,
+ 	struct apple_z2_finger *fingers;
+ 
+-	if (msg_len <= APPLE_Z2_NUM_FINGERS_OFFSET)
++	if (msg_len < APPLE_Z2_FINGERS_OFFSET)
+ 		return;
+ 	nfingers = msg[APPLE_Z2_NUM_FINGERS_OFFSET];
+ 	fingers = (struct apple_z2_finger *)(msg + APPLE_Z2_FINGERS_OFFSET);
++	if (nfingers > (msg_len - APPLE_Z2_FINGERS_OFFSET) / sizeof(*fingers))
++		return;
++
+ 	for (i = 0; i < nfingers; i++) {
+@@ -140,6 +144,9 @@ static int apple_z2_read_packet(struct apple_z2 *z2)
+ 
+ 	pkt_len = (get_unaligned_le16(z2->rx_buf + 1) + 8) & 0xfffffffc;
+ 
++	if (pkt_len > APPLE_Z2_RX_BUF_SIZE)
++		return -EMSGSIZE;
++
+ 	error = spi_read(z2->spidev, z2->rx_buf, pkt_len);
+ 	if (error)
+ 		return error;
+@@ -254,6 +263,11 @@ static int apple_z2_upload_firmware(struct apple_z2 *z2)
+ 		return error;
+ 	}
+ 
++	if (fw->size < sizeof(*fw_hdr)) {
++		dev_err(&z2->spidev->dev, "firmware malformed\\n");
++		return -EINVAL;
++	}
++
+ 	fw_hdr = (const struct apple_z2_fw_hdr *)fw->data;
+ 	if (le32_to_cpu(fw_hdr->magic) != APPLE_Z2_FW_MAGIC || le32_to_cpu(fw_hdr->version) != 1) {
+ 		dev_err(&z2->spidev->dev, "invalid firmware header\\n");
 @@ -450,12 +450,14 @@
  static const struct of_device_id apple_z2_of_match[] = {
  	{ .compatible = "apple,j293-touchbar" },

@@ -144,7 +144,7 @@ recipe.
 | Local `apple,j81-touchscreen` match patch | Avoids a known probe crash by adding the compatible to both OF and SPI ID tables. `apple_z2_probe()` dereferences `spi_get_device_id(spi)->driver_data`. | It is inert groundwork without a child node and does not make J81 operational. |
 | Generic regulator/clock/GPIO frameworks | Appropriate shape for modeled supplies, clock, reset, and interrupt. | A D2207 LDO14 provider and old-PMGR KLCT provider/mapping do not yet exist; display sync has no upstream Z2 representation. |
 
-Two bounds checks are prerequisites for any J81 traffic:
+Three input-validation checks are prerequisites for any J81 traffic:
 
 1. **E:** `apple_z2_read_packet()` allocates a 4000-byte receive buffer but
    trusts the device-reported packet length when issuing the second
@@ -153,12 +153,40 @@ Two bounds checks are prerequisites for any J81 traffic:
 2. **E:** `apple_z2_parse_touches()` trusts the device-reported finger count.
    It must prove that offset 24 plus `nfingers * sizeof(struct
    apple_z2_finger)` fits inside the received message before parsing.
+3. **E:** `apple_z2_upload_firmware()` reads the fixed firmware header before
+   it has proved that the supplied firmware file is large enough to contain
+   that header.
 
 These are memory-safety issues when trying an unsupported protocol variant,
 not merely malformed-touch reporting. Apple's older driver checked equivalent
 frame bounds. Binding the current local match to a child “to see what happens”
 would immediately begin reset/boot/upload behavior and expose these unchecked
 paths.
+
+### Validation hardening completed 2026-09-25
+
+The existing J81 groundwork patch,
+[`0011-touchscreen-apple-z2-add-j81.patch`](../kernel/patches/0011-touchscreen-apple-z2-add-j81.patch),
+now applies all three checks before it adds the J81 match:
+
+- it names the existing 4000-byte allocation and rejects a larger
+  controller-advertised read;
+- it requires a complete fixed touch header, then rejects a finger count that
+  cannot fit in the received message; and
+- it rejects a firmware file shorter than `struct apple_z2_fw_hdr` before
+  reading its magic or version.
+
+This is deliberately the smallest shared fix: it protects the normal Touch
+Bar path as well as a future J81 node, and it neither changes the wire
+protocol nor starts a touch transaction. The patch was dry-run and applied
+against the exact pinned Hoolock 7.3 source; a source-level assertion checked
+that all three guards and both J81 match-table entries were present. No kernel
+build was run in this research pass.
+
+As of 2026-09-25, Linux `master` still has the same unbounded packet read,
+unbounded finger walk, and short-firmware-header read. This is independent
+confirmation that the local hardening is not redundant with a newer upstream
+driver revision.
 
 ## Safest next experiment
 
@@ -174,10 +202,10 @@ The next experiment should remain **offline and read-only**:
 3. Recover the J81 SPI mode/rate, raw X/Y maxima, calibration envelope, and
    the missing KLCT gate index from Apple artifacts. Treat each as unresolved
    until two independent observations agree where possible.
-4. Add the two Linux receive bounds checks and exercise them with truncated,
-   oversized, and maximum-length synthetic frames before creating a J81 DT
-   child. This is host-only validation; it neither builds a device payload nor
-   touches hardware.
+4. Have the build owner compile the already-added validation patch, then
+   exercise the resulting driver with truncated, oversized, and maximum-length
+   synthetic frames before creating a J81 DT child. This neither requires a
+   device payload nor touches hardware.
 
 This resolves the largest unknowns with zero device risk. Repeating SPI3
 registration alone would add little because TOUCH-1 already proved it.
