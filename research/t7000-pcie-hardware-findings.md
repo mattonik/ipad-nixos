@@ -1603,9 +1603,39 @@ in this driver family -- confirmed indirectly instead via the built
 `"port %d controller window: 0x00=0x%08x 0x80=0x%08x"` format string,
 meaning the corrected mapping path genuinely compiles through to the
 read). Available as
-`m1n1-hoolock-pcie-port-controller-window-read-test-v2`; `result` now
-points to this payload. **Not yet hardware-tested -- next stage to
-test.**
+`m1n1-hoolock-pcie-port-controller-window-read-test-v2`.
+
+**Hardware result: clean, 2026-09-25 -- the fix works.** postmarketOS
+booted normally, USB networking up (0% ping loss), debug shell
+reachable. `dmesg` (checked against both the driver's own log prefix
+and the device's `pcie-apple-t7000` prefix this time, per the lesson
+from the first attempt):
+
+```
+[    0.126057] pcie-apple-t7000 610000000.pcie: t7000-pcie portread-test-v2: deasserting PERST#
+[    0.231338] pcie-apple-t7000 610000000.pcie: t7000-pcie portread-test-v2: port 1 controller window: 0x00=0x00000000 0x80=0x00000000
+[    0.231375] pcie-apple-t7000 610000000.pcie: t7000-pcie portread-test-v2: init complete, handing back to generic ECAM core (no link-start write this stage)
+```
+
+The per-port controller window read succeeded cleanly for the first
+time -- no `-EBUSY`, no probe failure, `probe()` returned 0. Both
+offsets read `0x00000000`. This is a plausible, non-fault "at rest"
+value, not evidence of a floating/unmapped bus: offset `0x80` bit 0 is
+exactly the link-start bit Stage 4b will set, and reading it as
+currently-clear is the expected state for a port that has never had
+that bit written -- real hardware state, not garbage. Generic bus
+enumeration then proceeded normally as in every prior stage. No new
+dmesg errors anywhere. **This closes Stage 4a's hardware gate for
+real** (the `0036`/`-EBUSY` round is now fully superseded, not just
+theoretically fixed).
+
+**Before proceeding to Stage 4b: `0037` has the identical bug.** It was
+built before this fix existed and calls the same exclusive
+`apple_t7000_pcie_map_window()` (`devm_ioremap_resource()`) for the
+per-port controller window in its own link-start-write path -- it would
+hit the exact same `-EBUSY` if tested as-is. A Stage 4b v2 with the same
+non-exclusive-mapping fix is needed before this stage can be tested;
+`0037` stays as a historical record like `0036`.
 
 ### Real PCIe host-controller driver, Stage 4b: per-port link-start write, built ahead of Stage 4a's hardware gate, 2026-09-25
 
