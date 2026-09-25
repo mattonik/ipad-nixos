@@ -275,13 +275,50 @@ them without a new access mechanism, also log the port-1 DBI candidates at
 result distinguishes a link that never leaves reset/detect from one that
 trains and fails, without changing hardware state.
 
-Do **not** implement the three `+0x100/+0x104/+0x114` writes yet. First
-finish offline decompilation of `FUN_ffffff8002befa14`,
-`FUN_ffffff8002befb10`, the callback at the object stored in `port+0x100`,
-and the controller's `+0x570` slot. Those calls may be load-bearing and are
-not safe to replace with a delay. The local Ghidra installation currently
-lacks a Java runtime, so this remaining decompile is recorded as an explicit
-research prerequisite rather than guessed around.
+Do **not** implement the three `+0x100/+0x104/+0x114` writes as an isolated
+delay experiment. Their callbacks and the exact PERST/MSI sequencing must be
+understood first; the resulting analysis is recorded immediately below.
+
+### Callback decompilation result, 2026-09-25
+
+That prerequisite is now substantially closed. The preserved Ghidra project
+was reopened using an isolated JDK environment; no payload was built and no
+device state was changed.
+
+- `FUN_ffffff8002befa14()` is not an unknown link helper. It programs the
+  port's MSI controller registers: `+0x124` encodes the number of MSI
+  vectors and `+0x128` receives `msi-vector-base | (msi-vector-base << 16)`.
+  The J81 port properties are eight vectors and base eight, so Apple's exact
+  writes are `+0x124 = 0x31` and `+0x128 = 0x00080008`.
+- `FUN_ffffff8002befb10(port, value)` stores the requested state and calls
+  the cached `function-perst` platform function. `enableGated()` calls it
+  with zero immediately before `+0x80 |= 1`; this is Apple’s ordered PERST#
+  deassertion. Linux currently deasserts PERST# much earlier, before its
+  DBI/tunable writes.
+- `FUN_ffffff8002bef400()` only serializes and records Apple’s internal port
+  state transition. It has no hardware register action and does not need a
+  Linux equivalent.
+- The callback object stored at `port+0x100` owns
+  `FUN_ffffff8002bee0ac()`, Apple’s PCIe interrupt handler. Its `+0xa8`
+  method enables that event source after `+0x100 = 0x008f5000`; it is needed
+  for Apple’s asynchronous link-up/link-down handling, but is not a hidden
+  controller register write. A first Linux experiment can use bounded
+  polling of the already identified status registers instead.
+- The optional object at `port+0xb0`, vtable slot `+0x570`, remains the one
+  unresolved call. It is deliberately conditional in Apple’s code. It must
+  be identified before claiming a byte-for-byte port, but it does not block a
+  minimal, observable link-training experiment because the documented
+  register writes, MSI setup, PERST ordering, and interrupt-free polling are
+  now independently known.
+
+This changes the practical next write-stage design. After the read-only
+Stage 5D baseline, a minimal Stage 5E should: keep PERST asserted; apply the
+already validated DBI overrides then tunables; write `+0x114 = 0`,
+`+0x104 = 0xff70afff`, `+0x100 = 0x008f5000`, `+0x124 = 0x31`, and
+`+0x128 = 0x00080008`; deassert PERST; set `+0x80` bit 0; then poll `+0x88`
+bit 6 with a bounded timeout and log `+0x8c`. It must keep the unimplemented
+Apple interrupt event source and optional `+0xb0/+0x570` call explicitly
+out of scope, rather than silently pretending they were reproduced.
 
 ### Findings removed from the candidate list
 
@@ -289,10 +326,10 @@ research prerequisite rather than guessed around.
   inspection already establish one controller-level three-record list and
   no port-local `dbi-overrides` property. The earlier suggestion to check it
   again was stale.
-- **MSI programming:** cannot make an absent endpoint answer its first
-  configuration read. It becomes relevant only after link-up and enumeration
-  are established, so it should not be included in Stage 5D or the first
-  missing-tail experiment.
+- **Generic MSI/capability work:** cannot make an absent endpoint answer its
+  first configuration read and remains out of scope. This does not exclude
+  the two exact Apple MSI-controller writes above: they belong to the
+  recovered port-enable sequence and are now a bounded Stage 5E item.
 
 ### Live-session confirmation
 
