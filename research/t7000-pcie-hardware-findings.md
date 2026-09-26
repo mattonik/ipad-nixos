@@ -2287,3 +2287,82 @@ worth correcting in that same stage: reorder Stage 5C's writes so the
 link-start write (`+0x80 |= 1`) happens *after* DBI/tunables and the new
 tail writes, matching Apple's own confirmed order, not before it as
 Stage 5C currently does.
+
+### Real PCIe host-controller driver, Stage 5E: full reordered enableGated() tail, 2026-09-26
+
+Implements the design from `research/t7000-pcie-stage5-handoff.md`'s
+Stage 5E section, following the now-complete callback decompile: DBI
+overrides, tunables, three direct port-tail writes (`+0x114=0`,
+`+0x104=0xff70afff`, `+0x100=0x008f5000`), Apple's MSI-controller
+registers (`+0x124=0x31`, `+0x128=0x00080008`, from
+`FUN_ffffff8002befa14`), PERST# deassertion
+(`FUN_ffffff8002befb10(port, 0)`), then the link-start write
+(`+0x80 |= 1`) last -- reordering Stages 1-5D's backwards sequence
+(PERST# and link-start were both issued *before* DBI/tunables/tail).
+Replaces Stage 5D's fixed-delay diagnostic with a bounded 500ms poll of
+`+0x88` bit 6 (Apple's own link-up signal), logging the final `+0x88`/
+`+0x8c` state either way. `kernel/patches/0044-...`. **Cross-build
+verified clean, 2026-09-26**: exit 0, checksums match, all four new
+`link-wait-test` format strings present in the built `Image`.
+
+**Hardware result: clean boot, no crash, still no downstream endpoint --
+but two genuinely new anomalies in the tail writes, 2026-09-26.**
+postmarketOS booted normally, USB networking up. `dmesg`:
+
+```
+port 1 controller window at rest: 0x00=0x00000000 0x80=0x00000000
+dbi gate saved=0x00000000, setting saved|1
+dbi-override 0x08024: 0x00000000 -> 0x00010001
+dbi-override 0x0807c: 0x00733c12 -> 0x00733812
+dbi-override 0x08b44: 0x000000d3 -> 0x000000d2
+dbi gate restored to 0x00000000 (readback 0x00000000)
+config-tunable 0x00090: 0x00000004 -> 0x00000028
+config-tunable 0x00130: 0x00000004 -> 0x00000007
+config-tunable 0x00134: 0x00000000 -> 0x00000001
+port-tail 0x00114: 0x00000007 -> 0x00000000        (took cleanly)
+port-tail 0x00104: 0x00ffffff -> 0x0070afff         <-- ANOMALY: wrote 0xff70afff, top byte didn't stick
+port-tail 0x00100: 0x00000000 -> 0x00000000         <-- ANOMALY: wrote 0x008f5000, write had no effect at all
+msi 0x00124: 0x00000000 -> 0x00000031               (took cleanly)
+msi 0x00128: 0x00000000 -> 0x00080008               (took cleanly)
+port 1 controller window after link-start: 0x00=0x00000000 0x80=0x00000001
+link_up=0 0x088=0x0000000c 0x08c=0x00000000
+```
+
+Everything already validated (DBI overrides, tunables, MSI registers,
+the link-start write) took exactly as expected, confirming the
+reordering itself introduced no regression. **Two of the three
+port-tail writes did not take as written**: `+0x114=0` succeeded
+cleanly, but `+0x104`'s write of `0xff70afff` landed as `0x0070afff`
+(the top byte, `0xff`, silently didn't stick -- not a fault, just
+ignored), and `+0x100`'s write of `0x008f5000` had **no effect
+whatsoever** (readback identical to the pre-write value, `0x00000000`).
+Neither is a crash or bus fault -- both are silent write-doesn't-take
+behavior, the same general shape as the earlier Stage 5C `0x8024`
+anomaly (a write landing differently than a plain `writel()` should
+predict). `+0x88` still reads the same stuck `0x0000000c` after the
+full 500ms poll, `+0x88` bit 6 never sets -- link-up still never
+observed.
+
+**Open hypotheses for the two failed tail writes**, not yet tested:
+1. These two offsets may not be plain read/write MMIO registers at all
+   -- possibly write-once-after-reset, gated behind a bit this driver
+   hasn't set yet, or requiring a different access width (byte/half-word
+   instead of a 32-bit `writel()`).
+2. Apple's own pseudocode lists these writes *before* `+0x80 |= 1`, but
+   maybe (contrary to that literal ordering) they only latch once the
+   link-start bit is already set -- worth trying the write order
+   `+0x80` first, then read back `+0x100`/`+0x104` afterward, as a
+   diagnostic (not yet done).
+3. `+0x100`/`+0x104`/`+0x114` might not all belong to the same 4KB
+   per-port controller window as `+0x80`/`+0x88`/`+0x8c` -- worth
+   double-checking against the real ADT/decompile whether these
+   offsets are genuinely in-window or if the window is smaller than
+   assumed and these silently fall into an unmapped/reserved sub-region
+   that hardware simply discards writes to.
+
+This does not change the accumulated conclusion that every touched
+register so far is safe to write (no crash, no hang) -- it does mean
+two of the three literal tail-write values Apple's driver sets are not
+landing as intended, which is plausibly related to why the link still
+never trains. Full record and next-step candidates in
+`research/t7000-pcie-stage5-handoff.md`.
