@@ -1,0 +1,117 @@
+diff --git a/drivers/pci/controller/pcie-apple-t7000.c b/drivers/pci/controller/pcie-apple-t7000.c
+--- a/drivers/pci/controller/pcie-apple-t7000.c
++++ b/drivers/pci/controller/pcie-apple-t7000.c
+@@ -3,8 +3,20 @@
+  * Apple T7000-family PCIe -- enable-sequence + generic-enumeration +
+  * PERST + controller-tuning/DBI-override RMW + enableGated()'s full
+  * recovered tail + bounded link-up poll + recovered maximum-link-speed
+- * RMW (Stage 5F).
++ * RMW + sibling PMGR gate attach (Stage 5G).
+  *
++ * Stage 5G tests one of two deltas found after Stage 5F's own review
++ * (research/t7000-pcie-stage5-handoff.md's "Post-Stage-5F gate trace"
++ * section): Apple's real +0x6b8 controller hook enables all three PMGR
++ * clock gates (PCIE/AUX/REF) plus PCIE power before link setup, while
++ * Linux previously attached only ps_pcie. This stage explicitly attaches
++ * ps_pcie_aux/ps_pcie_ref too (t7001.dtsi's power-domains list extended,
++ * plus explicit genpd_dev_pm_attach_by_id() calls since the platform
++ * bus's automatic attach only covers index 0). Deliberately isolated
++ * from the other identified delta (the +0x6d0 hook's exact 0x180/0x198
++ * shared-register transition) -- combining them would make either
++ * result ambiguous. No register-level changes versus Stage 5F.
++ *
+  * Stage 5F adds the one operation Stage 5E's own review found missing:
+  * J81's ADT `maximum-link-speed = 1` is applied by Apple through a
+  * standard PCIe capability RMW on the root port itself (not a
+@@ -79,6 +91,8 @@
+ #include <linux/of_address.h>
+ #include <linux/pci-ecam.h>
+ #include <linux/platform_device.h>
++#include <linux/pm_domain.h>
++#include <linux/pm_runtime.h>
+ 
+ #include "pci-host-common.h"
+ 
+@@ -640,7 +654,45 @@
+ 		.write		= pci_generic_config_write,
+ 	},
+ };
++
++/*
++ * Stage 5G: the automatic genpd attach the platform bus core performs
++ * before .probe() runs only covers index 0 of "power-domains"
++ * (ps_pcie). Apple's real +0x6b8 controller hook enables all three
++ * sibling clock gates (PCIE/AUX/REF) plus PCIE power before link
++ * setup; this attaches the two sibling PM domains (indices 1/2,
++ * ps_pcie_aux/ps_pcie_ref) explicitly so they power up and stay up for
++ * the duration of this probe, alongside the already-automatic ps_pcie.
++ * genpd_dev_pm_attach_by_id() alone only powers the domain transiently
++ * (it queues an async power-off once attached) -- pm_runtime_get_sync()
++ * on the returned virtual device is what actually keeps it powered;
++ * deliberately never put back for this one-shot diagnostic boot.
++ * Isolated test: no register changes, matching the "keep these two
++ * changes separable" note in research/t7000-pcie-stage5-handoff.md.
++ */
++static void t7000_pcie_attach_sibling_pm_domains(struct device *dev)
++{
++	static const char * const labels[] = { "ps_pcie_aux", "ps_pcie_ref" };
++	int i;
+ 
++	for (i = 1; i <= 2; i++) {
++		struct device *virt_dev = genpd_dev_pm_attach_by_id(dev, i);
++
++		if (IS_ERR_OR_NULL(virt_dev)) {
++			dev_info(dev,
++				 "t7000-pcie gate-test: power-domains[%d] (%s) attach failed or absent (%ld)\n",
++				 i, labels[i - 1],
++				 IS_ERR(virt_dev) ? PTR_ERR(virt_dev) : 0);
++			continue;
++		}
++
++		pm_runtime_get_sync(virt_dev);
++		dev_info(dev,
++			 "t7000-pcie gate-test: power-domains[%d] (%s) attached and held on\n",
++			 i, labels[i - 1]);
++	}
++}
++
+ static int apple_t7000_pcie_probe(struct platform_device *pdev)
+ {
+ 	struct pci_host_bridge *bridge;
+@@ -648,6 +700,8 @@
+ 
+ 	dev_info(&pdev->dev, "t7000-pcie tuning-baseline-test: probe entry\n");
+ 
++	t7000_pcie_attach_sibling_pm_domains(&pdev->dev);
++
+ 	bridge = devm_pci_alloc_host_bridge(&pdev->dev, 0);
+ 	if (!bridge)
+ 		return -ENOMEM;
+@@ -676,5 +730,5 @@
+ };
+ module_platform_driver(apple_t7000_pcie_driver);
+ 
+-MODULE_DESCRIPTION("Apple T7000 PCIe port-1 full recovered enableGated() sequence plus recovered maximum-link-speed capability RMW (Stage 5F)");
++MODULE_DESCRIPTION("Apple T7000 PCIe port-1 full recovered enableGated() sequence plus explicit ps_pcie_aux/ps_pcie_ref PMGR gate attach (Stage 5G)");
+ MODULE_LICENSE("GPL");
+diff --git a/arch/arm64/boot/dts/apple/t7001.dtsi b/arch/arm64/boot/dts/apple/t7001.dtsi
+--- a/arch/arm64/boot/dts/apple/t7001.dtsi
++++ b/arch/arm64/boot/dts/apple/t7001.dtsi
+@@ -342,7 +342,16 @@
+ 				 <0x02000000 0x0 0xc0000000
+ 				  0x7 0xc0000000 0x0 0x40000000>;
+ 
+-			power-domains = <&ps_pcie>;
++			/*
++			 * Stage 5G: also attach the PCIE_AUX/PCIE_REF PMGR
++			 * sibling gates. Apple's real +0x6b8 controller hook
++			 * enables all three clock gates (PCIE/AUX/REF) plus
++			 * PCIE power before link setup; Linux previously
++			 * attached only ps_pcie. Isolated test, no register
++			 * changes -- see research/t7000-pcie-stage5-
++			 * handoff.md's "Post-Stage-5F gate trace" section.
++			 */
++			power-domains = <&ps_pcie>, <&ps_pcie_aux>, <&ps_pcie_ref>;
+ 			status = "okay";
+ 
+ 			/*
