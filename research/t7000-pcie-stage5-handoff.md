@@ -589,6 +589,46 @@ Full verbatim dmesg and record in
 `research/t7000-pcie-hardware-findings.md`'s "Real PCIe host-controller
 driver, Stage 5G" section.
 
+## Stage 5H hardware result, 2026-09-26
+
+Second delta, tested alone (built on Stage 5F, not 5G). `dmesg`:
+
+```
+port 1 0x180: 0x11010100 -> 0x11010100 (clear bit0)
+port 1 0x198: 0x00000000 -> 0x00000001 (set bit0)
+link_up=0 0x088=0x0000000c 0x08c=0x00000000
+```
+
+**Genuinely uninformative delta**: `0x180`'s bit 0 was already clear at
+this early point, so the write changed nothing; `0x198`'s early
+`0->1` doesn't change anything either since the existing enable
+sequence already sets that same bit later regardless. No observable
+difference from Stage 5F -- same link result, same no-device outcome.
+
+**Both Post-Stage-5F deltas are now individually ruled out.** Neither
+the AUX/REF gate attach (Stage 5G) nor the `+0x6d0` register transition
+(Stage 5H), tested alone, changes anything. This significantly narrows
+the remaining explanation space to one of:
+
+1. The two deltas need to be combined (an interaction effect not
+   visible from either alone) -- lowest-confidence, since neither
+   showed even a partial effect on its own.
+2. A genuinely different Apple operation, not yet decompiled, is the
+   real prerequisite -- specifically worth revisiting the `+0x570`
+   opaque `IOPCIDevice` vtable call and the interrupt event source at
+   `port+0x100`, both previously set aside as "Linux PCI-core/IRQ
+   territory, not controller MMIO." That assumption itself hasn't been
+   tested.
+3. Something outside the enable/gate/DBI/tunables/tail sequence
+   entirely -- firmware, NVRAM, or a hardware condition/precondition
+   this investigation hasn't identified yet.
+
+**Next is research, not another blind register-level test.**
+
+Full verbatim dmesg and record in
+`research/t7000-pcie-hardware-findings.md`'s "Real PCIe host-controller
+driver, Stage 5H" section.
+
 ## Where everything lives
 
 - Full chronological history (every stage, every hardware result, every

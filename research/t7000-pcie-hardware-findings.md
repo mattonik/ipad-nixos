@@ -2509,3 +2509,52 @@ ruled out. Next, not yet built: Stage 5H, testing the `0x180`/`0x198`
 transition alone (on top of Stage 5F, keeping the AUX/REF attach out of
 that test so a positive or negative result there stays unambiguous
 too).
+
+### Real PCIe host-controller driver, Stage 5H: isolated early gate-register delta, 2026-09-26
+
+Second of the two Post-Stage-5F deltas, tested alone per the same
+isolation instruction (built on Stage 5F, not Stage 5G, so this result
+stays independent of the already-tested AUX/REF gate attach). Replays
+Apple's real `+0x6d0` controller hook (`FUN_ffffff8002e6e3e4`) exactly:
+for port 1, clear shared offset `0x180` bit 0 (REFCLK_EN), set `0x198`
+bit 0 (LINK_ENABLE), immediately before the existing enable sequence
+runs. `kernel/patches/0047-...`. **Cross-build verified clean,
+2026-09-26**: exit 0, checksums match, both new
+`gate-register-test` format strings present in the built `Image`.
+
+**Hardware result: clean boot, no crash -- but a genuinely uninformative
+delta, and a clean negative result for the link, 2026-09-26.** `dmesg`:
+
+```
+port 1 0x180: 0x11010100 -> 0x11010100 (clear bit0)
+port 1 0x198: 0x00000000 -> 0x00000001 (set bit0)
+link_up=0 0x088=0x0000000c 0x08c=0x00000000
+```
+
+`0x180` was **already** `0x11010100` at this early point -- bit 0 was
+already clear, so the "clear bit0" write changed nothing (`old == new`
+exactly). `0x198` going `0 -> 1` early doesn't change anything either:
+the existing `t7000_pcie_enable_port_hardware()` sequence already sets
+this same bit later in its own steps regardless of whether this early
+write ran. **This delta produces no observable difference from Stage
+5F**, and unsurprisingly the link result is identical: `+0x88` still
+`0x0000000c`, no downstream device, same generic-core retrain-failed
+message.
+
+**Both Post-Stage-5F deltas are now individually ruled out**: Stage 5G
+showed AUX/REF gates alone don't fix it (clean attach, no effect);
+Stage 5H shows the `+0x6d0` register transition alone is a genuine
+no-op given this driver's existing register history (both bits already
+end up in the same state via the existing sequence). Neither
+Apple-recovered operation, tested in isolation, is the missing piece.
+This significantly narrows the remaining explanation space: it's likely
+either (a) the two deltas need to be combined (an interaction effect,
+even though neither alone matters), (b) a genuinely different Apple
+operation not yet decompiled is the real prerequisite (the `+0x570`
+opaque IOPCIDevice vtable call, or the interrupt event source at
+`port+0x100`, both previously set aside as "Linux PCI-core/IRQ
+territory, not controller MMIO" -- worth revisiting that assumption),
+or (c) something entirely outside the enable/gate/DBI/tunables/tail
+sequence altogether (firmware, NVRAM, or a hardware condition this
+investigation hasn't identified). Next is research, not another blind
+register-level test.
