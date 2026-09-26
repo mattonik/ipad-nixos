@@ -457,6 +457,43 @@ equivalent gate transition. If either answer remains unresolved, the next
 build is read-only instrumentation only; it must not add a guessed write
 or additional power domain.
 
+### Stage 5F build instructions: recovered maximum-link-speed RMW, 2026-09-26
+
+The exact Apple code path is now recovered sufficiently for one bounded
+write-stage experiment. The earlier controller virtual call at `+0x618`
+is a standard PCI capability lookup: it receives capability ID `0x10`
+(PCI Express) and returns that capability's offset for port 1. It is not
+a PMGR gate-ready query. J81's `maximum-link-speed = 1` is passed to
+`FUN_ffffff8002bef7c8()`.
+
+That helper performs the following standard root-port configuration RMW:
+
+1. locate PCI capability `0x10` on root port `00:01.0` (ECAM device-one
+   offset `0x8000`), using a bounded standard capability-list walk rather
+   than a hard-coded capability offset;
+2. read PCIe `Link Capabilities 2` at `cap + 0x2c`; require supported-link-
+   speeds-vector bit 1 (Gen1) to be set, otherwise log and make no write;
+3. read the 16-bit PCIe `Link Control 2` word at `cap + 0x30`;
+4. write `new = (old & 0xfff0) | 1` with a 16-bit ECAM configuration
+   write, then log the immediate 16-bit readback;
+5. continue the already hardware-verified Stage 5E ordering unchanged:
+   DBI overrides, direct tunables, `+0x114/+0x104/+0x100`, MSI setup,
+   PERST# release, and `+0x80` link start last.
+
+This is directly supported by the Apple assembler: the helper reads
+`cap+0x2c`, checks the requested speed against bits 1:7, reads
+`cap+0x30`, clears only bits 0:3, and invokes the controller's 16-bit
+config writer with the requested speed. It is also a single missing
+operation relative to Stage 5E. It must add no PMGR domain, no clock-gate
+write, no DART reset, and no retry or rescan logic. If capability lookup,
+the Gen1 bit check, or readback differs from the expected shape, it must
+skip the write and leave Stage 5E behavior intact.
+
+The Apple power/clock-gate prefix remains a separate unresolved
+production-driver concern. It is deliberately excluded from this test:
+`ps_pcie` and the DART consumer are already hardware-proven clean, while
+the link-speed RMW is independently exact and has a before/after guard.
+
 Full verbatim dmesg and record in
 `research/t7000-pcie-hardware-findings.md`'s "Real PCIe host-controller
 driver, Stage 5E" section.
