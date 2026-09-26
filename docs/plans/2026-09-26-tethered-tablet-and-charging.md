@@ -117,8 +117,9 @@ networked tablet:
 2. Replace the debug-shell's unauthenticated telnet only after a minimal,
    key-only SSH binary and its runtime libraries have been copied into an
    overlay and tested.  Do not expose an HTTP service first: SSH already gives
-   authenticated shell, file copy, port forwarding and log retrieval in one
-   small service.
+   an authenticated shell, remote commands and log retrieval in one small
+   service.  File transfer and forwarding are separate capabilities and are
+   not part of the first acceptance gate below.
 3. Keep telnet as the recovery method in the first SSH experiment.  Remove it
    only after reconnecting by SSH across a cold boot.
 4. Add a tiny read-only `tablet-status` shell command before any graphical
@@ -144,6 +145,113 @@ service, status command and SSH server.  It must retain telnet in this first
 revision, so a bad SSH package cannot lock us out.  A musl-static SSH server is
 preferred; a dynamically linked binary is acceptable only when its loader and
 complete library closure are included and checked in the assembled archive.
+
+### Verified debug-initrd and SSH packaging audit, 2026-09-26
+
+The audit used the built, hardware-proven `m1n1-hoolock-control` initramfs,
+not the separate NixOS initramfs experiment. Its exact startup contract is:
+
+- `/init` mounts proc, sysfs, devpts and configfs, installs the BusyBox
+  applets, initializes mdev and the framebuffer, then executes each hook
+  synchronously as `sh "$hook"`.
+- The existing `20-debug-shell.sh` sources `/etc/deviceinfo` and
+  `/init_functions.sh`, calls `setup_usb_network` and `start_udhcpd`, starts
+  telnet, then deliberately enters `loop_forever`. It does not return to
+  `/init`; returning would continue into root-partition discovery and violate
+  this payload's RAM-only appliance model.
+- The two network helpers are already one-shot operations. The first uses a
+  marker in `/tmp`; the second recognizes its generated `/etc/udhcpd.conf`.
+  Reuse them instead of duplicating the configfs gadget setup.
+- The known-good control archive already has a later `etc/deviceinfo` entry
+  selecting `deviceinfo_usb_rndis_function="ecm.usb0"`. Derive the service
+  package from `m1n1-hoolock-control`; starting again from upstream
+  `debug_initrd.img` would silently restore the unusable RNDIS default.
+
+The exact replacement pattern is another uncompressed `newc` archive appended
+to the decompressed control initramfs. Its hook path is
+`etc/postmarketos-mkinitfs/hooks/20-debug-shell.sh`, without a leading `./`,
+mode `0755`, uid/gid zero. Recompress with `gzip -n`. The first hook starts the
+existing telnet recovery daemon, starts Dropbear in the background, checks
+that its PID remains alive, and finishes with the existing `loop_forever`.
+An SSH packaging failure must not let the hook fall through into storage
+probing. The SSH-only follow-up keeps this non-returning lifecycle.
+
+The current pinned `pkgsCrossMusl` Dropbear is **not static**. The evaluated
+Dropbear 2025.89 daemon has a Nix-store musl interpreter and `DT_NEEDED`
+entries for `libz.so.1`, `libcrypt.so.2` and `libc.so`, with absolute
+Nix-store `RUNPATH` entries. `dropbearkey` needs musl and zlib. Raw CPIO does
+not perform the dependency copying that `makeInitrdNG` performs for
+`nixos/initramfs.nix`, and the base image's older
+`/lib/ld-musl-aarch64.so.1` cannot satisfy the executable's hard-coded
+interpreter path. The first implementation should reuse the existing package
+and include the daemon, key generator, exact interpreter and runtime closure
+at their original paths. A static rebuild is unnecessary just to save roughly
+two megabytes in this RAM-only image.
+
+The archive check must read every ELF `PT_INTERP`, `DT_NEEDED` and `RUNPATH`
+and prove the loader and libraries exist at the exact archived paths. Merely
+checking that the daemon itself is present is insufficient.
+
+Dropbear also needs state absent from the base image: a root entry in
+`/etc/passwd`, `/etc/group`, `/var/empty`, `/root` and
+`/root/.ssh/authorized_keys`. `/root` and `.ssh` must be mode `0700`;
+`authorized_keys` must be `0600`. Only a public client key belongs in the
+archive. Bind Dropbear to `${IP}:22` and pass `-s` for key-only authentication.
+`-g` means "disable root password login", not "permit root", and is redundant
+with `-s`. Disable local and remote forwarding with `-j -k` for the first
+test; enable a specific forwarding use later if it is actually needed.
+
+Because the root filesystem is volatile, a host key generated at boot changes
+after a cold boot. That is acceptable for the first direct-cable experiment
+only when its fingerprint is checked over the retained telnet/console path.
+A private host key must not be committed or copied through a world-readable
+Nix store merely to stabilize the fingerprint. Persistent host identity needs
+a separate secret-delivery design after SSH works.
+
+The evaluated Dropbear output contains neither `scp` nor an SFTP server, and
+its compiled SFTP helper path does not exist in this initramfs. Modern macOS
+`scp` uses SFTP by default, so file-copy success must not be claimed in the
+first test. A bounded file can instead be streamed through a remote shell and
+verified by hash. Package an SFTP server only when convenient file transfer
+becomes a real requirement.
+
+#### Safe staged test
+
+**Static gate:** build a separate package derived from
+`m1n1-hoolock-control`. Require PongoOS, m1n1, DTB, kernel and bootargs to be
+byte-identical to that control; require the new uncompressed initramfs to begin
+with the complete control archive; parse all concatenated `newc` members with
+last-entry-wins semantics; and compare the added entries with an exact
+allow-list of the replacement hook, Dropbear closure, public key and minimal
+account files. Run `sh -n` on the final hook, verify its CPIO metadata, check
+all ELF dependencies as above, and verify final payload assembly and hashes.
+Reuse the archive parser and invariants in `boot/test_usb_diagnostic.py`; a
+second parser would add risk without evidence.
+
+**Hardware stage 1, recovery retained:** cold-boot the isolated payload over
+the direct cable. Require the same ECM enumeration, host address
+`172.16.42.2/24`, successful ping, and working telnet at
+`172.16.42.1:23`. From telnet, confirm Dropbear stayed alive, its log has no
+loader/library error, and ports 22 and 23 are bound only to `172.16.42.1`.
+Check the generated host-key fingerprint, then require:
+
+1. the intended public key opens both a remote command and an interactive PTY;
+2. a wrong key is rejected;
+3. a password-only attempt is rejected;
+4. three SSH disconnect/reconnect cycles leave ECM, telnet and Dropbear
+   healthy; and
+5. one small file streamed through `ssh` has the same hash in `/tmp`.
+
+This first stage is a packaging/recovery test, **not yet a secure
+replacement**, because unauthenticated telnet remains open.
+
+**Hardware stage 2, SSH-only:** only after stage 1 succeeds across a second
+cold boot, build the same overlay without starting telnet. Require port 23 to
+be closed, repeat the authentication and reconnect checks, and confirm the
+hook remains in RAM-only hold if Dropbear exits. This is the point where the
+service becomes the secure USB baseline. Keep the known-good control payload
+as the DFU recovery artifact; do not combine this test with charging-policy,
+PCIe, Bluetooth or touch changes.
 
 ## On-screen interface
 
