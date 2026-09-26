@@ -73,6 +73,39 @@ records 100 mA as the required 80% cutoff.  The service must follow the
 explicit 100 mA cutoff above; the interactive tool can be aligned separately
 with a small tested change.
 
+### Is 2400 mA enough?
+
+For the present lightweight payload, the evidence says **yes**.  The J81 tests
+at 1000, 2100 and 2400 mA all settled around the same 100--115 mA net battery
+charge, with stable temperature, voltage and USB networking.  The extra input
+headroom did not turn into a faster battery charge.  `input_current_limit` is
+only the maximum input current the charger may draw; it is not a command to
+force that current.  This is also the meaning of the standard Linux
+[`input_current_limit`](https://docs.kernel.org/power/power_supply_class.html)
+property.
+
+Static Apple-driver analysis shows a wider *encoding* range: 75--3262 mA for
+`0x04c0`.  It does not make higher values safe or useful on this cable.  The
+same PMIC record currently reports a 3000 mA configured battery-charge limit
+and a 3150 mA hardware charge-current ceiling, which are separate from the USB
+input limit.  The TUI consequently rejects requests above the highest actual
+J81 validation, 2400 mA.
+
+Before considering a one-step higher test, obtain the following evidence while
+the already validated 2400 mA limit is active:
+
+| Read-only observation | Interpretation | Decision |
+| --- | --- | --- |
+| D2207 VBUS-current ADC is well below 2400 mA and VBUS voltage is stable | The PMIC is not reaching the present ceiling; a higher ceiling cannot increase input power. | Keep 2400 mA; investigate battery charge state or source capability only if faster charging becomes important. |
+| VBUS current reaches the ceiling while voltage, temperature and USB link remain stable | The limit may be constraining the source. | A separately authorized, one-step test can be designed with a USB power meter and immediate rollback. |
+| VBUS voltage sags, USB re-enumerates, temperature rises, or a PMIC fault appears | The source/cable/thermal path is constraining. | Lower the limit; do not test higher values. |
+
+Apple's D2207 driver identifies VBUS-current ADC channel 9 and VBUS-voltage ADC
+channel 19.  The next software-only research item is to recover their exact
+read-only interface or register mapping and add a snapshot to the host TUI.
+A physical USB power meter remains the preferred cross-check.  No higher PMIC
+write is justified until the first two observations agree.
+
 ## USB access and services
 
 The useful near-term form is a **tethered appliance**, not an independent
