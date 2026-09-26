@@ -315,20 +315,17 @@ untested assumption.
 
 ## Safest next experiment
 
-The next experiment should remain fully offline and read-only:
+The root-filesystem filename search and userspace baud review are complete.
+The exact `12B410` filesystem contains no standalone HCD, while BlueTool
+supplies one precise candidate filename and BTServer proves that stock J81
+opens the transport at 3 Mbaud. The remaining offline firmware task is to
+search another matching, lawfully accessible local restore/OTA artifact for
+that exact filename, then hash and validate any result as an HCI command
+stream. Do not substitute the Wi-Fi `.trx` or bundle a patch before the
+controller returns its own HCI version.
 
-1. Extract only filenames matching Bluetooth/Broadcom/patchram from the
-   matching iPad5,3 iOS 8.1 (12B410) root filesystem.
-2. Identify the userspace client of `/dev/btpoweroff`, `/dev/btwake` and, on
-   boards that expose it, `/dev/btreset`, plus its UART baud setup. This
-   determines whether J81 ever deasserts PMIC GPIO2 after the Apple driver
-   starts and whether 3 Mbaud is the initial or switched rate.
-3. Hash any candidate radio patch, inspect its header/command framing, and
-   record a local conversion path to Linux HCD if needed. Do not bundle it.
-
-This can resolve firmware provenance and power sequencing without touching
-the iPad. It cannot explain why the byte-correct D2207 write is rejected in
-the current Linux state.
+The consolidated private-asset inventory and validation procedure are in
+[`j81-private-firmware-assets.md`](j81-private-firmware-assets.md).
 
 If device work is later permitted and passive measurement hardware is
 available, the only justified electrical experiment is an SDA/SCL capture
@@ -371,8 +368,8 @@ PMIC write; the cold-iPadOS bus capture remains the next evidence gate.
 | AP GPIO164 is device wake, not host wake. | Direct AppleBluetooth call direction. |
 | J81 needs no separate reset GPIO. | Strong: property absent and Apple's driver treats it as optional. Physical integration details remain undocumented. |
 | J81 needs no explicit radio clock or named regulators. | Unknown; only their absence from ADT is proven. Do not model them yet. |
-| The cold controller initially listens at 3 Mbaud. | Unknown; ADT proves Apple's configured transport rate, while upstream `hci_bcm` first uses 115,200. |
-| The chip is specifically BCM4354 revision X and needs filename Y. | Unknown until the controller answers HCI version commands. |
+| Stock iPadOS opens J81's Bluetooth transport at 3 Mbaud. | Direct BTServer control-flow plus matching ADT and absence of a preference override. Whether bare ROM also accepts another rate remains untested. |
+| BlueTool maps the board candidate to BCM4350C2 and `BCM4350C2_12.2.253.457_Riesling_OS_MUR_STC_20140916.hcd`. | Direct matching-iPadOS metadata; runtime identity and patch bytes still require the controller response and a separate lawful artifact. |
 | Firmware is the present blocker. | False; the failure precedes firmware lookup. |
 | The rejected D2207 write is caused by runtime ownership/lock state. | Inference after framing and one candidate master-enable were ruled out. |
 | Cold boot is the right passive-capture window. | Strong inference from AppleBluetooth asserting power-enable in `start()`. |
