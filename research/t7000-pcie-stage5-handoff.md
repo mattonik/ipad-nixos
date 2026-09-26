@@ -443,11 +443,13 @@ lower 16 bits according to `maximum-link-speed`; it does not yet recover
 the capability-relative address or final J81 value with enough certainty
 to copy it into Linux.
 
-Likewise, the captured ADT says Apple requests gate index `0x39` through
-both its power and clock gate calls; Linux currently attaches only
-`ps_pcie` (PMGR power-state register `0x20308`) and does not model the
-two sibling ADT clock-gate entries `0x3a` and `0x38`. This is an evidence
-gap, not permission to turn on sibling domains together.
+The later concrete-vtable trace corrects the shorthand used here: the port
+passes `apcie-port = 1`, not gate ID `0x39`, to its controller hooks. The
+`AppleT7000PCIe` `+0x6b8` hook then explicitly enables clock-gate entries
+0, 1, and 2 and power-gate entry 0 through its `AppleARMIODevice` provider.
+For J81 those are PCIE (`0x39`), PCIE_AUX (`0x3a`), PCIE_REF (`0x38`), and
+PCIE power (`0x39`). Linux still attaches only `ps_pcie`, so the two sibling
+domains remain an evidence gap rather than a reason to enable them blindly.
 
 The exact next research deliverable is therefore a short address/dataflow
 trace for that controller return value, paired with a PMGR-gate ownership
@@ -530,18 +532,36 @@ capability (not our chosen Gen1 value), *also* couldn't bring the link
 up. That weakens "wrong link-speed encoding" as the remaining blocker --
 the link doesn't fail to train because of *which* speed is requested,
 it fails to train at all, at any requested speed. This shifts weight
-back toward the still-open Apple power/clock-gate ownership question
-(gate index `0x39` via both power and clock gate calls, vs. Linux's
-`ps_pcie` alone) as the more likely remaining prerequisite, rather than
-anything link-speed-related. `+0x88` still reads `0x0000000c` after the
-poll; bit 6 (link-up) never sets, matching every prior stage.
+back toward the Apple power/clock-gate translation question. The subsequent
+concrete-vtable trace shows that Apple enables all three controller clock
+gates while Linux still only has `ps_pcie`; it also exposes a second
+comparison point in the `+0x6d0` hook: for port 1 Apple clears bit 0 at
+shared offset `0x180` and sets bit 0 at `0x198` before continuing. Stage 5F
+leaves `0x180` bit 0 set through its older shared sequence. `+0x88` still
+reads `0x0000000c` after the poll; bit 6 (link-up) never sets.
 
-**Next, not yet built**: resolve the PMGR gate-index-`0x39` ownership
-question (whether Linux's `ps_pcie` genuinely covers it, or whether a
-sibling gate needs modeling) before another write-stage payload --
-matching the "Build gate after the next trace" section above, which
-already flagged this as the harder-evidenced remaining gap once the
-link-speed question was resolved.
+**Next, not yet built**: keep these two changes separable. First verify the
+active T7001 PMGR-domain graph and design an AUX/REF-only attachment test;
+then decide whether the exact `+0x6d0` shared-register transition deserves
+a separate one-RMW experiment. Combining them would make either result
+ambiguous.
+
+## Post-Stage-5F gate trace: concrete Apple controller path, 2026-09-26
+
+The remaining gate question is now narrower than the old “does `ps_pcie`
+cover `0x39`?” framing. `AppleEmbeddedPCIEPort::init()` stores the port
+number (`apcie-port`, J81 value `1`) at `port+0xa8`; it does not store
+`power-gates`. The active `AppleT7000PCIe` subclass vtable resolves:
+
+| Hook | Target | Effect relevant to J81 |
+| --- | --- | --- |
+| `+0x6b8` | `FUN_ffffff8002e6e038` | Enables `clock-gates[0..2]` and `power-gates[0]` through `AppleARMIODevice`, then delays 10 µs. This is the exact PCIE/AUX/REF evidence above. |
+| `+0x6d0` | `FUN_ffffff8002e6e3e4` | With port 1, clears shared `0x180` bit 0 and sets shared `0x198` bit 0. Its two surrounding reads are at `0x844` and `0x854`; no additional write was found in this hook. |
+
+This establishes two independently testable deltas from Stage 5F. It does
+not establish that either one alone will train the link. No Stage 5G
+implementation follows from this note: its pre-build review must verify the
+current T7001 PMGR nodes and choose one delta only.
 
 Full verbatim dmesg and record in
 `research/t7000-pcie-hardware-findings.md`'s "Real PCIe host-controller

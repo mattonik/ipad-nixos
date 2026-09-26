@@ -219,17 +219,18 @@ caches several platform functions per port during setup, including
 `function-clkreq` (`+0x128`) -- confirmed by direct string cross-references
 (`function-dart_force_active`, `function-nvme_mmu_force_active`,
 `_dartForceActiveFunction != nullptr`, `manual-enable`, all in this kext).
-It also reads the ADT's `power-gates` property (a single `u32` index) into
-`+0xa8`.
+It reads the port child's `apcie-port` property into `+0xa8`. On J81 that
+value is `1`. This was rechecked from the property-symbol initialization and
+the `init()` call site on 2026-09-26; it is not the controller's
+`power-gates` value (`0x39`).
 
 **`AppleEmbeddedPCIEPort::enableGated()`** (`FUN_ffffff8002bee6cc`,
 confirmed by its own `"enableGated"` log-string reference) is the real
 state machine, and its order for the initial enable states is, in this
 exact sequence:
 
-1. Enable the power gate (`vtable+0x6b8`, called with the `power-gates`
-   index from `+0xa8`).
-2. Enable the clock gate (`vtable+0x6d0`, same index).
+1. Invoke controller hook `vtable+0x6b8` with PCIe port number `1`.
+2. Invoke controller hook `vtable+0x6d0` with the same port number.
 3. **Call `function-dart_force_active(true, 0, 0)`** through the cached
    function pointer at `+0x130`.
 4. If an NVMe-MMU force-active function was also resolved (`+0x138`,
@@ -288,13 +289,22 @@ anything conclusive about Apple's own real activation path.
 ### Where the `PCIE`/`PCIE_AUX`/`PCIE_REF` gates fit in
 
 The literal ADT property names `power-gates` and `clock-gates` do **not**
-appear anywhere in `AppleEmbeddedPCIE.kext`'s own string table -- only one
-opaque, shared symbol constant is referenced to read a single `u32` value
-(matching the already-documented `power-gates: 0x39` (57) ADT value) into
-the port object. Both gate-enable calls in `enableGated()`
-(`vtable+0x6b8`/`+0x6d0`) take *only* that one index as their argument;
-this leaf driver code never separately references the other two
-`clock-gates` entries (`58`/`PCIE_AUX`, `56`/`PCIE_REF`).
+appear in `AppleEmbeddedPCIE.kext`; they are consumed by the concrete
+`AppleT7000PCIe` controller hook. The 2026-09-26 vtable trace resolves its
+first enable hook (`+0x6b8`) to `FUN_ffffff8002e6e038`. It calls the
+controller's `AppleARMIODevice` wrapper four times, in this order:
+
+1. `enableDeviceClock(true, 0)`;
+2. `enableDevicePower(true, NULL, 0)`;
+3. `enableDeviceClock(true, 1)`;
+4. `enableDeviceClock(true, 2)`;
+5. delay 10 microseconds.
+
+The wrapper indexes the controller ADT arrays. J81's captured values make
+the physical requests exact: clock gates `0x39` (PCIE), `0x3a` (PCIE_AUX),
+and `0x38` (PCIE_REF), plus power gate `0x39`. This corrects the earlier
+claim that `enableGated()` passed gate ID `0x39` directly or left AUX/REF
+unreferenced.
 
 The pinned [Linux PMGR implementation](https://github.com/HoolockLinux/linux/blob/6831bc701a6ce059e71e5aaa9488c9195bea6927/drivers/pmdomain/apple/pmgr-pwrstate.c)
 resolves the Linux side. It registers one genpd per DT power-state node and
@@ -305,9 +315,9 @@ Consequently, `power-domains = <&ps_pcie>` powers **only** `ps_pcie`; it
 cannot implicitly power either sibling. `0019` proves that one domain safe,
 but not that AUX/REF are enabled or unnecessary.
 
-Apple may still handle its ADT `clock-gates` array below the port driver.
-The current Linux DT does not model the two sibling PMGR states, however.
-Recovering their Apple ownership remains necessary for a production
+Apple demonstrably handles all three entries before the link setup. The
+current Linux DT still does not model the two sibling PMGR states, however.
+Recovering the precise Linux attachment behavior remains necessary for a production
 controller driver, but it does not prevent a narrow probe of the existing
 Linux DART reset path.
 
@@ -2426,10 +2436,30 @@ requested speed. `+0x88` still reads `0x0000000c` after the poll; bit 6
 never sets, matching every prior stage exactly.
 
 **This shifts weight back to the still-open Apple power/clock-gate
-ownership question** (ADT gate index `0x39`, requested through both
-power and clock gate calls, versus Linux's `ps_pcie` alone) as the more
-likely remaining prerequisite, rather than anything link-speed-related.
-Next, not yet built: resolve that gate-ownership question before
-another write-stage payload. Full record in
+translation question**, rather than anything link-speed-related. The
+concrete dispatch correction immediately below supersedes the old
+single-gate wording. Full record in
 `research/t7000-pcie-stage5-handoff.md`'s "Stage 5F hardware result"
 section.
+
+### Post-Stage-5F correction: the concrete gate calls, 2026-09-26
+
+The next trace resolves the dispatch that the Stage 5F result left open.
+`AppleEmbeddedPCIEPort::init()` puts `apcie-port = 1` in `port+0xa8`; the
+value passed to controller hooks `+0x6b8` and `+0x6d0` is therefore a port
+number, not the ADT's `power-gates = 0x39`.
+
+The active `AppleT7000PCIe` vtable maps `+0x6b8` to
+`FUN_ffffff8002e6e038`. That hook calls the controller's
+`AppleARMIODevice::enableDeviceClock(true, 0)`,
+`enableDevicePower(true, NULL, 0)`, `enableDeviceClock(true, 1)`, and
+`enableDeviceClock(true, 2)`, then delays 10 µs. Since the captured J81 ADT
+lists clock gates `[0x39, 0x3a, 0x38]` and power gate `0x39`, Apple is now
+proven to request PCIE, PCIE_AUX, PCIE_REF, and PCIE power. The previous
+claim that only `0x39` was requested was wrong.
+
+`+0x6d0` maps to `FUN_ffffff8002e6e3e4`. For port 1 it clears bit 0 at
+shared offset `0x180` and sets bit 0 at `0x198`, with read-only accesses at
+`0x844` and `0x854` around those operations. Stage 5F leaves the former bit
+set. The two remaining deltas must be isolated: a future AUX/REF PMGR-domain
+test and a future `+0x6d0` shared-register test must not be combined.
