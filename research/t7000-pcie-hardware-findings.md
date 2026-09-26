@@ -2463,3 +2463,49 @@ shared offset `0x180` and sets bit 0 at `0x198`, with read-only accesses at
 `0x844` and `0x854` around those operations. Stage 5F leaves the former bit
 set. The two remaining deltas must be isolated: a future AUX/REF PMGR-domain
 test and a future `+0x6d0` shared-register test must not be combined.
+
+### Real PCIe host-controller driver, Stage 5G: isolated ps_pcie_aux/ps_pcie_ref gate test, 2026-09-26
+
+Per the "keep these two changes separable" instruction and Martin's own
+research-agent recommendation (test AUX/REF power domains alone first,
+then the `0x180`/`0x198` register delta alone second): extends the
+`pcie` DT node's `power-domains` to list `ps_pcie`, `ps_pcie_aux`, and
+`ps_pcie_ref`, and adds explicit `genpd_dev_pm_attach_by_id()` +
+`pm_runtime_get_sync()` calls in `probe()` for indices 1/2 (the platform
+bus's automatic genpd attach only covers index 0). No register-level
+changes versus Stage 5F. `kernel/patches/0046-...`. **Cross-build
+verified clean, 2026-09-26**: exit 0, checksums match,
+`genpd_dev_pm_attach_by_id` confirmed as a real linked/exported symbol,
+both new log strings present in the built `Image`, and the built DTB's
+`pcie` node carries all three distinct `power-domains` phandles
+(verified directly via `dtc` decompile).
+
+**Hardware result: clean attach, no crash -- but a clean negative
+result for the AUX/REF hypothesis, 2026-09-26.** postmarketOS booted
+normally, USB networking up. `dmesg`:
+
+```
+power-domains[1] (ps_pcie_aux) attached and held on
+power-domains[2] (ps_pcie_ref) attached and held on
+link_up=0 0x088=0x0000000c 0x08c=0x00000000
+```
+
+Both sibling PMGR gates attached and stayed powered with no probe
+deferral or error -- ruling out a straightforward "domain fails to
+attach" explanation. But `+0x88` still reads the identical
+`0x0000000c` it has shown in every stage since Stage 5D; bit 6 never
+sets. No downstream device on bus 01 (same root-port self-ID, same
+generic-core retrain-failed message as Stage 5F, since that write is
+still present in this stage's stack). **Powering `ps_pcie_aux`/
+`ps_pcie_ref` alone, without also matching the `+0x6d0` hook's exact
+`0x180`/`0x198` register transition, does not bring the link up.**
+
+This rules out "the sibling gates are simply unpowered" as a
+standalone explanation, narrowing the remaining candidate to the
+`+0x6d0` register delta (clear `0x180` bit 0, set `0x198` bit 0 for
+port 1) as the next isolated test -- matching the research's own
+"choose one delta only" instruction, now with the first delta cleanly
+ruled out. Next, not yet built: Stage 5H, testing the `0x180`/`0x198`
+transition alone (on top of Stage 5F, keeping the AUX/REF attach out of
+that test so a positive or negative result there stays unambiguous
+too).

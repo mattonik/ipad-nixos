@@ -563,9 +563,31 @@ not establish that either one alone will train the link. No Stage 5G
 implementation follows from this note: its pre-build review must verify the
 current T7001 PMGR nodes and choose one delta only.
 
+## Stage 5G hardware result, 2026-09-26
+
+Per Martin's own research-agent recommendation (test AUX/REF first,
+alone; test `0x180`/`0x198` second, alone -- combining them would make
+either result ambiguous): implemented the first delta in isolation.
+`kernel/patches/0046-...` extends `pcie`'s `power-domains` to
+`<&ps_pcie>, <&ps_pcie_aux>, <&ps_pcie_ref>` and adds explicit
+`genpd_dev_pm_attach_by_id()` + `pm_runtime_get_sync()` calls for
+indices 1/2 (automatic genpd attach only covers index 0). No
+register-level changes versus Stage 5F.
+
+**Clean boot, both domains attached and held on with no error --
+`+0x88` still identical, `0x0000000c`, bit 6 never sets. No downstream
+device.** This is a clean negative result: powering `ps_pcie_aux`/
+`ps_pcie_ref` alone does not bring the link up. It rules out "simply
+unpowered sibling gates" as a standalone explanation.
+
+**Next, not yet built: Stage 5H**, testing the second delta alone --
+`+0x6d0`'s exact register transition for port 1 (clear shared offset
+`0x180` bit 0, set `0x198` bit 0) -- on top of Stage 5F, without the
+AUX/REF attach, so this second result stays equally unambiguous.
+
 Full verbatim dmesg and record in
 `research/t7000-pcie-hardware-findings.md`'s "Real PCIe host-controller
-driver, Stage 5E" section.
+driver, Stage 5G" section.
 
 ## Where everything lives
 
