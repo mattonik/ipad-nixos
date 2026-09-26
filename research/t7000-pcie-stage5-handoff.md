@@ -625,6 +625,39 @@ the remaining explanation space to one of:
 
 **Next is research, not another blind register-level test.**
 
+## Stage 5H interpretation corrected: endpoint power and PHY gap, 2026-09-26
+
+The preceding Post-Stage-5F vtable mapping was wrong by `0x10`: it treated
+the two Itanium vtable header words at `0xffffff8002e6f8b0`/`...f8b8` as
+callable slots. The real `AppleT7000PCIe` address point is
+`0xffffff8002e6f8c0`, independently corroborated by constructor and
+destructor references. Consequently, `+0x6c0` is
+`FUN_ffffff8002e6e3e4` (the shared-register transition exercised by Stage
+5H) and belongs to `disableGated()`. The true `enableGated()` calls are
+`+0x6b8 = FUN_ffffff8002e6e290` (the already ported per-port sequence) and
+`+0x6d0 = FUN_ffffff8002e6e548` (the final LTSSM write). Stage 5H's harmless
+no-op is real, but it does not test an enable-side requirement.
+
+Two higher-value missing prerequisites are now known. First, J81's
+`/soc/uart2/wlan` ADT node maps AppleBCMWLAN's `function-reg_on` to D2207 PMU
+GPIO3. Apple's PCIe enable path asserts it, waits its default 100 ms, enables
+the PCIe port, then waits another 100 ms. Read-only Stage 5H inspection found
+GPIO3 low: its configuration bytes at `0x03e9..0x03eb` are all zero and D2207
+data register `0x0063` is `0x20` (bit 3 clear). The BCM4350 was powered off
+during every prior PCIe link attempt.
+
+Second, controller `configure()` calls true `+0x6b0` before the port loop.
+On J81 it pulses bit 0 at shared offsets `0x040`, `0x100`, and `0x118` high
+then low in reverse order, and writes `1` to PHY pair-0 window offset `0xc3c`
+(ADT register window 10). No prior stage ported this sequence.
+
+**Correct next gate:** recover the existing D2207 command path which can set
+GPIO3 persistently and validate its readback. Only then make one bounded test
+that asserts `WLAN_REG_ON`, waits 100 ms, and reuses the known-safe host
+sequence. Do not combine that test with the PHY initialization. If REG_ON
+remains high and the link is still down, the PHY sequence is the next isolated
+variable.
+
 Full verbatim dmesg and record in
 `research/t7000-pcie-hardware-findings.md`'s "Real PCIe host-controller
 driver, Stage 5H" section.

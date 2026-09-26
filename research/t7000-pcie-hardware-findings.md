@@ -2558,3 +2558,23 @@ or (c) something entirely outside the enable/gate/DBI/tunables/tail
 sequence altogether (firmware, NVRAM, or a hardware condition this
 investigation hasn't identified). Next is research, not another blind
 register-level test.
+
+### Correction after Stage 5H: vtable mapping and BCM4350 power state, 2026-09-26
+
+Later Ghidra review found that the controller vtable address point was
+misidentified by `0x10`: `0xffffff8002e6f8b0` and `...f8b8` are header words;
+the real address point is `0xffffff8002e6f8c0`. This correction is supported
+by five constructor/destructor references. The prior Stage 5H target
+`FUN_ffffff8002e6e3e4` is true slot `+0x6c0`, called from `disableGated()`;
+it is not the `+0x6d0` hook used by `enableGated()`. The Stage 5H result is
+therefore retained as a safe observation of that disable-side transition,
+but retracted as evidence against an enable-side prerequisite.
+
+The corrected configure path has an unported PHY-pair sequence, but the
+immediate blocker is stronger. J81 maps AppleBCMWLAN's `function-reg_on` to
+D2207 PMU GPIO3. Apple's PCIe enable path sets it high and waits 100 ms before
+starting the PCIe port. Read-only live inspection of Stage 5H found GPIO3 low,
+leaving the BCM4350 powered off. No prior PCIe stage asserted this line. The
+next work is to recover a persistent, evidence-backed D2207 GPIO3 control
+path and test it alone with Apple's delay; further host-register experiments
+while REG_ON is low are not informative.
