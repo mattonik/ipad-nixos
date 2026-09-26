@@ -366,8 +366,9 @@ CHARGING_TIERS: list[tuple[str, int]] = [
     ("100 mA (Apple power-on default)", 0x02),
     ("500 mA", _charging_current_code(500)),
     ("1000 mA (validated resting state)", SAFE_RESTING_CODE),
-    ("2100 mA (not yet validated -- watch closely)", _charging_current_code(2100)),
-    ("2400 mA (not yet validated -- watch closely)", _charging_current_code(2400)),
+    ("2100 mA (hardware-validated)", _charging_current_code(2100)),
+    ("2400 mA (hardware-validated)", _charging_current_code(2400)),
+    ("2500 mA (hardware-validated)", _charging_current_code(2500)),
 ]
 
 CHARGING_TEMP_ABORT_C = 42.0  # deciC field / 10 must stay below this
