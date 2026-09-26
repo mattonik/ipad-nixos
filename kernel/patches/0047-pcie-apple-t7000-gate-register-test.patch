@@ -1,0 +1,79 @@
+diff --git a/drivers/pci/controller/pcie-apple-t7000.c b/drivers/pci/controller/pcie-apple-t7000.c
+--- a/drivers/pci/controller/pcie-apple-t7000.c
++++ b/drivers/pci/controller/pcie-apple-t7000.c
+@@ -3,8 +3,19 @@
+  * Apple T7000-family PCIe -- enable-sequence + generic-enumeration +
+  * PERST + controller-tuning/DBI-override RMW + enableGated()'s full
+  * recovered tail + bounded link-up poll + recovered maximum-link-speed
+- * RMW (Stage 5F).
++ * RMW + early gate-register delta (Stage 5H).
+  *
++ * Stage 5H tests the second of two deltas found after Stage 5F's own
++ * review (research/t7000-pcie-stage5-handoff.md's "Post-Stage-5F gate
++ * trace" section) -- deliberately isolated from Stage 5G's AUX/REF PMGR
++ * gate attach (that stage's own hardware result: clean attach, no
++ * effect on link-up). Apple's real +0x6d0 controller hook, called
++ * during enableGated()'s early gate-enable phase strictly before the
++ * port-hardware enable sequence, clears shared-window bit 0 at 0x180
++ * (REFCLK_EN) and sets bit 0 at 0x198 (LINK_ENABLE) for port 1. This
++ * stage replays exactly that delta immediately before the existing
++ * enable sequence runs, no other changes versus Stage 5F.
++ *
+  * Stage 5F adds the one operation Stage 5E's own review found missing:
+  * J81's ADT `maximum-link-speed = 1` is applied by Apple through a
+  * standard PCIe capability RMW on the root port itself (not a
+@@ -234,6 +245,38 @@
+ 		 readl(shared + ltssm_off));
+ }
+ 
++/*
++ * Stage 5H: the exact register delta from Apple's +0x6d0 controller
++ * hook (FUN_ffffff8002e6e3e4, decompiled 2026-09-26 -- see
++ * research/t7000-pcie-stage5-handoff.md's "Post-Stage-5F gate trace"
++ * section). Runs as part of enableGated()'s early gate-enable phase,
++ * strictly before the port-hardware enable sequence below: for port 1,
++ * clears bit 0 at shared offset 0x180 (REFCLK_EN) and sets bit 0 at
++ * 0x198 (LINK_ENABLE). Isolated from Stage 5G's AUX/REF gate attach --
++ * see the module comment above for why these two deltas are kept
++ * separate.
++ */
++static void t7000_pcie_apply_gate_register_delta(struct device *dev,
++						  void __iomem *shared, int port)
++{
++	u32 off = port * T7000_PCIE_PORT_STRIDE;
++	u32 v;
++
++	v = readl(shared + T7000_PCIE_REFCLK_EN + off);
++	writel(v & ~BIT(0), shared + T7000_PCIE_REFCLK_EN + off);
++	dev_info(dev,
++		 "t7000-pcie gate-register-test: port %d 0x%03x: 0x%08x -> 0x%08x (clear bit0)\n",
++		 port, T7000_PCIE_REFCLK_EN + off, v,
++		 readl(shared + T7000_PCIE_REFCLK_EN + off));
++
++	v = readl(shared + T7000_PCIE_LINK_ENABLE + off);
++	writel(v | BIT(0), shared + T7000_PCIE_LINK_ENABLE + off);
++	dev_info(dev,
++		 "t7000-pcie gate-register-test: port %d 0x%03x: 0x%08x -> 0x%08x (set bit0)\n",
++		 port, T7000_PCIE_LINK_ENABLE + off, v,
++		 readl(shared + T7000_PCIE_LINK_ENABLE + off));
++}
++
+ static void t7000_pcie_enable_port_hardware(struct device *dev,
+ 					     void __iomem *shared, int port)
+ {
+@@ -585,6 +628,8 @@
+ 	if (ret)
+ 		return ret;
+ 
++	t7000_pcie_apply_gate_register_delta(dev, shared, T7000_PCIE_TEST_PORT);
++
+ 	t7000_pcie_log_port(dev, shared, T7000_PCIE_TEST_PORT, "before");
+ 
+ 	dev_info(dev, "t7000-pcie tuning-baseline-test: about to write the recovered enable sequence for port %d\n",
+@@ -676,5 +721,5 @@
+ };
+ module_platform_driver(apple_t7000_pcie_driver);
+ 
+-MODULE_DESCRIPTION("Apple T7000 PCIe port-1 full recovered enableGated() sequence plus recovered maximum-link-speed capability RMW (Stage 5F)");
++MODULE_DESCRIPTION("Apple T7000 PCIe port-1 full recovered enableGated() sequence plus the early +0x6d0 gate-register delta (Stage 5H)");
+ MODULE_LICENSE("GPL");
