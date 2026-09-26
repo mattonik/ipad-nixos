@@ -101,10 +101,75 @@ the already validated 2400 mA limit is active:
 | VBUS voltage sags, USB re-enumerates, temperature rises, or a PMIC fault appears | The source/cable/thermal path is constraining. | Lower the limit; do not test higher values. |
 
 Apple's D2207 driver identifies VBUS-current ADC channel 9 and VBUS-voltage ADC
-channel 19.  The next software-only research item is to recover their exact
-read-only interface or register mapping and add a snapshot to the host TUI.
+channel 19.  Their interface is now recovered, but it is not a passive register
+read and therefore does not belong in the host TUI as an `i2ctransfer` shortcut.
 A physical USB power meter remains the preferred cross-check.  No higher PMIC
 write is justified until the first two observations agree.
+
+#### Recovered D2207 VBUS ADC interface
+
+The evidence is the same iPad5,3 12B410 kernelcache used for the earlier
+charger work (SHA-256
+`19c277d60e0a1185b1e4a1b72cda4f1f550c0b0bf670791542234a6dbbcc28bf`).
+`AppleD2207PMUPowerSource` has two wrappers at `0xffffff8002b4cbdc` and
+`0xffffff8002b4cbf4`; they request ADC channels 19 and 9 respectively through
+`AppleDialogPMU`.  The provider vtable resolves those requests to D2207's
+voltage conversion at `0xffffff8002b49200`, current conversion at
+`0xffffff8002b494c0`, and raw conversion routine at
+`0xffffff8002b4821c`.  This independently ties the channel numbers to the
+power-source's VBUS telemetry rather than merely finding the constants in a
+generic ADC table.
+
+The raw conversion sequence is:
+
+1. Serialize access to the ADC engine.  Preserve the driver's cached control
+   bits, insert `channel & 0x3f`, set bit 7, and write the resulting byte to
+   `0x0500` to start a conversion.  Some channels also temporarily use bit 6
+   of `0x0501` before the start.
+2. Wait for the PMIC ADC-complete event.  Apple's driver waits on its interrupt
+   state with a one-second timeout; it does not poll the result bytes blindly.
+3. Read two bytes from `0x0502`.  Decode the 12-bit sample as
+   `(byte[1] << 4) | (byte[0] & 0x0f)`.  The upper nibble of `byte[0]` is state,
+   not sample data; channel 9 is one of the explicitly permitted signed-state
+   cases.
+4. Clear the temporary ADC controls: read `0x0501`, retain only bits 0--2 and
+   write it back; clear bit 7 from the saved `0x0500` byte and write that back;
+   then release the serialized ADC operation.
+
+The conversion formulas, including Apple's integer truncation, are exact:
+
+| Quantity | Channel | Raw-to-engineering conversion | Resolution |
+| --- | ---: | --- | ---: |
+| VBUS current | 9 | `floor(raw * 52800 / 1000)` mA | 52.8 mA/count |
+| VBUS voltage | 19 | `floor(raw * 96192 / 1000)` mV | 96.192 mV/count |
+
+The two power-source wrappers pass a unity fixed-point multiplier
+(`0x10000`), so those D2207 results are already milliamps and millivolts; there
+is no additional board-specific scale in this J81 call path.
+
+This is a read-only *measurement* in Apple's API, but not an I2C read-only
+transaction: starting and acknowledging a conversion necessarily writes the
+ADC control registers.  Direct host commands are consequently not proven safe
+or complete.  The correct implementation point is the kernel PMIC driver,
+where access can be serialized and the ADC-complete interrupt handled.  Only
+after that driver exports a stable snapshot should the host TUI display it.
+
+At the validated `0x04c0` 2400 mA setting, collect VBUS current and voltage in
+the same snapshot as the BQ27545 battery current, voltage and temperature:
+
+- VBUS current within one ADC count of 2400 mA with stable VBUS means the
+  programmed input ceiling is plausibly binding; this is the only result that
+  supports designing a separately authorized higher-limit test.
+- VBUS current materially below 2400 mA means `0x04c0` is not binding.  Raising
+  it cannot create more input power.
+- Current below the ceiling together with falling VBUS voltage or USB resets
+  identifies the source/cable path as the constraint.  Stable VBUS and stable
+  input current, while net battery current stays near the observed
+  100--115 mA, instead points downstream: system load, the battery charge
+  controller or battery charge acceptance.  Comparing input power
+  (`VBUS mV * VBUS mA`) with battery power (`battery mV * battery mA`) separates
+  system consumption from battery acceptance; neither battery current alone
+  nor the `0x04c0` setting can do that.
 
 ## USB access and services
 
