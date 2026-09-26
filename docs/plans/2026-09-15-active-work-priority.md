@@ -4,8 +4,9 @@
 old interpretation of Stage 5H: it replayed a disable-side hook, not an
 enable-side prerequisite. More importantly, J81's BCM4350 `WLAN_REG_ON` is
 low in the live Stage 5H session, while Apple's PCIe path asserts it and waits
-100 ms before starting the port. The immediate work is to recover a safe,
-evidence-backed REG_ON control path, then test that prerequisite alone.)
+100 ms before starting the port. Static work proves the normal D2207 command
+already, but a prior identical Linux GPIO write did not persist. A new build is
+therefore gated on passive evidence of the runtime owner/interlock.)
 
 This is the live backlog distilled from `docs/project-status.md`, the
 subsystem plans, and the driver-gap research. It excludes completed
@@ -19,7 +20,7 @@ substituted with guessed software writes.
 
 | Order | Work item | Certainty | Ease | Impact | Current gate |
 | --- | --- | ---: | ---: | ---: | --- |
-| 1 | PCIe: assert the BCM4350 power prerequisite | 5 | 2 | 5 | The host path, DART and IOMMU are hardware-clean, but no endpoint enumerates because `WLAN_REG_ON` (D2207 GPIO3) is low in the live Stage 5H session. Apple asserts it, waits 100 ms, then enables the PCIe port. The recovered configure path also has an unported PHY-pair sequence. Correct the historic vtable mapping before relying on Stage 5G/5H; first recover and validate persistent REG_ON control, then test that one prerequisite with the Apple delay. |
+| 1 | PCIe: establish persistent BCM4350 power control | 5 | 1 | 5 | The host path, DART and IOMMU are hardware-clean, but no endpoint enumerates because `WLAN_REG_ON` (D2207 GPIO3) is low. Apple asserts it and waits 100 ms before PCIe. The byte-exact GPIO transaction is already known, but the identical GPIO2 Linux command was ACKed and did not persist; a kernel GPIO provider would not change those bytes. First obtain passive iPadOS D2207 traffic during a cold Wi-Fi bring-up to identify the owner/interlock. Then make one REG_ON-readback build; keep the PHY sequence separate. |
 | 2 | Charging Stage 2: writable `input_current_limit` kernel property | 5 | 4 | 3 | Implemented and cross-build verified clean, 2026-09-25 (`kernel/patches/0017-...`, isolated `m1n1-hoolock-charging-writable-test` payload, mirroring the ANS1-test pattern). First attempt hit the Linux-builder VM's disk being full from five back-to-back builds; a retry after idle time succeeded (see `docs/build-infrastructure.md`). Not yet hardware-tested. |
 | 3 | Repeat ANS1's intentionally read-only hardware observation | 4 | 4 | 3 | Requires the separate observation-only payload; never mount or write it. |
 | 4 | Touch: resolve firmware/calibration delivery and power ownership | 3 | 2 | 5 | Blocked by the non-persistent D2207 LDO/GPIO state and private touch data. |

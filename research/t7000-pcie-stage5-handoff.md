@@ -651,12 +651,17 @@ On J81 it pulses bit 0 at shared offsets `0x040`, `0x100`, and `0x118` high
 then low in reverse order, and writes `1` to PHY pair-0 window offset `0xc3c`
 (ADT register window 10). No prior stage ported this sequence.
 
-**Correct next gate:** recover the existing D2207 command path which can set
-GPIO3 persistently and validate its readback. Only then make one bounded test
-that asserts `WLAN_REG_ON`, waits 100 ms, and reuses the known-safe host
-sequence. Do not combine that test with the PHY initialization. If REG_ON
-remains high and the link is still down, the PHY sequence is the next isolated
-variable.
+**Build gate, refined:** no GPIO3 build is justified yet. The exact D2207
+GPIO-function transaction is already statically recovered from Apple; it is
+the same two-byte-address, one-byte-data operation that Linux previously sent
+to GPIO2 and observed as ACKed but non-persistent. A Linux GPIO provider would
+emit the same bus bytes and cannot by itself resolve an unknown runtime owner
+or interlock. The first new evidence must be passive D2207 SDA/SCL capture
+during a cold iPadOS Wi-Fi bring-up, including the transactions immediately
+before and after GPIO3 changes. Only if that identifies an extra condition (or
+shows the expected transaction persists under iPadOS) should the next build
+assert `WLAN_REG_ON`, require GPIO3 readback high, wait 100 ms, and reuse the
+known-safe host sequence. Keep the PHY initialization separate.
 
 Full verbatim dmesg and record in
 `research/t7000-pcie-hardware-findings.md`'s "Real PCIe host-controller

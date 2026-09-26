@@ -2578,3 +2578,23 @@ leaving the BCM4350 powered off. No prior PCIe stage asserted this line. The
 next work is to recover a persistent, evidence-backed D2207 GPIO3 control
 path and test it alone with Apple's delay; further host-register experiments
 while REG_ON is low are not informative.
+
+### REG_ON build gate refined: static PMIC research exhausted, 2026-09-26
+
+The exact AppleBCMWLAN enable routine (`FUN_ffffff8002c04790`) confirms the
+order independently: invoke the REG_ON object, wait 100 ms, invoke PCIe-port
+control, then wait another 100 ms. This closes the question of the intended
+ordering, but not of Linux ownership. Earlier AppleD2207PMU analysis already
+proves that a PMU GPIO function is one two-byte-address plus one-byte-data I2C
+operation with no GPIO-specific checksum, unlock, bank switch, or commit.
+Linux sent that exact operation for GPIO2, received an ACK, and observed an
+unchanged immediate and delayed readback. In contrast, the same I2C path can
+change the charger-current register, so the limitation is GPIO state/ownership
+rather than a general I2C failure.
+
+Consequently, implementing a D2207 GPIO provider now would only automate the
+known non-persistent transaction. The evidence gate before any new write build
+is a passive SDA/SCL capture through a cold iPadOS Wi-Fi bring-up. It must show
+the GPIO3 transaction and any prerequisite access which makes it persist. If
+that capture cannot be made, the project has no evidence-based REG_ON build
+specification; the correct state is blocked research, not a guessed GPIO test.
