@@ -269,9 +269,8 @@ previously only assumptions.
   BlueTool owns controller identification and its board/firmware table.
 - BlueTool's `device -S` path reads the Bluetooth node's
   `transport-speed`. The captured J81 ADT value is 3,000,000, so it explicitly
-  supports opening this board at 3 Mbaud. Its default `device -D` path is
-  115,200. Static inspection does not establish which path iPadOS uses for a
-  truly cold controller; do not turn this into a Linux baud-rate guess yet.
+  supports opening this board at 3 Mbaud. Its interactive default
+  `device -D` path is 115,200, but it is not the production BTServer path.
 - Its HCI local-version mapping names subversion `0x610c` **BCM4350C2**. The
   current Linux `btbcm` table calls the same UART subversion `BCM4354`.
   Therefore a responding J81 controller will need a board-local firmware-name
@@ -286,13 +285,33 @@ previously only assumptions.
   the filenames and selection metadata in BlueTool, plus separate BCM4350
   Wi-Fi assets. Those Wi-Fi files must not be repurposed as Bluetooth firmware.
 
+#### BTServer bootstrap rate resolved, 2026-09-26
+
+The matching iOS 8.1 `BTServer` executable was also decompiled privately. Its
+production UART-open path is now clear:
+
+1. It first looks for an optional `BaudRate` value in the machine-specific
+   `com.apple.BTStack` preferences.
+2. If that preference is absent, it reads `transport-speed` from the live
+   Bluetooth ADT node.
+3. Only if neither supplies a usable value does it fall back to 2,400,000.
+
+The mounted matching root filesystem has no `BTStack` `BaudRate` preference,
+and J81's captured ADT provides 3,000,000. Thus the documented iPadOS
+bootstrap rate for the stock configuration is **3 Mbaud**, not 115,200. A
+writable data-volume preference could override it, but that does not weaken
+the board-default result.
+
 There is one concrete follow-up after the PMIC power condition is understood:
 make an isolated J81 `hci_bcm` integration accept a proven 3 Mbaud *initial*
 speed and the exact private HCD filename. Today the driver reads `max-speed`
 as an operational speed, then falls back to its 115,200 default when no reset
-resource exists -- exactly J81's ADT shape. No patch should be built or tried
-until the powered controller provides its version response; it would otherwise
-only encode an untested assumption.
+resource exists -- exactly J81's ADT shape. The smallest correct future patch
+is to make its OF path consume the standard `current-speed` property as
+`init_speed`, then set both `current-speed` and `max-speed` to 3,000,000 in
+the J81 Bluetooth node. No patch should be built or tried until the powered
+controller provides its version response; it would otherwise only encode an
+untested assumption.
 
 ## Safest next experiment
 
