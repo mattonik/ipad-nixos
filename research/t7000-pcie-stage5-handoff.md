@@ -366,6 +366,45 @@ this check.
    could contain a required readiness action. This is a narrower and more
    testable question than adding general MSI or capability code.
 
+## Stage 5E hardware result, 2026-09-26
+
+Implemented exactly the design above: DBI overrides, tunables, the three
+port-tail writes, the two MSI registers, PERST# deassertion, link-start
+last, then a bounded 500ms poll of `+0x88` bit 6. `kernel/patches/0044-...`.
+Cross-build verified, then hardware-tested.
+
+**Clean boot, no crash, no regression on anything already validated** --
+DBI overrides, tunables, MSI registers (`+0x124`/`+0x128`), and the
+link-start write all took exactly as expected. **But two of the three
+port-tail writes did not take as written**:
+
+- `+0x114 = 0`: took cleanly.
+- `+0x104 = 0xff70afff`: readback was `0x0070afff` -- the top byte
+  (`0xff`) silently didn't stick.
+- `+0x100 = 0x008f5000`: readback was `0x00000000` -- **no effect at
+  all**, as if the write never happened.
+
+`+0x88` still reads `0x0000000c` after the full poll window; bit 6
+(link-up) never sets. This isn't a crash or fault in either case --
+both are silent write-doesn't-take behavior, the same general shape as
+the earlier `0x8024` DBI-override anomaly (Stage 5C).
+
+**Three untested hypotheses, not yet a blind-retry candidate:**
+1. `+0x100`/`+0x104` may not be plain RW MMIO -- possibly write-once-
+   after-reset, gated behind an unset bit, or requiring a different
+   access width than a 32-bit `writel()`.
+2. Apple's pseudocode lists these writes before `+0x80 |= 1`, but they
+   might only latch *after* the link-start bit is set -- worth trying
+   `+0x80` first, then writing/reading `+0x100`/`+0x104` afterward.
+3. These two offsets might not actually be inside the same 4KB
+   per-port controller window as `+0x80`/`+0x88`/`+0x8c` -- worth
+   re-checking against the ADT/decompile whether the window is smaller
+   than assumed and these fall into an unmapped/reserved sub-region.
+
+Full verbatim dmesg and record in
+`research/t7000-pcie-hardware-findings.md`'s "Real PCIe host-controller
+driver, Stage 5E" section.
+
 ## Where everything lives
 
 - Full chronological history (every stage, every hardware result, every
