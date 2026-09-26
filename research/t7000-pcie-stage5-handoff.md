@@ -406,6 +406,32 @@ conditional link-speed/internal helpers immediately before the tail
 Linux PMGR/genpd. Stage 5E begins after those Apple prerequisites, so
 they are now the leading explanation for a link still stuck at `0x0c`.
 
+### Follow-up helper trace, 2026-09-26
+
+The focused decompile closes two parts of that proposed research. The
+captured J81 ADT contains `maximum-link-speed = 1`, so Apple's conditional
+`FUN_ffffff8002bef7c8()` is active on this board. It uses the controller's
+ECAM/config accessor to update the low 16 bits of a link-speed-related
+configuration word. Stage 5E does not reproduce that operation.
+
+The two following calls are no longer unknown: `FUN_ffffff8002bef8d8()`
+applies the controller and optional port `dbi-overrides` lists, while
+`FUN_ffffff8002bf09a0()` applies `apcie-config-tunables` through the
+direct port window. Stage 5E already reproduces J81's one controller DBI
+list and its tunables; their remaining gap is the Apple gate/availability
+prefix and its ordering, not another record list.
+
+Apple's interrupt handler reads `+0x100` as an event/status word and
+writes handled bits back through the direct-window helper. This strongly
+supports treating Stage 5E's `0x008f5000 -> 0` readback as a
+write-one-to-clear or self-clearing event acknowledgement, rather than a
+failed configuration write.
+
+The remaining offline priorities are to fully decode the J81
+maximum-link-speed RMW and map Apple's port power/clock-gate-active
+requirement to Linux PMGR/genpd. Only then should a narrow Stage 5F be
+designed around the recovered missing operation(s).
+
 Full verbatim dmesg and record in
 `research/t7000-pcie-hardware-findings.md`'s "Real PCIe host-controller
 driver, Stage 5E" section.
