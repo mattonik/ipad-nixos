@@ -663,6 +663,29 @@ shows the expected transaction persists under iPadOS) should the next build
 assert `WLAN_REG_ON`, require GPIO3 readback high, wait 100 ms, and reuse the
 known-safe host sequence. Keep the PHY initialization separate.
 
+### Online cross-check: endpoint power is confirmed, no J81 PMIC solution found, 2026-09-26
+
+Focused public-source review found no D2207 GPIO Linux driver, register
+interlock, or alternate write protocol beyond the byte-exact Apple path
+already recovered locally. A public [J82 ADT
+dump](https://gist.github.com/zhuowei/715ded46d018cc7d05265e58d6a65083)
+independently records `function-reg_on` as an `OIPG` descriptor for PMU GPIO3
+and `function-pcie_port_control` as `CtrPt`, matching the private J81 decode
+and Apple's recovered ordering. This increases confidence in the endpoint
+power diagnosis; it does not identify the non-persistent-write condition.
+
+A recent, unrelated [Apple Linux PCIe bring-up
+record](https://github.com/damsleth/wallace/blob/main/evidence/2026-07-29-t6040-WIFI-AND-BLUETOOTH-WORKING.md)
+also reports that endpoint power was the decisive cause of a healthy host with
+no link. Its solution is an SMC GPIO key on a much newer SoC, not D2207 I2C,
+and is explicitly non-transferable to J81. Finally, the [Linux Wireless
+BCM4350 table](https://wireless.docs.kernel.org/en/latest/en/users/drivers/brcm80211.html)
+confirms `brcmfmac` PCIe support only becomes relevant after enumeration;
+firmware or NVRAM cannot account for the present electrical no-link state.
+
+The external research therefore strengthens the present priority but does not
+remove the passive-capture gate or justify a new GPIO3 write build.
+
 Full verbatim dmesg and record in
 `research/t7000-pcie-hardware-findings.md`'s "Real PCIe host-controller
 driver, Stage 5H" section.
