@@ -432,6 +432,31 @@ maximum-link-speed RMW and map Apple's port power/clock-gate-active
 requirement to Linux PMGR/genpd. Only then should a narrow Stage 5F be
 designed around the recovered missing operation(s).
 
+### Build gate after the next trace, 2026-09-26
+
+The helper trace establishes the required scope but does **not** yet
+authorize a Stage 5F write payload. Apple gates the link-speed operation
+on a value returned through the same controller call that follows its
+power/clock/DART prefix. The decompiler shows the subsequent RMW preserves
+the upper 16 bits of that returned configuration word and replaces its
+lower 16 bits according to `maximum-link-speed`; it does not yet recover
+the capability-relative address or final J81 value with enough certainty
+to copy it into Linux.
+
+Likewise, the captured ADT says Apple requests gate index `0x39` through
+both its power and clock gate calls; Linux currently attaches only
+`ps_pcie` (PMGR power-state register `0x20308`) and does not model the
+two sibling ADT clock-gate entries `0x3a` and `0x38`. This is an evidence
+gap, not permission to turn on sibling domains together.
+
+The exact next research deliverable is therefore a short address/dataflow
+trace for that controller return value, paired with a PMGR-gate ownership
+trace. It must answer: which configuration word is changed, what J81's
+final low-16-bit value is, and whether Linux's existing `ps_pcie` is the
+equivalent gate transition. If either answer remains unresolved, the next
+build is read-only instrumentation only; it must not add a guessed write
+or additional power domain.
+
 Full verbatim dmesg and record in
 `research/t7000-pcie-hardware-findings.md`'s "Real PCIe host-controller
 driver, Stage 5E" section.
