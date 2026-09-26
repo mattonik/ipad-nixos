@@ -2343,26 +2343,45 @@ predict). `+0x88` still reads the same stuck `0x0000000c` after the
 full 500ms poll, `+0x88` bit 6 never sets -- link-up still never
 observed.
 
-**Open hypotheses for the two failed tail writes**, not yet tested:
-1. These two offsets may not be plain read/write MMIO registers at all
-   -- possibly write-once-after-reset, gated behind a bit this driver
-   hasn't set yet, or requiring a different access width (byte/half-word
-   instead of a 32-bit `writel()`).
-2. Apple's own pseudocode lists these writes *before* `+0x80 |= 1`, but
-   maybe (contrary to that literal ordering) they only latch once the
-   link-start bit is already set -- worth trying the write order
-   `+0x80` first, then read back `+0x100`/`+0x104` afterward, as a
-   diagnostic (not yet done).
-3. `+0x100`/`+0x104`/`+0x114` might not all belong to the same 4KB
-   per-port controller window as `+0x80`/`+0x88`/`+0x8c` -- worth
-   double-checking against the real ADT/decompile whether these
-   offsets are genuinely in-window or if the window is smaller than
-   assumed and these silently fall into an unmapped/reserved sub-region
-   that hardware simply discards writes to.
+#### Stage 5E review: the apparent tail-write failures are not established, 2026-09-26
 
-This does not change the accumulated conclusion that every touched
-register so far is safe to write (no crash, no hang) -- it does mean
-two of the three literal tail-write values Apple's driver sets are not
-landing as intended, which is plausibly related to why the link still
-never trains. Full record and next-step candidates in
+A fresh independent review corrects the initial interpretation of the
+two unusual readbacks. `+0x104` changed from `0x00ffffff` to
+`0x0070afff`: all requested low 24 bits of `0xff70afff` landed, while
+bits 31:24 were zero both before and after. The most economical
+explanation is a 24-bit register with an upper byte that is reserved and
+reads as zero. It is not evidence for a wrong access width or ordering.
+
+`+0x100` is also not proven to have ignored `0x008f5000`. Apple's own
+interrupt handler reads this offset as an event/status word and writes
+the handled bits back through the same direct-window helper to clear
+them. A zero immediate readback is therefore compatible with a
+write-one-to-clear or self-clearing command/status register. Stage 5E
+did not observe a durable configuration value at this address, and
+should not use its zero readback as a failed-write signal.
+
+The direct window itself is confirmed: the recovered Apple helper
+`FUN_ffffff8002bef92c` performs a 32-bit store at the port-controller
+base plus its supplied offset, and `enableGated()` calls it for all
+three tail offsets. The "wrong window" and "try a different width"
+hypotheses are therefore deprioritized.
+
+The next work is offline, not another order-only retry. Stage 5E starts
+at DBI/tunables, whereas Apple first requests the port power and clock
+gates, forces the DART available, requires the gate-active result, and
+runs the conditional link-speed/internal setup calls before the tail.
+Linux's standalone DART and IOMMU consumer paths have already booted
+cleanly; the open question is the port-specific gate transition and
+those intervening helpers. Decompile and trace, in order:
+
+1. `FUN_ffffff8002bef7c8`, `FUN_ffffff8002bef8d8`, and the optional
+   `FUN_ffffff8002bf09a0` called immediately before the tail;
+2. every Apple use of the direct read/write helpers at `+0x100` and
+   `+0x104`, including whether any readback is used as configuration;
+3. the mapping from Apple's gate-active requirement to the existing
+   Linux PMGR/genpd model.
+
+Only then should a new hardware stage be designed. This retains the
+positive Stage 5E result: the recovered late sequence is safe, and link
+training still has not begun. Full record and current plan are in
 `research/t7000-pcie-stage5-handoff.md`.

@@ -389,17 +389,22 @@ port-tail writes did not take as written**:
 both are silent write-doesn't-take behavior, the same general shape as
 the earlier `0x8024` DBI-override anomaly (Stage 5C).
 
-**Three untested hypotheses, not yet a blind-retry candidate:**
-1. `+0x100`/`+0x104` may not be plain RW MMIO -- possibly write-once-
-   after-reset, gated behind an unset bit, or requiring a different
-   access width than a 32-bit `writel()`.
-2. Apple's pseudocode lists these writes before `+0x80 |= 1`, but they
-   might only latch *after* the link-start bit is set -- worth trying
-   `+0x80` first, then writing/reading `+0x100`/`+0x104` afterward.
-3. These two offsets might not actually be inside the same 4KB
-   per-port controller window as `+0x80`/`+0x88`/`+0x8c` -- worth
-   re-checking against the ADT/decompile whether the window is smaller
-   than assumed and these fall into an unmapped/reserved sub-region.
+**Review correction, 2026-09-26:** the two observations do not yet
+establish failed writes. `+0x104` retained all requested low 24 bits;
+the zero upper byte is most likely reserved/read-as-zero. Apple’s own
+interrupt handler reads `+0x100` as event status and writes handled bits
+back through the same helper, making a write-one-to-clear/self-clearing
+interpretation consistent with its zero readback. The direct window is
+confirmed by that helper itself, so retrying a different width, window,
+or link-start order would be blind.
+
+**Next offline research, before another hardware payload:** recover the
+conditional link-speed/internal helpers immediately before the tail
+(`FUN_ffffff8002bef7c8`, `FUN_ffffff8002bef8d8`, and optional
+`FUN_ffffff8002bf09a0`); trace all direct accesses to `+0x100` and
+`+0x104`; then map Apple's port power/clock-gate-active requirement to
+Linux PMGR/genpd. Stage 5E begins after those Apple prerequisites, so
+they are now the leading explanation for a link still stuck at `0x0c`.
 
 Full verbatim dmesg and record in
 `research/t7000-pcie-hardware-findings.md`'s "Real PCIe host-controller
