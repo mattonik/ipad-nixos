@@ -134,3 +134,19 @@ uevent_reads_b = shell_b.commands.count(
 assert uevent_reads_b == 3, f"expected 1 baseline + 2 poll reads before abort, got {uevent_reads_b}"
 assert "abort" in output_b.getvalue().lower()
 print("Charging tier-switch thermal-abort offline safety check passed")
+
+
+# Scenario C: a custom limit above the hardware-validated maximum must stop
+# before it can issue an I2C write.
+shell_c = FakeSwitchShell(poll_responses=[_uevent("Charging", "50000", 380)])
+output_c = io.StringIO()
+with contextlib.redirect_stdout(output_c), \
+        unittest.mock.patch(
+            "builtins.input",
+            side_effect=[str(len(ipad_console.CHARGING_TIERS) + 1), "2500"],
+        ):
+    ipad_console.action_charging_switch(shell_c)
+
+assert not _writes(shell_c.commands), "unvalidated custom limit must not be written"
+assert "maximum validated limit" in output_c.getvalue().lower()
+print("Charging tier-switch maximum-limit offline safety check passed")

@@ -16,7 +16,7 @@ claim a touchscreen interface before its power rail and firmware work.
 | Linux boot and display | Hoolock Linux 7.3-rc1 is the active hardware baseline | The iPad can show its boot/debug console. |
 | USB networking | `m1n1-hoolock-control` uses the base image's configfs gadget with `ecm.usb0`; bidirectional traffic and telnet at `172.16.42.1:23` were hardware-verified | A connected Mac can control the iPad and transfer results over the same cable that powers it. |
 | Battery measurement | The BQ27545 gauge reports status, current, voltage, temperature and capacity | Charging policy has feedback rather than operating blind. |
-| Charging current | D2207 register `0x04c0` accepts and retains writes; 100 through 2500 mA are hardware-validated | 1000 mA and above produced stable positive charging current. |
+| Charging current | D2207 register `0x04c0` accepts and retains writes; all tested tiers through 2400 mA are hardware-validated | 1000 mA and above produced stable positive charging current. |
 | Reusable operator control | `boot/ipad_console.py` reads the gauge and D2207, offers validated tiers, verifies writeback, and has tests | Safe exploratory charging does not require hand-written I2C commands. |
 
 The successful payload is **not** the standalone `nixos/initramfs.nix`
@@ -33,9 +33,9 @@ would discard the known-good boot and USB path.
 
 The present 100 mA boot default is a policy omission, not a missing charger
 driver.  `0x04c0 = 0x4a` selects a hardware-validated 1000 mA limit and was
-enough to change the gauge from `Discharging` to `Charging`.  2500 mA is also
-hardware-validated and is available from the diagnostic TUI.  The value resets
-on reboot, which is why a boot-time policy is useful.
+enough to change the gauge from `Discharging` to `Charging`.  2400 mA is the
+highest hardware-validated limit and is available from the diagnostic TUI.  The
+value resets on reboot, which is why a boot-time policy is useful.
 
 The smallest path is already prepared: the isolated
 `m1n1-hoolock-charging-writable-test` payload contains patch `0017`, exposing
@@ -55,10 +55,10 @@ If that succeeds, the next payload needs only one small shell service started
 by the existing debug hook.  It should use the sysfs property, not
 `i2ctransfer`, and apply this fixed policy:
 
-1. On boot, set `input_current_limit` to 2500000 microamps.
+1. On boot, set `input_current_limit` to 2400000 microamps.
 2. Every 30 seconds, read the BQ27545 `temp` and `capacity` files.
 3. Set the limit back to 100000 microamps when temperature reaches 42.0 C or
-   capacity reaches 80 percent; otherwise leave it at 2500000 microamps.
+   capacity reaches 80 percent; otherwise leave it at 2400000 microamps.
 4. Log each transition once to `/tmp`, which is RAM-only.
 
 This directly implements the existing conservative 42 C / 80% instruction.
@@ -139,8 +139,8 @@ confirmed input device; touch remains a separate driver and power problem.
 
 | Order | Work | Why it comes now | Gate to advance |
 | --- | --- | --- | --- |
-| 1 | Boot the existing charging-writable test and perform its narrow 2500 mA check | It converts a proven raw PMIC mechanism into the normal kernel interface without adding a new driver | Sysfs value and raw register agree; 30 s gauge observation stays clean and charging. |
-| 2 | Add the small boot-time charging service | Removes the per-boot manual operation using only evidence-backed values | Cold boot reaches 2500 mA; 42 C and 80% simulations/read-only review show the fallback is 100 mA. |
+| 1 | Boot the existing charging-writable test and perform its narrow 2400 mA check | It converts a proven raw PMIC mechanism into the normal kernel interface without adding a new driver | Sysfs value and raw register agree; 30 s gauge observation stays clean and charging. |
+| 2 | Add the small boot-time charging service | Removes the per-boot manual operation using only evidence-backed values | Cold boot reaches 2400 mA; 42 C and 80% simulations/read-only review show the fallback is 100 mA. |
 | 3 | Package key-only SSH beside the existing telnet recovery shell | Makes the USB link usable for normal development and file transfer | SSH reconnects after a cold boot; telnet fallback still works during this first step. |
 | 4 | Add `tablet-status`, then validate the framebuffer console | Gives immediate local feedback with no graphics dependency | All fields display correctly and continue updating over a 30-minute charging session. |
 | 5 | Add optional button navigation only if an input device is present | Avoids inventing input support | Button events are observed and a read-only menu works. |

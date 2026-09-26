@@ -368,10 +368,10 @@ CHARGING_TIERS: list[tuple[str, int]] = [
     ("1000 mA (validated resting state)", SAFE_RESTING_CODE),
     ("2100 mA (hardware-validated)", _charging_current_code(2100)),
     ("2400 mA (hardware-validated)", _charging_current_code(2400)),
-    ("2500 mA (hardware-validated)", _charging_current_code(2500)),
 ]
 
 CHARGING_TEMP_ABORT_C = 42.0  # deciC field / 10 must stay below this
+MAX_VALIDATED_CHARGING_MA = 2400
 
 
 def _read_charging_snapshot(shell: IPadShell) -> dict[str, str]:
@@ -424,6 +424,9 @@ def action_charging_switch(shell: IPadShell) -> None:
         target_ma = _number(ma_raw)
         if target_ma is None:
             print("Not a number, cancelled.")
+            return
+        if target_ma > MAX_VALIDATED_CHARGING_MA:
+            print(f"Maximum validated limit is {MAX_VALIDATED_CHARGING_MA} mA, cancelled.")
             return
         code = _charging_current_code(target_ma)
         label = f"{target_ma} mA (custom)"
