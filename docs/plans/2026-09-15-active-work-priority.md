@@ -1,9 +1,12 @@
 # J81 active-work priority
 
-**Reviewed:** 2026-09-25 (DART, its IOMMU wiring, and the recovered PCIe
-host enable sequence are hardware-confirmed working. Link start persists on
-the real port, but the BCM4350 still has not enumerated; the immediate work
-is a bounded controller-tuning baseline, then Apple-exact RMW records.)
+**Reviewed:** 2026-09-26 (DART, its IOMMU wiring, and the recovered PCIe
+host enable sequence are hardware-confirmed working. Stages 5E and 5F also
+completed the recovered tail and link-speed operation, but the BCM4350 still
+has not enumerated. Stage 5G showed that AUX/REF domains alone do not change
+the result; Stage 5H showed the recovered early gate-register delta is a
+no-op in Linux's existing register history. The immediate work is offline
+research into an unported prerequisite, not another register-write retry.)
 
 This is the live backlog distilled from `docs/project-status.md`, the
 subsystem plans, and the driver-gap research. It excludes completed
@@ -17,7 +20,7 @@ substituted with guessed software writes.
 
 | Order | Work item | Certainty | Ease | Impact | Current gate |
 | --- | --- | ---: | ---: | ---: | --- |
-| 1 | PCIe: implement the real host-controller driver | 5 | 2 | 5 | In progress, 2026-09-25. Stages 1-4b v2 are hardware-clean: port-1 link-start took and stuck, but BCM4350 did not answer three scans. Stage 5A confirmed direct port-window targets. Stage 5B ordering and DBI semantics are resolved: DBI records first, tunables second; DBI saves a configuration-view control, writes `saved | 1`, then restores it. `0041` is built as the remaining hardware gate: one read through the existing ECAM mapping at recovered port-1 offset `0x88bc`, with no DBI write. |
+| 1 | PCIe: recover the remaining link-training prerequisite | 5 | 2 | 5 | Stages 1-5F are hardware-clean but no BCM4350 endpoint enumerates. Stage 5G's AUX/REF domain attach had no effect. Stage 5H's early `0x180` clear was already satisfied and its `0x198` set was repeated later, so it was a measured no-op. Read-only 5H follow-up confirms the DART is initialized, the root port is the only PCI device, and the controller still reports `link_up=0`. Next: trace a genuinely unported Apple prerequisite or PHY/firmware condition; do not combine old deltas or add another guessed write. |
 | 2 | Charging Stage 2: writable `input_current_limit` kernel property | 5 | 4 | 3 | Implemented and cross-build verified clean, 2026-09-25 (`kernel/patches/0017-...`, isolated `m1n1-hoolock-charging-writable-test` payload, mirroring the ANS1-test pattern). First attempt hit the Linux-builder VM's disk being full from five back-to-back builds; a retry after idle time succeeded (see `docs/build-infrastructure.md`). Not yet hardware-tested. |
 | 3 | Repeat ANS1's intentionally read-only hardware observation | 4 | 4 | 3 | Requires the separate observation-only payload; never mount or write it. |
 | 4 | Touch: resolve firmware/calibration delivery and power ownership | 3 | 2 | 5 | Blocked by the non-persistent D2207 LDO/GPIO state and private touch data. |
