@@ -494,6 +494,55 @@ production-driver concern. It is deliberately excluded from this test:
 `ps_pcie` and the DART consumer are already hardware-proven clean, while
 the link-speed RMW is independently exact and has a before/after guard.
 
+## Stage 5F hardware result, 2026-09-26
+
+Implemented exactly the design above. Cross-build verified, then
+hardware-tested. `kernel/patches/0045-...`.
+
+**Clean boot, no crash. Capability walk found PCI Express capability at
+`cap@0x70`; `lnkctl2` read `0x0002` (Target Link Speed field = Gen2) and
+was written to `0x0001` (Gen1), confirmed by immediate readback.**
+Everything from Stage 5E (DBI overrides, tunables, port-tail writes, MSI
+registers, PERST#, link-start) continued to behave identically -- no
+regression.
+
+**New signal, not seen in any prior stage**: Linux's own generic PCI
+core printed, during the post-`.init()` bus scan:
+
+```
+pci 0000:00:01.0: removing 2.5GT/s downstream link speed restriction
+pci 0000:00:01.0: retraining failed
+```
+
+This is **not** Apple- or J81-specific -- it's mainline's own generic
+erratum workaround, `pcie_failed_link_retrain()` in
+`drivers/pci/quirks.c`. It fires on *any* downstream port whose Target
+Link Speed field reads exactly Gen1 (`PCI_EXP_LNKCTL2_TLS_2_5GT`) at
+scan time and which supports Link Active reporting -- exactly the state
+our own write left the port in. Linux assumed this might be a leftover
+firmware-imposed restriction, tried to lift it back to the port's own
+reported max speed capability, and retrained. **That retrain also
+failed.**
+
+This is genuinely informative despite being an unrelated code path:
+Linux's own generic retry, at the port's own advertised maximum
+capability (not our chosen Gen1 value), *also* couldn't bring the link
+up. That weakens "wrong link-speed encoding" as the remaining blocker --
+the link doesn't fail to train because of *which* speed is requested,
+it fails to train at all, at any requested speed. This shifts weight
+back toward the still-open Apple power/clock-gate ownership question
+(gate index `0x39` via both power and clock gate calls, vs. Linux's
+`ps_pcie` alone) as the more likely remaining prerequisite, rather than
+anything link-speed-related. `+0x88` still reads `0x0000000c` after the
+poll; bit 6 (link-up) never sets, matching every prior stage.
+
+**Next, not yet built**: resolve the PMGR gate-index-`0x39` ownership
+question (whether Linux's `ps_pcie` genuinely covers it, or whether a
+sibling gate needs modeling) before another write-stage payload --
+matching the "Build gate after the next trace" section above, which
+already flagged this as the harder-evidenced remaining gap once the
+link-speed question was resolved.
+
 Full verbatim dmesg and record in
 `research/t7000-pcie-hardware-findings.md`'s "Real PCIe host-controller
 driver, Stage 5E" section.

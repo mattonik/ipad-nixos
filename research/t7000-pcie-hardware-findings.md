@@ -2385,3 +2385,51 @@ Only then should a new hardware stage be designed. This retains the
 positive Stage 5E result: the recovered late sequence is safe, and link
 training still has not begun. Full record and current plan are in
 `research/t7000-pcie-stage5-handoff.md`.
+
+### Real PCIe host-controller driver, Stage 5F: recovered maximum-link-speed capability RMW, 2026-09-26
+
+Implements the missing operation identified after Stage 5E's own
+review: J81's ADT `maximum-link-speed = 1` is applied by Apple's
+`FUN_ffffff8002bef7c8()` through a standard, generic PCIe capability
+RMW on the root port itself (not a controller-specific register) --
+see `research/t7000-pcie-stage5-handoff.md`'s "Stage 5F build
+instructions" section for the full decompile-based derivation. Walks
+the standard capability list from ECAM bus0/dev1/func0 (bounded, max 48
+hops) for capability ID `0x10` (PCI Express), confirms Gen1 is in Link
+Capabilities 2's supported-speeds vector, then clears Link Control 2's
+low nibble and sets it to `1` (2.5 GT/s). `kernel/patches/0045-...`.
+**Cross-build verified clean, 2026-09-26**: exit 0, checksums match,
+all three new `link-speed-test` format strings present in the built
+`Image`.
+
+**Hardware result: clean, capability walk and write both succeeded
+exactly as predicted -- and surfaced a genuinely new, informative
+signal, 2026-09-26.** `dmesg`: `cap@0x70 lnkctl2 0x0002 -> 0x0001
+(readback 0x0001)` -- capability found at offset `0x70`, Target Link
+Speed field read `0x0002` (Gen2) at rest and was set to `0x0001` (Gen1)
+as intended. Everything from Stage 5E continued unchanged, no
+regression.
+
+New this stage: Linux's own generic post-`.init()` bus scan printed
+`removing 2.5GT/s downstream link speed restriction` then `retraining
+failed` -- mainline's own `pcie_failed_link_retrain()` erratum
+workaround (`drivers/pci/quirks.c`), not anything Apple- or
+J81-specific. It fires on any downstream port whose Target Link Speed
+reads exactly Gen1 with Link Active reporting supported (exactly the
+state our own write left it in), and tries lifting the restriction back
+to the port's own reported max speed capability before retraining.
+**That generic retry, at the port's own advertised maximum (not our
+chosen Gen1 value), also failed to bring the link up.** This weakens
+"wrong link-speed encoding" as the remaining blocker: the link doesn't
+fail to train because of *which* speed is requested, it fails at any
+requested speed. `+0x88` still reads `0x0000000c` after the poll; bit 6
+never sets, matching every prior stage exactly.
+
+**This shifts weight back to the still-open Apple power/clock-gate
+ownership question** (ADT gate index `0x39`, requested through both
+power and clock gate calls, versus Linux's `ps_pcie` alone) as the more
+likely remaining prerequisite, rather than anything link-speed-related.
+Next, not yet built: resolve that gate-ownership question before
+another write-stage payload. Full record in
+`research/t7000-pcie-stage5-handoff.md`'s "Stage 5F hardware result"
+section.
