@@ -81,7 +81,34 @@ the register first and derive the byte rather than assuming `0x02`.
   the 2026-09-26 PCIe/Bluetooth notes is premature. A software-only read of
   `0x0400-0x0414` comes first.
 
-## Proposed evidence ladder (not yet run)
+## Live read-only result, 2026-10-04 (Stage 5H payload, recorded session)
+
+A recorded console session (private manifest under ignored
+`artifacts/live/sessions/`; status trailer check `false` = 1, `printf` ok)
+read the PMU over `i2ctransfer`. No writes were issued.
+
+```text
+0x0400..0x0414 (21 bytes, GPIO 0..20 config):
+  09 49 09 09 09 da ba 7b b9 ea fa 7b f8 c8 c8 7b 01 b9 b9 0b b9
+0x0060..0x0065 (data registers):  0f 03 42 20 7e 00
+0x03e0..0x03ef (the region earlier notes used):  all 00
+0x0413..0x041e (indices 17-20 use the 3-byte stride):  0b b9 b9 b9 b9 b9 b9 b9 b9 b9 00 00
+```
+
+- The `0x0400` bank is a real, populated GPIO configuration bank. The
+  `0x03e0` region is all zero, consistent with it not being GPIO state.
+- **GPIO2 (`power_enable`) = `0x09`; GPIO3 (`reg_on`) = `0x09`.** Data bits 2
+  and 3 of `0x0063` (`0x20`) are low, so both radios are unpowered.
+- Pins that are configured as driven high elsewhere in the bank read `0x0b`
+  (for example the first byte of the 3-byte bank). That fits Apple's
+  `_setGPIOFunction`: `0x09 & 0x1d = 0x09`, `| 0x02 = 0x0b`. So bit 1 is the
+  output level and `0x09` is the output-low configuration.
+- **Predicted assert for pin 3: write `0x0b` to register `0x0403`**; restore is
+  `0x09`. The per-pin table from `_getPMUConfig` could in principle alter the
+  result and is still undecoded, but the observed `0x09`/`0x0b` pair matches
+  the formula without it.
+
+## Proposed evidence ladder (step 1 now done)
 
 1. **Read-only, existing payload.** Dump `0x0400-0x0414` (21 bytes) and data
    registers `0x0060-0x0065`. Expect plausible per-pin bytes; record, do not
