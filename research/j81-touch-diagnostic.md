@@ -83,3 +83,63 @@ Observations:
   boot-interrupt trigger (still **I**).
 - The charging policy kept 2400 mA (log: `limit 2400000 uA (temp 321 deciC)`), and
   no `touch-diag` process was running.
+
+## Hardware result 2, 2026-10-04: the controller raises its boot interrupt
+
+The user ran `touch-diag run --execute --approve-pmu-write` over SSH after giving
+the go-ahead (the automation permission layer had blocked the agent from issuing
+the same command). Output:
+
+```text
+snapshot: LDO14 enable 0x00 voltage 0x14 clock 0x800002ee
+step 1: reset asserted (logical 1, drives low)
+step 2: touch clock enable          -> clock register now 0x000802dc
+step 3: LDO14 enable                -> LDO14 enable reads 0x04
+step 4: GPIO95 high
+step 6: release reset               -> IRQ edge (falling) after ~0 ms
+RESULT irq_edge=1 level_before=1 level_after=0
+unwind: reset asserted, GPIO95 low, LDO14 enable restored 0x00 (reads 0x00),
+        clock disabled -> register 0x800002dc (was 0x800002ee)
+```
+
+Read-only `status` afterwards: LDO14 enable `0x00`, voltage `0x14`, clock
+`0x800002dc` (gate off, busy 0, divider 732), GPIO82/95 `0x00072602` (driven low),
+GPIO51/55 unchanged, charging limit still 2400 mA. No SPI transfer, no firmware.
+
+**What it establishes (E):**
+- The inferred power order works on J81: touch clock, D2207 LDO14, GPIO95 high,
+  reset release leaves the touch controller powered and **GPIO84 falls** and stays
+  low (idle high before, low after). That is the boot interrupt Linux's Z2 driver
+  waits for, so the controller is alive and the reset/power polarities decoded
+  from Apple's GPIO provider are right.
+- The touch-clock enable sequence (new register `0x20e01e000`, divider `0x2dc`)
+  completed with the busy bit clearing at once; the D2207 LDO14 enable (`0x0084`
+  bit 2) wrote and read back, and was restored byte-exactly.
+- The two Apple steps this diagnostic omitted, the dummy SPI transfer and the
+  `display_sync` GPIO55 drive, are **not required to raise the boot interrupt**.
+  Whether they are required for the later firmware phase remains **U**.
+- The falling edge is the trigger direction (the line idles high), matching the
+  GPIO84 idle level in result 1.
+
+**Caveats (I/U):**
+- The edge arrived before the first poll (`~0 ms`); the kernel buffered it during
+  the 15 ms deassert wait, so the exact latency is unknown and it was not
+  distinguished from any earlier glitch. The line stayed low through the end of
+  the window.
+- After the line request was released, GPIO84's config word reads `0x0000038f`,
+  not the original `0x00070381`: the kernel's edge-IRQ setup was not undone by
+  closing the request. The word is not persistent across reboot, but a later
+  Linux driver must not rely on iBoot's original value.
+- The clock register ends with the divider rewritten to 732 (iBoot's 750 is not
+  restored), gate off as before.
+- This shows the controller wakes; it does **not** show that its SPI protocol
+  matches the recovered framing. Next evidence needs SPI traffic.
+
+## What this unlocks
+
+The offline gate in the bring-up note ("KLCT index, GPIO polarities, interrupt
+trigger, power order") is now met. The next step would be a **separate, explicitly
+approved** SPI experiment: add the touch child to the DT, run Apple's recovered
+framing (wake, bootloader ATN/ACK, register read) and *only then* consider
+firmware. That needs a decision on SPI3 mode/rate (still unknown) and on how to
+express LDO14/clock/GPIO ownership in the kernel.

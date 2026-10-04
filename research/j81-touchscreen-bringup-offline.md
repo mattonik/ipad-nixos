@@ -260,6 +260,7 @@ the minimal image, so live pinmux detail was unavailable in this pass.
 
 The next experiment should remain **offline and read-only**:
 
+0. **Hardware 2026-10-04: boot interrupt observed.** Apple's power order raised GPIO84 (falling) on J81, with the dummy SPI transfer and display_sync omitted; see [`j81-touch-diagnostic.md`](j81-touch-diagnostic.md). The offline gate below is met; the next step needs SPI.
 0. **GPIO polarity resolved 2026-10-04:** reset is active-low (GPIO82), `enable_cs`/`power_ldo`/`display_sync` active-high, from the provider's `v ^ flag ^ 1` rule; see [`j81-touch-gpio-polarity-a8x.md`](j81-touch-gpio-polarity-a8x.md).
 0. **KLCT clock resolved 2026-10-04:** the handler and its register block (PMGR base + `0x1e000`, ten-bit divider with gate/apply/busy bits, delays 8/100) are in [`j81-touch-clock-kclt-a8x.md`](j81-touch-clock-kclt-a8x.md); the earlier iOS 10.3 divider model is confirmed, and this note's first revision was corrected.
 0. **Done 2026-10-04:** Apple's command framing, ACK words and bootload order are recorded in [`j81-z2-n1-transport-framing.md`](j81-z2-n1-transport-framing.md).
