@@ -148,7 +148,7 @@ class FileAndCommandTests(unittest.TestCase):
         # A real temporary Git repository tests tracked, ignored and escaped paths.
         import subprocess
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory) / "repo"
+            root = Path(directory).resolve() / "repo"
             root.mkdir()
             subprocess.run(["git", "init", "-q", str(root)], check=True)
             (root / ".gitignore").write_text("firmware/\n")
