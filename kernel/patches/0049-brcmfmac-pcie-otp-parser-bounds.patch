@@ -1,0 +1,117 @@
+--- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
++++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
+@@ -1927,7 +1927,8 @@
+ brcmf_pcie_parse_otp_sys_vendor(struct brcmf_pciedev_info *devinfo,
+ 				u8 *data, size_t size)
+ {
+-	int idx = 4;
++	struct brcmf_otp_params params = {};
++	size_t idx = 4;
+ 	const char *chip_params;
+ 	const char *board_params;
+ 	const char *p;
+@@ -1977,13 +1978,13 @@
+ 		/* Copy len characters plus a NUL terminator */
+ 		switch (tag) {
+ 		case 'M':
+-			strscpy(devinfo->otp.module, p, len + 1);
++			strscpy(params.module, p, len + 1);
+ 			break;
+ 		case 'V':
+-			strscpy(devinfo->otp.vendor, p, len + 1);
++			strscpy(params.vendor, p, len + 1);
+ 			break;
+ 		case 'm':
+-			strscpy(devinfo->otp.version, p, len + 1);
++			strscpy(params.version, p, len + 1);
+ 			break;
+ 		}
+ 
+@@ -1992,50 +1993,63 @@
+ 	}
+ 
+ 	brcmf_dbg(PCIE, "OTP: module=%s vendor=%s version=%s\n",
+-		  devinfo->otp.module, devinfo->otp.vendor,
+-		  devinfo->otp.version);
+-
+-	if (!devinfo->otp.module[0] ||
+-	    !devinfo->otp.vendor[0] ||
+-	    !devinfo->otp.version[0])
++		  params.module, params.vendor,
++		  params.version);
++
++	if (!params.module[0] ||
++	    !params.vendor[0] ||
++	    !params.version[0])
+ 		return -EINVAL;
+ 
+-	devinfo->otp.valid = true;
++	params.valid = true;
++	devinfo->otp = params;
+ 	return 0;
+ }
+ 
+ static int
+ brcmf_pcie_parse_otp(struct brcmf_pciedev_info *devinfo, u8 *otp, size_t size)
+ {
+-	int p = 0;
++	size_t p = 0;
+ 	int ret = -EINVAL;
+ 
+ 	brcmf_dbg(PCIE, "parse_otp size=%zd\n", size);
+ 
+-	while (p < (size - 1)) {
++	memset(&devinfo->otp, 0, sizeof(devinfo->otp));
++
++	while (p < size) {
+ 		u8 type = otp[p];
+-		u8 length = otp[p + 1];
++		u8 length;
+ 
+ 		if (type == 0)
+ 			break;
+ 
+-		if ((p + 2 + length) > size)
++		if (size - p < 2) {
++			ret = -EINVAL;
+ 			break;
++		}
++
++		length = otp[p + 1];
++		if (length > size - p - 2) {
++			ret = -EINVAL;
++			break;
++		}
+ 
+ 		switch (type) {
+ 		case BRCMF_OTP_SYS_VENDOR:
+-			brcmf_dbg(PCIE, "OTP @ 0x%x (%d): SYS_VENDOR\n",
++			brcmf_dbg(PCIE, "OTP @ 0x%zx (%d): SYS_VENDOR\n",
+ 				  p, length);
+ 			ret = brcmf_pcie_parse_otp_sys_vendor(devinfo,
+ 							      &otp[p + 2],
+ 							      length);
++			if (ret)
++				goto out;
+ 			break;
+ 		case BRCMF_OTP_BRCM_CIS:
+-			brcmf_dbg(PCIE, "OTP @ 0x%x (%d): BRCM_CIS\n",
++			brcmf_dbg(PCIE, "OTP @ 0x%zx (%d): BRCM_CIS\n",
+ 				  p, length);
+ 			break;
+ 		default:
+-			brcmf_dbg(PCIE, "OTP @ 0x%x (%d): Unknown type 0x%x\n",
++			brcmf_dbg(PCIE, "OTP @ 0x%zx (%d): Unknown type 0x%x\n",
+ 				  p, length, type);
+ 			break;
+ 		}
+@@ -2043,6 +2057,9 @@
+ 		p += 2 + length;
+ 	}
+ 
++out:
++	if (ret)
++		memset(&devinfo->otp, 0, sizeof(devinfo->otp));
+ 	return ret;
+ }
+ 

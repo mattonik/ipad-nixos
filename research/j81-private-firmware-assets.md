@@ -224,6 +224,15 @@ register-derived sizing and core-revision-dependent handling. J81's actual
 core revision, strap state and Apple record offset remain unobserved; this
 does not justify copying BCM4355's `0x8c0` start or adding a live reader yet.
 
+**Parser follow-up, 2026-10-04:** The
+[native OTP-parser audit and hardware evidence handoff](j81-otp-parser-validation.md)
+reproduces mixed-record identity assembly and acceptance of truncated trailing
+data in the actual pinned functions. Inactive candidate patch `0049` validates
+record bounds and commits identities atomically; its host checks include
+30,000 deterministic synthetic inputs and ASan/UBSan. A zero-length host
+overread is also reproduced, without claiming the current reader can reach
+it. Real J81 record-format confirmation is required before integration.
+
 ### Wi-Fi evidence gate
 
 1. Enumerate the PCI endpoint without `brcmfmac` or firmware.
