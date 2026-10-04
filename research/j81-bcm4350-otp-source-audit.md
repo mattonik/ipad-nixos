@@ -127,3 +127,8 @@ Hardware-independent next work can audit the existing Apple-record parser
 with bounded synthetic captures and trace older firmware-loader selection.
 Radio power, PCI enumeration, and an actual shadow capture still require
 the iPad. No kernel/Nix/payload configuration is changed by this note.
+
+The [native access-path validation](j81-bcm4350-nvm-validation.md) now
+reproduces the public reader's size/mapping and cleanup behavior, checks its
+65 nm table bounds under sanitizers, and traces the surrounding power-request
+wrapper. It remains a synthetic reference comparison, not an enabled reader.

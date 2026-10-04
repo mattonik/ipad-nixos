@@ -2,6 +2,8 @@
 """Check process failure/timeout reporting and assertion preservation."""
 import os
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -34,6 +36,16 @@ class RunnerTests(unittest.TestCase):
         result = self.run_fixture("import time; time.sleep(10)", timeout=0.1)
         self.assertEqual(result.state, "FAIL")
         self.assertIn("exceeded", result.detail)
+
+    def test_dhd_inputs_must_be_supplied_together(self):
+        for flag in ("--dhd-source", "--dhd-header"):
+            with self.subTest(flag=flag):
+                result = subprocess.run([sys.executable, str(check_offline.ROOT / "tools/check_offline.py"),
+                                         flag, "/nonexistent/source-fixture"],
+                                        capture_output=True, text=True, timeout=5)
+                self.assertEqual(result.returncode, 2)
+                self.assertIn("supply both --dhd-source and --dhd-header", result.stderr)
+                self.assertNotIn("PASS:", result.stdout)
 
 
 if __name__ == "__main__":
