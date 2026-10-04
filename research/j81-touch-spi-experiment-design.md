@@ -303,3 +303,23 @@ ambiguous by rotation (**I**).
   controller in one `18 e1` packet, followed by an ATN/ACK that must read `4b c1`.
   That needs the private asset (from the iPad5,3 IPSW), a dedicated approved test, and
   the user's explicit decision. It is not started.
+
+## Hardware result 6, 2026-10-04: run E (mode 2 repeated) is identical
+
+The user repeated run D unchanged (`--spi-mode 2 --spi-hz 1984000`), a fresh power-up
+and unwind with no reboot in between. RX is byte-for-byte the same as run D: dummy
+all `00`; wake `f0 01 f1 01 ...`; short ATN `f0 01`; long ATN `f0 01 f1 01 f1 01 f1 01`.
+
+- **Repeatable:** the periodic pattern, and its one-bit shift under mode 2, are stable
+  across power cycles. Together with runs A-D the response is deterministic per mode.
+- **IRQ event order is not stable:** this run's first GPIO84 event was a **falling**
+  edge again (as in A-C), while run D's was rising. Both ended with the line low.
+  Run D's rising-first event is therefore an intermittent ordering/glitch effect, not
+  a mode-2 behavior; its cause is still **U**, and the success signal (line ends low
+  after reset release) is unchanged.
+- Unwind clean; the clock ended at `0x800002dc` as before; no frame beyond the three
+  handshakes was sent.
+
+No new conclusions beyond result 5. The bus work is complete; the open items are the
+two untried boot-ROM preconditions (download-mode function, display sync) and, past
+those, the firmware decision.
