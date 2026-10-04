@@ -2,6 +2,10 @@
 
 **Audit date:** 2026-09-25
 
+**Follow-up, 2026-10-04:** the [submission-boundary audit](j81-ans1-submission-audit.md)
+reproduces SGL failure propagation and tag-check ordering gaps with synthetic
+host requests. It adds no hardware claims and changes no driver behavior.
+
 **Scope:** offline analysis only; no payload was built, no hardware was touched,
 and no command was sent to the iPad during this audit.
 
