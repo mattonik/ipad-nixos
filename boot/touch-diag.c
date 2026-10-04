@@ -1,0 +1,417 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ * touch-diag: bounded J81 touchscreen power-up diagnostic (RAM-only payload).
+ *
+ * Sequence and values come from Apple's iPad5,3 iOS 8.1 AppleMultitouchSPI
+ * (research/j81-touch-clock-kclt-a8x.md, j81-touch-gpio-polarity-a8x.md,
+ * j81-z2-n1-transport-framing.md). It makes NO SPI transfer, uploads NO
+ * firmware, and never writes the D2207 voltage register. It only answers:
+ * "after Apple's power order and one reset release, does the controller
+ * raise its boot interrupt on GPIO84?" Then it unwinds in reverse order.
+ *
+ *   touch-diag [plan]   print the sequence, touch nothing (default)
+ *   touch-diag status   read-only: PMU, clock register, GPIO config words
+ *   touch-diag run --execute --approve-pmu-write
+ *                       perform the sequence; every step is verified and the
+ *                       original state is restored on success, error or signal
+ */
+#include <errno.h>
+#include <fcntl.h>
+#include <linux/gpio.h>
+#include <poll.h>
+#include <stdarg.h>
+#include <signal.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/ioctl.h>
+#include <sys/mman.h>
+#include <time.h>
+#include <unistd.h>
+
+#define I2C_SLAVE_FORCE 0x0706
+#define PMU_ADDR 0x3c
+#define PMU_I2C_DEV "/dev/i2c-0"
+#define REG_LDO14_ENABLE 0x0084		/* bit 2 enables LDO14 */
+#define REG_LDO14_VOLTAGE 0x0398	/* read only; never written here */
+#define LDO14_ENABLE_BIT 0x04
+#define LDO14_VOLTAGE_EXPECTED 0x14	/* 6.0 V as recorded in the ADT audit */
+
+#define PMGR_BASE 0x20e000000ULL
+#define CLK_REG_OFF 0x1e000
+#define CLK_GATE_OFF (1u << 31)
+#define CLK_APPLY (1u << 19)
+#define CLK_BUSY (1u << 18)
+#define CLK_DIV_MASK 0x3ffu
+#define CLK_DIVIDER 0x2dc		/* 24 MHz / 32768 = 732 */
+#define CLK_ENABLE_SETTLE_US 8
+#define CLK_DISABLE_SETTLE_US 100
+
+#define GPIO_BASE 0x20e300000ULL
+#define GPIO_RESET 82			/* OIPG flags 01 00 01 00: active low */
+#define GPIO_IRQ 84
+#define GPIO_POWER 95			/* OIPG flags 01 01 00 00: active high */
+#define GPIO_DISPLAY_SYNC 55		/* not driven by this diagnostic */
+#define GPIO_CS 51			/* owned by the SPI3 pinmux; never requested */
+
+#define RESET_DEASSERT_DELAY_MS 15	/* AppleMultitouchSPIJ82 personality */
+#define RAIL_DELAY_MS 10		/* conservative; Apple's value unknown */
+#define IRQ_TIMEOUT_MS 2000
+
+static int g_i2c = -1, g_mem = -1;
+static volatile uint32_t *g_clk;
+static volatile uint32_t *g_gpio;
+static int g_reset_fd = -1, g_power_fd = -1, g_irq_fd = -1;
+static volatile sig_atomic_t g_signal;
+
+/* State needed to unwind. */
+static struct {
+	int ldo_changed, power_on, clock_changed, reset_released;
+	uint8_t ldo_orig;
+	uint32_t clk_orig;
+} g_st;
+
+static void on_signal(int s) { g_signal = s; }
+
+static void msleep(unsigned int ms)
+{
+	struct timespec ts = { ms / 1000, (long)(ms % 1000) * 1000000L };
+	nanosleep(&ts, NULL);
+}
+
+static void usleep_(unsigned int us)
+{
+	struct timespec ts = { 0, (long)us * 1000L };
+	nanosleep(&ts, NULL);
+}
+
+static int pmu_read(unsigned int reg, uint8_t *val)
+{
+	uint8_t a[2] = { reg >> 8, reg & 0xff };
+
+	if (write(g_i2c, a, 2) != 2 || read(g_i2c, val, 1) != 1)
+		return -1;
+	return 0;
+}
+
+static int pmu_write(unsigned int reg, uint8_t val)
+{
+	uint8_t a[3] = { reg >> 8, reg & 0xff, val };
+
+	return write(g_i2c, a, 3) == 3 ? 0 : -1;
+}
+
+static int open_pmu(void)
+{
+	g_i2c = open(PMU_I2C_DEV, O_RDWR);
+	if (g_i2c < 0 || ioctl(g_i2c, I2C_SLAVE_FORCE, PMU_ADDR) < 0) {
+		perror("pmu i2c");
+		return -1;
+	}
+	return 0;
+}
+
+static int open_mem(int writable)
+{
+	int prot = PROT_READ | (writable ? PROT_WRITE : 0);
+	void *p;
+
+	g_mem = open("/dev/mem", writable ? O_RDWR | O_SYNC : O_RDONLY | O_SYNC);
+	if (g_mem < 0) {
+		perror("/dev/mem");
+		return -1;
+	}
+	p = mmap(NULL, 4096, prot, MAP_SHARED, g_mem, PMGR_BASE + CLK_REG_OFF);
+	if (p == MAP_FAILED) {
+		perror("mmap clock");
+		return -1;
+	}
+	g_clk = p;
+	p = mmap(NULL, 4096, PROT_READ, MAP_SHARED, g_mem, GPIO_BASE);
+	if (p == MAP_FAILED) {
+		perror("mmap gpio");
+		return -1;
+	}
+	g_gpio = p;
+	return 0;
+}
+
+static int request_line(unsigned int line, uint64_t flags, int out_value, const char *name)
+{
+	struct gpio_v2_line_request rq;
+	int chip = open("/dev/gpiochip0", O_RDWR), fd;
+
+	if (chip < 0) {
+		perror("gpiochip0");
+		return -1;
+	}
+	memset(&rq, 0, sizeof(rq));
+	rq.offsets[0] = line;
+	rq.num_lines = 1;
+	strncpy(rq.consumer, name, sizeof(rq.consumer) - 1);
+	rq.config.flags = flags;
+	if (flags & GPIO_V2_LINE_FLAG_OUTPUT) {
+		rq.config.num_attrs = 1;
+		rq.config.attrs[0].attr.id = GPIO_V2_LINE_ATTR_ID_OUTPUT_VALUES;
+		rq.config.attrs[0].attr.values = out_value ? 1 : 0;
+		rq.config.attrs[0].mask = 1;
+	}
+	if (ioctl(chip, GPIO_V2_GET_LINE_IOCTL, &rq) < 0) {
+		perror("GPIO_V2_GET_LINE");
+		fd = -1;
+	} else {
+		fd = rq.fd;
+	}
+	close(chip);
+	return fd;
+}
+
+static int set_line(int fd, int logical)
+{
+	struct gpio_v2_line_values v = { .bits = logical ? 1 : 0, .mask = 1 };
+
+	return ioctl(fd, GPIO_V2_LINE_SET_VALUES_IOCTL, &v);
+}
+
+static int get_line(int fd)
+{
+	struct gpio_v2_line_values v = { .bits = 0, .mask = 1 };
+
+	if (ioctl(fd, GPIO_V2_LINE_GET_VALUES_IOCTL, &v) < 0)
+		return -1;
+	return v.bits & 1;
+}
+
+static int clk_wait_not_busy(void)
+{
+	for (int i = 0; i < 10000; i++) {
+		if (!(*g_clk & CLK_BUSY))
+			return 0;
+		usleep_(10);
+	}
+	return -1;
+}
+
+static int clock_enable(void)
+{
+	uint32_t r = *g_clk;
+
+	*g_clk = r & 0x7fffffffu;
+	usleep_(CLK_ENABLE_SETTLE_US);
+	*g_clk = (r & 0x7ff7fc00u) | CLK_DIVIDER | CLK_APPLY;
+	return clk_wait_not_busy();
+}
+
+static int clock_disable(void)
+{
+	uint32_t r = *g_clk;
+
+	*g_clk = r & ~CLK_APPLY;
+	if (clk_wait_not_busy())
+		return -1;
+	*g_clk = (r & ~CLK_APPLY) | CLK_GATE_OFF;
+	usleep_(CLK_DISABLE_SETTLE_US);
+	return 0;
+}
+
+static void say(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
+static void say(const char *fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+	vprintf(fmt, ap);
+	va_end(ap);
+	fflush(stdout);
+}
+
+/* Reverse order of the power-up; every step is best-effort and logged. */
+static void unwind(void)
+{
+	say("unwind: asserting reset\n");
+	if (g_reset_fd >= 0)
+		set_line(g_reset_fd, 1);
+	if (g_st.power_on && g_power_fd >= 0) {
+		say("unwind: GPIO95 low\n");
+		set_line(g_power_fd, 0);
+		g_st.power_on = 0;
+	}
+	if (g_st.ldo_changed) {
+		uint8_t v = 0;
+
+		say("unwind: restoring LDO14 enable 0x%02x\n", g_st.ldo_orig);
+		pmu_write(REG_LDO14_ENABLE, g_st.ldo_orig);
+		if (!pmu_read(REG_LDO14_ENABLE, &v))
+			say("unwind: LDO14 enable reads 0x%02x\n", v);
+		g_st.ldo_changed = 0;
+	}
+	if (g_st.clock_changed) {
+		say("unwind: disabling touch clock\n");
+		clock_disable();
+		say("unwind: clock register 0x%08x (was 0x%08x)\n", *g_clk, g_st.clk_orig);
+		g_st.clock_changed = 0;
+	}
+}
+
+static int status(void)
+{
+	uint8_t v;
+	static const unsigned int pins[] = { GPIO_CS, GPIO_DISPLAY_SYNC, GPIO_RESET, GPIO_IRQ, GPIO_POWER };
+
+	if (open_pmu() || open_mem(0))
+		return 1;
+	if (!pmu_read(REG_LDO14_ENABLE, &v))
+		say("PMU 0x%04x LDO14 enable   = 0x%02x (bit2 %s)\n", REG_LDO14_ENABLE, v,
+		    (v & LDO14_ENABLE_BIT) ? "on" : "off");
+	if (!pmu_read(REG_LDO14_VOLTAGE, &v))
+		say("PMU 0x%04x LDO14 voltage  = 0x%02x\n", REG_LDO14_VOLTAGE, v);
+	say("PMGR+0x%x touch clock    = 0x%08x (gate-off %u, busy %u, divider %u)\n", CLK_REG_OFF,
+	    *g_clk, !!(*g_clk & CLK_GATE_OFF), !!(*g_clk & CLK_BUSY), *g_clk & CLK_DIV_MASK);
+	for (unsigned int i = 0; i < sizeof(pins) / sizeof(pins[0]); i++)
+		say("GPIO%-3u config word       = 0x%08x\n", pins[i], g_gpio[pins[i]]);
+	return 0;
+}
+
+static void plan(void)
+{
+	say("touch-diag plan (nothing is touched in plan mode):\n"
+	    " 0. read-only snapshot; abort unless LDO14 is off and voltage is 0x%02x\n"
+	    " 1. GPIO%d (reset, active low): request, assert (drive low)\n"
+	    " 2. touch clock at PMGR+0x%x: Apple's enable, divider %u, then verify\n"
+	    " 3. D2207 0x%04x |= 0x%02x (LDO14), read back (voltage register never written)\n"
+	    " 4. GPIO%d (power_ldo, active high): drive high, wait %d ms\n"
+	    " 5. skip display_sync (GPIO%d) and the dummy SPI transfer: no SPI at all\n"
+	    " 6. release reset (drive high), wait %d ms, then watch GPIO%d for up to %d ms\n"
+	    " 7. unwind in reverse: reset low, GPIO%d low, LDO14 restored, clock disabled\n"
+	    "Run with: touch-diag run --execute --approve-pmu-write\n",
+	    LDO14_VOLTAGE_EXPECTED, GPIO_RESET, CLK_REG_OFF, CLK_DIVIDER, REG_LDO14_ENABLE,
+	    LDO14_ENABLE_BIT, GPIO_POWER, RAIL_DELAY_MS, GPIO_DISPLAY_SYNC,
+	    RESET_DEASSERT_DELAY_MS, GPIO_IRQ, IRQ_TIMEOUT_MS, GPIO_POWER);
+}
+
+#define CHECK_ABORT() do { if (g_signal) { say("signal %d: unwinding\n", (int)g_signal); rc = 3; goto out; } } while (0)
+
+static int run(void)
+{
+	int rc = 1, level_before = -1, level_after = -1, got_edge = 0;
+	uint8_t v = 0, volt = 0;
+
+	if (open_pmu() || open_mem(1))
+		return 1;
+	if (pmu_read(REG_LDO14_ENABLE, &g_st.ldo_orig) || pmu_read(REG_LDO14_VOLTAGE, &volt)) {
+		say("abort: cannot read PMU\n");
+		return 1;
+	}
+	g_st.clk_orig = *g_clk;
+	say("snapshot: LDO14 enable 0x%02x voltage 0x%02x clock 0x%08x\n", g_st.ldo_orig, volt,
+	    g_st.clk_orig);
+	if ((g_st.ldo_orig & LDO14_ENABLE_BIT) || volt != LDO14_VOLTAGE_EXPECTED) {
+		say("abort: LDO14 is not in the expected off/6.0V state; refusing to run\n");
+		return 1;
+	}
+	if (!(g_st.clk_orig & CLK_GATE_OFF))
+		say("note: touch clock gate already open before the test\n");
+
+	g_reset_fd = request_line(GPIO_RESET, GPIO_V2_LINE_FLAG_OUTPUT | GPIO_V2_LINE_FLAG_ACTIVE_LOW,
+				  1, "touch-diag-reset");
+	if (g_reset_fd < 0)
+		return 1;
+	say("step 1: reset asserted (logical 1, drives low)\n");
+	g_irq_fd = request_line(GPIO_IRQ, GPIO_V2_LINE_FLAG_INPUT | GPIO_V2_LINE_FLAG_EDGE_FALLING |
+				GPIO_V2_LINE_FLAG_EDGE_RISING, 0, "touch-diag-irq");
+	if (g_irq_fd < 0)
+		goto out;
+	level_before = get_line(g_irq_fd);
+	CHECK_ABORT();
+
+	say("step 2: touch clock enable\n");
+	g_st.clock_changed = 1;
+	if (clock_enable()) {
+		say("abort: clock busy bit did not clear\n");
+		goto out;
+	}
+	say("        clock register now 0x%08x\n", *g_clk);
+	CHECK_ABORT();
+
+	say("step 3: LDO14 enable\n");
+	g_st.ldo_changed = 1;
+	if (pmu_write(REG_LDO14_ENABLE, g_st.ldo_orig | LDO14_ENABLE_BIT) ||
+	    pmu_read(REG_LDO14_ENABLE, &v) || !(v & LDO14_ENABLE_BIT)) {
+		say("abort: LDO14 enable did not read back (0x%02x)\n", v);
+		goto out;
+	}
+	say("        LDO14 enable reads 0x%02x\n", v);
+	CHECK_ABORT();
+
+	say("step 4: GPIO%d high\n", GPIO_POWER);
+	g_power_fd = request_line(GPIO_POWER, GPIO_V2_LINE_FLAG_OUTPUT, 0, "touch-diag-power");
+	if (g_power_fd < 0)
+		goto out;
+	if (set_line(g_power_fd, 1)) {
+		perror("power set");
+		goto out;
+	}
+	g_st.power_on = 1;
+	msleep(RAIL_DELAY_MS);
+	CHECK_ABORT();
+
+	say("step 6: release reset\n");
+	if (set_line(g_reset_fd, 0)) {
+		perror("reset release");
+		goto out;
+	}
+	g_st.reset_released = 1;
+	msleep(RESET_DEASSERT_DELAY_MS);
+	for (int waited = 0; waited < IRQ_TIMEOUT_MS && !g_signal; waited += 50) {
+		struct pollfd p = { .fd = g_irq_fd, .events = POLLIN };
+
+		if (poll(&p, 1, 50) > 0 && (p.revents & POLLIN)) {
+			struct gpio_v2_line_event ev;
+
+			if (read(g_irq_fd, &ev, sizeof(ev)) == (ssize_t)sizeof(ev)) {
+				say("        IRQ edge (%s) after ~%d ms\n",
+				    ev.id == GPIO_V2_LINE_EVENT_RISING_EDGE ? "rising" : "falling", waited);
+				got_edge = 1;
+				break;
+			}
+		}
+	}
+	level_after = get_line(g_irq_fd);
+	CHECK_ABORT();
+	rc = 0;
+out:
+	say("RESULT irq_edge=%d level_before=%d level_after=%d\n", got_edge, level_before, level_after);
+	unwind();
+	return rc;
+}
+
+int main(int argc, char **argv)
+{
+	const char *cmd = argc > 1 ? argv[1] : "plan";
+
+	signal(SIGINT, on_signal);
+	signal(SIGTERM, on_signal);
+	if (!strcmp(cmd, "plan")) {
+		plan();
+		return 0;
+	}
+	if (!strcmp(cmd, "status"))
+		return status();
+	if (!strcmp(cmd, "run")) {
+		int exec = 0, approve = 0;
+
+		for (int i = 2; i < argc; i++) {
+			exec |= !strcmp(argv[i], "--execute");
+			approve |= !strcmp(argv[i], "--approve-pmu-write");
+		}
+		if (!exec || !approve) {
+			fprintf(stderr, "run needs --execute and --approve-pmu-write; showing the plan only\n");
+			plan();
+			return 2;
+		}
+		return run();
+	}
+	fprintf(stderr, "usage: touch-diag [plan|status|run --execute --approve-pmu-write]\n");
+	return 2;
+}

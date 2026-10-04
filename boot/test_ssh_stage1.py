@@ -18,8 +18,9 @@ ns = {}
 exec(src, ns)
 entries = ns["entries"]
 
-tablet = "--tablet" in sys.argv
-args = [a for a in sys.argv[1:] if a != "--tablet"]
+diag = "--touch-diag" in sys.argv
+tablet = "--tablet" in sys.argv or diag
+args = [a for a in sys.argv[1:] if not a.startswith("--")]
 control, stage = map(Path, args[:2])
 for name in ("Pongo.bin", "m1n1.bin", "t7001-j81.dtb", "Image.gz", "bootargs"):
     assert (stage / name).read_bytes() == (control / name).read_bytes(), name
@@ -39,6 +40,8 @@ fixed = {hook, "etc/passwd", "etc/group", "root", "root/.ssh",
          "usr", "usr/bin", "usr/bin/tablet-status"}
 if tablet:
     fixed.add("usr/bin/charging-policy")
+if diag:
+    fixed.add("usr/bin/touch-diag")
 extra = {n for n in added if n not in fixed and n not in ("nix", "nix/store") and not n.startswith("nix/store/")}
 assert not extra, f"unexpected overlay entries: {sorted(extra)}"
 changed = {n for n in added if n in before and before[n][2] != added[n][2] and n != hook}
@@ -127,6 +130,13 @@ assert checked >= 2, "expected dropbear and dropbearkey ELFs"
 for b in ("dropbear", "dropbearkey"):
     assert any(n.endswith(f"/bin/{b}") for n in added), b
 
+if diag:
+    td = added["usr/bin/touch-diag"]
+    assert td[0] & 0o777 == 0o755 and td[2][:4] == b"\x7fELF"
+    interp, needed, _rp = dyn(td[2])
+    assert interp is None and not needed, "touch-diag must be static"
+    assert b"touch-diag plan" in td[2] and b"--approve-pmu-write" in td[2]
+    assert td[2][18:20] == b"\xb7\x00", "aarch64 ELF"
 parts = ("m1n1.bin", "bootargs", "t7001-j81.dtb", "Image.gz", "initramfs.gz")
 assert (stage / "m1n1-linux.bin").read_bytes() == b"".join((stage / p).read_bytes() for p in parts)
 for line in (stage / "SHA256SUMS").read_text().splitlines():
