@@ -321,6 +321,21 @@ discharging (about -0.7 to -0.9 A) at the default 100 mA input limit, which is
 expected because the charging tier is only raised by the console tool; it does
 not affect SSH. The host key changes every boot by design (volatile root).
 
+#### Decision 2026-10-04: keep telnet; add the boot-time charging policy
+
+The SSH-only "stage 2" (removing telnet) is **dropped**. Telnet is reachable
+only over the direct USB cable and is the only way back in if Dropbear fails,
+so it stays as the permanent recovery path (known trade-off: any host on that
+link has an unauthenticated root shell).
+
+New payload `m1n1-hoolock-tablet`: the charging stage 2 kernel (`0017`) plus the
+SSH stage 1 overlay plus `/usr/bin/charging-policy` (`boot/charging-policy.sh`,
+tests `boot/test_charging_policy.py`). The hook starts the policy in the
+background just before its hold loop. Policy: wait for the sysfs property, set
+2400 mA (the validated tier), back off to 500 mA at 42.0 C or when the
+temperature is unreadable, resume below 38.0 C, re-check every 30 s. It writes
+only `input_current_limit`. Static gate: `boot/test_ssh_stage1.py --tablet`.
+
 #### Safe staged test
 
 **Static gate:** build a separate package derived from

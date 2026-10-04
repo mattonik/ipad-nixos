@@ -2973,6 +2973,52 @@
           sha256sum "$out/"{Pongo.bin,m1n1.bin,m1n1-linux.bin} > "$out/SHA256SUMS"
         '';
 
+        # Tablet payload: SSH stage 1 plus the boot-time charging policy, on the
+        # charging-writable kernel (patch 0017). Telnet stays as the recovery path.
+        m1n1-hoolock-tablet = let
+          dropbearPkg = pkgsCrossMusl.dropbear;
+          dropbearClosure = pkgs.closureInfo { rootPaths = [ dropbearPkg ]; };
+        in pkgs.runCommand "ipad-air2-m1n1-hoolock-tablet" {
+          nativeBuildInputs = [ pkgs.gzip pkgs.cpio pkgs.findutils ];
+        } ''
+          mkdir -p "$out" overlay/etc/postmarketos-mkinitfs/hooks
+          control=${self.packages.${linuxBuildSystem}.m1n1-hoolock-charging-writable-test}
+          cp "$control/"{Pongo.bin,m1n1.bin,t7001-j81.dtb,Image.gz,bootargs} "$out/"
+          hook=etc/postmarketos-mkinitfs/hooks/20-debug-shell.sh
+          sed 's|@DROPBEAR@|${dropbearPkg}|' ${./boot/ssh-stage1.sh} \
+            | sed 's|^loop_forever$|/usr/bin/charging-policy >/var/log/charging-policy.log 2>\&1 \&\nloop_forever|' > "overlay/$hook"
+          chmod 755 "overlay/$hook"
+
+          # Minimal account state absent from the base image.
+          mkdir -p overlay/root/.ssh overlay/var/empty overlay/var/run overlay/var/log
+          echo 'root:x:0:0:root:/root:/bin/sh' > overlay/etc/passwd
+          echo 'root:x:0:' > overlay/etc/group
+          cp ${./boot/ssh/authorized_keys} overlay/root/.ssh/authorized_keys
+          chmod 700 overlay/root overlay/root/.ssh
+          chmod 600 overlay/root/.ssh/authorized_keys
+          chmod 644 overlay/etc/passwd overlay/etc/group
+
+          mkdir -p overlay/usr/bin
+          cp ${./boot/tablet-status.sh} overlay/usr/bin/tablet-status
+          chmod 755 overlay/usr/bin/tablet-status
+          cp ${./boot/charging-policy.sh} overlay/usr/bin/charging-policy
+          chmod 755 overlay/usr/bin/charging-policy
+
+          # Dropbear runtime closure at its original store paths.
+          mkdir -p overlay/nix/store
+          while read -r p; do cp -a "$p" overlay/nix/store/; done < ${dropbearClosure}/store-paths
+          chmod -R u+w overlay/nix
+          find overlay -exec touch -h -d @1 {} +
+
+          gzip -dc "$control/initramfs.gz" > initramfs.cpio
+          (cd overlay; find . -mindepth 1 -print0 | sed -z 's|^\./||' | LC_ALL=C sort -z \
+            | cpio --null -o -H newc --owner=0:0 --reproducible) >> initramfs.cpio
+          gzip -n -c initramfs.cpio > "$out/initramfs.gz"
+          cat "$out/m1n1.bin" "$out/bootargs" "$out/t7001-j81.dtb" \
+            "$out/Image.gz" "$out/initramfs.gz" > "$out/m1n1-linux.bin"
+          sha256sum "$out/"{Pongo.bin,m1n1.bin,m1n1-linux.bin} > "$out/SHA256SUMS"
+        '';
+
         # Minimal initramfs — entire root filesystem in RAM
         # Build with SSH access:
         # IPAD_AUTHORIZED_KEYS=/absolute/path/key.pub nix build --impure \

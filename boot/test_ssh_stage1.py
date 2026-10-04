@@ -18,7 +18,9 @@ ns = {}
 exec(src, ns)
 entries = ns["entries"]
 
-control, stage = map(Path, sys.argv[1:3])
+tablet = "--tablet" in sys.argv
+args = [a for a in sys.argv[1:] if a != "--tablet"]
+control, stage = map(Path, args[:2])
 for name in ("Pongo.bin", "m1n1.bin", "t7001-j81.dtb", "Image.gz", "bootargs"):
     assert (stage / name).read_bytes() == (control / name).read_bytes(), name
 
@@ -35,6 +37,8 @@ fixed = {hook, "etc/passwd", "etc/group", "root", "root/.ssh",
          "root/.ssh/authorized_keys", "var", "var/empty", "var/run", "var/log", "etc",
          "etc/postmarketos-mkinitfs", "etc/postmarketos-mkinitfs/hooks",
          "usr", "usr/bin", "usr/bin/tablet-status"}
+if tablet:
+    fixed.add("usr/bin/charging-policy")
 extra = {n for n in added if n not in fixed and n not in ("nix", "nix/store") and not n.startswith("nix/store/")}
 assert not extra, f"unexpected overlay entries: {sorted(extra)}"
 changed = {n for n in added if n in before and before[n][2] != added[n][2] and n != hook}
@@ -42,6 +46,9 @@ assert not changed, f"overlay rewrote base files: {sorted(changed)}"
 
 ts = added["usr/bin/tablet-status"]
 assert ts[0] & 0o777 == 0o755 and ts[2] == (here / "tablet-status.sh").read_bytes()
+if tablet:
+    cp = added["usr/bin/charging-policy"]
+    assert cp[0] & 0o777 == 0o755 and cp[2] == (here / "charging-policy.sh").read_bytes()
 script = added[hook][2]
 assert added[hook][0] & 0o777 == 0o755
 subprocess.run(["sh", "-n"], input=script, check=True)
@@ -49,6 +56,10 @@ text = script.decode()
 assert "@DROPBEAR@" not in text
 assert re.search(r"^DB=/nix/store/\S+-dropbear-\S*[\d.]+$", text, re.M)
 assert "telnetd" in text and text.rstrip().endswith("loop_forever"), "recovery + non-returning"
+policy = "/usr/bin/charging-policy >/var/log/charging-policy.log 2>&1 &"
+assert (policy in text) == tablet, "charging policy start only in the tablet payload"
+if tablet:
+    assert text.rstrip().splitlines()[-2] == policy, "policy starts just before the hold loop"
 assert "-s -j -k" in text and '"${IP}:${SSH_PORT}"' in text
 assert added["root/.ssh/authorized_keys"][0] & 0o777 == 0o600
 assert added["root"][0] & 0o777 == 0o700 and added["root/.ssh"][0] & 0o777 == 0o700
