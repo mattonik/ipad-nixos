@@ -130,13 +130,12 @@ J81 supplies the `rieslinga` platform identity and older individual
 calibration properties, but no `wifi-antenna-sku-info` and no single
 `wifi-calibration-msf` blob.
 
-**I:** The smallest eventual integration is to set board type
-`apple,rieslinga`, report the BCM4350 chip revision plus OTP module/vendor/
-version in a diagnostic probe, and let the Apple filename builder use that
-tuple without requiring an antenna SKU. Do not invent an antenna SKU or pick
-`CIDR`/`STEL`, `m`/`u`, or a version from filenames. The binary, CLM and
-TxCap files can fall back to the platform-only suffix; NVRAM must match the
-OTP tuple.
+**I, refined 2026-10-04:** The eventual integration needs a proven BCM4350
+OTP reader first, then board type `apple,rieslinga` and the filename-builder
+change below. The existing reader cannot supply a BCM4350 tuple. Do not invent
+an antenna SKU or pick `CIDR`/`STEL`, `m`/`u`, or a version from filenames. The
+binary, CLM and TxCap files can fall back to the platform-only suffix; NVRAM
+must match the device tuple.
 
 **U:** J81's per-device ADT calibration is split across older properties such
 as RX, TX and 2.4 GHz frequency-group calibration. Newer m1n1 copies one
@@ -145,11 +144,85 @@ does not exist on J81. Static Apple-driver work must determine whether the old
 fields form a `calload` blob, override NVRAM keys, or are optional corrections.
 Do not associate or intentionally transmit until that is resolved.
 
+### Pinned OTP-reader gap and isolated filename patch, 2026-10-04
+
+**E:** Direct inspection of the exact Hoolock pin
+`6831bc701a6ce059e71e5aaa9488c9195bea6927`,
+[`brcmfmac/pcie.c`](https://github.com/HoolockLinux/linux/blob/6831bc701a6ce059e71e5aaa9488c9195bea6927/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c),
+finds a second dependency that the initial audit missed:
+`brcmf_pcie_read_otp()` implements only BCM4355, BCM4364, BCM4377, BCM4378 and
+BCM4387. BCM4350 falls through to `return 0` ("OTP not supported on this
+chip"), so this successful return does not mean an identity was read. The
+only assignment setting `devinfo->otp.valid = true` is the system-vendor
+parser called by that reader. Thus removing the antenna-SKU condition alone
+cannot change J81's filename selection in this pinned source.
+
+The source file used for this audit has SHA-256
+`2bc4ff2f06eb515b404e08973a39c029ec975155a17a7baaf6f62e76ca181b4c`.
+The companion
+[`firmware.h`](https://github.com/HoolockLinux/linux/blob/6831bc701a6ce059e71e5aaa9488c9195bea6927/drivers/net/wireless/broadcom/brcm80211/brcmfmac/firmware.h)
+defines eight candidate slots;
+[`firmware.c`](https://github.com/HoolockLinux/linux/blob/6831bc701a6ce059e71e5aaa9488c9195bea6927/drivers/net/wireless/broadcom/brcm80211/brcmfmac/firmware.c)
+zero-allocates the request and stops alternate-name lookup at the first NULL
+candidate. That makes a contiguous, correctly terminated list important when
+the optional SKU entries are omitted.
+
+**Implemented, isolated groundwork:**
+[`0048-brcmfmac-pcie-otp-without-antenna-sku.patch`](../kernel/patches/0048-brcmfmac-pcie-otp-without-antenna-sku.patch)
+allows a valid OTP tuple to construct names when `antenna_sku` is NULL.
+Existing SKU-present order remains unchanged. The no-SKU candidate order is:
+
+1. `<board>-<module>-<vendor>-<version>`
+2. `<board>-<module>-<vendor>`
+3. `<board>-<module>`
+4. `<board>`
+
+The existing generic firmware fallback and request metadata are preserved.
+Missing board type or invalid OTP retains the old platform-only behavior.
+Every generated-name allocation is checked before returning the request.
+**The patch is not referenced by any Nix build and is not applied to any
+kernel or payload.** It neither reads OTP nor supplies firmware/calibration
+or changes radio power. In particular, it is not a J81 Wi-Fi enablement patch.
+
+**Offline regression validation:**
+[`kernel/test_brcmfmac_otp_patch.py`](../kernel/test_brcmfmac_otp_patch.py)
+requires an exact-hash local copy of `pcie.c`, applies the patch with zero
+fuzz in a temporary tree, and extracts the actual original/patched
+`brcmf_pcie_prepare_fw_request()` definitions. It compiles both against
+minimal host API stubs; it does not reimplement the selection algorithm in
+Python. Checks cover original SKU behavior, absent-SKU order, NULL
+termination, invalid OTP/missing board fallbacks, all generated-string
+allocation failures, initial request failure, request metadata, and maximum
+15-character OTP fields. All tuples in the harness are synthetic.
+
+```sh
+python3 kernel/test_brcmfmac_otp_patch.py --source /path/to/pinned/pcie.c
+python3 kernel/test_brcmfmac_otp_patch.py --source /path/to/pinned/pcie.c --sanitize
+```
+
+Both the plain GCC and AddressSanitizer/UndefinedBehaviorSanitizer runs pass
+with warnings treated as errors. In this execution environment LeakSanitizer
+cannot inspect `/proc/<pid>/task`; the sanitizer run therefore used
+`ASAN_OPTIONS=detect_leaks=0`. LeakSanitizer was not validated. No full kernel,
+Nix or AArch64 build was run (Nix is unavailable), and no hardware was used.
+Native function compilation checks the selection behavior, not kernel ABI or
+MMIO compatibility.
+
+**Remaining evidence gates:** recover BCM4350's exact OTP core/window,
+length and identity format from a matching primary implementation before
+adding a reader; do not reuse BCM4355 offsets merely because both chip names
+start with 435. Then prove chip revision and tuple on a powered, enumerated
+endpoint. C2/C4 selection and old J81 calibration remain separate unresolved
+requirements. D2207 GPIO3 REG_ON is still the earlier hardware blocker, as
+recorded in the corrected PCIe Stage 5H findings.
+
 ### Wi-Fi evidence gate
 
 1. Enumerate the PCI endpoint without `brcmfmac` or firmware.
-2. Record PCI ID, BCM chip revision and OTP module/vendor/version. Keep any
-   unique radio address private.
+2. Record PCI ID and BCM chip revision. After implementing and validating a
+   BCM4350-specific OTP reader, record OTP module/vendor/version. The current
+   reader has no BCM4350 case; do not mistake its zero return for a valid
+   tuple. Keep any unique radio address private.
 3. Resolve whether Apple chooses `C2` or `C4` for that tuple by tracing
    `wifiFirmwareLoader -f` selection statically or by matching its selector
    logic. Do not infer it from directory names.
@@ -300,7 +373,7 @@ address or calibration file staged.
 | ---: | --- | --- | --- |
 | 1 | Identity/envelope inspector implemented and synthetic-tested; recover internal `0xe118` fields and ACK predicate from matching disassembly next. | High for identity/envelope; wire layout unresolved | No |
 | 2 | Trace `wifiFirmwareLoader` path selection far enough to map BCM revision/OTP tuple to C2 or C4 and confirm old calibration handling. | Medium | No |
-| 3 | Prepare a minimal `brcmfmac` patch which permits Apple OTP filename construction when antenna SKU is absent; do not enable it yet. | High for filename gap; runtime pending | No |
+| 3 | Isolated filename patch prepared and native/sanitizer-tested; BCM4350 OTP reader is additionally missing and needs primary-source recovery before integration. | High for filename gap and missing reader; runtime pending | No for source recovery/patch preparation |
 | 4 | Search matching local restore/OTA artifacts for the exact Bluetooth HCD filename and validate any recovered stream offline. | Medium; bytes absent here | No |
 | 5 | Stage the selected Wi-Fi quartet only after PCI enumeration reports chip and OTP identity. | High dependency order | Yes, read-only enumeration first |
 

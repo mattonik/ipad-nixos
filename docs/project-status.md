@@ -3,6 +3,18 @@
 Latest software update: 2026-10-04. Dated hardware records below are retained;
 this update does not add a hardware test.
 
+## Offline Wi-Fi firmware-selection groundwork, 2026-10-04
+
+Prepared isolated patch `0048` for valid Apple OTP identities without an
+antenna-SKU property. The actual patched selection function passes native
+GCC and AddressSanitizer/UndefinedBehaviorSanitizer tests with synthetic
+identities. It is not wired into a kernel or payload. Source review also
+found that the pinned OTP reader has **no BCM4350 case**; the filename patch
+alone consequently cannot help J81 until a proven reader exists. REG_ON,
+C2/C4 selection and old calibration remain earlier/separate blockers. See
+the [firmware audit](../research/j81-private-firmware-assets.md#pinned-otp-reader-gap-and-isolated-filename-patch-2026-10-04)
+for exact provenance, test commands and limitations.
+
 ## Offline touch asset validation, 2026-10-04
 
 Added [`boot/inspect_j81_touch.py`](../boot/inspect_j81_touch.py) for bounded
