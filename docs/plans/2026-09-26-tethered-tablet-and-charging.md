@@ -280,6 +280,22 @@ first test. A bounded file can instead be streamed through a remote shell and
 verified by hash. Package an SFTP server only when convenient file transfer
 becomes a real requirement.
 
+#### Stage 1 implementation status, 2026-10-04
+
+Built and statically verified, **not yet booted on hardware**:
+`.#packages.x86_64-linux.m1n1-hoolock-ssh-stage1` (hook `boot/ssh-stage1.sh`,
+public key `boot/ssh/authorized_keys`, gate `boot/test_ssh_stage1.py`).
+The gate passed: PongoOS/m1n1/DTB/kernel/bootargs byte-identical to
+`m1n1-hoolock-control`; the control archive is a byte-identical prefix; the
+overlay matches the allow-list (hook, passwd/group, `/root/.ssh` with modes
+0700/0600, Dropbear store closure); no base file rewritten; and all 12 ELF
+files in the closure resolve their `PT_INTERP`, `DT_NEEDED` and `RUNPATH`
+within the archive. The hook keeps telnet, binds Dropbear to the USB address
+with `-s -j -k`, generates an ed25519 host key per boot, and ends in
+`loop_forever`. The client key pair is dedicated to this device and lives
+under ignored `artifacts/live/ssh/`; only the public key is committed.
+Hardware stage 1 below is the next step and needs an explicit go-ahead.
+
 #### Safe staged test
 
 **Static gate:** build a separate package derived from
