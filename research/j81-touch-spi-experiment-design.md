@@ -223,3 +223,39 @@ runs (A and B, two separate power-ups) show it is stable across power cycles.
 One more contrast run, mode 1 at the same rate (falling-edge sampling), then
 optionally 500 kHz. Each needs the user's go-ahead. Nothing here justifies sending
 firmware or any register write.
+
+## Hardware result 4, 2026-10-04: run C (mode 1, 1.984 MHz), identical response
+
+Run by the user over SSH with the go-ahead
+(`--spi-mode 1 --spi-hz 1984000`). Same power-up/unwind, same boot IRQ edge.
+RX byte-for-byte as in runs A and B: dummy all `00`; wake `f8 80` x 8; short ATN
+`f8 80`; long ATN `f8 80` x 4.
+
+Mode 1 samples on the **falling** edge, so together with A (mode 3) and B (mode 0),
+both sampling edges now give the same word. The reply therefore does **not** depend
+on the sampling edge or the clock idle level in any way these runs can resolve, nor
+on the TX bytes, nor on the power cycle.
+
+## Correction to the design's mode inference
+
+The design inferred mode 3 from Apple's controller resetting its channel
+configuration to `0xd`, which was read with the **Samsung S3C** `CH_CFG` bit layout
+(CPHA = bit 2, CPOL = bit 3). That was the wrong register layout. The kernel's
+`spi-apple` S5L port (the driver actually driving this controller) uses
+`CFG` bit 0 AUTO_TX, **bit 1 CPHA, bit 2 CPOL**, bit 3 ROLESEL. In that layout
+`0xd = AUTO_TX | CPOL | ROLESEL`: **CPOL = 1, CPHA = 0, i.e. SPI mode 2**, as master.
+Apple writes `0xd` as the per-transfer base value, and no per-command code in the
+decompiled controller changes the CPHA/CPOL bits, so the stock mode for Apple's
+transfers is most likely mode 2, with the clock idling high (which still agrees
+with "ensuring S_CLK is high"). Modes 0, 1 and 3 do not match that, so **mode 2 has
+not been tested**. This weakens, but does not by itself explain, the constant
+`f8 80`: three modes gave one word, which may mean the word is not shifted data at
+all (for example a status pattern or a signal not coupled to the data phase).
+
+## Updated next step
+
+1. Mode 2 at 1.984 MHz (Apple's decoded default); the same four frames.
+2. If still `f8 80`: a much lower rate (Apple's Z1 EVT used a 10 us period, about
+   100 kHz) to rule out an excessive clock; then stop and re-read the controller's
+   CS and clock configuration before more power cycles.
+Each run needs the user's go-ahead. Still no firmware, no register write.
