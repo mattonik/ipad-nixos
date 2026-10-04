@@ -259,3 +259,47 @@ all (for example a status pattern or a signal not coupled to the data phase).
    100 kHz) to rule out an excessive clock; then stop and re-read the controller's
    CS and clock configuration before more power cycles.
 Each run needs the user's go-ahead. Still no firmware, no register write.
+
+## Hardware result 5, 2026-10-04: run D (mode 2, 1.984 MHz) shifts the word by one bit
+
+Run by the user over SSH with the go-ahead (`--spi-mode 2 --spi-hz 1984000`). Same
+power-up/unwind. Boot IRQ: this time the first event read was a **rising** edge
+(level before 1, after 0), unlike runs A-C, which saw a falling edge first. The
+line ends low as before; the event order is noted but its cause is unexplained (**U**).
+
+RX: dummy all `00`; wake `f0 01 f1 01 f1 01 ...`; short ATN `f0 01`; long ATN
+`f0 01 f1 01 f1 01 f1 01`.
+
+**The word is clocked data, not a level.** Modes 0, 1, 3 gave the bit stream of
+`f8 80` repeated (`1111 1000 1000 0000` per 16 bits). Drop the first bit of that stream
+and re-group into bytes: `f1 01 f1 01 ...` (`1111 0001 0000 0001`). Mode 2 shows
+exactly that, with the first word `f0 01` (a different leading bit) as the one-bit
+alignment edge effect. So the controller really is sampling a **periodic 16-bit bit
+pattern** from the slave, and the sampling phase of the first bit moves the
+alignment by one bit. This shows the clock, MISO path and chip select work, and that
+the pattern repeats with a 16-bit period.
+
+**It still does not answer our frames.** The same periodic pattern comes back for the
+wake, short and long ATN frames, and is unchanged by the bytes sent. It matches
+neither recovered ACK (`4b c1`, `4a d1`) at any of the 16 rotations of the pattern
+(rotations of `f880` include `f101`, `e203`, `c407`, `880f`, `101f`, `203e`, `407c`,
+`80f8`, `01f1`, `03e2`, `07c4`, `0f88`, `1f10`, `3e20`, `7c40`). The best reading is a
+constant **idle/not-ready output of the boot ROM**, with the true word boundary
+ambiguous by rotation (**I**).
+
+## Interpretation and what is left
+
+- Bus bring-up is **done**: power order, reset polarity, clock, mode (any), rate and
+  chip select all produce a live, clock-dependent response.
+- The remaining open question is the ROM's expected first packet. Apple's bootloader
+  starts with the firmware download chunk and only then issues the short ATN/ACK to read
+  `4b c1`; the queries sent here are not part of that flow before firmware, so a
+  constant idle word is the expected answer to them.
+- Two non-firmware variables remain untried: the `function-enable_download` call Apple
+  makes around reset ("fw download mode"; absent from the J81 ADT text dump) and the
+  `display_sync` GPIO55 drive. Either could be what puts the ROM into download mode.
+- **Going further means sending firmware**, which is the project's standing gate: the
+  recovered packet is the exact constructed firmware Apple's own driver sends to this
+  controller in one `18 e1` packet, followed by an ATN/ACK that must read `4b c1`.
+  That needs the private asset (from the iPad5,3 IPSW), a dedicated approved test, and
+  the user's explicit decision. It is not started.
