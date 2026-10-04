@@ -296,6 +296,31 @@ with `-s -j -k`, generates an ed25519 host key per boot, and ends in
 under ignored `artifacts/live/ssh/`; only the public key is committed.
 The same payload also ships `/usr/bin/tablet-status` (`boot/tablet-status.sh`): a read-only summary of battery, charger limit, USB link, uptime and recent kernel messages, tested against fake sysfs trees by `boot/test_tablet_status.py`. Hardware stage 1 below is the next step and needs an explicit go-ahead.
 
+#### Hardware stage 1 result, 2026-10-04 (first cold boot)
+
+Payload `m1n1-hoolock-ssh-stage1` (commit `31e7ed8`), direct-cable boot with the
+user's go-ahead, recorded session (private, ignored `artifacts/live/sessions/`).
+**Pass on every stage 1 item for this first boot:**
+
+- ECM enumerated as before; host `172.16.42.2/24` pings the iPad.
+- Telnet recovery works; Dropbear stayed alive, its log has no loader or library
+  error; ports 22 and 23 are bound only to `172.16.42.1`.
+- The ed25519 host-key fingerprint scanned over SSH equals the one printed over
+  telnet (`dropbearkey -y`), so it was verified over the independent channel.
+- Dedicated key opens a remote command (`uid 0`, `Linux 7.3.0-rc1`) and an
+  interactive PTY (`/dev/pts/0`).
+- A wrong key and a password-only attempt are both rejected
+  (`Permission denied (publickey)`).
+- Three disconnect/reconnect cycles leave Dropbear running; telnet still accepts.
+- A 64 KiB random file streamed through `ssh` has the identical SHA-256 in `/tmp`.
+- `tablet-status` runs over SSH and over telnet with plausible values.
+
+Not yet done: the **second cold boot** the plan requires before building the
+SSH-only stage 2 (telnet removed). Observation outside the test: the battery was
+discharging (about -0.7 to -0.9 A) at the default 100 mA input limit, which is
+expected because the charging tier is only raised by the console tool; it does
+not affect SSH. The host key changes every boot by design (volatile root).
+
 #### Safe staged test
 
 **Static gate:** build a separate package derived from
