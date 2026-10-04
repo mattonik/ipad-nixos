@@ -151,6 +151,11 @@ current upstream Linux contains CS42L81 or MAX98721 codec drivers. The Apple
 MCA and ADMAC drivers in current Linux target the newer Apple Silicon audio
 architecture and are references, not compatible T7001 implementations.
 
+The [pinned audio/sensor survey](j81-audio-sensors-source-survey.md) now
+provides a reproducible J82 comparison map. It identifies a SPI1 codec-control
+path and concrete resource differences from modern MCA; verify these sibling
+resources against the private J81 ADT before implementing control transport.
+
 ### What is needed
 
 1. Decode the J81 audio graph without publishing calibration: I2S controller
