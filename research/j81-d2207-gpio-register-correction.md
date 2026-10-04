@@ -193,3 +193,38 @@ This confirms the corrected register map end to end: the earlier non-persistent
 writes targeted the wrong registers, and `0x0403` is the real Wi-Fi power
 enable. The PMU resets it on every reboot, so the assert must stay in-kernel
 before the PCIe probe, exactly as implemented.
+
+## PCIe warnings explained, 2026-10-04 (read-only, same REG_ON payload)
+
+Recorded session (private), config space read through sysfs and decoded on the
+host; nothing written. Both devices expose a PCIe capability:
+
+| | Root port `106b:1002` | Endpoint `14e4:43a3` |
+| --- | --- | --- |
+| LnkCap max speed / width | **5.0 GT/s** x1 | **2.5 GT/s** x1 |
+| LnkCap DLL-active reporting | yes | no |
+| LnkSta current | 2.5 GT/s x1 | 2.5 GT/s x1 |
+| LnkSta DLL link active (bit 13) | **1 (link is up)** | n/a |
+| LnkSta training (bit 11) / bandwidth-mgmt seen (bit 14) | 0 / 1 | 0 / 0 |
+| LnkCtl2 target speed | 2.5 GT/s | 2.5 GT/s |
+
+- **`retraining failed` is benign.** The kernel's failed-link-retrain quirk saw a
+  2.5 GT/s target on a port that advertises 5.0 GT/s, tried to lift it and retrain.
+  The BCM4350 is a 2.5 GT/s device, so it cannot reach 5.0; the retrain fails and the
+  kernel restores 2.5 GT/s. The link stays up and correct at Gen1 x1, which is also
+  what the chip supports. Nothing to fix; it costs only a retrain attempt at boot.
+- **`iommu-map ... id 0x8` is benign.** `0x8` is the root port's own requester ID
+  (`00:01.0`); the controller's `iommu-map` covers the endpoint range from `0x100`,
+  and the endpoint did join IOMMU group 0 with the DART initialized. The root port
+  does no DMA.
+- **`link_up=0` was the wrong signal.** The controller register bit the test
+  stages polled (`+0x88` bit 6) is not the link indicator on this hardware: the
+  root port's own **Data Link Layer Link Active** bit is set, and enumeration and
+  config reads succeed. `+0x88` reads `0xc` with the chip unpowered and `0x5`
+  with it powered, so its low bits do track the endpoint, but the exact encoding
+  is undecoded (U). The production driver should wait on the root port's DLLLA,
+  not `+0x88` bit 6.
+
+No code change is needed for the warnings. The one recommended change is to the
+link-wait logic in the future production driver (use DLLLA), not to the test
+stages.
