@@ -57,11 +57,11 @@ by the existing debug hook.  It should use the sysfs property, not
 
 1. On boot, set `input_current_limit` to 2400000 microamps.
 2. Every 30 seconds, read the BQ27545 `temp` and `capacity` files.
-3. Set the limit back to 100000 microamps when temperature reaches 42.0 C or
+3. Set the limit back to 500000 microamps when temperature reaches 42.0 C or
    capacity reaches 80 percent; otherwise leave it at 2400000 microamps.
 4. Log each transition once to `/tmp`, which is RAM-only.
 
-This directly implements the existing conservative 42 C / 80% instruction.
+This implements the agreed 42 C / 80% backoff policy at 500 mA.
 It must never touch D2207 `0x0010` bit 2: hardware testing proved that bit
 suspends USB input and worsens charging.  A locally running service also avoids
 the misleading idea that loss of the USB host should itself stop charging.
@@ -69,8 +69,8 @@ the misleading idea that loss of the USB host should itself stop charging.
 There is one documentation/code discrepancy to resolve before implementing
 that service: `boot/ipad_console.py` currently restores its interactive
 high-tier experiment to 1000 mA after an abort, while the older charging log
-records 100 mA as the required 80% cutoff.  The service must follow the
-explicit 100 mA cutoff above; the interactive tool can be aligned separately
+records 100 mA as the required 80% cutoff. The service instead uses the agreed
+500 mA backoff above; the interactive tool can be aligned separately
 with a small tested change.
 
 ### Is 2400 mA enough?
@@ -332,8 +332,9 @@ New payload `m1n1-hoolock-tablet`: the charging stage 2 kernel (`0017`) plus the
 SSH stage 1 overlay plus `/usr/bin/charging-policy` (`boot/charging-policy.sh`,
 tests `boot/test_charging_policy.py`). The hook starts the policy in the
 background just before its hold loop. Policy: wait for the sysfs property, set
-2400 mA (the validated tier), back off to 500 mA at 42.0 C or when the
-temperature is unreadable, resume below 38.0 C, re-check every 30 s. It writes
+2400 mA (the validated tier), back off to 500 mA at 42.0 C, 80% capacity, or
+when either reading is unreadable, resume below 38.0 C while under 80%,
+re-check every 30 s. It writes
 only `input_current_limit`. Static gate: `boot/test_ssh_stage1.py --tablet`.
 
 #### Tablet payload hardware result, 2026-10-04: boot-time charging policy passes
@@ -420,7 +421,7 @@ confirmed input device; touch remains a separate driver and power problem.
 | Order | Work | Why it comes now | Gate to advance |
 | --- | --- | --- | --- |
 | 1 | Boot the existing charging-writable test and perform its narrow 2400 mA check | It converts a proven raw PMIC mechanism into the normal kernel interface without adding a new driver | Sysfs value and raw register agree; 30 s gauge observation stays clean and charging. |
-| 2 | Add the small boot-time charging service | Removes the per-boot manual operation using only evidence-backed values | Cold boot reaches 2400 mA; 42 C and 80% simulations/read-only review show the fallback is 100 mA. |
+| 2 | Add the small boot-time charging service | Removes the per-boot manual operation using only evidence-backed values | Cold boot reaches 2400 mA; 42 C and 80% simulations/read-only review show the fallback is 500 mA. |
 | 3 | Package key-only SSH beside the existing telnet recovery shell | Makes the USB link usable for normal development and file transfer | SSH reconnects after a cold boot; telnet fallback still works during this first step. |
 | 4 | Add `tablet-status`, then validate the framebuffer console | Gives immediate local feedback with no graphics dependency | All fields display correctly and continue updating over a 30-minute charging session. |
 | 5 | Add optional button navigation only if an input device is present | Avoids inventing input support | Button events are observed and a read-only menu works. |

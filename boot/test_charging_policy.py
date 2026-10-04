@@ -10,7 +10,7 @@ SCRIPT = Path(__file__).with_name("charging-policy.sh")
 
 
 class Env:
-    def __init__(self, temp="313", writable=True):
+    def __init__(self, temp="313", capacity="50", writable=True):
         self.dir = tempfile.TemporaryDirectory()
         root = Path(self.dir.name)
         self.chg = root / "chg"
@@ -18,10 +18,12 @@ class Env:
         self.chg.mkdir(); self.bat.mkdir()
         (self.chg / "input_current_limit").write_text("100000\n")
         (self.chg / "input_current_limit").chmod(0o644 if writable else 0o444)
-        self.set_temp(temp)
+        self.set_battery(temp, capacity)
 
-    def set_temp(self, temp):
-        text = "POWER_SUPPLY_CAPACITY=50\n"
+    def set_battery(self, temp, capacity):
+        text = ""
+        if capacity is not None:
+            text += f"POWER_SUPPLY_CAPACITY={capacity}\n"
         if temp is not None:
             text += f"POWER_SUPPLY_TEMP={temp}\n"
         (self.bat / "uevent").write_text(text)
@@ -52,6 +54,16 @@ class ChargingPolicyTests(unittest.TestCase):
             e = Env(temp)
             e.run()
             self.assertEqual(e.limit(), "500000", temp)
+
+    def test_capacity_limit_is_safe_never_target(self):
+        for capacity in ("80", "81", None, "x", "-"):
+            e = Env(capacity=capacity)
+            e.run()
+            self.assertEqual(e.limit(), "500000", capacity)
+
+        e = Env(capacity="79")
+        e.run()
+        self.assertEqual(e.limit(), "2400000")
 
     def test_missing_sysfs_leaves_limit_and_exits_nonzero(self):
         e = Env("313", writable=False)

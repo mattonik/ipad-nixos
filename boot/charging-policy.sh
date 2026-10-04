@@ -1,5 +1,5 @@
 #!/bin/sh
-# Raises the USB input current limit at boot and backs off when hot.
+# Raises the USB input current limit at boot and backs off when hot or 80% full.
 # Writes only the charger's input_current_limit sysfs property (patch 0017).
 # Overridable for tests; ONCE=1 runs a single evaluation. BusyBox ash.
 CHG=${CHG:-/sys/class/power_supply/j81-d2207-charger}
@@ -8,6 +8,7 @@ TARGET_UA=${TARGET_UA:-2400000}   # tier validated 2026-09-21 and 2026-10-04
 SAFE_UA=${SAFE_UA:-500000}        # backoff tier
 HOT_DECI=${HOT_DECI:-420}         # >= 42.0 C: back off
 COOL_DECI=${COOL_DECI:-380}       # <= 38.0 C: resume
+MAX_CAPACITY=${MAX_CAPACITY:-80}  # >= 80%: back off
 INTERVAL=${INTERVAL:-30}
 WAIT_SECS=${WAIT_SECS:-60}
 LIMIT=$CHG/input_current_limit
@@ -26,6 +27,7 @@ done
 
 # Temperature in deci-degrees C, empty if unreadable.
 temp() { sed -n 's/^POWER_SUPPLY_TEMP=//p' "$BAT/uevent" | head -n 1; }
+capacity() { sed -n 's/^POWER_SUPPLY_CAPACITY=//p' "$BAT/uevent" | head -n 1; }
 
 # Write $1 (uA) and verify by reading it back; $2 is the log reason.
 set_limit() {
@@ -46,8 +48,14 @@ want() {
 hot=0
 while :; do
 	t=$(temp)
-	case $t in
+	c=$(capacity)
+	case $c in
 	"" | - | *[!0-9-]*)
+		want "$SAFE_UA" "capacity unreadable"
+		;;
+	*)
+		case $t in
+		"" | - | *[!0-9-]*)
 		# Unknown temperature: stay on the safe tier, never the high one.
 		hot=1
 		want "$SAFE_UA" "temperature unreadable"
@@ -59,12 +67,15 @@ while :; do
 		elif [ "$t" -le "$COOL_DECI" ]; then
 			hot=0
 		fi
-		if [ "$hot" = 1 ]; then
+		if [ "$c" -ge "$MAX_CAPACITY" ]; then
+			want "$SAFE_UA" "capacity ${c}%"
+		elif [ "$hot" = 1 ]; then
 			want "$SAFE_UA" "hot ${t} deciC"
 		else
 			want "$TARGET_UA" "temp ${t} deciC"
 		fi
 		;;
+		esac
 	esac
 	[ -n "$ONCE" ] && exit 0
 	sleep "$INTERVAL"
