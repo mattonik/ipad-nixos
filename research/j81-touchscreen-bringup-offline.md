@@ -230,6 +230,14 @@ driver revision.
 
 ### Live read-only confirmation, 2026-09-25
 
+**Software follow-up, 2026-10-04:** The
+[native receive/firmware-header audit](j81-z2-native-validation.md) regenerates
+`0011` against the exact source pin with zero fuzz and validates the actual
+driver functions across every 16-bit packet length, every finger-count byte,
+short messages and short firmware. It also records ACK/calibration gaps that
+must not be mistaken for a validated J81 transport. No payload was rebuilt and
+no touch child was enabled.
+
 The running postmarketOS payload was inspected over USB networking without
 altering device configuration. The `20a08c000.spi` platform device is present,
 is bound to `apple-spi`, and has supplier links to the expected PMGR controller
