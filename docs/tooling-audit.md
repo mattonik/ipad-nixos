@@ -119,3 +119,9 @@ The runner includes a fourteenth default host script for session evidence:
 14 pass with six optional skips. With all three pinned public sources,
 18 pass with two built-artifact skips. These counts supersede earlier
 snapshots above. No hardware session or Nix build is validated here.
+
+The [BCM4350 access-path harness](../research/j81-bcm4350-nvm-validation.md)
+adds paired `--dhd-source` and `--dhd-header` inputs. The current full run
+passes 19 scripts with two built-artifact skips; default mode passes 14
+with seven optional skips. The DHD comparison includes expected reproductions
+of vendor-reference faults, not an active BCM4350 reader.
