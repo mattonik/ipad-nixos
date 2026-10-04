@@ -1,0 +1,128 @@
+diff --git a/drivers/pci/controller/pcie-apple-t7000.c b/drivers/pci/controller/pcie-apple-t7000.c
+--- a/drivers/pci/controller/pcie-apple-t7000.c
++++ b/drivers/pci/controller/pcie-apple-t7000.c
+@@ -1,5 +1,10 @@
+ // SPDX-License-Identifier: GPL-2.0-only
+ /*
++ * REG_ON test stage: Stage 5F's sequence plus an assert of the BCM4350's
++ * `function-reg_on` (D2207 PMU GPIO 3, register 0x0403) at the start of
++ * probe(), per Apple's order (REG_ON, 100 ms, then the PCIe port). See
++ * t7000_pcie_assert_reg_on() and research/j81-d2207-gpio-register-correction.md.
++ *
+  * Apple T7000-family PCIe -- enable-sequence + generic-enumeration +
+  * PERST + controller-tuning/DBI-override RMW + enableGated()'s full
+  * recovered tail + bounded link-up poll + recovered maximum-link-speed
+@@ -73,12 +78,15 @@
+ #include <linux/delay.h>
+ #include <linux/err.h>
+ #include <linux/gpio/consumer.h>
++#include <linux/i2c.h>
+ #include <linux/io.h>
+ #include <linux/jiffies.h>
+ #include <linux/module.h>
++#include <linux/of.h>
+ #include <linux/of_address.h>
+ #include <linux/pci-ecam.h>
+ #include <linux/platform_device.h>
++#include <linux/regmap.h>
+ 
+ #include "pci-host-common.h"
+ 
+@@ -640,7 +648,79 @@
+ 		.write		= pci_generic_config_write,
+ 	},
+ };
++
++/*
++ * REG_ON test stage. J81's BCM4350 `function-reg_on` is D2207 PMU GPIO 3
++ * (ADT descriptor OIPG, pin 3). Apple's _index2GPIOAddress places GPIO
++ * indices 0-16 at the one-byte register 0x0400 | index, so the
++ * configuration register is 0x0403 -- not the 0x03e9 earlier notes used
++ * (see research/j81-d2207-gpio-register-correction.md; a live write of
++ * 0x0b to 0x0403 persisted on hardware, and the PMU resets it to 0x09 on
++ * every reboot). Apple asserts REG_ON and waits 100 ms before enabling the
++ * PCIe port, so this runs at the start of probe().
++ *
++ * The byte is derived exactly as Apple's _setGPIOFunction does for "level
++ * high, polarity set": (old & 0x1d) | 0x02. It is applied only if the
++ * observed value is the expected output-low pattern (upper three bits
++ * clear), is verified by readback, and a failure never aborts probe so the
++ * stage still reports its PCIe result. Nothing else on the PMU is touched.
++ */
++#define T7000_PCIE_PMU_COMPATIBLE	"apple,i2c-pmic"
++#define T7000_PCIE_REG_ON_CONFIG	0x0403
++#define T7000_PCIE_REG_ON_DELAY_MS	100
++
++static int t7000_pcie_assert_reg_on(struct device *dev)
++{
++	struct device_node *np;
++	struct i2c_client *client;
++	struct regmap *map;
++	unsigned int old, new, readback;
++	int ret;
++
++	np = of_find_compatible_node(NULL, NULL, T7000_PCIE_PMU_COMPATIBLE);
++	if (!np) {
++		dev_info(dev, "t7000-pcie reg-on-test: no PMU node, skipping REG_ON\n");
++		return 0;
++	}
++
++	client = of_find_i2c_device_by_node(np);
++	of_node_put(np);
++	if (!client)
++		return -EPROBE_DEFER;
+ 
++	map = dev_get_regmap(&client->dev, NULL);
++	if (!map) {
++		put_device(&client->dev);
++		return -EPROBE_DEFER;
++	}
++
++	ret = regmap_read(map, T7000_PCIE_REG_ON_CONFIG, &old);
++	if (ret) {
++		dev_info(dev, "t7000-pcie reg-on-test: config read failed (%d), skipping\n", ret);
++		goto out;
++	}
++
++	if (old & 0xe0) {
++		dev_info(dev,
++			 "t7000-pcie reg-on-test: unexpected config 0x%02x at 0x%04x, not writing\n",
++			 old, T7000_PCIE_REG_ON_CONFIG);
++		goto out;
++	}
++
++	new = (old & 0x1d) | 0x02;
++	ret = regmap_write(map, T7000_PCIE_REG_ON_CONFIG, new);
++	if (!ret)
++		ret = regmap_read(map, T7000_PCIE_REG_ON_CONFIG, &readback);
++	dev_info(dev,
++		 "t7000-pcie reg-on-test: 0x%04x 0x%02x -> 0x%02x (readback 0x%02x, ret %d)\n",
++		 T7000_PCIE_REG_ON_CONFIG, old, new, ret ? 0 : readback, ret);
++	if (!ret)
++		msleep(T7000_PCIE_REG_ON_DELAY_MS);
++out:
++	put_device(&client->dev);
++	return 0;
++}
++
+ static int apple_t7000_pcie_probe(struct platform_device *pdev)
+ {
+ 	struct pci_host_bridge *bridge;
+@@ -648,6 +728,10 @@
+ 
+ 	dev_info(&pdev->dev, "t7000-pcie tuning-baseline-test: probe entry\n");
+ 
++	ret = t7000_pcie_assert_reg_on(&pdev->dev);
++	if (ret)
++		return ret;
++
+ 	bridge = devm_pci_alloc_host_bridge(&pdev->dev, 0);
+ 	if (!bridge)
+ 		return -ENOMEM;
+@@ -676,5 +760,5 @@
+ };
+ module_platform_driver(apple_t7000_pcie_driver);
+ 
+-MODULE_DESCRIPTION("Apple T7000 PCIe port-1 full recovered enableGated() sequence plus recovered maximum-link-speed capability RMW (Stage 5F)");
++MODULE_DESCRIPTION("Apple T7000 PCIe port-1 recovered enableGated() sequence plus REG_ON assert via the D2207 PMU (REG_ON test stage)");
+ MODULE_LICENSE("GPL");
