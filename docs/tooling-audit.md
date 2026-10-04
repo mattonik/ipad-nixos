@@ -106,3 +106,16 @@ No live telnet, USB, Mac-specific runner, Nix evaluation, kernel build or
 private capture was tested. On the laptop, first exercise the console change
 with an observation such as `uname -a` and a known-good control payload.
 The existing passive REG_ON capture gate remains unchanged.
+
+## Session evidence follow-up
+
+The [session evidence workflow](hardware-session-evidence.md) now provides
+private manifests and command/result transcripts, plus POSIX shell status
+reporting. `run()` raises on a confirmed nonzero exit; `run_result()` allows
+callers to inspect output/status explicitly. Unknown completion still closes
+the transport without replay. The original laptop runner remains in place.
+
+The runner includes a fourteenth default host script for session evidence:
+14 pass with six optional skips. With all three pinned public sources,
+18 pass with two built-artifact skips. These counts supersede earlier
+snapshots above. No hardware session or Nix build is validated here.
