@@ -61,6 +61,19 @@ class ChargingPolicyTests(unittest.TestCase):
         self.assertNotEqual(proc.returncode, 0)
         self.assertEqual(e.limit(), "100000")
 
+    def test_already_correct_is_not_rewritten_and_drift_is_corrected(self):
+        e = Env("313")
+        (e.chg / "input_current_limit").write_text("2400000\n")
+        self.assertNotIn("limit", e.run().stdout)
+        (e.chg / "input_current_limit").write_text("1000000\n")  # external change
+        e.run()
+        self.assertEqual(e.limit(), "2400000")
+
+    def test_between_thresholds_at_start_uses_target(self):
+        e = Env("400")
+        e.run()
+        self.assertEqual(e.limit(), "2400000")
+
     def test_only_touches_input_current_limit(self):
         e = Env("313")
         before = {p.name for p in Path(e.dir.name).rglob("*")}

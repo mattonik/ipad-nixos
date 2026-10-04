@@ -27,30 +27,42 @@ done
 # Temperature in deci-degrees C, empty if unreadable.
 temp() { sed -n 's/^POWER_SUPPLY_TEMP=//p' "$BAT/uevent" | head -n 1; }
 
+# Write $1 (uA) and verify by reading it back; $2 is the log reason.
 set_limit() {
 	echo "$1" > "$LIMIT" 2>/dev/null
 	got=$(cat "$LIMIT" 2>/dev/null)
 	if [ "$got" = "$1" ]; then
 		log "limit $1 uA ($2)"
-		state=$3
 	else
 		log "write of $1 uA failed (read back '$got')"
 	fi
 }
 
-state=unset
+# Decide from the actual current value, so an external change is corrected.
+want() {
+	[ "$(cat "$LIMIT" 2>/dev/null)" = "$1" ] || set_limit "$1" "$2"
+}
+
+hot=0
 while :; do
 	t=$(temp)
 	case $t in
-	"" | -  | *[!0-9-]*)
+	"" | - | *[!0-9-]*)
 		# Unknown temperature: stay on the safe tier, never the high one.
-		[ "$state" = safe ] || set_limit "$SAFE_UA" "temperature unreadable" safe
+		hot=1
+		want "$SAFE_UA" "temperature unreadable"
 		;;
 	*)
+		# Hysteresis: enter hot at >= HOT_DECI, leave only at <= COOL_DECI.
 		if [ "$t" -ge "$HOT_DECI" ]; then
-			[ "$state" = safe ] || set_limit "$SAFE_UA" "hot ${t} deciC" safe
-		elif [ "$t" -le "$COOL_DECI" ] || [ "$state" = unset ]; then
-			[ "$state" = target ] || set_limit "$TARGET_UA" "temp ${t} deciC" target
+			hot=1
+		elif [ "$t" -le "$COOL_DECI" ]; then
+			hot=0
+		fi
+		if [ "$hot" = 1 ]; then
+			want "$SAFE_UA" "hot ${t} deciC"
+		else
+			want "$TARGET_UA" "temp ${t} deciC"
 		fi
 		;;
 	esac
