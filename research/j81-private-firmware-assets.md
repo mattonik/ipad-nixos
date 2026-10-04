@@ -144,6 +144,10 @@ does not exist on J81. Static Apple-driver work must determine whether the old
 fields form a `calload` blob, override NVRAM keys, or are optional corrections.
 Do not associate or intentionally transmit until that is resolved.
 
+The [firmware-loader policy audit](j81-wifi-loader-selection.md) now validates
+actual filename fallback and optional-NVRAM completion. A successful request
+does not prove matching calibration was supplied.
+
 ### Pinned OTP-reader gap and isolated filename patch, 2026-10-04
 
 **E:** Direct inspection of the exact Hoolock pin
