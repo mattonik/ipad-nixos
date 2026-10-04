@@ -57,7 +57,7 @@ without it would differ from Apple's.
 ## What this settles and what it does not
 
 - Settled: electrical polarity and logical assert/deassert values for reset and
-  the other three touch GPIOs (the 91-record unknowns in the earlier table).
+  the other three touch GPIOs.
 - `power_ldo` pin 95 is active-high; Apple enables the D2207 analog source
   first, then drives pin 95 high, and reverses at power-off (earlier audit).
 - Still **U**: the inter-rail delay, the interrupt trigger polarity (separate
