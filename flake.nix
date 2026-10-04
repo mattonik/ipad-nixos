@@ -3064,6 +3064,8 @@
           chmod 755 overlay/usr/bin/tablet-status
           cp ${./boot/charging-policy.sh} overlay/usr/bin/charging-policy
           chmod 755 overlay/usr/bin/charging-policy
+          cp ${./boot/tablet-dashboard.sh} overlay/usr/bin/tablet-dashboard
+          chmod 755 overlay/usr/bin/tablet-dashboard
 
           # Dropbear runtime closure at its original store paths.
           mkdir -p overlay/nix/store
@@ -3114,6 +3116,8 @@
           chmod 755 overlay/usr/bin/tablet-status
           cp ${./boot/charging-policy.sh} overlay/usr/bin/charging-policy
           chmod 755 overlay/usr/bin/charging-policy
+          cp ${./boot/tablet-dashboard.sh} overlay/usr/bin/tablet-dashboard
+          chmod 755 overlay/usr/bin/tablet-dashboard
           cp ${touchDiagPkg}/bin/touch-diag overlay/usr/bin/touch-diag
           chmod 755 overlay/usr/bin/touch-diag
 
@@ -3165,6 +3169,8 @@
           chmod 755 overlay/usr/bin/tablet-status
           cp ${./boot/charging-policy.sh} overlay/usr/bin/charging-policy
           chmod 755 overlay/usr/bin/charging-policy
+          cp ${./boot/tablet-dashboard.sh} overlay/usr/bin/tablet-dashboard
+          chmod 755 overlay/usr/bin/tablet-dashboard
           cp ${touchDiagPkg}/bin/touch-diag overlay/usr/bin/touch-diag
           chmod 755 overlay/usr/bin/touch-diag
 

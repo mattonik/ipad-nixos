@@ -1,7 +1,9 @@
 #!/bin/sh
 # Raises the USB input current limit at boot and backs off when hot or 80% full.
 # Writes only the charger's input_current_limit sysfs property (patch 0017).
-# Overridable for tests; ONCE=1 runs a single evaluation. BusyBox ash.
+# Overridable for tests; ONCE=1 runs a single evaluation, MAX_ITER=N runs N.
+# Policy: 2400 mA below 80% capacity and 42 C; 500 mA at or above either limit
+# or if either reading is unavailable. BusyBox ash.
 CHG=${CHG:-/sys/class/power_supply/j81-d2207-charger}
 BAT=${BAT:-/sys/class/power_supply/bq27545-battery}
 TARGET_UA=${TARGET_UA:-2400000}   # tier validated 2026-09-21 and 2026-10-04
@@ -46,37 +48,39 @@ want() {
 }
 
 hot=0
+iter=0
 while :; do
 	t=$(temp)
 	c=$(capacity)
-	case $c in
-	"" | - | *[!0-9-]*)
-		want "$SAFE_UA" "capacity unreadable"
-		;;
-	*)
-		case $t in
-		"" | - | *[!0-9-]*)
-		# Unknown temperature: stay on the safe tier, never the high one.
+
+	# Temperature: a leading minus is valid (cold). Capacity: digits only.
+	case $t in "" | - | *[!0-9-]*) temp_ok=0 ;; *) temp_ok=1 ;; esac
+	case $c in "" | *[!0-9]*) cap_ok=0 ;; *) cap_ok=1 ;; esac
+
+	if [ "$temp_ok" = 0 ]; then
+		# Unknown temperature: latch the safe tier, never the high one.
 		hot=1
+	elif [ "$t" -ge "$HOT_DECI" ]; then
+		hot=1
+	elif [ "$t" -le "$COOL_DECI" ]; then
+		hot=0
+	fi
+
+	# 2400 mA only while capacity is known and below the cap and not hot.
+	if [ "$temp_ok" = 0 ]; then
 		want "$SAFE_UA" "temperature unreadable"
-		;;
-	*)
-		# Hysteresis: enter hot at >= HOT_DECI, leave only at <= COOL_DECI.
-		if [ "$t" -ge "$HOT_DECI" ]; then
-			hot=1
-		elif [ "$t" -le "$COOL_DECI" ]; then
-			hot=0
-		fi
-		if [ "$c" -ge "$MAX_CAPACITY" ]; then
-			want "$SAFE_UA" "capacity ${c}%"
-		elif [ "$hot" = 1 ]; then
-			want "$SAFE_UA" "hot ${t} deciC"
-		else
-			want "$TARGET_UA" "temp ${t} deciC"
-		fi
-		;;
-		esac
-	esac
+	elif [ "$cap_ok" = 0 ]; then
+		want "$SAFE_UA" "capacity unreadable"
+	elif [ "$c" -ge "$MAX_CAPACITY" ]; then
+		want "$SAFE_UA" "capacity ${c}%"
+	elif [ "$hot" = 1 ]; then
+		want "$SAFE_UA" "hot ${t} deciC"
+	else
+		want "$TARGET_UA" "temp ${t} deciC capacity ${c}%"
+	fi
+
+	iter=$((iter + 1))
 	[ -n "$ONCE" ] && exit 0
+	[ -n "$MAX_ITER" ] && [ "$iter" -ge "$MAX_ITER" ] && exit 0
 	sleep "$INTERVAL"
 done

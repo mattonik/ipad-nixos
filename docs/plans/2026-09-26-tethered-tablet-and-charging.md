@@ -355,6 +355,30 @@ trusts its own cached state, so if something else changed the limit, it would no
 re-assert until the temperature crossed a threshold. It should compare against the
 actual sysfs value.
 
+#### Charging policy finished and dashboard packaged, 2026-10-04 (static only)
+
+- **Charging policy (final form, offline-tested, not yet booted):** 2400 mA while the
+  gauge capacity is a number below 80 and the temperature is known and has not latched
+  hot (hot at 42.0 C, resume at 38.0 C); **500 mA** at or above either limit or when
+  either reading is unavailable. Capacity must be plain digits (a negative or malformed
+  value counts as unreadable); a negative temperature (cold) is valid. 14 host tests
+  cover each boundary, both unreadable cases, the hysteresis latch across iterations
+  and release when capacity falls below the cap. It writes only `input_current_limit`.
+- **`tablet-dashboard`** (`boot/tablet-dashboard.sh`, tests
+  `boot/test_tablet_dashboard.py`): a refreshing, strictly read-only text screen built
+  on `tablet-status` (battery, charger limit, USB link, uptime, recent kernel messages)
+  plus service state (Dropbear, telnet, charging policy) and the last three policy log
+  lines. `tablet-dashboard [--once] [--interval N]`, Ctrl-C quits and restores the
+  cursor. It performs no control action and no write; the tests prove a run leaves a
+  fake tree unchanged and scan the source for control/write commands.
+- **Packaging:** installed at `/usr/bin/tablet-dashboard` in the tablet, touch-diag and
+  touch-SPI payloads only; the tested SSH stage 1 payload is unchanged. **It is never
+  auto-launched**: the static gate asserts the hook does not mention it. Start it by
+  hand over SSH or telnet, or on the console.
+- Static verification: `boot/test_ssh_stage1.py --tablet|--touch-diag` passes for the
+  rebuilt tablet, touch-diag and touch-SPI payloads, including byte-identity of the
+  three tablet tools to their sources.
+
 #### Safe staged test
 
 **Static gate:** build a separate package derived from

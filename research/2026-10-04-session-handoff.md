@@ -21,8 +21,9 @@ Five hardware milestones, all with recorded sessions:
    property. **Agreed policy:** 2400 mA while capacity is below 80% and temperature
    below 42 C; **500 mA** at or above either limit, or if either reading is
    unavailable (resume below 38 C with hysteresis). The booted revision implements
-   the 42 C / unreadable-temperature part; the 80% capacity cap is in uncommitted
-   working-tree changes and has not been booted.
+   the 42 C / unreadable-temperature part; the 80% capacity cap (final form, 14 host
+   tests) is committed and statically verified in the rebuilt tablet payloads but has
+   not been booted.
 4. **Touch controller powers up on J81** from Apple's recovered power order; its boot
    interrupt fires.
 5. **Touch has power-up/IRQ and repeatable clocked RX evidence, but not a valid
@@ -129,7 +130,8 @@ the KLCT decode (first wrong, then right), and the SPI mode inference.
   (needs `--execute --approve-pmu-write`; unwinds on success, error or signal; refuses
   unless LDO14 is off and its voltage register reads `0x14`). SPI defaults: mode 2
   (Apple's decoded default) and 1.984 MHz; `--spi-mode`/`--spi-hz` override.
-- `boot/tablet-status.sh`, `boot/charging-policy.sh` (+ host tests), `boot/ssh-stage1.sh`
+- `boot/tablet-status.sh`, `boot/tablet-dashboard.sh` (read-only refreshing screen,
+  never auto-launched, packaged in the tablet-family payloads), `boot/charging-policy.sh` (+ host tests), `boot/ssh-stage1.sh`
   (Dropbear + telnet hook), `boot/test_ssh_stage1.py` (static payload gate; flags
   `--tablet`, `--touch-diag`), `boot/test_touch_diag_frames.py`.
 - Kernel: patches `0050` (REG_ON assert), `0051` (spidev test child on SPI3, test

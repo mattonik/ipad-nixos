@@ -40,6 +40,7 @@ fixed = {hook, "etc/passwd", "etc/group", "root", "root/.ssh",
          "usr", "usr/bin", "usr/bin/tablet-status"}
 if tablet:
     fixed.add("usr/bin/charging-policy")
+    fixed.add("usr/bin/tablet-dashboard")
 if diag:
     fixed.add("usr/bin/touch-diag")
 extra = {n for n in added if n not in fixed and n not in ("nix", "nix/store") and not n.startswith("nix/store/")}
@@ -52,6 +53,9 @@ assert ts[0] & 0o777 == 0o755 and ts[2] == (here / "tablet-status.sh").read_byte
 if tablet:
     cp = added["usr/bin/charging-policy"]
     assert cp[0] & 0o777 == 0o755 and cp[2] == (here / "charging-policy.sh").read_bytes()
+    db = added["usr/bin/tablet-dashboard"]
+    assert db[0] & 0o777 == 0o755 and db[2] == (here / "tablet-dashboard.sh").read_bytes()
+    subprocess.run(["sh", "-n"], input=db[2], check=True)
 script = added[hook][2]
 assert added[hook][0] & 0o777 == 0o755
 subprocess.run(["sh", "-n"], input=script, check=True)
@@ -59,6 +63,7 @@ text = script.decode()
 assert "@DROPBEAR@" not in text
 assert re.search(r"^DB=/nix/store/\S+-dropbear-\S*[\d.]+$", text, re.M)
 assert "telnetd" in text and text.rstrip().endswith("loop_forever"), "recovery + non-returning"
+assert "tablet-dashboard" not in text, "the dashboard must never be auto-launched"
 policy = "/usr/bin/charging-policy >/var/log/charging-policy.log 2>&1 &"
 assert (policy in text) == tablet, "charging policy start only in the tablet payload"
 if tablet:

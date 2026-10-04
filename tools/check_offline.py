@@ -19,6 +19,7 @@ ROOT = Path(__file__).resolve().parent.parent
 HOST_TESTS = (
     "boot/test_analyze_touch_capture.py",
     "boot/test_charging_policy.py",
+    "boot/test_tablet_dashboard.py",
     "boot/test_tablet_status.py",
     "boot/test_touch_diag_frames.py",
     "boot/test_bt_probe.py",
