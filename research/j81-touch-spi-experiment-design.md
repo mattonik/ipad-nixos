@@ -194,3 +194,32 @@ which first frame the boot ROM expects (Apple's driver starts with firmware chun
 not queries). Next evidence should add exactly one variable per run: mode 0 at the
 same rate (contrast), or a repeat of run A to confirm the word is stable across
 power cycles. No firmware upload is justified by this result alone.
+
+## Hardware result 3, 2026-10-04: run B (mode 0, 1.984 MHz), identical response
+
+Run by the user over SSH with the go-ahead:
+`... --spi-dev /dev/spidev0.0 --spi-mode 0 --spi-hz 1984000`. Same power-up, same
+boot IRQ edge (falling), same unwind; the clock register ended at `0x800002dc`
+(it started there because run A had already left the divider at 732).
+
+RX: dummy all `00`; wake `f8 80` x 8; short ATN `f8 80`; long ATN `f8 80` x 4.
+Byte-for-byte the same as run A.
+
+**What this does and does not show.** Modes 0 (CPOL 0, CPHA 0) and 3 (CPOL 1,
+CPHA 1) both sample data on the **rising** clock edge; they differ only in the idle
+level of the clock and the first-edge phase. An identical result therefore says the
+word is stable under that change and is not a clock-idle artifact, but it does **not**
+test the sampling edge. The decisive contrast is mode 1 or mode 2 (sample on the
+falling edge): if `f8 80` is a real word clocked correctly, it should change (a
+different, likely shifted, pattern); if the line carries a constant level pattern
+unrelated to the clock phase it would stay the same.
+
+Also still true: the same word answers all three different frames and does not depend
+on the TX bytes, and it is not a recovered ACK (`4b c1`, `4a d1`). Two independent
+runs (A and B, two separate power-ups) show it is stable across power cycles.
+
+## Updated next step
+
+One more contrast run, mode 1 at the same rate (falling-edge sampling), then
+optionally 500 kHz. Each needs the user's go-ahead. Nothing here justifies sending
+firmware or any register write.
