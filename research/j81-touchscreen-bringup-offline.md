@@ -260,6 +260,7 @@ the minimal image, so live pinmux detail was unavailable in this pass.
 
 The next experiment should remain **offline and read-only**:
 
+0. **KLCT clock resolved 2026-10-04:** the handler and its register block (`pmgr` `reg` entry 1, `0x2000` bytes, 3-bit state field with status poll) are in [`j81-touch-clock-kclt-a8x.md`](j81-touch-clock-kclt-a8x.md); the divider model from iOS 10.3 does not apply.
 0. **Done 2026-10-04:** Apple's command framing, ACK words and bootload order are recorded in [`j81-z2-n1-transport-framing.md`](j81-z2-n1-transport-framing.md).
 1. Use the [host-only identity/envelope inspector](../boot/inspect_j81_touch.py)
    to extract and verify the recovered asset (implemented 2026-10-04; synthetic
