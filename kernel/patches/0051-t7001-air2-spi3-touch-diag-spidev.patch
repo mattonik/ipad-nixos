@@ -1,0 +1,26 @@
+--- a/arch/arm64/boot/dts/apple/t7001-air2.dtsi	2026-10-04 20:27:18
++++ b/arch/arm64/boot/dts/apple/t7001-air2.dtsi	2026-10-04 20:27:18
+@@ -141,6 +141,23 @@
+  */
+ &spi3 {
+ 	status = "okay";
++
++	/*
++	 * Touch SPI experiment (research/j81-touch-spi-experiment-design.md):
++	 * a spidev test child, deliberately NOT the apple,j81-touchscreen
++	 * compatible -- binding apple_z2 would start reset, boot and firmware
++	 * upload on its own. Mode 3 (CPOL=1, CPHA=1) and 124 * 16 kHz =
++	 * 1.984 MHz are inferences from Apple's driver and the ADT reg words;
++	 * touch-diag overrides both per run. No traffic happens until
++	 * touch-diag opens the device.
++	 */
++	touch-diag@0 {
++		compatible = "rohm,dh2228fv";
++		reg = <0>;
++		spi-max-frequency = <1984000>;
++		spi-cpol;
++		spi-cpha;
++	};
+ };
+ 
+ &i2c0 {

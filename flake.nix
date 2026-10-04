@@ -287,6 +287,18 @@
             hoolockConfig = patchedHoolockConfig;
           };
 
+          # Touch SPI experiment (research/j81-touch-spi-experiment-design.md):
+          # patchedHoolockConfig plus CONFIG_SPI_SPIDEV for the spidev test
+          # child that kernel/hoolock-touch-spi-test.nix adds under SPI3.
+          patchedHoolockTouchSpiTestConfig = pkgs.runCommand "ipad-t7001-hoolock-touch-spi-test-defconfig-4k" {} ''
+            cat ${patchedHoolockConfig} > "$out"
+            echo 'CONFIG_SPI_SPIDEV=y' >> "$out"
+          '';
+          hoolockTouchSpiTestKernel = pkgsCross.callPackage ./kernel/hoolock-touch-spi-test.nix {
+            source = inputs.hoolockLinux;
+            hoolockConfig = patchedHoolockTouchSpiTestConfig;
+          };
+
           # docs/plans/2026-09-13-j81-wifi-pcie.md's link/enumeration-test
           # kernel, per the approved plan
           # (/Users/martinp/.claude/plans/mighty-snuggling-cocke.md):
@@ -829,6 +841,7 @@
         # payload below; exposed on its own for the same reason
         # hoolock-ans1-test-kernel is.
         hoolock-charging-writable-test-kernel = hoolockChargingWritableTestKernel;
+        hoolock-touch-spi-test-kernel = hoolockTouchSpiTestKernel;
 
         # Kernel backing the combined m1n1-hoolock-pcie-test payload below;
         # exposed on its own for the same reason hoolock-ans1-test-kernel is.
@@ -1253,6 +1266,54 @@
           gzip -n -c ${hoolockChargingWritableTestKernel}/Image > "$out/Image.gz"
 
           dtc -I dtb -O dts ${hoolockChargingWritableTestKernel}/dtbs/apple/t7001-j81.dtb \
+            | sed -e '/^\tchosen {$/,/^\t};$/ s/framebuffer@0 {/framebuffer {/' \
+            | dtc -I dts -O dtb -p 0x10000 -o "$out/t7001-j81.dtb"
+
+          gzip -dc ${inputs.linuxAppleResources}/debug_initrd.img > initramfs.cpio
+          mkdir -p original-etc overlay/etc overlay/usr/bin
+          (cd original-etc && cpio -id --no-absolute-filenames etc/deviceinfo < ../initramfs.cpio)
+          cp original-etc/etc/deviceinfo overlay/etc/deviceinfo
+          printf '\ndeviceinfo_usb_rndis_function="ecm.usb0"\n' >> overlay/etc/deviceinfo
+          touch -d @1 overlay/etc/deviceinfo
+
+          cp ${btattachPkg}/bin/btattach overlay/usr/bin/btattach
+          chmod 755 overlay/usr/bin/btattach
+          touch -d @1 overlay/usr/bin/btattach
+
+          for f in ${i2cToolsPkg}/bin/*; do
+            cp "$f" "overlay/usr/bin/$(basename "$f")"
+            chmod 755 "overlay/usr/bin/$(basename "$f")"
+            touch -d @1 "overlay/usr/bin/$(basename "$f")"
+          done
+
+          (cd overlay
+           { printf '%s\0' "etc/deviceinfo" "usr/bin/btattach"
+             for f in ${i2cToolsPkg}/bin/*; do
+               printf 'usr/bin/%s\0' "$(basename "$f")"
+             done
+           } | cpio --null -o -H newc --owner=0:0 --reproducible
+          ) >> initramfs.cpio
+          gzip -n -c initramfs.cpio > "$out/initramfs.gz"
+
+          printf '%s\n' 'chosen.bootargs=console=tty0 loglevel=8 ignore_loglevel rdinit=/init PMOS_NO_OUTPUT_REDIRECT pd_ignore_unused clk_ignore_unused' \
+            > "$out/bootargs"
+          cat "$out/m1n1.bin" "$out/bootargs" "$out/t7001-j81.dtb" \
+            "$out/Image.gz" "$out/initramfs.gz" > "$out/m1n1-linux.bin"
+          sha256sum "$out/Pongo.bin" "$out/m1n1.bin" "$out/m1n1-linux.bin" \
+            > "$out/SHA256SUMS"
+        '';
+
+        # Base payload for the touch SPI experiment: the charging-writable payload
+        # with the touch-spi kernel (spidev child on SPI3).
+        m1n1-hoolock-touch-spi-test = pkgs.runCommand "ipad-air2-m1n1-hoolock-touch-spi-test" {
+          nativeBuildInputs = [ pkgs.gzip pkgs.dtc pkgs.cpio ];
+        } ''
+          mkdir -p "$out"
+          cp ${inputs.hoolockDocs}/binaries/Pongo.bin "$out/Pongo.bin"
+          cp ${inputs.hoolockM1n1}/m1n1.bin "$out/m1n1.bin"
+          gzip -n -c ${hoolockTouchSpiTestKernel}/Image > "$out/Image.gz"
+
+          dtc -I dtb -O dts ${hoolockTouchSpiTestKernel}/dtbs/apple/t7001-j81.dtb \
             | sed -e '/^\tchosen {$/,/^\t};$/ s/framebuffer@0 {/framebuffer {/' \
             | dtc -I dts -O dtb -p 0x10000 -o "$out/t7001-j81.dtb"
 
@@ -3033,6 +3094,57 @@
         } ''
           mkdir -p "$out" overlay/etc/postmarketos-mkinitfs/hooks
           control=${self.packages.${linuxBuildSystem}.m1n1-hoolock-charging-writable-test}
+          cp "$control/"{Pongo.bin,m1n1.bin,t7001-j81.dtb,Image.gz,bootargs} "$out/"
+          hook=etc/postmarketos-mkinitfs/hooks/20-debug-shell.sh
+          sed 's|@DROPBEAR@|${dropbearPkg}|' ${./boot/ssh-stage1.sh} \
+            | sed 's|^loop_forever$|/usr/bin/charging-policy >/var/log/charging-policy.log 2>\&1 \&\nloop_forever|' > "overlay/$hook"
+          chmod 755 "overlay/$hook"
+
+          # Minimal account state absent from the base image.
+          mkdir -p overlay/root/.ssh overlay/var/empty overlay/var/run overlay/var/log
+          echo 'root:x:0:0:root:/root:/bin/sh' > overlay/etc/passwd
+          echo 'root:x:0:' > overlay/etc/group
+          cp ${./boot/ssh/authorized_keys} overlay/root/.ssh/authorized_keys
+          chmod 700 overlay/root overlay/root/.ssh
+          chmod 600 overlay/root/.ssh/authorized_keys
+          chmod 644 overlay/etc/passwd overlay/etc/group
+
+          mkdir -p overlay/usr/bin
+          cp ${./boot/tablet-status.sh} overlay/usr/bin/tablet-status
+          chmod 755 overlay/usr/bin/tablet-status
+          cp ${./boot/charging-policy.sh} overlay/usr/bin/charging-policy
+          chmod 755 overlay/usr/bin/charging-policy
+          cp ${touchDiagPkg}/bin/touch-diag overlay/usr/bin/touch-diag
+          chmod 755 overlay/usr/bin/touch-diag
+
+          # Dropbear runtime closure at its original store paths.
+          mkdir -p overlay/nix/store
+          while read -r p; do cp -a "$p" overlay/nix/store/; done < ${dropbearClosure}/store-paths
+          chmod -R u+w overlay/nix
+          find overlay -exec touch -h -d @1 {} +
+
+          gzip -dc "$control/initramfs.gz" > initramfs.cpio
+          (cd overlay; find . -mindepth 1 -print0 | sed -z 's|^\./||' | LC_ALL=C sort -z \
+            | cpio --null -o -H newc --owner=0:0 --reproducible) >> initramfs.cpio
+          gzip -n -c initramfs.cpio > "$out/initramfs.gz"
+          cat "$out/m1n1.bin" "$out/bootargs" "$out/t7001-j81.dtb" \
+            "$out/Image.gz" "$out/initramfs.gz" > "$out/m1n1-linux.bin"
+          sha256sum "$out/"{Pongo.bin,m1n1.bin,m1n1-linux.bin} > "$out/SHA256SUMS"
+        '';
+
+        # Touch SPI experiment payload: touch-spi kernel + tablet overlay + touch-diag.
+        m1n1-hoolock-touch-spi = let
+          dropbearPkg = pkgsCrossMusl.dropbear;
+          touchDiagPkg = pkgsCrossMusl.runCommandCC "touch-diag" {} ''
+            mkdir -p $out/bin
+            $CC -O2 -Wall -Wextra -Werror -static -o $out/bin/touch-diag ${./boot/touch-diag.c}
+          '';
+          dropbearClosure = pkgs.closureInfo { rootPaths = [ dropbearPkg ]; };
+        in pkgs.runCommand "ipad-air2-m1n1-hoolock-touch-spi" {
+          nativeBuildInputs = [ pkgs.gzip pkgs.cpio pkgs.findutils ];
+        } ''
+          mkdir -p "$out" overlay/etc/postmarketos-mkinitfs/hooks
+          control=${self.packages.${linuxBuildSystem}.m1n1-hoolock-touch-spi-test}
           cp "$control/"{Pongo.bin,m1n1.bin,t7001-j81.dtb,Image.gz,bootargs} "$out/"
           hook=etc/postmarketos-mkinitfs/hooks/20-debug-shell.sh
           sed 's|@DROPBEAR@|${dropbearPkg}|' ${./boot/ssh-stage1.sh} \

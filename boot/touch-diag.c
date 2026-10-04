@@ -14,10 +14,18 @@
  *   touch-diag run --execute --approve-pmu-write
  *                       perform the sequence; every step is verified and the
  *                       original state is restored on success, error or signal
+ *   touch-diag spi-check [--spi-dev D] [--spi-mode M] [--spi-hz H]
+ *                       configure the spidev node and read the settings back;
+ *                       sends NO frame and powers nothing
+ *   ... run ... --spi-dev D [--spi-mode M] [--spi-hz H]
+ *                       also send the four minimal frames of
+ *                       research/j81-touch-spi-experiment-design.md
+ *                       (no firmware, no register write)
  */
 #include <errno.h>
 #include <fcntl.h>
 #include <linux/gpio.h>
+#include <linux/spi/spidev.h>
 #include <poll.h>
 #include <stdarg.h>
 #include <signal.h>
@@ -64,6 +72,19 @@ static volatile uint32_t *g_clk;
 static volatile uint32_t *g_gpio;
 static int g_reset_fd = -1, g_power_fd = -1, g_irq_fd = -1;
 static volatile sig_atomic_t g_signal;
+
+/* Optional SPI stage (spidev). Defaults are the design's candidate. */
+static const char *g_spi_dev;
+static unsigned int g_spi_mode = 3;		/* CPOL=1, CPHA=1 */
+static unsigned int g_spi_hz = 1984000;		/* 124 * 16 kHz */
+static int g_spi = -1;
+
+/* Frames recovered from AppleMultitouchSPI (research/j81-z2-n1-transport-framing.md). */
+static const uint8_t F_DUMMY[16] = { 0x1a, 0xa1, 0x18, 0xe1, 0x18, 0xe1, 0x18, 0xe1,
+				     0x18, 0xe1, 0x18, 0xe1, 0x18, 0xe1, 0x18, 0xe1 };
+static const uint8_t F_WAKE[16] = { 0xee, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xee, 0 };
+static const uint8_t F_ATN_SHORT[2] = { 0x1a, 0xa1 };
+static const uint8_t F_ATN_LONG[8] = { 0x1a, 0xa1, 0x18, 0xe1, 0x18, 0xe1, 0x18, 0xe1 };
 
 /* State needed to unwind. */
 static struct {
@@ -254,6 +275,68 @@ static void unwind(void)
 	}
 }
 
+static int spi_open(void)
+{
+	uint8_t mode = g_spi_mode & 3, bits = 8, rbits = 0, rmode = 0;
+	uint32_t hz = g_spi_hz, rhz = 0;
+
+	if (!g_spi_dev) {
+		fprintf(stderr, "no --spi-dev given\n");
+		return -1;
+	}
+	g_spi = open(g_spi_dev, O_RDWR);
+	if (g_spi < 0) {
+		perror(g_spi_dev);
+		return -1;
+	}
+	if (ioctl(g_spi, SPI_IOC_WR_MODE, &mode) < 0 ||
+	    ioctl(g_spi, SPI_IOC_WR_BITS_PER_WORD, &bits) < 0 ||
+	    ioctl(g_spi, SPI_IOC_WR_MAX_SPEED_HZ, &hz) < 0) {
+		perror("spidev configure");
+		return -1;
+	}
+	if (ioctl(g_spi, SPI_IOC_RD_MODE, &rmode) < 0 ||
+	    ioctl(g_spi, SPI_IOC_RD_BITS_PER_WORD, &rbits) < 0 ||
+	    ioctl(g_spi, SPI_IOC_RD_MAX_SPEED_HZ, &rhz) < 0) {
+		perror("spidev readback");
+		return -1;
+	}
+	say("spidev %s: mode %u (CPOL %u CPHA %u), %u bits, %u Hz\n", g_spi_dev, rmode & 3,
+	    !!(rmode & SPI_CPOL), !!(rmode & SPI_CPHA), rbits, rhz);
+	return (rmode & 3) == mode && rbits == bits && rhz == hz ? 0 : -1;
+}
+
+static void hexline(const char *label, const uint8_t *tx, const uint8_t *rx, unsigned int n)
+{
+	say("  %-10s tx", label);
+	for (unsigned int i = 0; i < n; i++)
+		say(" %02x", tx[i]);
+	say("\n  %-10s rx", "");
+	for (unsigned int i = 0; i < n; i++)
+		say(" %02x", rx[i]);
+	say("\n");
+}
+
+/* One full-duplex transfer = one chip-select interval. */
+static int spi_frame(const char *label, const uint8_t *tx, unsigned int n)
+{
+	uint8_t rx[16] = { 0 };
+	struct spi_ioc_transfer t;
+
+	memset(&t, 0, sizeof(t));
+	t.tx_buf = (uintptr_t)tx;
+	t.rx_buf = (uintptr_t)rx;
+	t.len = n;
+	t.speed_hz = g_spi_hz;
+	t.bits_per_word = 8;
+	if (ioctl(g_spi, SPI_IOC_MESSAGE(1), &t) < 0) {
+		perror("spi transfer");
+		return -1;
+	}
+	hexline(label, tx, rx, n);
+	return 0;
+}
+
 static int status(void)
 {
 	uint8_t v;
@@ -284,6 +367,9 @@ static void plan(void)
 	    " 5. skip display_sync (GPIO%d) and the dummy SPI transfer: no SPI at all\n"
 	    " 6. release reset (drive high), wait %d ms, then watch GPIO%d for up to %d ms\n"
 	    " 7. unwind in reverse: reset low, GPIO%d low, LDO14 restored, clock disabled\n"
+	    "Optional SPI stage: add --spi-dev /dev/spidevB.C [--spi-mode 0..3] [--spi-hz N]:\n"
+	    "    before step 6 a 16-byte dummy transfer; after the IRQ edge wake, short and long\n"
+	    "    ATN/ACK (all read-only handshake frames, no firmware, no register write)\n"
 	    "Run with: touch-diag run --execute --approve-pmu-write\n",
 	    LDO14_VOLTAGE_EXPECTED, GPIO_RESET, CLK_REG_OFF, CLK_DIVIDER, REG_LDO14_ENABLE,
 	    LDO14_ENABLE_BIT, GPIO_POWER, RAIL_DELAY_MS, GPIO_DISPLAY_SYNC,
@@ -301,6 +387,10 @@ static int run(void)
 		return 1;
 	if (pmu_read(REG_LDO14_ENABLE, &g_st.ldo_orig) || pmu_read(REG_LDO14_VOLTAGE, &volt)) {
 		say("abort: cannot read PMU\n");
+		return 1;
+	}
+	if (g_spi_dev && spi_open()) {
+		say("abort: spidev did not accept the requested settings\n");
 		return 1;
 	}
 	g_st.clk_orig = *g_clk;
@@ -356,6 +446,13 @@ static int run(void)
 	msleep(RAIL_DELAY_MS);
 	CHECK_ABORT();
 
+	if (g_spi_dev) {
+		say("step 5: SPI dummy transfer (clock high before reset release)\n");
+		if (spi_frame("dummy", F_DUMMY, sizeof(F_DUMMY)))
+			goto out;
+		CHECK_ABORT();
+	}
+
 	say("step 6: release reset\n");
 	if (set_line(g_reset_fd, 0)) {
 		perror("reset release");
@@ -379,6 +476,15 @@ static int run(void)
 	}
 	level_after = get_line(g_irq_fd);
 	CHECK_ABORT();
+	if (g_spi_dev && got_edge) {
+		say("step 7: minimal frames (read-only handshake, no firmware)\n");
+		if (spi_frame("wake", F_WAKE, sizeof(F_WAKE)) ||
+		    spi_frame("atn-short", F_ATN_SHORT, sizeof(F_ATN_SHORT)) ||
+		    spi_frame("atn-long", F_ATN_LONG, sizeof(F_ATN_LONG)))
+			goto out;
+	} else if (g_spi_dev) {
+		say("step 7 skipped: no boot interrupt, not sending frames\n");
+	}
 	rc = 0;
 out:
 	say("RESULT irq_edge=%d level_before=%d level_after=%d\n", got_edge, level_before, level_after);
@@ -398,6 +504,20 @@ int main(int argc, char **argv)
 	}
 	if (!strcmp(cmd, "status"))
 		return status();
+	for (int i = 2; i + 1 < argc; i++) {
+		if (!strcmp(argv[i], "--spi-dev"))
+			g_spi_dev = argv[i + 1];
+		else if (!strcmp(argv[i], "--spi-mode"))
+			g_spi_mode = strtoul(argv[i + 1], NULL, 0);
+		else if (!strcmp(argv[i], "--spi-hz"))
+			g_spi_hz = strtoul(argv[i + 1], NULL, 0);
+	}
+	if (g_spi_mode > 3 || g_spi_hz < 10000 || g_spi_hz > 8000000) {
+		fprintf(stderr, "--spi-mode must be 0..3 and --spi-hz 10000..8000000\n");
+		return 2;
+	}
+	if (!strcmp(cmd, "spi-check"))
+		return spi_open() ? 1 : 0;
 	if (!strcmp(cmd, "run")) {
 		int exec = 0, approve = 0;
 
@@ -412,6 +532,6 @@ int main(int argc, char **argv)
 		}
 		return run();
 	}
-	fprintf(stderr, "usage: touch-diag [plan|status|run --execute --approve-pmu-write]\n");
+	fprintf(stderr, "usage: touch-diag [plan|status|spi-check|run --execute --approve-pmu-write] [--spi-dev D --spi-mode M --spi-hz H]\n");
 	return 2;
 }
