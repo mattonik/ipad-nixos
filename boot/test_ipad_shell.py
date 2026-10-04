@@ -36,10 +36,10 @@ class ShellTests(unittest.TestCase):
         return shell
 
     def test_split_marker_completes_without_replay(self):
-        shell = self.shell([b"/ # value\n__done_", b"123__\n/ # "])
+        shell = self.shell([b"/ # value\n__status_123__:0:__done_", b"123__\n/ # "])
         with patch("ipad_console.time.time_ns", return_value=123):
             self.assertEqual(shell.run("cat /proc/version"), "value")
-        self.assertEqual(shell.sock.sent, [b"cat /proc/version\n", b"echo __done_123__\n"])
+        self.assertEqual(shell.sock.sent, [b"cat /proc/version\n", b"printf '\\n__status_123__:%s:__done_123__\\n' \"$?\"\n"])
 
     def test_partial_output_at_eof_is_not_success(self):
         shell = self.shell([b"partial\n", b""])
@@ -55,7 +55,7 @@ class ShellTests(unittest.TestCase):
     def test_deadline_uses_monotonic_time_and_closes(self):
         shell = self.shell([b"partial\n"])
         transport = shell.sock
-        with patch("ipad_console.time.monotonic", side_effect=[10, 10.1, 11.1]), \
+        with patch("ipad_console.time.monotonic", side_effect=[9, 10, 10.1, 11.1]), \
              self.assertRaises(ipad_console.ShellCommandIncomplete) as caught:
             shell.run("slow-command", timeout=1)
         self.assertIn("timed out", str(caught.exception))
@@ -83,13 +83,76 @@ class ShellTests(unittest.TestCase):
         self.assertIsNone(shell.sock)
 
     def test_socket_timeout_can_be_followed_by_completion(self):
-        shell = self.shell([socket.timeout(), b"value\n__done_123__\n"])
+        shell = self.shell([socket.timeout(), b"value\n__status_123__:0:__done_123__\n"])
         with patch("ipad_console.time.time_ns", return_value=123):
             self.assertEqual(shell.run("command"), "value")
 
     def test_banner_drain_can_end_without_command_marker(self):
         shell = self.shell([b"banner\n", b""])
         self.assertEqual(shell._read_until(None, deadline=1), "banner\n")
+
+    def test_nonzero_status_raises_with_output(self):
+        shell = self.shell([b"failure\n__status_123__:7:__done_123__\n"])
+        with patch("ipad_console.time.time_ns", return_value=123):
+            with self.assertRaises(ipad_console.ShellCommandFailed) as caught:
+                shell.run("false")
+        self.assertEqual(caught.exception.returncode, 7)
+        self.assertEqual(caught.exception.output, "failure")
+        self.assertIsNotNone(shell.sock)
+
+    def test_explicit_result_and_unchecked_output(self):
+        with patch("ipad_console.time.time_ns", return_value=123):
+            result = self.shell([b"\n__status_123__:1:__done_123__"]).run_result("false")
+            self.assertEqual(result, ipad_console.ShellResult("", 1))
+            self.assertEqual(self.shell([b"value\n__status_123__:2:__done_123__"]).run("cmd", check=False), "value")
+
+    def test_invalid_status_is_incomplete(self):
+        for status in ("missing", "256", "-1"):
+            with self.subTest(status=status), patch("ipad_console.time.time_ns", return_value=123):
+                shell = self.shell([f"\n__status_123__:{status}:__done_123__".encode()])
+                with self.assertRaises(ipad_console.ShellCommandIncomplete):
+                    shell.run("cmd")
+                self.assertIsNone(shell.sock)
+
+    def test_records_failure_and_partial_transport_output(self):
+        from unittest.mock import Mock
+        evidence = Mock()
+        shell = self.shell([b"partial\n", ConnectionResetError("reset")])
+        shell.evidence = evidence
+        with self.assertRaises(ConnectionResetError):
+            shell.run("cmd")
+        event = evidence.record.call_args.kwargs
+        self.assertEqual(event["completion"], "incomplete")
+        self.assertIsNone(event["returncode"])
+        self.assertEqual(event["output"], "partial\n")
+        shell = self.shell([b"\n__status_123__:7:__done_123__"])
+        shell.evidence = evidence
+        with patch("ipad_console.time.time_ns", return_value=123), self.assertRaises(ipad_console.ShellCommandFailed):
+            shell.run("false")
+        self.assertEqual(evidence.record.call_args.kwargs["returncode"], 7)
+
+    def test_trailer_preserves_real_posix_shell_status(self):
+        import subprocess
+
+        class LocalShell(FakeSocket):
+            def __init__(self):
+                super().__init__([])
+
+            def sendall(self, data):
+                super().sendall(data)
+                if len(self.sent) == 2:
+                    output = subprocess.run(["/bin/sh"], input=b"".join(self.sent),
+                                            capture_output=True, timeout=5).stdout
+                    self.chunks = iter([output])
+
+        for command, status, output in (("printf value; false", 1, "value"),
+                                        ("printf '%s' 'quote\"'; (exit 7)", 7, 'quote"'),
+                                        ("false\nprintf final", 0, "final"),
+                                        ("false | true", 0, "")):
+            with self.subTest(command=command):
+                shell = ipad_console.IPadShell()
+                shell.sock = LocalShell()
+                self.assertEqual(shell.run_result(command), ipad_console.ShellResult(output, status))
 
 
 if __name__ == "__main__":

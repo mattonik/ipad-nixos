@@ -22,6 +22,7 @@ HOST_TESTS = (
     "boot/test_inspect_j81_touch.py",
     "boot/test_ipad_console.py",
     "boot/test_ipad_shell.py",
+    "boot/test_session_evidence.py",
     "boot/test_load_linux_diagnostic.py",
     "boot/test_load_m1n1.py",
     "boot/test_t7001_entry_marker.py",
