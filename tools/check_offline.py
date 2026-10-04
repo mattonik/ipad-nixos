@@ -59,6 +59,7 @@ def execute(name: str, arguments: list[str], timeout: float) -> Outcome:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", type=Path, help="local exact pinned Hoolock pcie.c; enables two native harnesses")
+    parser.add_argument("--firmware-source", type=Path, help="exact pinned brcmfmac firmware.c; loader-policy harness")
     parser.add_argument("--z2-source", type=Path, help="local exact pinned apple_z2.c; enables touchscreen harness")
     parser.add_argument("--openiboot-source", type=Path, help="local exact pinned multitouch-z2.c; enables legacy comparison harness")
     parser.add_argument("--dhd-source", type=Path, help="exact pinned public DHD dhd_pcie.c")
@@ -75,11 +76,11 @@ def main() -> int:
         parser.error("--timeout must be positive and at most 3600 seconds")
     if bool(args.dhd_source) != bool(args.dhd_header):
         parser.error("supply both --dhd-source and --dhd-header")
-    if args.sanitize and not (args.source or args.z2_source or args.openiboot_source or args.dhd_source):
+    if args.sanitize and not (args.source or args.z2_source or args.openiboot_source or args.dhd_source or args.firmware_source):
         parser.error("--sanitize requires a native source argument")
     if bool(args.usb_control) != bool(args.usb_diagnostic):
         parser.error("supply both --usb-control and --usb-diagnostic")
-    for path in (args.source, args.z2_source, args.openiboot_source, args.dhd_source, args.dhd_header):
+    for path in (args.source, args.z2_source, args.openiboot_source, args.dhd_source, args.dhd_header, args.firmware_source):
         if path and not path.is_file():
             parser.error("source arguments must be existing files")
     for path in (args.usb_control, args.usb_diagnostic):
@@ -98,7 +99,8 @@ def main() -> int:
                                          str(args.usb_diagnostic.resolve())], args.timeout))
     else:
         outcomes.append(Outcome(usb_test, "SKIP", "requires both built USB payload directories"))
-    native = (("kernel/test_brcmfmac_otp_patch.py", args.source, "--source (pcie.c)"),
+    native = (("kernel/test_brcmfmac_firmware_loader.py", args.firmware_source, "--firmware-source (firmware.c)"),
+              ("kernel/test_brcmfmac_otp_patch.py", args.source, "--source (pcie.c)"),
               ("kernel/test_brcmfmac_otp_parser.py", args.source, "--source (pcie.c)"),
               ("kernel/test_apple_z2_receive.py", args.z2_source, "--z2-source (apple_z2.c)"),
               ("kernel/test_openiboot_z2_reference.py", args.openiboot_source, "--openiboot-source (multitouch-z2.c)"),

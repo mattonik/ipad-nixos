@@ -125,3 +125,10 @@ adds paired `--dhd-source` and `--dhd-header` inputs. The current full run
 passes 19 scripts with two built-artifact skips; default mode passes 14
 with seven optional skips. The DHD comparison includes expected reproductions
 of vendor-reference faults, not an active BCM4350 reader.
+
+The [firmware-loader policy audit](../research/j81-wifi-loader-selection.md)
+adds `--firmware-source /path/to/pinned/brcmfmac/firmware.c` for a source-hashed
+native fallback/optional-NVRAM harness. With all native inputs this adds one
+check to the previous 19; default mode gains one explicit source skip. It
+uses synthetic assets and does not validate actual NVRAM parsing or async
+callbacks.
