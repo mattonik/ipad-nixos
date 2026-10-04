@@ -117,3 +117,7 @@ The iPad 3 replay project supports capture as a practical investigation
 strategy. The iPad 7 report reinforces that provider resources and DMA setup
 are board-specific. Neither supplies J81's missing analog-rail, KLCT, SPI or
 display-sync mapping. No touchscreen child or new hardware recipe is enabled.
+
+An [offline capture analyzer](j81-touch-capture-analyzer.md) now checks this
+limited legacy profile and compares normalized transactions without exposing
+payload bytes. It includes synthetic tests; a profile match is not J81 proof.
