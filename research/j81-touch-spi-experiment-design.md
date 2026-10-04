@@ -133,3 +133,20 @@ Next, in order, each needing the user at the device:
 1. boot; confirm `/dev/spidev0.0` exists and run `touch-diag spi-check`
    (configures the node, reads mode/bits/speed back, sends nothing, powers nothing);
 2. run A, B, C from the run matrix, each with an explicit go-ahead.
+
+## Hardware result 1, 2026-10-04: spidev node and `spi-check` (no traffic)
+
+Booted `m1n1-hoolock-touch-spi` (cold boot, recorded session, private). Nothing was
+powered and no frame was sent.
+
+- `/dev/spidev0.0` exists (char `153,0`); `spi0.0` (`modalias spi:dh2228fv`) is bound
+  to the `spidev` driver. `apple-z2` is registered but **not** bound to the child, as
+  designed. No touchscreen input device; `input0` is `gpio-keys`.
+- `touch-diag spi-check` read the settings back correctly for the design's default
+  (mode 3, 8 bits, 1,984,000 Hz), mode 0, and 500 kHz; all exit 0.
+- `touch-diag status` afterwards is identical to the pre-experiment baseline: LDO14
+  off (`0x00`, voltage `0x14`), clock `0x800002ee`, GPIO words unchanged.
+- The kernel log contains no spi, spidev or touch messages.
+
+Ready for run A (mode 3, 1.984 MHz), which needs the user's explicit go-ahead and is
+run by the user over SSH.
