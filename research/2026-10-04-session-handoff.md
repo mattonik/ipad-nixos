@@ -113,12 +113,18 @@ the KLCT decode (first wrong, then right), and the SPI mode inference.
      from the J81 ADT text dump; decode what the driver does when it is missing.
    - the `display_sync` (GPIO55) drive.
    Both are static-analysis tasks in `AppleMultitouchSPI` (instance vtable first).
+   **Update:** `function-enable_download` is optional and non-gating (J82 driver ignores
+   the unsupported result). Apple's `display_sync` enable is a **pinmux of GPIO55 to
+   peripheral function 1** (PERIPH field), not a level; GPIO55 is currently function 0.
+   See [`2026-10-04-display-sync-pinmux-decode.md`](2026-10-04-display-sync-pinmux-decode.md)
+   and [`2026-10-04-review-for-research-agent.md`](2026-10-04-review-for-research-agent.md).
 2. **Firmware upload**: the recovered constructed packet is the exact payload Apple
    sends in one `18 e1` packet, then an ATN/ACK that must read `4b c1`. It needs the
    private asset from the IPSW and an explicit user decision. Not started.
 3. **Unexplained IRQ event order**: one run saw GPIO84 rising first; the line always
    ended low. Cause unknown.
-4. **Bluetooth** `0x0402` assert (separate approval), BCM4350 firmware/NVRAM selection
+4. Review follow-ups for the staged PCIe patch `0052` (apply/build/gate, binding doc,
+   `of_property_present`): see the review note above. **Bluetooth** `0x0402` assert (separate approval), BCM4350 firmware/NVRAM selection
    (gated on private-capture evidence), production PCIe link-wait on DLLLA.
 5. Lower priority from the earlier plan: ANS1 read-only observation repeat, suspend,
    audio (CT819 ALS I2C probe groundwork), GPU.
