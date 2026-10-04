@@ -55,3 +55,31 @@ and the unverified inter-rail ordering all remain possible causes. A hard failur
 `run` writes the D2207 PMU (LDO14 enable) and the PMGR touch-clock register,
 neither previously written live. Per the project's standing rules it needs the
 user's explicit go-ahead at run time; this build does not grant it.
+
+## Hardware result 1, 2026-10-04: read-only `plan` and `status`
+
+Booted `m1n1-hoolock-touch-diag` (cold boot, recorded session, private). Only
+`plan` and `status` were run; nothing was written. Output of `status`:
+
+| Item | Value | Reading |
+| --- | --- | --- |
+| PMU `0x0084` LDO14 enable | `0x00` | rail off (bit 2 clear), as expected |
+| PMU `0x0398` LDO14 voltage | `0x14` | the expected 6.0 V setting is already programmed |
+| PMGR+`0x1e000` touch clock | `0x800002ee` | **gate off, busy 0, divider 750 (`0x2ee`)** |
+| GPIO82 (reset) config word | `0x00072602` | output, data bit 0 = low (iBoot leaves reset electrically low) |
+| GPIO95 (power_ldo) config word | `0x00072602` | output, low |
+| GPIO55 (display_sync) config word | `0x00072a82` | output, low |
+| GPIO51 (SPI3 CS) config word | `0x00072623` | output, high (SPI3 pinmux, idle high) |
+| GPIO84 (touch IRQ) config word | `0x00070381` | input, bit 0 = 1: the line idles high |
+
+Observations:
+- The preconditions of `touch-diag run` hold: LDO14 off, voltage `0x14`.
+- iBoot leaves the clock **gated off with a pre-programmed divider of 750**
+  (24 MHz / 750 = 32 kHz), not Apple's runtime `0x2dc` (732). The enable path
+  rewrites the divider, so the original value will differ in that field after the
+  test even though the gate state is restored; the tool prints both.
+- The reset line is already driven low, i.e. already asserted, which matches the
+  active-low decode. The IRQ line idles high, so a falling edge is the likely
+  boot-interrupt trigger (still **I**).
+- The charging policy kept 2400 mA (log: `limit 2400000 uA (temp 321 deciC)`), and
+  no `touch-diag` process was running.
