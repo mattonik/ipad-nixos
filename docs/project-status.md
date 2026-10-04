@@ -1,7 +1,26 @@
 # iPad Linux Project Status
 
-Latest software update: 2026-10-04. Dated hardware records below are retained;
-this update does not add a hardware test.
+Latest software update: 2026-10-04. Dated hardware records below are retained as
+history.
+
+## Current status, 2026-10-04
+
+The authoritative current state is
+[`research/2026-10-04-session-handoff.md`](../research/2026-10-04-session-handoff.md);
+where an older dated entry below disagrees with it, the handoff wins.
+
+- **D2207 GPIO map (corrected):** Bluetooth `power_enable` GPIO2 is register
+  `0x0402`; Wi-Fi `REG_ON` GPIO3 is register `0x0403`. The earlier `0x03e6` /
+  `0x03e9` values and the "runtime owner/lock" explanation are withdrawn.
+- **Wi-Fi/PCIe:** asserting `REG_ON` in-kernel before the PCIe probe makes the BCM4350
+  enumerate (hardware-confirmed). Bluetooth `0x0402` is untouched pending a separate,
+  user-approved step; no logic-analyser capture is needed.
+- **Charging:** writable `input_current_limit` is hardware-verified. Agreed boot-time
+  policy: 2400 mA below 80% capacity and 42 C; 500 mA at or above either limit or if
+  either reading is unavailable.
+- **Touch:** power-up, boot interrupt and repeatable clocked RX are evidenced, but there
+  is no valid protocol ACK and command reception is unproven; firmware upload is not
+  decided.
 
 ## Offline Wi-Fi firmware-selection groundwork, 2026-10-04
 
@@ -46,11 +65,9 @@ registers on hardware and bundled `btattach` reaches `hci0`; the radio remains
 silent because PMU GPIO2 is low. The 2026-09-10 Apple-driver review resolves
 its exact control: GPIO2 configuration register `0x03e6`, data bit 2 at
 `0x0063`, active high. Live read-only values are `0x00` and `0x20`
-respectively, proving the radio power enable is currently low.  Later
-Apple-driver review and a live ACKed-but-non-persistent attempt proved that
-the wire format was already correct but a runtime owner or condition rejects
-the change.  Do not repeat the PMIC write; the next evidence is a passive I2C
-capture during an iPadOS Bluetooth transition.
+respectively, proving the radio power enable is currently low.  *(Superseded 2026-10-04: GPIO2 is
+register `0x0402` and the earlier `0x03e6` write hit the wrong register; see the
+current-status section above.)*
 
 The battery source audit found that Samsung UART already supports serdev
 children through the common serial core. Commit `863d2e4` now implements the
@@ -2508,11 +2525,11 @@ Never commit Apple firmware, NVRAM, touch calibration or device identifiers.
 | Display | Inherited framebuffer produces a visible shell | Keep simplefb; defer native display/GPU. |
 | Buttons | **Hardware-verified, 2026-09-21:** `gpio-keys` on `/dev/input/event0` reported clean press/release events for Home (`KEY_HOMEPAGE`), Power, Volume Up and Volume Down. | Preserve the existing GPIO/DT wiring; no driver work is needed. |
 | RTC / backlight | Both hardware-verified over the USB shell | Preserve their current nodes and drivers. |
-| Bluetooth | Real J81 UART3 and manual `hci0` attach are hardware-confirmed; GPIO2 at `0x03e6` is low, and static Apple-driver evidence proves the prior ACKed `03 e6 02` command already had the correct wire format. **2026-09-21: tested and ruled out the hypothesis that charging's `0x0010` bit 2 is a master enable for this** -- set it, retried the exact GPIO2 write, still reverted to `0x00`; HCI commands still time out. Restored cleanly. | Passively capture I2C traffic during an iPadOS Bluetooth transition (needs a logic analyzer, not currently owned), then determine the runtime owner/condition before adding `hci_bcm`. |
+| Bluetooth | Real J81 UART3 and manual `hci0` attach are hardware-confirmed; GPIO2 (register `0x0402`; earlier notes said `0x03e6`, which was the wrong register) is low. **2026-09-21: tested and ruled out the hypothesis that charging's `0x0010` bit 2 is a master enable for this** -- set it, retried the exact GPIO2 write, still reverted to `0x00`; HCI commands still time out. Restored cleanly. | Separate user-approved step: assert GPIO2 at `0x0402` (same mechanism as REG_ON), then add `hci_bcm`. No logic analyzer needed. |
 | Battery | **Working across warm and cold reboot** (2026-09-13: cold half confirmed satisfied by the accumulated multi-day record, this project's normal disconnect-to-charger routine being a real cold cycle): BQ27545 identified automatically; stable voltage/current/capacity/temperature/cycle reads after GPIO34 function-1 correction | Compare with iPadOS opportunistically; otherwise done. |
 | Charging | **CHG-2 breakthrough, 2026-09-21: real `Charging` status achieved with a single register write, then made convenient to switch.** Three earlier isolated tests established the mechanism: `0x04c0` alone (`0x02`->`0x0a`/200 mA) reduced discharge but wasn't enough to flip the sign; `0x0010` bit 2 is the named USB-input suspend control, so setting it removed the existing roughly 100 mA USB contribution; both together behaved as suspended input. Raising `0x04c0` well above the measured drain instead (`0x4a`/1000 mA) produced immediate, stable `Charging` with flat temperature -- the 100 mA default was never a detection failure, just too low a ceiling. A follow-up hypothesis (is `0x0010` a Bluetooth master enable?) was tested and cleanly ruled out. **Approved plan implemented same day**: `boot/ipad_console.py` now has a tier-switcher (`Charging: switch current tier`, 100/500/1000/2100/2400 mA + custom) with a built-in 42 C thermal abort and automatic restore to the validated `0x4a` resting state (not Apple's factory default) -- offline-tested and live-validated against real hardware. **All five planned tiers (100/500/1000/2100/2400 mA) are now validated live on real hardware** -- 2100 and 2400 mA both ran clean (voltage held essentially flat, no droop, no USB link instability, temperature flat at 33.3 C), though net charging current plateaued around 100-115 mA at every tier from 1000 mA up, suggesting the battery's own charge-acceptance rate -- not the input-current ceiling -- is the real bottleneck once it comfortably clears system draw. Currently **running at 2400 mA by explicit choice** after watching it prove clean, monitored on a recurring basis with an automatic cutoff (restore to `0x02`, i.e. actually stop, not just revert to a lower tier) at 80% capacity, a 42 C thermal limit, or any other safety concern; full running log in the plan doc. | Stage 2 (`kernel/patches/0017-...`) is implemented and cross-build verified clean, 2026-09-25 -- the first attempt hit the Linux-builder VM's disk being full from several back-to-back builds this session, but a retry after idle time succeeded (Nix's own cleanup evidently freed enough space; see `docs/build-infrastructure.md`). Available as `m1n1-hoolock-charging-writable-test`, not yet hardware-tested. Continue monitoring to the 80% cutoff or a safety stop in the meantime. |
-| Touch | Reviewed S5L8960X SPI3 and J81 DT patches are staged; the 6 V analog rail and Apple power order are identified | Cross-build TOUCH-1, prove SPI3, then decode the child `reg` and PMGR clock args. |
-| Wi-Fi | **Real link/enumeration driver implemented and cross-build verified, 2026-09-21.** BCM4350 is confirmed on J81 PCIe port 1; the exact port-enable register sequence is recovered from the real iOS 8.1 kernelcache (offsets, bits, confirmed microsecond delays); windows 2/4/6/8 confirmed unused, closed. A real, bounded driver (`kernel/patches/0018-...`) brings up port 1 via the kernel's own generic ECAM/PERST-GPIO helpers -- no hand-rolled GPIO code needed, verified against the real pinned kernel source. Its own isolated bootable payload (`m1n1-hoolock-pcie-test`) cross-build verifies clean (real `Pongo.bin`/`m1n1.bin`/`Image.gz`/`initramfs.gz`/`t7001-j81.dtb` produced, checksummed). | A real hardware boot with this payload is a separate, later, explicit decision -- not done yet. Then: WiFi firmware payload (brcmfmac, private NVRAM) per the already-scoped second stage. |
+| Touch | **2026-10-04:** power order, touch clock (PMGR+`0x1e000`), polarities and SPI bus proven: boot interrupt fires and a repeatable clocked RX pattern is returned, but no valid protocol ACK and command reception is unproven | Static decode of Apple's download-mode call and display sync; any firmware upload is a separate explicit decision. |
+| Wi-Fi | **Real link/enumeration driver implemented and cross-build verified, 2026-09-21.** BCM4350 is confirmed on J81 PCIe port 1; the exact port-enable register sequence is recovered from the real iOS 8.1 kernelcache (offsets, bits, confirmed microsecond delays); windows 2/4/6/8 confirmed unused, closed. A real, bounded driver (`kernel/patches/0018-...`) brings up port 1 via the kernel's own generic ECAM/PERST-GPIO helpers -- no hand-rolled GPIO code needed, verified against the real pinned kernel source. Its own isolated bootable payload (`m1n1-hoolock-pcie-test`) cross-build verifies clean (real `Pongo.bin`/`m1n1.bin`/`Image.gz`/`initramfs.gz`/`t7001-j81.dtb` produced, checksummed). | **Superseded 2026-10-04:** the REG_ON assert makes the BCM4350 enumerate on hardware (`14e4:43a3`, rev `0x05`). Next: Bluetooth `0x0402` (separate approval), firmware/NVRAM selection (private-capture gated). |
 | Audio / GPU / NAND / cameras / Touch ID | No complete A8X stack | Defer beyond the interactive-tablet milestone. |
 
 ### Priority bring-up sequence
@@ -2527,10 +2544,9 @@ charging action remains measurement, not a PMIC write.
    data-host and known charger cases; record D2207 status, VBUS ADCs, input
    code and gauge current before writing any PMIC register. The child already
    passed its sysfs/raw-register comparison on J81.
-2. **Bluetooth power.** Passively capture the D2207 I2C bus during an iPadOS
-   Bluetooth transition. The previously attempted GPIO2 write exactly matches
-   Apple's wire format but did not persist, so no further injected PMIC write
-   is justified until the runtime owner/condition is identified.
+2. **Bluetooth power.** *(Updated 2026-10-04)* GPIO2 is register `0x0402`; the earlier
+   write used the wrong register, so no logic-analyser capture is needed. Assert
+   `0x0402` only as a separate, user-approved step.
 3. **Touch.** Cross-build the staged S5L SPI3 patches, prove the controller,
    then adapt the existing `apple_z2` driver with private local
    firmware/calibration and the identified power sequence.

@@ -1,5 +1,9 @@
 # Session handoff for the research agent, 2026-10-04
 
+**This note is the authoritative current state.** Older dated notes and transcripts
+are retained as history; where they disagree with this file (notably the D2207 GPIO
+map and the touch status), this file wins.
+
 Everything below was done in one working session and is committed. Hardware
 results are summarized here and recorded in full, with their evidence, in the
 linked notes; raw output stays private under the ignored `artifacts/live/`.
@@ -13,13 +17,21 @@ Five hardware milestones, all with recorded sessions:
    makes the BCM4350 (`14e4:43a3`, rev `0x05`) enumerate. Root cause of every earlier
    "no endpoint" result: the D2207 GPIO register map was wrong.
 2. **SSH works** (Dropbear, key-only) with telnet kept as the permanent recovery path.
-3. **Charging is automatic**: a boot-time policy raises the USB input limit to
-   2400 mA with a thermal backoff, through a now-writable kernel sysfs property.
+3. **Charging is automatic**: a boot-time policy uses a now-writable kernel sysfs
+   property. **Agreed policy:** 2400 mA while capacity is below 80% and temperature
+   below 42 C; **500 mA** at or above either limit, or if either reading is
+   unavailable (resume below 38 C with hysteresis). The booted revision implements
+   the 42 C / unreadable-temperature part; the 80% capacity cap is in uncommitted
+   working-tree changes and has not been booted.
 4. **Touch controller powers up on J81** from Apple's recovered power order; its boot
    interrupt fires.
-5. **SPI to the touch controller works** electrically: it returns a clocked, periodic
-   16-bit pattern (`f8 80`). It does not yet answer our queries; the next step is the
-   firmware decision (not taken).
+5. **Touch has power-up/IRQ and repeatable clocked RX evidence, but not a valid
+   protocol ACK or proven command reception.** After Apple's power order the boot
+   interrupt fires, and the controller returns a clocked, periodic 16-bit pattern
+   (`f8 80`; shifted one bit in mode 2) that is repeatable across power cycles but
+   independent of the bytes sent and matches neither recovered ACK (`4b c1`, `4a d1`).
+   Whether the controller receives our commands is unproven. The next step is static
+   research, then a separate explicit firmware decision (not taken).
 
 Four static corrections to earlier notes (listed under "Corrections"): the GPIO map,
 the KLCT decode (first wrong, then right), and the SPI mode inference.
@@ -36,7 +48,7 @@ the KLCT decode (first wrong, then right), and the SPI mode inference.
 | 6 | Boot-time charging policy raises to 2400 mA; backoff path exercised | `m1n1-hoolock-tablet` | tethered-tablet plan |
 | 7 | Touch read-only status | `touch-diag status` | [`j81-touch-diagnostic.md`](j81-touch-diagnostic.md) |
 | 8 | **Touch boot interrupt** after Apple's power order (clock, LDO14, GPIO95, reset release) | `touch-diag run` | same note |
-| 9 | spidev node + `spi-check`, no traffic | `m1n1-hoolock-touch-spi` (patch `0051`) | [`j81-touch-spi-experiment-design.md`](j81-touch-spi-experiment-design.md) |
+| 9 | spidev node + `spi-check` (configures spidev; no frame, nothing powered) | `m1n1-hoolock-touch-spi` (patch `0051`) | [`j81-touch-spi-experiment-design.md`](j81-touch-spi-experiment-design.md) |
 | 10 | SPI runs A-E: mode 3/0/1/2, 1.984 MHz; periodic pattern, 1-bit shift in mode 2 | `touch-diag run --spi-dev ...` | same note, results 2-6 |
 
 ## Key technical findings
@@ -69,6 +81,8 @@ the KLCT decode (first wrong, then right), and the SPI mode inference.
   AP GPIO provider level = `v ^ flag1 ^ 1`. Reset GPIO82 is **active-low**; GPIO51
   (CS), GPIO95 (`power_ldo`), GPIO55 (`display_sync`) are active-high. Apple sends a
   16-byte dummy SPI transfer before reset release ("ensuring S_CLK is high").
+- **D2207 GPIO map (corrected):** Bluetooth `power_enable` GPIO2 = register `0x0402`;
+  Wi-Fi `REG_ON` GPIO3 = register `0x0403`. Earlier `0x03e6`/`0x03e9` values are wrong.
 - **Power order that works on J81:** touch clock -> D2207 LDO14 (`0x0084` bit 2) ->
   GPIO95 high -> reset release. GPIO84 then falls (the boot interrupt). The dummy
   transfer and `display_sync` are not needed for the interrupt.
@@ -110,9 +124,11 @@ the KLCT decode (first wrong, then right), and the SPI mode inference.
 
 ## New tooling and artifacts
 
-- `boot/touch-diag.c` (static C): `plan`, `status`, `spi-check`, and a guarded `run`
+- `boot/touch-diag.c` (static C): `plan`, `status` (read-only), `spi-check` (**not**
+  read-only: it configures spidev with write ioctls, sends no frame), and a guarded `run`
   (needs `--execute --approve-pmu-write`; unwinds on success, error or signal; refuses
-  unless LDO14 is off and its voltage register reads `0x14`).
+  unless LDO14 is off and its voltage register reads `0x14`). SPI defaults: mode 2
+  (Apple's decoded default) and 1.984 MHz; `--spi-mode`/`--spi-hz` override.
 - `boot/tablet-status.sh`, `boot/charging-policy.sh` (+ host tests), `boot/ssh-stage1.sh`
   (Dropbear + telnet hook), `boot/test_ssh_stage1.py` (static payload gate; flags
   `--tablet`, `--touch-diag`), `boot/test_touch_diag_frames.py`.

@@ -35,9 +35,23 @@ class FrameTests(unittest.TestCase):
         for opcode in ("0x1e, 0x33", "0x1d, 0x53", "0x1c, 0x73"):
             self.assertNotIn(opcode, SOURCE)
 
-    def test_defaults_match_the_design(self):
-        self.assertIn("g_spi_mode = 3", SOURCE)
+    def test_defaults_are_apples_decoded_mode_2(self):
+        self.assertIn("g_spi_mode = 2", SOURCE)
+        self.assertNotIn("g_spi_mode = 3", SOURCE)
         self.assertIn("g_spi_hz = 1984000", SOURCE)
+
+    def test_explicit_overrides_still_parsed_and_range_checked(self):
+        self.assertIn('"--spi-mode"', SOURCE)
+        self.assertIn("g_spi_mode = strtoul(argv[i + 1]", SOURCE)
+        self.assertIn('"--spi-hz"', SOURCE)
+        self.assertIn("g_spi_mode > 3", SOURCE)
+
+    def test_spi_check_is_not_described_as_read_only(self):
+        header = SOURCE.split("*/", 1)[0]
+        block = header.split("touch-diag spi-check", 1)[1].split("touch-diag run", 1)[0]
+        self.assertIn("NOT read-only", block)
+        self.assertIn("NO SPI frame", block)
+        self.assertNotIn("read-only handshake", SOURCE)
 
 
 if __name__ == "__main__":

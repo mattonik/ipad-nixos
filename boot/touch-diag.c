@@ -15,8 +15,10 @@
  *                       perform the sequence; every step is verified and the
  *                       original state is restored on success, error or signal
  *   touch-diag spi-check [--spi-dev D] [--spi-mode M] [--spi-hz H]
- *                       configure the spidev node and read the settings back;
- *                       sends NO frame and powers nothing
+ *                       NOT read-only: it opens the spidev node and configures it
+ *                       with write ioctls (mode, bits per word, speed), then reads
+ *                       the settings back. It sends NO SPI frame, powers nothing
+ *                       and touches no other hardware.
  *   ... run ... --spi-dev D [--spi-mode M] [--spi-hz H]
  *                       also send the four minimal frames of
  *                       research/j81-touch-spi-experiment-design.md
@@ -73,9 +75,13 @@ static volatile uint32_t *g_gpio;
 static int g_reset_fd = -1, g_power_fd = -1, g_irq_fd = -1;
 static volatile sig_atomic_t g_signal;
 
-/* Optional SPI stage (spidev). Defaults are the design's candidate. */
+/*
+ * Optional SPI stage (spidev). Defaults: SPI mode 2 (Apple's controller writes
+ * CFG 0xd = AUTO_TX | CPOL | ROLESEL, i.e. CPOL=1 CPHA=0) and 124 * 16 kHz.
+ * Both can be overridden per run with --spi-mode and --spi-hz.
+ */
 static const char *g_spi_dev;
-static unsigned int g_spi_mode = 3;		/* CPOL=1, CPHA=1 */
+static unsigned int g_spi_mode = 2;		/* CPOL=1, CPHA=0: Apple's decoded default */
 static unsigned int g_spi_hz = 1984000;		/* 124 * 16 kHz */
 static int g_spi = -1;
 
@@ -369,7 +375,7 @@ static void plan(void)
 	    " 7. unwind in reverse: reset low, GPIO%d low, LDO14 restored, clock disabled\n"
 	    "Optional SPI stage: add --spi-dev /dev/spidevB.C [--spi-mode 0..3] [--spi-hz N]:\n"
 	    "    before step 6 a 16-byte dummy transfer; after the IRQ edge wake, short and long\n"
-	    "    ATN/ACK (all read-only handshake frames, no firmware, no register write)\n"
+	    "    ATN/ACK (handshake frames only: no firmware, no register write)\n"
 	    "Run with: touch-diag run --execute --approve-pmu-write\n",
 	    LDO14_VOLTAGE_EXPECTED, GPIO_RESET, CLK_REG_OFF, CLK_DIVIDER, REG_LDO14_ENABLE,
 	    LDO14_ENABLE_BIT, GPIO_POWER, RAIL_DELAY_MS, GPIO_DISPLAY_SYNC,
@@ -477,7 +483,7 @@ static int run(void)
 	level_after = get_line(g_irq_fd);
 	CHECK_ABORT();
 	if (g_spi_dev && got_edge) {
-		say("step 7: minimal frames (read-only handshake, no firmware)\n");
+		say("step 7: minimal frames (handshake only: no firmware, no register write)\n");
 		if (spi_frame("wake", F_WAKE, sizeof(F_WAKE)) ||
 		    spi_frame("atn-short", F_ATN_SHORT, sizeof(F_ATN_SHORT)) ||
 		    spi_frame("atn-long", F_ATN_LONG, sizeof(F_ATN_LONG)))

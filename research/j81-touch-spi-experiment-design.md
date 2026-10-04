@@ -9,8 +9,8 @@ inputs; labels **E** evidence, **I** inference, **U** unknown.
 
 ## Question
 
-After the proven power-up, does the controller answer a **minimal, read-only**
-SPI exchange in the framing recovered from Apple's driver, and with which SPI
+After the proven power-up, does the controller answer a **minimal handshake**
+SPI exchange (no register write, no firmware) in the framing recovered from Apple's driver, and with which SPI
 mode and rate? Nothing else: no register write, no firmware, no calibration.
 
 ## New facts for this design
@@ -131,7 +131,9 @@ Payload `.#packages.x86_64-linux.m1n1-hoolock-touch-spi` (base
 
 Next, in order, each needing the user at the device:
 1. boot; confirm `/dev/spidev0.0` exists and run `touch-diag spi-check`
-   (configures the node, reads mode/bits/speed back, sends nothing, powers nothing);
+   (**not read-only**: it opens the spidev node and configures it with write ioctls
+   for mode, bits per word and speed, then reads them back; it sends no SPI frame,
+   powers nothing and touches no other hardware);
 2. run A, B, C from the run matrix, each with an explicit go-ahead.
 
 ## Hardware result 1, 2026-10-04: spidev node and `spi-check` (no traffic)
@@ -142,7 +144,8 @@ powered and no frame was sent.
 - `/dev/spidev0.0` exists (char `153,0`); `spi0.0` (`modalias spi:dh2228fv`) is bound
   to the `spidev` driver. `apple-z2` is registered but **not** bound to the child, as
   designed. No touchscreen input device; `input0` is `gpio-keys`.
-- `touch-diag spi-check` read the settings back correctly for the design's default
+- `touch-diag spi-check` (configures spidev with write ioctls, then reads back; sends
+  no frame, not a read-only command) read the settings back correctly for the design's default
   (mode 3, 8 bits, 1,984,000 Hz), mode 0, and 500 kHz; all exit 0.
 - `touch-diag status` afterwards is identical to the pre-experiment baseline: LDO14
   off (`0x00`, voltage `0x14`), clock `0x800002ee`, GPIO words unchanged.
@@ -323,3 +326,16 @@ all `00`; wake `f0 01 f1 01 ...`; short ATN `f0 01`; long ATN `f0 01 f1 01 f1 01
 No new conclusions beyond result 5. The bus work is complete; the open items are the
 two untried boot-ROM preconditions (download-mode function, display sync) and, past
 those, the firmware decision.
+
+
+## Update after the mode correction (source change, not yet run)
+
+`touch-diag` now defaults to **SPI mode 2** (CPOL=1, CPHA=0), Apple's decoded
+default, instead of mode 3; `--spi-mode` and `--spi-hz` still override per run and
+are range checked. The kernel DT test child (patch `0051`) still carries
+`spi-cpol; spi-cpha` and 1.984 MHz; that is harmless because `touch-diag` sets the
+mode through spidev on every open, but it is stale documentation of the device default
+and is left unchanged here to avoid a kernel rebuild. `spi-check` configures the
+spidev node with write ioctls (mode, bits per word, speed) and sends no SPI frame; it
+is not a read-only command. Runs A-E above used explicit `--spi-mode` values and are
+unaffected.
