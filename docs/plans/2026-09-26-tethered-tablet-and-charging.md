@@ -336,6 +336,24 @@ background just before its hold loop. Policy: wait for the sysfs property, set
 temperature is unreadable, resume below 38.0 C, re-check every 30 s. It writes
 only `input_current_limit`. Static gate: `boot/test_ssh_stage1.py --tablet`.
 
+#### Tablet payload hardware result, 2026-10-04: boot-time charging policy passes
+
+Payload `m1n1-hoolock-tablet` (commit `48985fb`), cold boot over the direct
+cable, recorded session (private). With no manual action after the boot:
+
+- `/var/log/charging-policy.log`: `limit 2400000 uA (temp 312 deciC)`; sysfs
+  `input_current_limit` 2400000, raw `0x04c0 = 0xba`; battery `Charging`,
+  +81 mA, 31.2 C; the policy process is running.
+- SSH (key) and telnet recovery both worked as in stage 1.
+- Backoff path, exercised with a lowered threshold (`HOT_DECI=300`, one-shot, since
+  the battery was cool): the limit went 2400 -> 500 mA (`0x22`) with log
+  `hot 313 deciC`; a normal one-shot run then restored 2400 mA (`0xba`).
+
+Weakness found while reviewing the result (fixed in the next commit): the loop
+trusts its own cached state, so if something else changed the limit, it would not
+re-assert until the temperature crossed a threshold. It should compare against the
+actual sysfs value.
+
 #### Safe staged test
 
 **Static gate:** build a separate package derived from
