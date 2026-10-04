@@ -33,12 +33,15 @@ assert "etc/deviceinfo" not in added, "must not touch the ECM deviceinfo overrid
 # Allow-list: hook, account state, key, and the Nix-store closure only.
 fixed = {hook, "etc/passwd", "etc/group", "root", "root/.ssh",
          "root/.ssh/authorized_keys", "var", "var/empty", "var/run", "var/log", "etc",
-         "etc/postmarketos-mkinitfs", "etc/postmarketos-mkinitfs/hooks"}
+         "etc/postmarketos-mkinitfs", "etc/postmarketos-mkinitfs/hooks",
+         "usr", "usr/bin", "usr/bin/tablet-status"}
 extra = {n for n in added if n not in fixed and n not in ("nix", "nix/store") and not n.startswith("nix/store/")}
 assert not extra, f"unexpected overlay entries: {sorted(extra)}"
 changed = {n for n in added if n in before and before[n][2] != added[n][2] and n != hook}
 assert not changed, f"overlay rewrote base files: {sorted(changed)}"
 
+ts = added["usr/bin/tablet-status"]
+assert ts[0] & 0o777 == 0o755 and ts[2] == (here / "tablet-status.sh").read_bytes()
 script = added[hook][2]
 assert added[hook][0] & 0o777 == 0o755
 subprocess.run(["sh", "-n"], input=script, check=True)

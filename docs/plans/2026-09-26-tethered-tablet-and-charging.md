@@ -294,7 +294,7 @@ within the archive. The hook keeps telnet, binds Dropbear to the USB address
 with `-s -j -k`, generates an ed25519 host key per boot, and ends in
 `loop_forever`. The client key pair is dedicated to this device and lives
 under ignored `artifacts/live/ssh/`; only the public key is committed.
-Hardware stage 1 below is the next step and needs an explicit go-ahead.
+The same payload also ships `/usr/bin/tablet-status` (`boot/tablet-status.sh`): a read-only summary of battery, charger limit, USB link, uptime and recent kernel messages, tested against fake sysfs trees by `boot/test_tablet_status.py`. Hardware stage 1 below is the next step and needs an explicit go-ahead.
 
 #### Safe staged test
 

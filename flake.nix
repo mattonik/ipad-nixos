@@ -2954,6 +2954,10 @@
           chmod 600 overlay/root/.ssh/authorized_keys
           chmod 644 overlay/etc/passwd overlay/etc/group
 
+          mkdir -p overlay/usr/bin
+          cp ${./boot/tablet-status.sh} overlay/usr/bin/tablet-status
+          chmod 755 overlay/usr/bin/tablet-status
+
           # Dropbear runtime closure at its original store paths.
           mkdir -p overlay/nix/store
           while read -r p; do cp -a "$p" overlay/nix/store/; done < ${dropbearClosure}/store-paths
