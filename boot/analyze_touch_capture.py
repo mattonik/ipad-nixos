@@ -22,6 +22,21 @@ ACK = bytes.fromhex("1a a1")
 LONG_ACK = bytes.fromhex("1a a1 18 e1 18 e1 18 e1")
 
 
+# Command framing recovered from the iPad5,3 iOS 8.1 AppleMultitouchSPI
+# (research/j81-z2-n1-transport-framing.md). Opcode pairs, fixed lengths and a
+# 16-bit byte-sum checksum stored high byte first.
+N1_COMMANDS = {  # opcode -> (kind, total length, checksum offset)
+    b"\x1c\x73": ("n1_register_read_request", 8, 6),
+    b"\x1e\x33": ("n1_register_write_request", 16, 14),
+    b"\x1d\x53": ("n1_execute_request", 12, 10),
+}
+N1_EXECUTE_FIXED = bytes.fromhex("00 01 00 00")
+N1_WAKE = b"\xee" + bytes(13) + b"\xee\x00"
+N1_CALIBRATION_REQUEST = bytes.fromhex("1f 01")
+STATUS_DATA_ACK = bytes.fromhex("4b c1")
+STATUS_REGISTER_WRITE_ACK = bytes.fromhex("4a d1")
+
+
 class CaptureError(ValueError):
     pass
 
@@ -83,7 +98,19 @@ def summarize(record):
     result = {"tx_bytes": len(tx), "rx_observed": rx is not None, "kind": "opaque"}
     if tx == ACK:
         result.update(kind="legacy_short_ack_query",
-                      response_matches_legacy_4bc1=None if rx is None else rx == b"\x4b\xc1")
+                      response_matches_legacy_4bc1=None if rx is None else rx == STATUS_DATA_ACK,
+                      response_matches_register_write_ack_4ad1=(
+                          None if rx is None else rx == STATUS_REGISTER_WRITE_ACK))
+    elif tx[:2] in N1_COMMANDS and len(tx) == N1_COMMANDS[tx[:2]][1]:
+        kind, _size, end = N1_COMMANDS[tx[:2]]
+        # Address/value bytes are never reported; only structure and checksum.
+        result.update(kind=kind, checksum_matches=int.from_bytes(tx[end:], "big") == sum(tx[2:end]))
+        if tx[:2] == b"\x1d\x53":
+            result["fixed_tail_matches"] = tx[6:10] == N1_EXECUTE_FIXED
+    elif tx == N1_CALIBRATION_REQUEST:
+        result["kind"] = "n1_calibration_request"
+    elif tx == N1_WAKE:
+        result["kind"] = "n1_wake_command"
     elif tx == LONG_ACK:
         # Long response semantics are not established for J81; suppress its value.
         result["kind"] = "legacy_long_response_query"

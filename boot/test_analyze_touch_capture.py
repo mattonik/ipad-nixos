@@ -14,6 +14,41 @@ import analyze_touch_capture as capture
 GOLDEN = bytes.fromhex("18e1 3001 0001 56781234 0115 02010403 000a0000")
 
 
+def n1_frame(opcode, body):
+    return opcode + body + sum(body).to_bytes(2, "big")
+
+
+class N1FramingTests(unittest.TestCase):
+    """Synthetic frames built from the structure recovered from Apple's driver."""
+
+    def test_register_read_write_execute(self):
+        read = n1_frame(b"\x1c\x73", bytes.fromhex("5678 1234"))
+        write = n1_frame(b"\x1e\x33", bytes.fromhex("5678 1234 ffff ffff 0100 0000"))
+        execute = n1_frame(b"\x1d\x53", bytes.fromhex("5678 1234 0001 0000"))
+        for frame, kind in ((read, "n1_register_read_request"),
+                            (write, "n1_register_write_request"),
+                            (execute, "n1_execute_request")):
+            result = capture.summarize((frame, None))
+            self.assertEqual(result["kind"], kind)
+            self.assertTrue(result["checksum_matches"])
+            self.assertNotIn("address", result)
+        self.assertTrue(capture.summarize((execute, None))["fixed_tail_matches"])
+
+    def test_checksum_corruption_and_wrong_length_are_not_matched(self):
+        read = bytearray(n1_frame(b"\x1c\x73", bytes.fromhex("5678 1234")))
+        read[3] ^= 1
+        self.assertFalse(capture.summarize((bytes(read), None))["checksum_matches"])
+        self.assertEqual(capture.summarize((bytes(read) + b"\x00", None))["kind"], "opaque")
+
+    def test_wake_calibration_request_and_ack_status(self):
+        wake = b"\xee" + bytes(13) + b"\xee\x00"
+        self.assertEqual(capture.summarize((wake, None))["kind"], "n1_wake_command")
+        self.assertEqual(capture.summarize((b"\x1f\x01", None))["kind"], "n1_calibration_request")
+        ack = capture.summarize((b"\x1a\xa1", b"\x4a\xd1"))
+        self.assertTrue(ack["response_matches_register_write_ack_4ad1"])
+        self.assertFalse(ack["response_matches_legacy_4bc1"])
+
+
 class CaptureTests(unittest.TestCase):
     def load(self, text):
         with tempfile.TemporaryDirectory() as directory:

@@ -260,6 +260,7 @@ the minimal image, so live pinmux detail was unavailable in this pass.
 
 The next experiment should remain **offline and read-only**:
 
+0. **Done 2026-10-04:** Apple's command framing, ACK words and bootload order are recorded in [`j81-z2-n1-transport-framing.md`](j81-z2-n1-transport-framing.md).
 1. Use the [host-only identity/envelope inspector](../boot/inspect_j81_touch.py)
    to extract and verify the recovered asset (implemented 2026-10-04; synthetic
    tests pass, actual Apple asset not available in that environment). Recover
