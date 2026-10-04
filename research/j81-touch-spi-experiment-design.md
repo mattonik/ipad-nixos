@@ -150,3 +150,47 @@ powered and no frame was sent.
 
 Ready for run A (mode 3, 1.984 MHz), which needs the user's explicit go-ahead and is
 run by the user over SSH.
+
+## Hardware result 2, 2026-10-04: run A (mode 3, 1.984 MHz) gets a response
+
+Run by the user over SSH after giving the go-ahead:
+`touch-diag run --execute --approve-pmu-write --spi-dev /dev/spidev0.0 --spi-mode 3 --spi-hz 1984000`.
+Power-up and unwind were identical to the earlier diagnostic (clock register now
+`0x000802dc`, LDO14 `0x04`, restored to `0x00`, clock back to gate-off with divider
+732). Boot IRQ: falling edge again, line low afterwards.
+
+| Frame | TX | RX |
+| --- | --- | --- |
+| dummy (before reset release) | `1a a1` + 7 x `18 e1` | `00` x 16 |
+| wake | `ee` at byte 0 and 14, others `00` | `f8 80` x 8 |
+| ATN/ACK short | `1a a1` | `f8 80` |
+| ATN/ACK long | `1a a1 18 e1 18 e1 18 e1` | `f8 80` x 4 |
+
+Reading (E for the bytes, I for the interpretation):
+
+- **The bus is alive.** Before reset release the line returns all `00` (controller
+  held in reset); after release every frame returns the same non-trivial two-byte
+  word `f8 80` repeated, not all-`00`/`ff`. A floating or stuck MISO would not give
+  this pattern, so the clock, MOSI/MISO pads, chip select and mode are at least
+  electrically working.
+- **It is not the recovered ACK.** `f8 80` is neither `4b c1` (data ACK) nor `4a d1`
+  (register-write ACK). The same word answers the wake, the short ATN and the long
+  ATN, regardless of what was sent, which looks like an **idle/not-ready status the
+  ROM clocks out continuously** (a constant output register) rather than command
+  responses. That reading is **I**.
+- **Mode/rate are not confirmed.** Mode 3 at 1.984 MHz produced a stable pattern, but
+  a shifted or misaligned sample of a different word is possible; the design's
+  stop condition for run A (anything other than `00`/`ff`) is met, so runs B and C
+  are not required, but a **mode 0 contrast run** would show whether the word
+  changes with the mode, which separates a true status word from a sampling artifact.
+- Nothing was written to the controller beyond the three handshake frames; no
+  firmware, no register write, no calibration.
+
+## What this changes
+
+The question "does the controller answer SPI at all" is answered yes. The unknown
+moves to: what `0xf880` means (idle status of the ROM, or bit-shifted data), and
+which first frame the boot ROM expects (Apple's driver starts with firmware chunks,
+not queries). Next evidence should add exactly one variable per run: mode 0 at the
+same rate (contrast), or a repeat of run A to confirm the word is stable across
+power cycles. No firmware upload is justified by this result alone.
