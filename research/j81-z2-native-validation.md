@@ -112,3 +112,7 @@ Next driver research can validate calibration construction against a matching
 public implementation or privately supplied Apple disassembly/captures. The
 next hardware observation should continue the existing platform/power plan;
 this audit introduces no transaction recipe or guessed register writes.
+
+The [legacy ACK/calibration comparison](j81-z2-legacy-ack-calibration.md)
+now validates an older public implementation offline and records its exact
+limits, candidate ACK and remaining J81 capture questions.

@@ -67,6 +67,12 @@ Default host-only validation initially passed 13 scripts, with four explicit
 optional skips. The subsequent touchscreen harness adds a fifth optional
 check: supply `--z2-source /path/to/pinned/apple_z2.c` to include it. With both
 source arguments, validation passes 16 scripts with two built-artifact skips.
+The subsequent [legacy Z2 comparison](../research/j81-z2-legacy-ack-calibration.md)
+adds `--openiboot-source /path/to/openiBoot/plat-s5l8900/multitouch-z2.c`.
+With all three source arguments, 17 scripts pass under ASan/UBSan with two
+built-artifact skips. With no source arguments, 13 scripts pass and six
+optional checks are skipped. This comparison validates reference behavior,
+not a J81-compatible packet format.
 These counts are scripts, not individual unittest cases or fuzz inputs.
 The script runner's own checks exercise child exit failure, timeout handling
 and preservation of assertions.

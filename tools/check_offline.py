@@ -59,8 +59,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", type=Path, help="local exact pinned Hoolock pcie.c; enables two native harnesses")
     parser.add_argument("--z2-source", type=Path, help="local exact pinned apple_z2.c; enables touchscreen harness")
+    parser.add_argument("--openiboot-source", type=Path, help="local exact pinned multitouch-z2.c; enables legacy comparison harness")
     parser.add_argument("--cc", default=os.environ.get("CC", "gcc"))
-    parser.add_argument("--sanitize", action="store_true", help="enable ASan/UBSan for native harnesses; requires --source")
+    parser.add_argument("--sanitize", action="store_true", help="enable ASan/UBSan for requested native harnesses")
     parser.add_argument("--usb-control", type=Path, help="built control payload directory")
     parser.add_argument("--usb-diagnostic", type=Path, help="built USB diagnostic payload directory")
     parser.add_argument("--timeout", type=float, default=60, help="per host-test limit in seconds")
@@ -69,11 +70,11 @@ def main() -> int:
     args = parser.parse_args()
     if not 0 < args.timeout <= 3600:
         parser.error("--timeout must be positive and at most 3600 seconds")
-    if args.sanitize and not (args.source or args.z2_source):
-        parser.error("--sanitize requires --source or --z2-source")
+    if args.sanitize and not (args.source or args.z2_source or args.openiboot_source):
+        parser.error("--sanitize requires --source, --z2-source or --openiboot-source")
     if bool(args.usb_control) != bool(args.usb_diagnostic):
         parser.error("supply both --usb-control and --usb-diagnostic")
-    for path in (args.source, args.z2_source):
+    for path in (args.source, args.z2_source, args.openiboot_source):
         if path and not path.is_file():
             parser.error("source arguments must be existing files")
     for path in (args.usb_control, args.usb_diagnostic):
@@ -94,7 +95,8 @@ def main() -> int:
         outcomes.append(Outcome(usb_test, "SKIP", "requires both built USB payload directories"))
     native = (("kernel/test_brcmfmac_otp_patch.py", args.source, "--source (pcie.c)"),
               ("kernel/test_brcmfmac_otp_parser.py", args.source, "--source (pcie.c)"),
-              ("kernel/test_apple_z2_receive.py", args.z2_source, "--z2-source (apple_z2.c)"))
+              ("kernel/test_apple_z2_receive.py", args.z2_source, "--z2-source (apple_z2.c)"),
+              ("kernel/test_openiboot_z2_reference.py", args.openiboot_source, "--openiboot-source (multitouch-z2.c)"))
     for name, source, requirement in native:
         if not source:
             outcomes.append(Outcome(name, "SKIP", "requires exact pinned " + requirement))
