@@ -1,0 +1,64 @@
+--- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
++++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
+@@ -2264,39 +2264,42 @@
+ 	fwreq->bus_nr = devinfo->pdev->bus->number;
+ 
+ 	/* Apple platforms with fancy firmware/NVRAM selection */
+-	if (devinfo->settings->board_type &&
+-	    devinfo->settings->antenna_sku &&
+-	    devinfo->otp.valid) {
++	if (devinfo->settings->board_type && devinfo->otp.valid) {
+ 		const struct brcmf_otp_params *otp = &devinfo->otp;
+ 		struct device *dev = &devinfo->pdev->dev;
+ 		const char **bt = fwreq->board_types;
++		unsigned int n = 0, i;
+ 
+ 		brcmf_dbg(PCIE, "Apple board: %s\n",
+ 			  devinfo->settings->board_type);
+ 
+-		/* Example: apple,shikoku-RASP-m-6.11-X3 */
+-		bt[0] = devm_kasprintf(dev, GFP_KERNEL, "%s-%s-%s-%s-%s",
+-				       devinfo->settings->board_type,
+-				       otp->module, otp->vendor, otp->version,
+-				       devinfo->settings->antenna_sku);
+-		bt[1] = devm_kasprintf(dev, GFP_KERNEL, "%s-%s-%s-%s",
++		/* Keep candidates contiguous when older boards have no antenna SKU. */
++		if (devinfo->settings->antenna_sku)
++			bt[n++] = devm_kasprintf(dev, GFP_KERNEL, "%s-%s-%s-%s-%s",
++					       devinfo->settings->board_type,
++					       otp->module, otp->vendor, otp->version,
++					       devinfo->settings->antenna_sku);
++		bt[n++] = devm_kasprintf(dev, GFP_KERNEL, "%s-%s-%s-%s",
+ 				       devinfo->settings->board_type,
+ 				       otp->module, otp->vendor, otp->version);
+-		bt[2] = devm_kasprintf(dev, GFP_KERNEL, "%s-%s-%s",
++		bt[n++] = devm_kasprintf(dev, GFP_KERNEL, "%s-%s-%s",
+ 				       devinfo->settings->board_type,
+ 				       otp->module, otp->vendor);
+-		bt[3] = devm_kasprintf(dev, GFP_KERNEL, "%s-%s",
++		bt[n++] = devm_kasprintf(dev, GFP_KERNEL, "%s-%s",
+ 				       devinfo->settings->board_type,
+ 				       otp->module);
+-		bt[4] = devm_kasprintf(dev, GFP_KERNEL, "%s-%s",
+-				       devinfo->settings->board_type,
+-				       devinfo->settings->antenna_sku);
+-		bt[5] = devinfo->settings->board_type;
+-
+-		if (!bt[0] || !bt[1] || !bt[2] || !bt[3] || !bt[4]) {
+-			kfree(fwreq);
+-			return NULL;
++		if (devinfo->settings->antenna_sku)
++			bt[n++] = devm_kasprintf(dev, GFP_KERNEL, "%s-%s",
++					       devinfo->settings->board_type,
++					       devinfo->settings->antenna_sku);
++
++		for (i = 0; i < n; i++) {
++			if (!bt[i]) {
++				kfree(fwreq);
++				return NULL;
++			}
+ 		}
++		bt[n] = devinfo->settings->board_type;
+ 	} else {
+ 		brcmf_dbg(PCIE, "Board: %s\n", devinfo->settings->board_type);
+ 		fwreq->board_types[0] = devinfo->settings->board_type;
