@@ -158,3 +158,38 @@ reset, the existing PCIe sequence runs with the chip already powered.
 - A persisted config byte proves the register map, not that the chip's own
   reset/boot sequence completes; Apple waits 100 ms after REG_ON.
 - Whether J81 has additional board interlocks around REG_ON remains unknown.
+
+## Hardware result, 2026-10-04: in-kernel REG_ON assert makes the BCM4350 enumerate
+
+Payload `m1n1-hoolock-pcie-reg-on-test` (patch `0050`, commit `15d8267`), booted
+over the standard DFU path with the user's explicit go-ahead; read-only checks
+over a recorded session (private manifest under ignored `artifacts/live/sessions/`).
+
+- Boot log: `t7000-pcie reg-on-test: 0x0403 0x09 -> 0x0b (readback 0x0b, ret 0)` at
+  0.13 s, ahead of PCIe probe (0.24 s onward). Register `0x0402` (Bluetooth
+  `power_enable`) stayed `0x09`, untouched.
+- **The root port now has an endpoint behind it:** `0000:01:00.0`, vendor/device
+  **`14e4:43a3`** (Broadcom BCM4350 family), class `0x028000` (network/other),
+  **revision `0x05`**, subsystem `106b:10fe`. BAR0 32 KB and BAR2 4 MB were assigned
+  (`0x7c0400000` and `0x7c0000000`), IOMMU group assigned, ASPM L1 default.
+- `lspci` shows `00:01.0 106b:1002` and `01:00.0 14e4:43a3`. Sysfs reports the
+  link as 2.5 GT/s x1.
+- The controller's own `link_up` poll still printed `link_up=0` (0x088 = `0x5`)
+  at 0.856 s, yet generic enumeration found the device immediately afterwards.
+  The earlier wait-for-link logic is therefore a poor success signal on this
+  controller; the real test is config-space read. Do not treat "link_up=0" as
+  failure without a config read.
+- The kernel also logged `retraining failed` for the root port and an
+  `iommu-map` warning for id `0x8`. Neither blocked enumeration; both need
+  follow-up before relying on the link.
+
+**Gates this closes:** radio power (REG_ON) and PCIe enumeration, including the
+core revision read (`0x05`). **Not crossed:** no BCM4350 OTP/NVRAM access, no
+firmware upload, no BAR writes were issued. The remaining gates in the standing
+rules (private-capture evidence) still apply before any chip access beyond
+config-space reads.
+
+This confirms the corrected register map end to end: the earlier non-persistent
+writes targeted the wrong registers, and `0x0403` is the real Wi-Fi power
+enable. The PMU resets it on every reboot, so the assert must stay in-kernel
+before the PCIe probe, exactly as implemented.
