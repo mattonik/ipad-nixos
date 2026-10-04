@@ -144,6 +144,10 @@ does not exist on J81. Static Apple-driver work must determine whether the old
 fields form a `calload` blob, override NVRAM keys, or are optional corrections.
 Do not associate or intentionally transmit until that is resolved.
 
+The [firmware-loader policy audit](j81-wifi-loader-selection.md) now validates
+actual filename fallback and optional-NVRAM completion. A successful request
+does not prove matching calibration was supplied.
+
 ### Pinned OTP-reader gap and isolated filename patch, 2026-10-04
 
 **E:** Direct inspection of the exact Hoolock pin
@@ -223,6 +227,15 @@ They establish a ChipCommon shadow at core-relative `0x800–0xbff`, with
 register-derived sizing and core-revision-dependent handling. J81's actual
 core revision, strap state and Apple record offset remain unobserved; this
 does not justify copying BCM4355's `0x8c0` start or adding a live reader yet.
+
+**Parser follow-up, 2026-10-04:** The
+[native OTP-parser audit and hardware evidence handoff](j81-otp-parser-validation.md)
+reproduces mixed-record identity assembly and acceptance of truncated trailing
+data in the actual pinned functions. Inactive candidate patch `0049` validates
+record bounds and commits identities atomically; its host checks include
+30,000 deterministic synthetic inputs and ASan/UBSan. A zero-length host
+overread is also reproduced, without claiming the current reader can reach
+it. Real J81 record-format confirmation is required before integration.
 
 ### Wi-Fi evidence gate
 

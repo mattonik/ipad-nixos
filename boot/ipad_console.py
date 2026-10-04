@@ -18,12 +18,15 @@ connection) that prints whatever it wants, then add
 ("Menu label", your_function) to ACTIONS below. That's the whole
 extension point -- no other wiring needed.
 """
+import argparse
+from dataclasses import dataclass
 import os
 import re
 import socket
 import sys
 import time
 from collections.abc import Callable
+from session_evidence import SessionEvidence, utc_now
 
 HOST = "172.16.42.1"
 PORT = 23
@@ -90,13 +93,35 @@ def _clean(data: bytes) -> str:
     return data.decode(errors="replace")
 
 
+class ShellCommandIncomplete(ConnectionError):
+    """Completion was not confirmed; the remote command may still be running."""
+
+    def __init__(self, reason: str, partial_output: str):
+        super().__init__(f"{reason}; command completion is unknown (not retried)")
+        self.partial_output = partial_output
+
+
+@dataclass(frozen=True)
+class ShellResult:
+    output: str
+    returncode: int
+
+
+class ShellCommandFailed(RuntimeError):
+    def __init__(self, result: ShellResult):
+        self.output = result.output
+        self.returncode = result.returncode
+        super().__init__(f"command exited with status {result.returncode}\n{result.output}")
+
+
 class IPadShell:
     """A persistent connection to the postmarketOS debug shell's telnetd."""
 
-    def __init__(self, host: str = HOST, port: int = PORT):
+    def __init__(self, host: str = HOST, port: int = PORT, evidence=None):
         self.host = host
         self.port = port
         self.sock: socket.socket | None = None
+        self.evidence = evidence
 
     def connect(self, timeout: float = 5) -> None:
         self.sock = socket.create_connection((self.host, self.port), timeout=timeout)
@@ -125,13 +150,15 @@ class IPadShell:
         of silent output for anything that isn't instant.
         """
         buf = b""
-        end = time.time() + deadline
+        end = time.monotonic() + deadline
         frame = 0
         spinning = spin_label is not None and _IS_TTY
         if spinning:
             sys.stdout.write(f"{GREEN}{_SPINNER_FRAMES[frame]} {spin_label}{RESET}")
             sys.stdout.flush()
-        while time.time() < end:
+        completed = marker is None
+        disconnected = False
+        while time.monotonic() < end:
             try:
                 chunk = self.sock.recv(4096)
             except socket.timeout:
@@ -140,28 +167,52 @@ class IPadShell:
                     sys.stdout.write(f"{CLEAR_LINE}{GREEN}{_SPINNER_FRAMES[frame]} {spin_label}{RESET}")
                     sys.stdout.flush()
                 continue
+            except OSError as error:
+                error.partial_output = _clean(buf)
+                raise
             if not chunk:
+                disconnected = True
                 break
             buf += chunk
             if marker and marker.encode() in buf:
+                completed = True
                 break
         if spinning:
             sys.stdout.write(CLEAR_LINE)
             sys.stdout.flush()
-        return _clean(buf)
+        output = _clean(buf)
+        if not completed:
+            reason = "device disconnected" if disconnected else "device response timed out"
+            raise ShellCommandIncomplete(reason, output)
+        return output
 
-    def run(self, cmd: str, timeout: float = 10) -> str:
-        """Run one command and return its output, without the echoed
-        input line or shell prompts. Detects completion via a unique
-        marker instead of a fixed sleep, so it neither clips slow
-        commands nor waits longer than it has to for fast ones."""
-        if self.sock is None:
-            self.connect()
-        marker = f"__done_{time.time_ns()}__"
-        self.sock.sendall(cmd.encode() + b"\n")
-        self.sock.sendall(f"echo {marker}\n".encode())
-        raw = self._read_until(marker, deadline=timeout, spin_label="waiting for device...")
-        body = raw.split(marker)[0]
+    def run_result(self, cmd: str, timeout: float = 10) -> ShellResult:
+        """Return output and POSIX shell status; never replay a command."""
+        started = utc_now()
+        start = time.monotonic()
+        raw = ""
+        try:
+            if self.sock is None:
+                self.connect()
+            token = time.time_ns()
+            marker = f"__done_{token}__"
+            status_marker = f"__status_{token}__"
+            self.sock.sendall(cmd.encode() + b"\n")
+            # $? is expanded before printf runs, preserving the command's status.
+            trailer = f"printf '\\n{status_marker}:%s:{marker}\\n' \"$?\""
+            self.sock.sendall((trailer + "\n").encode())
+            raw = self._read_until(marker, deadline=timeout, spin_label="waiting for device...")
+            match = re.search(r"\r?\n" + re.escape(status_marker) + r":([0-9]{1,3}):" + re.escape(marker), raw)
+            if match is None or int(match[1]) > 255:
+                raise ShellCommandIncomplete("invalid command status trailer", raw)
+        except OSError as error:
+            # Do not leave late output on a connection used for the next action.
+            # Closing transport does not prove that the remote process stopped.
+            self.close()
+            self._record(cmd, started, start, "incomplete", None,
+                         getattr(error, "partial_output", raw), str(error))
+            raise
+        body = raw[:match.start()]
         # The shell prints its "/ # " prompt with no trailing newline, so
         # a command's first output line often lands right after it on the
         # same physical line -- strip a leading prompt from every line,
@@ -170,9 +221,28 @@ class IPadShell:
         lines = [
             line
             for line in body.splitlines()
-            if line.strip() and line.strip() not in (cmd.strip(), f"echo {marker}")
+            if line.strip() and line.strip() not in (cmd.strip(), trailer)
         ]
-        return "\n".join(lines).strip()
+        result = ShellResult("\n".join(lines).strip(), int(match[1]))
+        self._record(cmd, started, start, "completed", result.returncode, result.output)
+        return result
+
+    def _record(self, cmd, started, start, state, returncode, output, error=None):
+        if self.evidence is not None:
+            try:
+                self.evidence.record(command=cmd, started_utc=started,
+                                     duration_seconds=time.monotonic() - start,
+                                     completion=state, returncode=returncode,
+                                     output=output, error=error, host=self.host, port=self.port)
+            except OSError as recording_error:
+                raise RuntimeError(f"session record failed after {state}, status {returncode}; "
+                                   f"not retried: {recording_error}; transport error: {error}") from recording_error
+
+    def run(self, cmd: str, timeout: float = 10, *, check: bool = True) -> str:
+        result = self.run_result(cmd, timeout)
+        if check and result.returncode:
+            raise ShellCommandFailed(result)
+        return result.output
 
 
 # --- Individual tests -------------------------------------------------
@@ -601,6 +671,8 @@ def _pause() -> None:
 def main_menu(shell: IPadShell) -> None:
     while True:
         _print_header(shell.sock is not None)
+        if shell.evidence is not None:
+            print(f" evidence: {shell.evidence.directory}")
         for i, (label, _fn) in enumerate(ACTIONS, start=1):
             print(f"  {GREEN}[{i:2}]{RESET} {label}")
         print(f"  {GREEN}[ r]{RESET} Reconnect")
@@ -648,7 +720,14 @@ def main_menu(shell: IPadShell) -> None:
 
 
 def main() -> int:
-    shell = IPadShell()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--no-color", action="store_true")
+    parser.add_argument("--artifact", action="append", default=[], metavar="NAME=FILE",
+                        help="hash a local build component into the private session manifest")
+    args = parser.parse_args()
+    evidence = SessionEvidence(args.artifact)
+    print(f"Session evidence: {evidence.directory}")
+    shell = IPadShell(evidence=evidence)
     print(CLEAR, end="")
     # Gerund while working, past tense (with a clear pass/fail marker) once
     # settled, overwriting the same line rather than leaving a stale
