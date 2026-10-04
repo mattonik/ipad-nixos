@@ -639,6 +639,32 @@ is available as `packages.x86_64-linux.m1n1-hoolock-charging-writable-test`;
 (the actual next thing to hardware-test), not overwritten by this
 build.
 
+### Stage 2 hardware result, 2026-10-04: pass
+
+Payload `m1n1-hoolock-charging-writable-test` (patch `0017`), booted with the
+user's go-ahead; recorded session (private, ignored `artifacts/live/sessions/`).
+The sysfs `input_current_limit` is now mode `rw`. Writes went through the kernel
+property only; readings after a 3-4 s settle:
+
+| Written (sysfs) | Raw `0x04c0` | Decoded raw | Battery current | Status | Temp |
+| --- | --- | --- | --- | --- | --- |
+| baseline 100 mA | `0x02` | 100 | -683 mA | Discharging | 31.3 C |
+| 500 mA | `0x22` | 500 | -223 mA | Discharging | 31.3 C |
+| 1000 mA | `0x4a` | 1000 | +78 mA | Charging | 31.3 C |
+| 2400 mA | `0xba` | 2400 | +127 mA | Charging | 31.3 C |
+| restored 100 mA | `0x02` | 100 | -681 mA | Discharging | 31.3 C |
+
+- Sysfs value, raw register and the driver's decode agreed at every tier, and
+  every written tier matched the previously console-validated encoding exactly.
+- The battery crossed from discharging to charging between 500 and 1000 mA, as
+  in the earlier console-tool tests. Temperature stayed flat at 31.3 C
+  throughout, well below the 42 C abort. No write error, no USB link event.
+- The guards (abort on temperature, mismatch or error; restore baseline in a
+  `finally`) ran and restored the 100 mA baseline at the end.
+- The new kernel property adds no policy of its own; thermal/auto-restore stays
+  userspace, as designed. A boot-time service that raises the tier remains a
+  separate, later item.
+
 **Not yet hardware-tested.**
 
 ## Acceptance criteria for this pass
