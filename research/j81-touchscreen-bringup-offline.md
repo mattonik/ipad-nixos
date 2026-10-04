@@ -2,6 +2,13 @@
 
 Date: 2026-09-25
 
+**Update, 2026-10-04:** the [PMGR resource audit](j81-klct-resource-audit.md)
+corrects "missing KLCT gate-table index" below to an unresolved dedicated
+clock register/dispatch path. The generic PS array has incompatible bit
+meanings. The requested 32.768 kHz and recorded enable/disable delay
+interpretations still require the precise rate/argument qualifications in
+that audit before implementation.
+
 ## Scope and result
 
 This is an offline review of the captured J81 ADT, the existing iPad5,3 iOS
