@@ -109,3 +109,27 @@ time and is recorded to the repository before the next run.
    a `--dry-run` that opens spidev and prints the planned frames without sending.
 3. Static gate extension and host tests for the frame builders (already modeled in
    the capture analyzer).
+
+## Implementation status, 2026-10-04: built, statically verified, not run
+
+Payload `.#packages.x86_64-linux.m1n1-hoolock-touch-spi` (base
+`m1n1-hoolock-touch-spi-test`; kernel `hoolock-touch-spi-test`, patch `0051`).
+
+- Build: full kernel cross-build exit 0; payload checksums verified.
+- Static gate (`boot/test_ssh_stage1.py --touch-diag <base> <payload>`): passes;
+  original boot components and the base initramfs are byte-identical, overlay is
+  the exact allow-list, the static `touch-diag` ELF has no loader dependency.
+- DTB (parsed directly): `/soc/spi@20a08c000/touch-diag@0` with
+  `compatible = "rohm,dh2228fv"`, `reg = <0>`, `spi-max-frequency = 0x1e4600`
+  (1,984,000 Hz), `spi-cpol`, `spi-cpha`. **No touchscreen compatible anywhere in
+  the DTB**, so `apple_z2` cannot bind.
+- Kernel image contains the spidev driver. `touch-diag` compiled with
+  `-Wall -Wextra -Werror`.
+- Host tests: `boot/test_touch_diag_frames.py` (frame bytes match the capture
+  analyzer; no register-read/write or execute frames in the source; defaults match
+  this design). The offline suite is at 20 passed, 7 skipped.
+
+Next, in order, each needing the user at the device:
+1. boot; confirm `/dev/spidev0.0` exists and run `touch-diag spi-check`
+   (configures the node, reads mode/bits/speed back, sends nothing, powers nothing);
+2. run A, B, C from the run matrix, each with an explicit go-ahead.
