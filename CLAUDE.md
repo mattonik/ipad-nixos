@@ -504,6 +504,8 @@ effect" isn't a framing bug -- it's a runtime ownership/lock condition
 invisible to static analysis. **Do not repeat the write or try
 alternate byte patterns.**
 
+**Session handoff 2026-10-04:** hardware milestones (BCM4350 enumerates after the in-kernel `REG_ON` assert; SSH stage 1; boot-time charging policy; touch power-up and SPI bring-up) and four corrections to earlier notes are summarized in `research/2026-10-04-session-handoff.md`. Read it before starting new work on PCIe, charging or touch.
+
 **Corrected 2026-10-04: that conclusion was wrong.** The write targeted
 `0x03e6`, but Apple's `_index2GPIOAddress` puts GPIO 0-16 at `0x0400+i`
 (GPIO2 `0x0402`, GPIO3 `0x0403`). Writing `0x0b` to `0x0403` persisted on
