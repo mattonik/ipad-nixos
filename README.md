@@ -26,6 +26,16 @@ The boot is **tethered** — the iPad must be connected to a host computer via U
 
 ## Quick Start
 
+Host-only checks require Python and no connected iPad:
+
+```bash
+python3 tools/check_offline.py
+```
+
+Unavailable source/build-dependent checks are reported as skips. See the
+[tooling audit](docs/tooling-audit.md) for optional native/payload checks,
+strict mode and the console completion fix.
+
 ### Prerequisites
 
 - NixOS/Linux with [Nix](https://nixos.org/download), or macOS with a configured Linux builder

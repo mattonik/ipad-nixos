@@ -90,6 +90,14 @@ def _clean(data: bytes) -> str:
     return data.decode(errors="replace")
 
 
+class ShellCommandIncomplete(ConnectionError):
+    """Completion was not confirmed; the remote command may still be running."""
+
+    def __init__(self, reason: str, partial_output: str):
+        super().__init__(f"{reason}; command completion is unknown (not retried)")
+        self.partial_output = partial_output
+
+
 class IPadShell:
     """A persistent connection to the postmarketOS debug shell's telnetd."""
 
@@ -125,13 +133,15 @@ class IPadShell:
         of silent output for anything that isn't instant.
         """
         buf = b""
-        end = time.time() + deadline
+        end = time.monotonic() + deadline
         frame = 0
         spinning = spin_label is not None and _IS_TTY
         if spinning:
             sys.stdout.write(f"{GREEN}{_SPINNER_FRAMES[frame]} {spin_label}{RESET}")
             sys.stdout.flush()
-        while time.time() < end:
+        completed = marker is None
+        disconnected = False
+        while time.monotonic() < end:
             try:
                 chunk = self.sock.recv(4096)
             except socket.timeout:
@@ -141,26 +151,38 @@ class IPadShell:
                     sys.stdout.flush()
                 continue
             if not chunk:
+                disconnected = True
                 break
             buf += chunk
             if marker and marker.encode() in buf:
+                completed = True
                 break
         if spinning:
             sys.stdout.write(CLEAR_LINE)
             sys.stdout.flush()
-        return _clean(buf)
+        output = _clean(buf)
+        if not completed:
+            reason = "device disconnected" if disconnected else "device response timed out"
+            raise ShellCommandIncomplete(reason, output)
+        return output
 
     def run(self, cmd: str, timeout: float = 10) -> str:
         """Run one command and return its output, without the echoed
         input line or shell prompts. Detects completion via a unique
         marker instead of a fixed sleep, so it neither clips slow
         commands nor waits longer than it has to for fast ones."""
-        if self.sock is None:
-            self.connect()
-        marker = f"__done_{time.time_ns()}__"
-        self.sock.sendall(cmd.encode() + b"\n")
-        self.sock.sendall(f"echo {marker}\n".encode())
-        raw = self._read_until(marker, deadline=timeout, spin_label="waiting for device...")
+        try:
+            if self.sock is None:
+                self.connect()
+            marker = f"__done_{time.time_ns()}__"
+            self.sock.sendall(cmd.encode() + b"\n")
+            self.sock.sendall(f"echo {marker}\n".encode())
+            raw = self._read_until(marker, deadline=timeout, spin_label="waiting for device...")
+        except OSError:
+            # Do not leave late output on a connection used for the next action.
+            # Closing transport does not prove that the remote process stopped.
+            self.close()
+            raise
         body = raw.split(marker)[0]
         # The shell prints its "/ # " prompt with no trailing newline, so
         # a command's first output line often lands right after it on the
