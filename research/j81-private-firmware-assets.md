@@ -195,12 +195,61 @@ git check-ignore -v firmware/j81-12B410/touch/C1F15,2.constructed.bin
 ```
 
 This output is suitable for a parser test fixture kept outside Git. It must
-not be wrapped in a guessed `Z2FW` header or sent to the iPad. The next safe
-software task remains a bounded host parser for the `0xe118` packet and the
-Apple acknowledgement path described in
+not be wrapped in a guessed `Z2FW` header or sent to the iPad. A bounded
+identity/envelope inspector is now implemented below. The remaining parser
+work is the internal `0xe118` packet layout and Apple acknowledgement path
+described in
 [`j81-touchscreen-bringup-offline.md`](j81-touchscreen-bringup-offline.md).
 The private ADT touch-calibration blob is a separate input and must not be
 published.
+
+### Host-only identity/envelope inspector, 2026-10-04
+
+[`boot/inspect_j81_touch.py`](../boot/inspect_j81_touch.py) replaces the manual
+extraction snippet with a bounded, standard-library-only tool:
+
+```sh
+python3 boot/inspect_j81_touch.py \
+  /path/to/read-only-root/usr/share/firmware/multitouch/J81.mtprops \
+  --output firmware/j81-12B410/touch/C1F15,2.constructed.bin --json
+
+python3 boot/inspect_j81_touch.py \
+  firmware/j81-12B410/touch/C1F15,2.constructed.bin \
+  --format constructed --json
+
+python3 boot/test_inspect_j81_touch.py
+```
+
+The tool accepts XML or binary plists, requires the single `C1F15,2`
+personality and the recorded Z2/version/reset metadata, then checks the
+59,288-byte length, little-endian marker, four-byte alignment and the exact
+recorded payload SHA-256. Reads are capped at 1 MiB. It emits only whitelisted
+metadata and hashes, never firmware bytes or arbitrary plist properties.
+Extraction occurs only after validation, uses exclusive creation with mode
+`0600`, and refuses an output inside the repository unless Git ignores it.
+Resolved symlink destinations are subject to the same policy. Existing files
+are never overwritten.
+
+The optional `--expected-sha256` permits an explicitly supplied out-of-tree
+fixture identity; the report distinguishes that from the recorded 12B410
+asset. It does not relax the J81 metadata, length or envelope checks. A hash
+override is not evidence that another firmware revision is supported.
+
+**Validation:** 15 offline unittest methods pass, including malformed and
+truncated plists, wrong personalities/metadata, packet truncation/corruption,
+source-size bounds, default-hash rejection of synthetic firmware, XML/binary
+equivalence, private-file permissions, overwrite refusal and real Git-ignore
+checks including a symlink escape. All fixture bytes are generated synthetic
+data; the actual Apple asset is absent from this environment and was not run
+through the inspector. No kernel or payload changed, and no device was used.
+
+**Remaining gate:** this verifies asset identity and the established outer
+envelope only. Bytes after the marker remain opaque: the notes do not yet
+record the internal length/address/checksum layout or the boot ACK success
+predicate. Every successful report therefore has `transport_ready: false`.
+Those fields must be recovered from the matching Apple disassembly before a
+wire parser or Linux upload adaptation is implemented. This tool does not
+construct `Z2FW`, generate SPI messages, or enable a touchscreen DT child.
 
 ## Bluetooth: metadata recovered, patch bytes absent
 
@@ -249,7 +298,7 @@ address or calibration file staged.
 
 | Priority | Work | Certainty | Hardware required |
 | ---: | --- | --- | --- |
-| 1 | Add a host-only touch `0xe118` packet inspector with strict bounds and fixture hash supplied out of tree. | High | No |
+| 1 | Identity/envelope inspector implemented and synthetic-tested; recover internal `0xe118` fields and ACK predicate from matching disassembly next. | High for identity/envelope; wire layout unresolved | No |
 | 2 | Trace `wifiFirmwareLoader` path selection far enough to map BCM revision/OTP tuple to C2 or C4 and confirm old calibration handling. | Medium | No |
 | 3 | Prepare a minimal `brcmfmac` patch which permits Apple OTP filename construction when antenna SKU is absent; do not enable it yet. | High for filename gap; runtime pending | No |
 | 4 | Search matching local restore/OTA artifacts for the exact Bluetooth HCD filename and validate any recovered stream offline. | Medium; bytes absent here | No |

@@ -245,9 +245,13 @@ the minimal image, so live pinmux detail was unavailable in this pass.
 
 The next experiment should remain **offline and read-only**:
 
-1. Write a host-only parser for the recovered preconstructed Z2 packet. It
-   must validate the `0xe118` framing and Apple acknowledgement assumptions
-   from the disassembly before any Linux transport code is considered.
+1. Use the [host-only identity/envelope inspector](../boot/inspect_j81_touch.py)
+   to extract and verify the recovered asset (implemented 2026-10-04; synthetic
+   tests pass, actual Apple asset not available in that environment). Recover
+   the internal `0xe118` length/address/checksum fields and Apple ACK success
+   predicate from matching disassembly, then implement a wire parser. The
+   inspector deliberately reports `transport_ready: false`; identity alone
+   does not close this gate before Linux transport code is considered.
 2. Recover the J81 SPI mode/rate, raw X/Y maxima, calibration envelope, and
    the missing KLCT gate index from Apple artifacts. Treat each as unresolved
    until two independent observations agree where possible.

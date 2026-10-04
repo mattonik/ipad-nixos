@@ -1,6 +1,19 @@
 # iPad Linux Project Status
 
-Status date: 2026-09-21
+Latest software update: 2026-10-04. Dated hardware records below are retained;
+this update does not add a hardware test.
+
+## Offline touch asset validation, 2026-10-04
+
+Added [`boot/inspect_j81_touch.py`](../boot/inspect_j81_touch.py) for bounded
+local inspection and private extraction of the recorded J81 `12B410` touch
+asset. XML/binary plist metadata, exact payload identity, marker and size are
+checked before extraction. Fifteen synthetic-only unittest methods pass;
+the actual private Apple asset is not available in this environment. The
+kernel, device tree and boot payload are unchanged. The packet's internal
+layout/checksums and boot ACK still require matching disassembly, so the
+inspector explicitly reports `transport_ready: false`. See the
+[firmware audit](../research/j81-private-firmware-assets.md#host-only-identityenvelope-inspector-2026-10-04).
 
 ## 🎉 USB networking resolved -- real remote shell access to the device (2026-09-08)
 
