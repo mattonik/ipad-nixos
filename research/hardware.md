@@ -160,7 +160,7 @@ the Wi-Fi board DT.
 - **Function**: Audio DAC/ADC codec
 - **DAC resolution**: Approximately 18-bit effective dynamic range (measured)
 - **Max sample rate**: 48 kHz (may be a software limitation; hardware potentially supports higher)
-- **Interface to SoC**: I2S (Inter-IC Sound), with I2C control bus
+- **Interface to SoC**: Separate PCM and control paths. The public J82 sibling ADT puts CS42L81 control on **SPI1**, with PCM on MCA0; confirm the same parents in the private J81 ADT before implementation. See [the pinned topology audit](j81-audio-sensors-source-survey.md).
 
 ### Amplifier
 
@@ -266,7 +266,7 @@ the Wi-Fi board DT.
 - **Chip**: NXP Semiconductors LPC18B1UK (Apple M8 Motion Coprocessor)
 - **Core**: ARM Cortex-M3
 - **Function**: Always-on, low-power sensor hub. Aggregates accelerometer, gyroscope, compass, and barometer data.
-- **Interface to SoC**: Likely SPI or I2C
+- **Interface to SoC**: Public J82 sibling ADT places `oscar` under **UART8**; verify against J81. Firmware and message framing remain unresolved. See [the transport audit](j81-audio-sensors-source-survey.md).
 
 ### Accelerometer
 
@@ -291,10 +291,9 @@ the Wi-Fi board DT.
 
 ### Ambient Light Sensor
 
-- **Chip**: Not definitively identified from public teardowns
-- **Likely candidate**: AMS/TAOS (now ams-OSRAM) or Broadcom APDS series
+- **Chip**: Vendor model unconfirmed; the public J82 ADT identifies two `als,ct819` nodes. Do not infer an APDS/TAOS register map from that name.
 - **Function**: Measures ambient light for auto-brightness
-- **Interface**: I2C
+- **Interface**: J82 places both nodes directly on I2C2, outside the Oscar motion hub. Their J81 topology and protocol still require confirmation; see [the pinned audit](j81-audio-sensors-source-survey.md).
 
 ### Compass (Magnetometer)
 
