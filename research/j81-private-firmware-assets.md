@@ -216,6 +216,14 @@ endpoint. C2/C4 selection and old J81 calibration remain separate unresolved
 requirements. D2207 GPIO3 REG_ON is still the earlier hardware blocker, as
 recorded in the corrected PCIe Stage 5H findings.
 
+**Source-recovery update, 2026-10-04:** The
+[BCM4350 NVM shadow audit](j81-bcm4350-otp-source-audit.md) locates an older
+Broadcom reader explicitly accepting BCM4350/BCM4345 and a newer cross-check.
+They establish a ChipCommon shadow at core-relative `0x800–0xbff`, with
+register-derived sizing and core-revision-dependent handling. J81's actual
+core revision, strap state and Apple record offset remain unobserved; this
+does not justify copying BCM4355's `0x8c0` start or adding a live reader yet.
+
 ### Wi-Fi evidence gate
 
 1. Enumerate the PCI endpoint without `brcmfmac` or firmware.
