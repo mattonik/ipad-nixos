@@ -17,6 +17,7 @@ import sys
 ROOT = Path(__file__).resolve().parent.parent
 # Explicit list: newly added test scripts are reviewed before auto-execution.
 HOST_TESTS = (
+    "boot/test_analyze_touch_capture.py",
     "boot/test_bt_probe.py",
     "boot/test_dump_adt.py",
     "boot/test_inspect_j81_touch.py",
