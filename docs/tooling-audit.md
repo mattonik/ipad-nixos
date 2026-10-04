@@ -63,9 +63,11 @@ python3 tools/check_offline.py \
 Unavailable optional checks are printed as `SKIP` with their requirements.
 `--require-all` makes any skip an error; use it for a fully provisioned
 validation session. `--verbose` prints successful test diagnostics too.
-Default host-only validation passed 13 scripts, with four explicit optional
-skips. Source-enabled validation passed 15 scripts, with two built-artifact
-skips. These counts are scripts, not individual unittest cases or fuzz inputs.
+Default host-only validation initially passed 13 scripts, with four explicit
+optional skips. The subsequent touchscreen harness adds a fifth optional
+check: supply `--z2-source /path/to/pinned/apple_z2.c` to include it. With both
+source arguments, validation passes 16 scripts with two built-artifact skips.
+These counts are scripts, not individual unittest cases or fuzz inputs.
 The script runner's own checks exercise child exit failure, timeout handling
 and preservation of assertions.
 
