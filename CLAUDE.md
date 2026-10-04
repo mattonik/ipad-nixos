@@ -502,7 +502,12 @@ driver family belongs only to an unrelated GPU test-mode routine;
 GPIO/LDO code never reaches it. Conclusion: the earlier "ACK but no
 effect" isn't a framing bug -- it's a runtime ownership/lock condition
 invisible to static analysis. **Do not repeat the write or try
-alternate byte patterns.** The only next experiment that adds evidence
+alternate byte patterns.**
+
+**Corrected 2026-10-04: that conclusion was wrong.** The write targeted
+`0x03e6`, but Apple's `_index2GPIOAddress` puts GPIO 0-16 at `0x0400+i`
+(GPIO2 `0x0402`, GPIO3 `0x0403`). Writing `0x0b` to `0x0403` persisted on
+hardware. See `research/j81-d2207-gpio-register-correction.md`. The only next experiment that adds evidence
 is passive SDA/SCL logic-analyzer capture during a real iPadOS
 Bluetooth toggle -- which needs a logic analyzer, running into the
 standing no-new-hardware rule; flag this to Martin rather than assuming

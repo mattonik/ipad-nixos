@@ -108,6 +108,35 @@ read the PMU over `i2ctransfer`. No writes were issued.
   result and is still undecoded, but the observed `0x09`/`0x0b` pair matches
   the formula without it.
 
+## Live write result, 2026-10-04: REG_ON assert persists
+
+With explicit approval, one write was issued in a recorded session:
+`i2ctransfer -f -y 0 w3@0x3c 0x04 0x03 0x0b` (register `0x0403`, data `0x0b`).
+
+```text
+baseline  0x0403 = 0x09   0x0063 = 0x20
+immediate 0x0403 = 0x0b   0x0063 = 0x20
++1 s      0x0403 = 0x0b
++6 s      0x0403 = 0x0b
+```
+
+- **The write persisted**, unlike every earlier attempt, which targeted
+  `0x03e6`. This confirms the corrected register map and the `0x09`/`0x0b`
+  (`b & 0x1d | 0x02`) model. The earlier "runtime ownership/lock" hypothesis
+  is withdrawn.
+- `0x0063` stays `0x20`. That is expected: Apple's data read first switches the
+  pin to input mode (`FUN_ffffff8002b49d44(pin, 1)`), so the data register is
+  not a level readback of an output pin. Do not read it as "pin still low".
+- A PCIe rescan at +1 s and +6 s found nothing beyond the root port. Expected:
+  the host sequence (PERST release and link start) ran at boot with the chip
+  unpowered. Apple's order is REG_ON, 100 ms, then PCIe port enable.
+- State left asserted (`0x0403 = 0x0b`) for the next step. Restore value is
+  `0x09`.
+
+Next evidence step: reboot into the same payload **without** restoring and read
+`0x0403` immediately after boot. If the PMU keeps the setting across the AP
+reset, the existing PCIe sequence runs with the chip already powered.
+
 ## Proposed evidence ladder (step 1 now done)
 
 1. **Read-only, existing payload.** Dump `0x0400-0x0414` (21 bytes) and data
