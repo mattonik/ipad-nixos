@@ -287,3 +287,8 @@ cannot silently gain the driver.
 
 Each boot of the self-test payload (H1) is its own hardware decision and writes the usual one PMU
 byte (`0x0403`).
+
+### 12.1 Build result (2026-10-05)
+
+`m1n1-hoolock-pcie-j81-msi-selftest` (0052-0058) compiles cleanly and passes
+`boot/verify_pcie_j81_reg_on_payload.py DIR --msi-selftest`. `result` points at it. **Not booted**; H1 needs its own go-ahead.
