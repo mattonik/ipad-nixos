@@ -221,3 +221,13 @@ enumeration be the success outcome. Keep Gen1 / 2.5 GT/s, add no new MMIO sequen
 PMU action and no Bluetooth work; retain comments that separate recovered writes from
 unresolved parts. Pending hardware tests before it: the GPIO55 `display_sync` pinmux
 experiment (touch-SPI payload). It needs its own boot review before any hardware run.
+
+## 2026-10-05 hardware: GPIO55 `display_sync` pinmux result
+
+The experiment ran and restored exactly (`0x00072a82` -> `0x00072aa2` -> `0x00072a82`);
+the pad reads high while muxed. The controller's response did not change: the same
+mode-2 idle pattern (`f0 01 f1 01 ...`) and the same falling boot IRQ. All non-firmware
+preconditions are now tried (power order, reset, clock, SPI mode/rate, download mode
+optional, `display_sync` pinmux). The next touch step is the firmware decision, which is
+the user's alone. Queued after the hardware tests: the PCIe link-wait (DLLLA) cleanup.
+See `j81-touch-diagnostic.md`, "Hardware result 3".

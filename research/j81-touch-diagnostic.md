@@ -175,3 +175,44 @@ booted**.
 
 Expected value: a tightly scoped comparison against the existing SPI idle-pattern
 result, not a claim that touch will work.
+
+## Hardware result 3, 2026-10-05: GPIO55 `display_sync` pinmux experiment
+
+Payload `m1n1-hoolock-touch-spi` (build `7aa9227`), cold boot, recorded session (private).
+Before the run: `plan`, `status`, `spi-check` (mode 2, 1.984 MHz, exit 0) and the
+no-`--execute` guard (prints the plan, changes nothing); GPIO55 read `0x00072a82`
+(`PERIPH = 0`). The user then ran, with the go-ahead, over SSH:
+`touch-diag run --execute --approve-pmu-write --spi-dev /dev/spidev0.0
+--display-sync-pinmux --approve-display-sync-pinmux` (default mode 2).
+
+```text
+step 4b: saved word 0x00072a82; requested field 0x220, wrote 0x00072aa2, readback 0x00072aa3
+step 5 dummy: rx 00 x 16
+step 6: IRQ edge (falling) after ~0 ms
+wake      rx f0 01 f1 01 f1 01 f1 01 f1 01 f1 01 f1 01 f1 01
+atn-short rx f0 01
+atn-long  rx f0 01 f1 01 f1 01 f1 01
+unwind: GPIO55 word restored 0x00072a82 (saved 0x00072a82)  ... LDO14 0x00, clock gated
+```
+
+- **The mux took effect and restoration was exact.** The write set `PERIPH = 1`
+  (`0x00072aa2`); the readback differed only in bit 0, the data/level bit
+  (`0x00072aa3`), i.e. the pad reads **high** while muxed to function 1 (an input read of
+  the peripheral-driven line; its source is **U**). The word was restored to
+  `0x00072a82` byte-exactly and re-read the same in `status` afterwards.
+- **No change in the controller's response.** RX is byte-for-byte the mode-2 idle pattern
+  of runs D and E (`f0 01 f1 01 ...`); the boot IRQ fell as before. So selecting
+  peripheral function 1 on GPIO55 alone does **not** change the ROM's answer to our
+  handshake frames, and it is not what the idle pattern is waiting for (**I**).
+- Post-run `status`: LDO14 off (`0x00`, voltage `0x14`), clock gated (divider 732 left
+  as in earlier runs), GPIO82/95 low, GPIO51 unchanged, GPIO84 `0x0000038f` (the usual
+  post-IRQ word), charging limit still 2400000. No frame beyond the three handshakes was
+  sent; no firmware.
+
+## What this leaves
+
+The three non-firmware preconditions are now exhausted: power order, reset, clock, SPI
+mode/rate/chip select, `enable_download` (optional) and `display_sync` pinmux all leave
+the same constant ROM pattern. The remaining candidate for putting the controller in a
+state that answers is **sending Apple's first packet (the constructed firmware)**, which is
+the user's separate, explicit decision and needs the private asset. Not started.
