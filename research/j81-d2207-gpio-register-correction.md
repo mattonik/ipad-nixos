@@ -283,3 +283,34 @@ assert); recorded session (private), read-only checks over telnet.
 
 DLLLA is now the production link-success signal in this staging driver. The inherited
 `0040`-`0045` test-stage writes and logs remain (not part of this task).
+
+## Hardware result, 2026-10-05: clean-driver series step 2 (patch `0054`) behaves identically
+
+Payload `m1n1-hoolock-pcie-j81-clean` (`0052`-`0054`, commit `abbc09a`), cold boot with the
+user's go-ahead (its only PMU write is the board-gated `0x0403` assert); recorded session
+(private), read-only checks over telnet.
+
+- **Same behaviour as the DLLLA payload.** `J81 Wi-Fi REG_ON: 0x0403 0x09 -> 0x0b` at
+  0.1317 s; `t7000-pcie: link active=1 lnksta=0x3011` at **0.3494 s** (the DLLLA run had
+  0.3574 s; boot-to-boot variation); the root port enumerates at 0.3513 s and the BCM4350
+  (`14e4:43a3`, class `0x028000`, rev `0x05`) at 0.3579 s, IOMMU group 0, `lspci` lists
+  both. Same benign `retraining failed` and `iommu-map id 0x8` lines. No error, AER, oops
+  or WARNING lines.
+- **Config space identical:** root port `LnkCap = 0x00733812` (5.0 GT/s x1, DLLLARC set,
+  ASPM L1 only, i.e. the `dbi-overrides` LnkCap RMW took effect as before), `LnkSta =
+  0x7011` (2.5 GT/s x1, DLLLA 1, training 0), `LnkCtl2 = 0x0001`; endpoint `LnkCap =
+  0x0046dc11` (2.5 GT/s x1), `LnkSta = 0x1011`. This is the on-device confirmation of what
+  `kernel/test_pcie_write_sequence.py` proves on the host: the cleaned driver performs the
+  same register sequence.
+- **The log is quiet.** The default log now carries only the `REG_ON` line, the host-bridge
+  ranges, and `t7000-pcie: link active=1 lnksta=0x3011`; every register dump moved to debug
+  level.
+- **The dumps are still switchable:** `CONFIG_DYNAMIC_DEBUG` is on; the debugfs
+  `dynamic_debug/control` lists **17** `pcie-apple-t7000.c` call sites, all disabled by
+  default. Probe-time output would need the `dyndbg="file pcie-apple-t7000.c +p"` kernel
+  parameter (probe runs at 0.13 s, before userspace); not exercised here.
+- Nothing written beyond the kernel's own `0x0403` assert; no chip memory, firmware,
+  OTP/NVRAM or Bluetooth action. `0x0402` not read (no I2C tools in this payload).
+
+The refactor is behaviour-neutral on hardware as well as in the host trace. The doorbell
+variant (`0055`) is built next and not yet booted.

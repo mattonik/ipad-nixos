@@ -279,3 +279,21 @@ wrongly says the preflight session predates the feature: it does not (`7aa9227` 
 ancestor of `770b03a`, and that payload contains the flag), so the run's payload identity
 is established by same-boot continuity. Suggested builder addition: a write-sequence
 fingerprint test for the clean-driver series.
+
+## 2026-10-05 clean-driver series (steps 1-3): implemented; step 2 hardware-confirmed
+
+- **Step 1 (`fa5d60e`, strengthened in `abbc09a`):** `kernel/test_pcie_write_sequence.py` + `kernel/pcie_trace/`
+  compile the real driver against a stub kernel API and compare the ordered trace of every
+  MMIO read and write, PMU write, GPIO action and delay with the hardware-proven `0053` driver
+  (golden trace). Zero and all-ones fake registers make masks visible; `dev_info` evaluates its
+  arguments and `dev_dbg` does not, like the kernel, so a read moved into a debug call is caught.
+  Verified to fail on a changed mask, set-value, delay, tail value, the Gen1 write, a reorder and a
+  hidden read.
+- **Step 2 (`0054`, `m1n1-hoolock-pcie-j81-clean`):** behaviour-neutral clean-up (durable header and
+  log names, dumps at debug level with their reads kept in locals). Host trace byte-identical to
+  `0053`; **booted 2026-10-05: same register state and enumeration** (see
+  `j81-d2207-gpio-register-correction.md`).
+- **Step 3 (`0055`, `m1n1-hoolock-pcie-j81-doorbell`):** the Apple DART reserves the MSI doorbell page
+  from the controller node's `apple,msi-doorbell` (`0xbffff000` on J81) with the old Kconfig value
+  as fallback; also repairs `0052`'s unterminated binding example (its hunk header undercounts by
+  one line). Built, not booted.
