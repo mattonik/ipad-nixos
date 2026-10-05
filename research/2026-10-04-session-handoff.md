@@ -297,3 +297,13 @@ fingerprint test for the clean-driver series.
   from the controller node's `apple,msi-doorbell` (`0xbffff000` on J81) with the old Kconfig value
   as fallback; also repairs `0052`'s unterminated binding example (its hunk header undercounts by
   one line). Built, not booted.
+
+## 2026-10-05 hardware: per-controller DART doorbell (`0055`)
+
+Booted `m1n1-hoolock-pcie-j81-doorbell`: the BCM4350's IOMMU group now reserves **`0xbffff000`**
+(`msi`) instead of the M1 page `0xfffff000` that the clean payload reserved; the value comes from
+`apple,msi-doorbell` on the PCIe node (`00 00 00 00 bf ff f0 00` on the running tablet). Link
+state and enumeration are unchanged. Open: DART pass-through vs IOVA mapping of the doorbell
+(needs an MSI-raising endpoint). Clean-driver series status: step 1 harness, step 2 `0054` and
+step 3 `0055` are all hardware-confirmed behaviour-neutral/effective as designed. See
+`2026-10-05-review-pcie-audit-msi-and-evidence.md`.

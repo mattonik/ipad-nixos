@@ -131,3 +131,31 @@ and nowhere else, the property lookup present in the kernel). Against the clean 
 `0x00000000bffff000 0x00000000bffffffff msi` instead of the `0xfffff000` line, with link,
 enumeration and config space unchanged. Whether J81's DART lets an endpoint write to the
 doorbell untranslated is still **unknown** and is not testable until an endpoint raises an MSI.
+
+## Hardware result 2026-10-05: per-controller DART doorbell (`0055`) takes effect
+
+Payload `m1n1-hoolock-pcie-j81-doorbell` (`0052`-`0055`, build verified above), cold boot with
+the user's go-ahead (its only PMU write is the board-gated `0x0403` assert); recorded session
+(private), read-only checks over telnet.
+
+| | clean payload (`0054`) | doorbell payload (`0055`) |
+| --- | --- | --- |
+| endpoint IOMMU group 0 `reserved_regions` | `0x00000000fffff000 0x00000000ffffffff msi` | **`0x00000000bffff000 0x00000000bfffffff msi`** |
+
+- The DART now reserves **J81's own doorbell page** for the BCM4350's group, exactly as
+  predicted; the M1 page `0xfffff000` is no longer reserved. The device tree on the running
+  tablet carries the property (`/proc/device-tree/soc/pcie@610000000/apple,msi-doorbell` =
+  `00 00 00 00 bf ff f0 00`), so the value came from the controller node, not Kconfig.
+- Nothing else changed: `REG_ON 0x0403 0x09 -> 0x0b` at 0.1346 s, `link active=1
+  lnksta=0x3011` at 0.3494 s, root port `106b:1002` and endpoint `14e4:43a3` (rev `0x05`) enumerate
+  at 0.351 s / 0.358 s, root port `LnkCap 0x00733812` / `LnkSta 0x7011` / `LnkCtl2 0x0001`,
+  endpoint `LnkSta 0x1011`. Same benign `retraining failed` and `iommu-map id 0x8` lines; no
+  error, AER, DART fault, oops or WARNING lines. `lspci` lists both devices.
+- Still **unknown** (not testable without an endpoint that raises an MSI): whether J81's DART
+  passes a write to `0xbffff000` through untranslated or needs an IOVA mapping, i.e. how the
+  future MSI compose function must form the message address.
+
+This closes the DART-doorbell gap identified in the review as far as it can be closed without
+an MSI domain. The remaining MSI-domain design points (32 global slots with only `8..15`
+allocatable, data equal to the slot, AIC parent `224 + slot`, domain created before
+`pci_host_probe()`) are unchanged.
