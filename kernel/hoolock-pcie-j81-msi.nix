@@ -1,3 +1,5 @@
+# 0057 adds the one-vector MSI parent domain (MSI_CHIP_FLAG_SET_EOI, slots 8..15 of AIC 224..255,
+# doorbell 0xbffff000) together with the msi-controller/msi-parent/msi-ranges DT properties.
 # Head of the MSI series (grows with each patch): 0052-0055 plus 0056, which derives the
 # per-port MSI register values (+0x124/+0x128) from the port base/count constants. 0056 is
 # behaviour-neutral: the write/read/delay trace is pinned identical by
@@ -60,6 +62,7 @@ let
     patch -d "$out" -p1 < ${./patches/0054-pcie-apple-t7000-clean-up.patch}
     patch -d "$out" -p1 < ${./patches/0055-apple-dart-per-controller-msi-doorbell.patch}
     patch -d "$out" -p1 < ${./patches/0056-pcie-apple-t7000-derive-msi-port-values.patch}
+    patch -d "$out" -p1 < ${./patches/0057-pcie-apple-t7000-msi-domain.patch}
   '';
   buildArgs = builtins.removeAttrs args [ "source" "hoolockConfig" "runCommand" ];
 in

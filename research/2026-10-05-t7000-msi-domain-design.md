@@ -192,3 +192,40 @@ Series state: `0056` (derive the register values from base/count) is implemented
 (zero-fuzz apply, real driver compiled in the trace harness with the new `static_assert`s, trace
 identical to golden) and built as `m1n1-hoolock-pcie-j81-msi`. `0057` (the domain, atomic with
 the DT) and `0058` (H1 self-test driver, test variant only) follow.
+
+## 10. `0057` implemented and host-verified (2026-10-05)
+
+`kernel/patches/0057-pcie-apple-t7000-msi-domain.patch` applies with zero fuzz on top of `0056`
+and changes five files atomically (driver, Kconfig, `t7001.dtsi` comment, `t7001-air2.dtsi`,
+binding): the DT's `msi-controller`/`msi-parent`/`msi-ranges` exist only together with the
+domain that serves them.
+
+What it implements, matching sections 3-5:
+
+- a parent domain created with `msi_create_parent_irq_domain()` on the AIC (found by
+  `irq_find_matching_fwspec(..., DOMAIN_BUS_WIRED)`; the probe returns `-EPROBE_DEFER` if the AIC
+  is not up yet), created **before** `pci_host_common_init()` so the root bus inherits it;
+- one 32-bit slot bitmap with all slots reserved except the port's window 8..15; every
+  allocation takes exactly one slot, `nr_irqs != 1` is refused (`-EINVAL`);
+- message = (`apple,msi-doorbell`, slot number); AIC line = 224 + slot; the slot is returned if
+  the parent allocation fails or when the vector is freed;
+- `supported_flags = MSI_GENERIC_FLAGS_MASK` only: no `MSI_FLAG_MULTI_PCI_MSI`, no MSI-X;
+  `MSI_CHIP_FLAG_SET_EOI` because the AIC child needs the EOI chained;
+- no register is written for MSI (the doorbell `+0x168` stays hardware-default) and the unchanged
+  PCIe write sequence is byte-identical to the `0053` golden trace.
+
+Evidence (all host-side, no hardware):
+
+| Check | Result |
+| --- | --- |
+| zero-fuzz apply on the `0056` tree | pass |
+| default trace (MSI not declared) vs `golden-0053.trace` | identical |
+| `kernel/test_pcie_msi_domain.py` (250-line golden `golden-msi.trace`) | pass: ordering REG_ON -> parent lookup -> domain -> host init; 8 allocations take slots 8..15 on AIC 232..239, the 9th returns `-ENOSPC`; compose = `0x00000000_bffff000` / data 11; free + re-alloc; two-vector request refused; parent failure returns the slot; no-AIC defers; wrong vector count and missing doorbell fail without leaving a domain |
+| nine one-line mutations of the driver (window at slot 0, wrong doorbell, local-index data, parent line ignoring the slot, multi-vector allowed, slot leak on parent failure, domain after host init, multi-MSI flag, doorbell register write) | all caught |
+
+Not proven by the host harness: that the real `msi_create_parent_irq_domain`/`msi_lib` accept
+these flags (the build of `m1n1-hoolock-pcie-j81-msi` is the compile gate), that a J81 device's
+write reaches the AIC through the DART, and edge-vs-level behaviour (U2, U3). Those are the H0/H1
+hardware gates and still need the user's go-ahead.
+
+Next: `0058` (H1 self-test, test kernel only) and the read-only `+0x168` dump diagnostic.

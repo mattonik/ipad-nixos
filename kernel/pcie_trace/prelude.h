@@ -26,7 +26,10 @@ typedef uint64_t u64;
 #define ENOMEM 12
 #define EIO 5
 #define ENODEV 19
+#define ENOSPC 28
 #define EPROBE_DEFER 517
+#define GFP_KERNEL 0
+#define WARN_ON_ONCE(x) (x)
 #define PCIE_RESET_CONFIG_WAIT_MS 100
 
 /*
@@ -112,4 +115,84 @@ void msleep(unsigned int ms);
 extern unsigned long jiffies;
 #define msecs_to_jiffies(ms) ((unsigned long)(ms))
 #define time_before(a, b) ((long)((a) - (b)) < 0)
+
+/* ---- bitmap, mutex, IRQ domains, MSI ---- */
+#define DECLARE_BITMAP(name, bits) unsigned long name[((bits) + 63) / 64]
+void bitmap_fill(unsigned long *bitmap, unsigned int nbits);
+void bitmap_clear(unsigned long *bitmap, unsigned int start, unsigned int nbits);
+int bitmap_find_free_region(unsigned long *bitmap, unsigned int bits, int order);
+void bitmap_release_region(unsigned long *bitmap, unsigned int pos, int order);
+struct mutex { int unused; };
+#define mutex_init(m) do { (void)(m); } while (0)
+#define mutex_lock(m) do { (void)(m); } while (0)
+#define mutex_unlock(m) do { (void)(m); } while (0)
+#define upper_32_bits(n) ((u32)(((n) >> 16) >> 16))
+#define lower_32_bits(n) ((u32)((n) & 0xffffffffu))
+
+struct fwnode_handle { int unused; };
+struct irq_domain;
+struct irq_chip;
+struct msi_msg { u32 address_lo; u32 address_hi; u32 data; };
+struct irq_fwspec { struct fwnode_handle *fwnode; int param_count; u32 param[16]; };
+struct irq_data { unsigned long hwirq; void *chip_data; const struct irq_chip *chip; };
+struct irq_chip {
+	const char *name;
+	void (*irq_mask)(struct irq_data *);
+	void (*irq_unmask)(struct irq_data *);
+	void (*irq_eoi)(struct irq_data *);
+	int (*irq_set_affinity)(struct irq_data *, const void *, bool);
+	int (*irq_set_type)(struct irq_data *, unsigned int);
+	void (*irq_compose_msi_msg)(struct irq_data *, struct msi_msg *);
+};
+void irq_chip_mask_parent(struct irq_data *d);
+void irq_chip_unmask_parent(struct irq_data *d);
+void irq_chip_eoi_parent(struct irq_data *d);
+int irq_chip_set_affinity_parent(struct irq_data *d, const void *m, bool f);
+int irq_chip_set_type_parent(struct irq_data *d, unsigned int t);
+struct irq_domain_ops {
+	int (*alloc)(struct irq_domain *, unsigned int, unsigned int, void *);
+	void (*free)(struct irq_domain *, unsigned int, unsigned int);
+};
+struct irq_domain { const struct irq_domain_ops *ops; void *host_data; };
+struct irq_domain_info {
+	struct fwnode_handle *fwnode;
+	unsigned int size;
+	const struct irq_domain_ops *ops;
+	void *host_data;
+	struct irq_domain *parent;
+};
+struct msi_parent_ops {
+	unsigned long supported_flags;
+	unsigned long required_flags;
+	unsigned long chip_flags;
+	int bus_select_token;
+	bool (*init_dev_msi_info)(struct device *, struct irq_domain *, struct irq_domain *, void *);
+};
+#define MSI_GENERIC_FLAGS_MASK 0x0fUL
+#define MSI_FLAG_USE_DEF_DOM_OPS (1UL << 0)
+#define MSI_FLAG_USE_DEF_CHIP_OPS (1UL << 1)
+#define MSI_FLAG_PCI_MSI_MASK_PARENT (1UL << 9)
+#define MSI_FLAG_MULTI_PCI_MSI (1UL << 20)
+#define MSI_FLAG_PCI_MSIX (1UL << 21)
+#define MSI_CHIP_FLAG_SET_EOI (1UL << 0)
+#define DOMAIN_BUS_WIRED 1
+#define DOMAIN_BUS_PCI_MSI 2
+bool msi_lib_init_dev_msi_info(struct device *dev, struct irq_domain *domain, struct irq_domain *real_parent, void *info);
+struct irq_domain *msi_create_parent_irq_domain(struct irq_domain_info *info, const struct msi_parent_ops *ops);
+struct irq_domain *irq_find_matching_fwspec(struct irq_fwspec *fwspec, int bus_token);
+int irq_domain_alloc_irqs_parent(struct irq_domain *domain, unsigned int virq, unsigned int nr, void *arg);
+void irq_domain_free_irqs_parent(struct irq_domain *domain, unsigned int virq, unsigned int nr);
+int irq_domain_set_hwirq_and_chip(struct irq_domain *domain, unsigned int virq, unsigned long hwirq, const struct irq_chip *chip, void *chip_data);
+struct irq_data *irq_domain_get_irq_data(struct irq_domain *domain, unsigned int virq);
+#define irq_data_get_irq_chip_data(d) ((d)->chip_data)
+void irq_domain_remove(struct irq_domain *domain);
+struct of_phandle_args { struct device_node *np; int args_count; u32 args[16]; };
+bool of_property_read_bool(const struct device_node *np, const char *name);
+int of_property_read_u64(const struct device_node *np, const char *name, u64 *out);
+int of_property_read_u32_index(const struct device_node *np, const char *name, u32 index, u32 *out);
+int of_parse_phandle_with_args(const struct device_node *np, const char *list, const char *cells, int index, struct of_phandle_args *out);
+void of_phandle_args_to_fwspec(struct device_node *np, const u32 *args, unsigned int count, struct irq_fwspec *fwspec);
+struct fwnode_handle *dev_fwnode(struct device *dev);
+void *devm_kzalloc(struct device *dev, size_t size, int gfp);
+int devm_add_action_or_reset(struct device *dev, void (*action)(void *), void *data);
 #endif

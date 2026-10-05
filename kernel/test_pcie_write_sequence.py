@@ -27,10 +27,12 @@ HARNESS = HERE / "pcie_trace"
 GOLDEN = HARNESS / "golden-0053.trace"
 HEADERS = ("linux/bitops.h", "linux/build_bug.h", "linux/log2.h", "linux/delay.h", "linux/err.h", "linux/gpio/consumer.h", "linux/i2c.h",
            "linux/io.h", "linux/jiffies.h", "linux/module.h", "linux/of.h", "linux/of_address.h",
-           "linux/pci-ecam.h", "linux/platform_device.h", "linux/regmap.h")
+           "linux/pci-ecam.h", "linux/platform_device.h", "linux/regmap.h",
+           "linux/bitmap.h", "linux/irqchip/irq-msi-lib.h", "linux/irqdomain.h", "linux/msi.h",
+           "linux/mutex.h", "linux/of_irq.h")
 
 
-def run_trace(source: Path) -> str:
+def run_trace(source: Path, *args: str) -> str:
     cc = shutil.which("cc") or shutil.which("gcc") or shutil.which("clang")
     assert cc, "no C compiler"
     with tempfile.TemporaryDirectory(prefix="pcie-trace-") as tmp:
@@ -48,7 +50,7 @@ def run_trace(source: Path) -> str:
              f'-DDRIVER_SOURCE="{tmp / "src" / "pcie-apple-t7000.c"}"', str(HARNESS / "main.c"),
              "-o", str(binary)], capture_output=True, text=True)
         assert build.returncode == 0, build.stdout + build.stderr
-        result = subprocess.run([str(binary)], capture_output=True, text=True)
+        result = subprocess.run([str(binary), *args], capture_output=True, text=True)
         assert result.returncode == 0, f"probe failed in the harness:\n{result.stdout}\n{result.stderr}"
         return result.stdout
 

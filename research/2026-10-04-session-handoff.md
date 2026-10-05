@@ -321,3 +321,18 @@ controller (32 vectors at AIC 224) as a child of the AIC; J81's tail unmasks exa
 `LINK_UP/LINK_DOWN/MSI_ERR/MSI_BAD_DATA/CPL_TIMEOUT` events. Series proposed: `0056` (derive the
 register values from base/count; trace-identical), `0057` (domain + DT, one atomic change), `0058`
 (self-test driver, test kernel only). Three user decisions are listed at the end of the design.
+
+## Update 2026-10-05 (late): MSI series 0056 and 0057
+
+- `0056` derives `+0x124`/`+0x128` from the port base/count constants (trace identical to golden).
+- `0057` adds the one-vector MSI parent domain atomically with the DT properties; design record
+  and evidence table in `research/2026-10-05-t7000-msi-domain-design.md` section 10. Host
+  harness: `kernel/test_pcie_msi_domain.py` (+ `kernel/test_pcie_msi_domain_patch.py`, registered
+  in `tools/check_offline.py` via `--pcie-j81-msi-source`).
+- Payload `m1n1-hoolock-pcie-j81-msi` now carries 0052-0057. Verify with
+  `python3 boot/verify_pcie_j81_reg_on_payload.py DIR --msi`. **Not booted.** The next hardware
+  step (H0: read-only boot, check `/sys/kernel/debug/irq/domains`, the `t7000-pcie: MSI domain:`
+  line, unchanged link/enumeration) needs the user's explicit go-ahead; it writes the usual one
+  PMU byte (`0x0403`).
+- Still open: `0058` H1 self-test (test variant), the read-only `+0x168` dump, whether the DART
+  passes the doorbell write, edge vs level, port-event interrupt handling.

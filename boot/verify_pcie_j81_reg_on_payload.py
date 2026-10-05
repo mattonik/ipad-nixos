@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """Static verification of the Wi-Fi-only J81 REG_ON staging payload (stdlib only).
 
-Usage: python3 boot/verify_pcie_j81_reg_on_payload.py PAYLOAD_DIR [--dllla | --clean | --doorbell]
+Usage: python3 boot/verify_pcie_j81_reg_on_payload.py PAYLOAD_DIR [--dllla | --clean | --doorbell | --msi]
 
 --dllla additionally requires the 0053 DLLLA link-wait strings and rejects the old
 `link-wait-test: link_up=` poll output. --clean (patch 0054) requires the durable
 `t7000-pcie: link active=` string and rejects every test-stage log prefix. --doorbell
-(patch 0055) is --clean plus the PCIe node's `apple,msi-doorbell` = 0xbffff000.
+(patch 0055) is --clean plus the PCIe node's `apple,msi-doorbell` = 0xbffff000. --msi (patch
+0057) is --doorbell plus the one-vector MSI domain: `msi-controller`, `msi-parent` and `msi-ranges`
+(AIC 224, 32 vectors, edge) on the PCIe node and the driver's domain string.
 
 Checks the built `m1n1-hoolock-pcie-j81-reg-on` output without any device:
 checksums and m1n1-linux.bin composition; the DTB names the D2207 PMIC for the PCIe
@@ -72,7 +74,8 @@ def fdt_nodes(blob):
 def main(argv):
     payload = Path(argv[1])
     flags = set(argv[2:])
-    doorbell = "--doorbell" in flags
+    msi = "--msi" in flags
+    doorbell = "--doorbell" in flags or msi
     clean = "--clean" in flags or doorbell
     dllla = "--dllla" in flags or clean
     problems = []
@@ -150,6 +153,26 @@ def main(argv):
             if struct.unpack(">II", value) != (0, 0xBFFFF000):
                 problems.append(f"apple,msi-doorbell is {value.hex()}, expected 00000000bffff000")
 
+    if msi:
+        pcie = [p for p in nodes if p.endswith("pcie@610000000")]
+        props = nodes[pcie[0]] if len(pcie) == 1 else {}
+        if "msi-controller" not in props:
+            problems.append("PCIe node lacks msi-controller")
+        if "msi-parent" in props:
+            handle = struct.unpack(">I", props["msi-parent"])[0]
+            if nodes[pcie[0]].get("phandle") != struct.pack(">I", handle):
+                problems.append("msi-parent does not point at the PCIe node itself")
+        else:
+            problems.append("PCIe node lacks msi-parent")
+        ranges = props.get("msi-ranges", b"")
+        cells = struct.unpack(f">{len(ranges) // 4}I", ranges) if ranges and len(ranges) % 4 == 0 else ()
+        # <&aic type=0 irq=224 flags=1 (edge rising) count=32>
+        if len(cells) != 5 or cells[1:] != (0, 224, 1, 32):
+            problems.append(f"msi-ranges is {cells}, expected <&aic 0 224 1 32>")
+        for needle in (b"t7000-pcie: MSI domain:", b"apple,msi-doorbell"):
+            if needle not in image:
+                problems.append(f"kernel lacks {needle.decode()!r}")
+
     if problems:
         print("FAIL")
         for p in problems:
@@ -157,7 +180,9 @@ def main(argv):
         return 1
     print("PASS: checksums, composition, DT phandle (PCIe node only, resolves to D2207),")
     print("      no btattach/I2C tools in the initramfs, board-gated REG_ON strings only")
-    if doorbell:
+    if msi:
+        print("      one-vector MSI domain declared on the PCIe node (msi-ranges AIC 224 x32); doorbell 0xbffff000")
+    elif doorbell:
         print("      clean-up strings only; per-controller MSI doorbell 0xbffff000 on the PCIe node")
     elif clean:
         print("      clean-up strings only (no test-stage log prefixes)")
@@ -169,6 +194,6 @@ def main(argv):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) not in (2, 3) or (len(sys.argv) == 3 and sys.argv[2] not in ("--dllla", "--clean", "--doorbell")):
+    if len(sys.argv) not in (2, 3) or (len(sys.argv) == 3 and sys.argv[2] not in ("--dllla", "--clean", "--doorbell", "--msi")):
         sys.exit(__doc__)
     sys.exit(main(sys.argv))
