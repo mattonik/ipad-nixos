@@ -239,3 +239,24 @@ function so the harness catches this class. The rebuilt payload (0052-0057) comp
 `boot/verify_pcie_j81_reg_on_payload.py DIR --msi` passes (checksums, composition, DTB
 `msi-controller`/`msi-parent`/`msi-ranges` = `<&aic 0 224 1 32>`, doorbell `0xbffff000`, the
 `t7000-pcie: MSI domain:` string in the kernel). `result` points at it. **Not booted.**
+
+## 11. H0 hardware result (2026-10-05, read-only boot of the `0057` payload)
+
+Payload `m1n1-hoolock-pcie-j81-msi` (0052-0057), booted via the usual palera1n/PongoOS route;
+read-only checks over telnet (session recorded under `artifacts/live/sessions/`, not committed).
+
+- Boot normal, USB networking up in ~12 s. The one PMU write happened as usual
+  (`J81 Wi-Fi REG_ON: 0x0403 0x09 -> 0x0b`).
+- `t7000-pcie: MSI domain: slots 8..15 of 32, doorbell 0xbffff000` at 0.240 s: the AIC was
+  found (no deferral), the parent domain was created, before host init.
+- Link and enumeration unchanged from `0054`/`0055`: `link active=1 lnksta=0x3011` at 0.349 s,
+  `14e4:43a3` enumerated behind `106b:1002`, BARs assigned, iommu group 0. Same two benign
+  messages (`retraining failed`, `iommu-map id 0x8`).
+- No new warnings or errors; the only other failure line is the long-standing `g_multi` gadget `-22`.
+- `/sys/kernel/debug/irq/` does not exist (generic IRQ debugfs not enabled in this kernel), so the
+  domain was confirmed from the probe log and the absence of the `NO_MSI` failure path only; no
+  endpoint driver is bound, so `msi_irqs` is empty as expected.
+
+H0 passes. Open for H1: allocate a vector on `01:00.0`, read back the endpoint's MSI capability
+address/data (`0xbffff000` / `8`..`15`), free it. (Enabling `CONFIG_GENERIC_IRQ_DEBUGFS` in the H1
+test variant would also give the domain listing.)
