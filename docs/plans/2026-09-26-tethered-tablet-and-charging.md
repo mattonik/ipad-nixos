@@ -379,6 +379,29 @@ actual sysfs value.
   rebuilt tablet, touch-diag and touch-SPI payloads, including byte-identity of the
   three tablet tools to their sources.
 
+#### Tablet payload hardware result 2, 2026-10-05: 80% cap, self-correction and dashboard pass
+
+Payload `m1n1-hoolock-tablet` (policy `1020212`/`192a777`, dashboard `192a777`), cold boot
+over the direct cable, recorded session (private). Nothing launched the dashboard.
+
+- **Boot policy:** log `limit 2400000 uA (temp 311 deciC capacity 58%)`; sysfs 2400000,
+  raw `0x04c0 = 0xba`; battery `Charging`, +80 mA, 31.1 C; policy, Dropbear and telnet
+  running; no `tablet-dashboard` process after boot (verified by a `/proc` scan).
+- **Cap path (forced):** a one-shot run with the cap lowered below the 58% capacity
+  (`MAX_CAPACITY=50`) set 500000 uA (raw `0x22`), log `limit 500000 uA (capacity 58%)`.
+- **Self-correction (the `96f9d77` fix):** with that external change in place, the
+  background loop restored **2400000 uA (`0xba`) by itself within 40 s**, adding a second
+  `limit 2400000 uA` log line, without any intervention.
+- **Dashboard:** `tablet-dashboard --once` rendered all sections (battery, charger,
+  USB, system, kernel messages, services, last policy log lines); an unknown argument
+  exits 2 with usage; the interactive loop ran two frames, exited 0 on SIGINT and
+  printed the cursor-restore sequence. No leftover process.
+- Only the charger input-limit register was written (the validated `0x04c0`); no PMIC
+  GPIO, touch, Bluetooth, Wi-Fi or storage action.
+- Not exercised on hardware: the 80% cap at a real capacity of 80% or more (capacity was
+  58%; the boundary is covered by the host tests) and the 42 C backoff (covered earlier
+  with a lowered threshold).
+
 #### Safe staged test
 
 **Static gate:** build a separate package derived from

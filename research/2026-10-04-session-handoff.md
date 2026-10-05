@@ -194,3 +194,11 @@ Following [`2026-10-05-touch-pcie-builder-handoff.md`](2026-10-05-touch-pcie-bui
   from the patch file's own context lines; the added lines have no whitespace problems.
   Still inherited technical debt: the Stage-5F `+0x88` bit-6 link poll (the separate
   DLLLA cleanup is not done). **Not booted.**
+
+## 2026-10-05 hardware: tablet payload (80% cap, dashboard)
+
+`m1n1-hoolock-tablet` booted: policy raised to 2400 mA at 58% / 31.1 C, a forced cap
+(500 mA) was corrected back to 2400 mA by the background loop within 40 s, and the
+read-only dashboard rendered and exited cleanly with no auto-launch. Details in the
+tethered-tablet plan. Still unexercised on hardware: the real 80% boundary and the 42 C
+backoff at a real temperature.
