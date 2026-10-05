@@ -292,3 +292,42 @@ byte (`0x0403`).
 
 `m1n1-hoolock-pcie-j81-msi-selftest` (0052-0058) compiles cleanly and passes
 `boot/verify_pcie_j81_reg_on_payload.py DIR --msi-selftest`. `result` points at it. **Not booted**; H1 needs its own go-ahead.
+
+## 13. H1A hardware result (2026-10-05): the allocation/configuration path works
+
+Payload `m1n1-hoolock-pcie-j81-msi-selftest` (0052-0058, strict chain check), store path
+`/nix/store/km56rhvah2gyj7nz3kfi1hwngzhj84h8-ipad-air2-m1n1-hoolock-pcie-j81-msi-selftest`,
+`m1n1-linux.bin` SHA-256 `7f6a3bb8c79d9dd985265a0d21921775d6489c8649db94f631554e5c991837b7`.
+Loaded via the usual palera1n/PongoOS route; read-only shell checks afterwards (sessions under
+`artifacts/live/sessions/`, not committed). Host-side identity only: no run token was used.
+
+```
+t7000-pcie: MSI domain: slots 8..15 of 32, doorbell 0xbffff000
+t7000-pcie: link active=1 lnksta=0x3011
+t7000-msi-selftest: virq=52 cap@0x58 ctl=0x0089 addr=0x00000000_bffff000 data=8
+  chain[0]: PCI-MSI-0000:01:00.0-10 hwirq=0
+  chain[1]: :soc:pcie@610000000-3   hwirq=8
+  chain[2]: :soc:interrupt-controller@20e100000-1 hwirq=65768
+t7000-msi-selftest: PASS (config+chain: depth=3 chain_ok=1, fired=0, expected AIC hwirq 232)
+t7000-msi-selftest: teardown PASS: ctl=0x0088 (MSI enable bit clear)
+```
+
+What this establishes (H1A, configuration path only):
+
+- one vector allocated through the new domain; the endpoint's MSI capability received address
+  `0x00000000_bffff000`, data 8 (first free slot), enable set; teardown cleared the enable bit;
+- the hierarchy resolves PCI slot 8 -> AIC event 232 (`65768 = 0x100e8`: the AIC hwirq also
+  carries a type field at bit 16, so the event number is the low 16 bits; this corrects the
+  review note's "raw value equals the event"; the test already masks the low 16 bits);
+- `request_irq()` on the AIC line succeeded (set_type/unmask ran), `fired=0` as expected;
+- link, enumeration and the controller register sequence unchanged.
+
+New log line, benign: `pci 0000:00:01.0: of_irq_parse_pci: failed with rc=-22` appears when a
+driver binds the endpoint (INTx swizzle up to the root port finds no `interrupt-map`). It is
+not MSI-related and any endpoint driver binding (including `brcmfmac`) will trigger it; leave it
+unless legacy INTx is ever needed. The other messages are the known `retraining failed` and
+the `g_multi` gadget `-22`.
+
+Still not established (H1B delivery): DART/fabric acceptance of an endpoint-originated doorbell
+write, edge-vs-level behaviour at the AIC, the hardware default of `+0x168` (the `0059`
+read-only dump variant is next), and port-event handling.
