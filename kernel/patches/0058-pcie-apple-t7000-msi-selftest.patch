@@ -33,7 +33,7 @@ diff --git a/drivers/pci/controller/Makefile b/drivers/pci/controller/Makefile
 diff --git a/drivers/pci/controller/pcie-apple-t7000-msi-selftest.c b/drivers/pci/controller/pcie-apple-t7000-msi-selftest.c
 --- /dev/null
 +++ b/drivers/pci/controller/pcie-apple-t7000-msi-selftest.c
-@@ -0,0 +1,113 @@
+@@ -0,0 +1,128 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * Apple T7000 PCIe (iPad Air 2) MSI allocation self-test. TEST KERNELS ONLY.
@@ -70,13 +70,24 @@ diff --git a/drivers/pci/controller/pcie-apple-t7000-msi-selftest.c b/drivers/pc
 +	return IRQ_HANDLED;
 +}
 +
-+static void t7000_msi_selftest_chain(int virq)
++/*
++ * Log the parent chain and return its depth. levels[] receives the hwirq of each level, leaf
++ * first: [0] the per-device PCI-MSI domain, [1] the controller's MSI domain (the slot number),
++ * [2] the AIC (the event number, 224 + slot). Numeric hwirqs are the contract; domain names are
++ * only logged.
++ */
++static int t7000_msi_selftest_chain(int virq, unsigned long levels[], int max)
 +{
 +	struct irq_data *d;
++	int n = 0;
 +
-+	for (d = irq_get_irq_data(virq); d; d = d->parent_data)
-+		pr_info(T7000_MSI_SELFTEST_PREFIX "  chain: domain=%s hwirq=%lu\n",
++	for (d = irq_get_irq_data(virq); d; d = d->parent_data, n++) {
++		pr_info(T7000_MSI_SELFTEST_PREFIX "  chain[%d]: domain=%s hwirq=%lu\n", n,
 +			d->domain && d->domain->name ? d->domain->name : "?", d->hwirq);
++		if (n < max)
++			levels[n] = d->hwirq;
++	}
++	return n;
 +}
 +
 +static int t7000_msi_selftest_probe(struct pci_dev *pdev, const struct pci_device_id *id)
@@ -84,8 +95,9 @@ diff --git a/drivers/pci/controller/pcie-apple-t7000-msi-selftest.c b/drivers/pc
 +	struct device *dev = &pdev->dev;
 +	u16 ctl = 0, data = 0;
 +	u32 lo = 0, hi = 0;
-+	int pos, nvec, virq, ret;
-+	bool ok;
++	unsigned long levels[4] = { };
++	int pos, nvec, virq, ret, depth;
++	bool ok, chain_ok, teardown_ok;
 +
 +	pos = pci_find_capability(pdev, PCI_CAP_ID_MSI);
 +	if (!pos) {
@@ -111,7 +123,7 @@ diff --git a/drivers/pci/controller/pcie-apple-t7000-msi-selftest.c b/drivers/pc
 +
 +	dev_info(dev, T7000_MSI_SELFTEST_PREFIX "virq=%d cap@0x%x ctl=0x%04x addr=0x%08x_%08x data=%u\n",
 +		 virq, pos, ctl, hi, lo, data);
-+	t7000_msi_selftest_chain(virq);
++	depth = t7000_msi_selftest_chain(virq, levels, ARRAY_SIZE(levels));
 +
 +	/* Exercises the parent's set_type/unmask path; nothing is expected to fire. */
 +	ret = request_irq(virq, t7000_msi_selftest_irq, 0, "t7000-msi-selftest", pdev);
@@ -120,15 +132,18 @@ diff --git a/drivers/pci/controller/pcie-apple-t7000-msi-selftest.c b/drivers/pc
 +	else
 +		free_irq(virq, pdev);
 +
-+	ok = !ret && (ctl & PCI_MSI_FLAGS_ENABLE) && !hi && lo == T7000_MSI_EXPECT_ADDR &&
++	/* PCI slot n must map to AIC event 224 + n (die 0: the event number is the low 16 bits). */
++	chain_ok = depth == 3 && levels[1] == data && (levels[2] & 0xffff) == T7000_MSI_AIC_BASE + data;
++	ok = !ret && chain_ok && (ctl & PCI_MSI_FLAGS_ENABLE) && !hi && lo == T7000_MSI_EXPECT_ADDR &&
 +	     data >= T7000_MSI_SLOT_FIRST && data <= T7000_MSI_SLOT_LAST;
-+	dev_info(dev, T7000_MSI_SELFTEST_PREFIX "%s (fired=%d, expected AIC hwirq %u)\n",
-+		 ok ? "PASS" : "FAIL", atomic_read(&t7000_msi_fired), T7000_MSI_AIC_BASE + data);
++	dev_info(dev, T7000_MSI_SELFTEST_PREFIX "%s (config+chain: depth=%d chain_ok=%d, fired=%d, expected AIC hwirq %u)\n",
++		 ok ? "PASS" : "FAIL", depth, chain_ok, atomic_read(&t7000_msi_fired), T7000_MSI_AIC_BASE + data);
 +
 +	pci_free_irq_vectors(pdev);
 +	pci_read_config_word(pdev, pos + PCI_MSI_FLAGS, &ctl);
-+	dev_info(dev, T7000_MSI_SELFTEST_PREFIX "after free: ctl=0x%04x (enable bit %s)\n", ctl,
-+		 (ctl & PCI_MSI_FLAGS_ENABLE) ? "STILL SET" : "clear");
++	teardown_ok = !(ctl & PCI_MSI_FLAGS_ENABLE);
++	dev_info(dev, T7000_MSI_SELFTEST_PREFIX "teardown %s: ctl=0x%04x (MSI enable bit %s)\n",
++		 teardown_ok ? "PASS" : "FAIL", ctl, teardown_ok ? "clear" : "STILL SET");
 +	return -ENODEV;
 +}
 +
