@@ -1,0 +1,51 @@
+diff --git a/drivers/pci/controller/Kconfig b/drivers/pci/controller/Kconfig
+--- a/drivers/pci/controller/Kconfig
++++ b/drivers/pci/controller/Kconfig
+@@ -72,6 +72,16 @@
+ 
+ 	  If unsure, say N.
+ 
++config PCIE_APPLE_T7000_DIAG_MSIADDR
++	bool "Log the T7000 PCIe port-1 MSI address register (diagnostic)"
++	depends on PCIE_APPLE_T7000
++	help
++	  Reads (never writes) the port's +0x168 register once after link
++	  start and logs it, to learn the hardware default of the controller's
++	  MSI doorbell. Test kernels only.
++
++	  If unsure, say N.
++
+ config PCI_VERSATILE
+ 	bool "ARM Versatile PB PCI controller"
+ 	depends on ARCH_VERSATILE || COMPILE_TEST
+diff --git a/drivers/pci/controller/pcie-apple-t7000.c b/drivers/pci/controller/pcie-apple-t7000.c
+--- a/drivers/pci/controller/pcie-apple-t7000.c
++++ b/drivers/pci/controller/pcie-apple-t7000.c
+@@ -184,6 +184,13 @@
+ #define T7000_PCIE_PORT_MSICFG_VALUE \
+ 	(T7000_PCIE_PORT_MSICFG_EN | \
+ 	 (ilog2(T7000_PCIE_MSI_PORT_COUNT) << T7000_PCIE_PORT_MSICFG_L2NUM_SHIFT))
++/*
++ * Diagnostic only (CONFIG_PCIE_APPLE_T7000_DIAG_MSIADDR): the M1 name for +0x168 is PORT_MSIADDR,
++ * the controller-side MSI doorbell. The recovered iOS 8.1 path never writes it, so this is read
++ * and logged, never written, to learn the hardware default.
++ */
++#define T7000_PCIE_PORT_MSIADDR_DIAG		0x168
++
+ #define T7000_PCIE_PORT_MSIBASE_VALUE \
+ 	(T7000_PCIE_MSI_PORT_BASE | \
+ 	 (T7000_PCIE_MSI_PORT_BASE << T7000_PCIE_PORT_MSIBASE_1_SHIFT))
+@@ -668,6 +675,13 @@
+ 	t7000_pcie_set_link_start(dev, ctrl, T7000_PCIE_J81_PORT);
+ 
+ 	t7000_pcie_wait_link_active(dev, cfg, ctrl);
++
++	if (IS_ENABLED(CONFIG_PCIE_APPLE_T7000_DIAG_MSIADDR)) {
++		u32 msiaddr = readl(ctrl + T7000_PCIE_PORT_MSIADDR_DIAG);
++
++		dev_info(dev, "t7000-pcie: diag port %d +0x%03x (MSIADDR, read-only) = 0x%08x\n",
++			 T7000_PCIE_J81_PORT, T7000_PCIE_PORT_MSIADDR_DIAG, msiaddr);
++	}
+ 
+ 	dev_dbg(dev, "t7000-pcie: init complete, handing back to the generic ECAM core\n");
+ 

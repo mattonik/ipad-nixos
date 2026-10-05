@@ -42,6 +42,7 @@ HOST_TESTS = (
     "kernel/test_pcie_msi_port_values_patch.py",
     "kernel/test_pcie_msi_domain_patch.py",
     "kernel/test_pcie_msi_selftest_patch.py",
+    "kernel/test_pcie_diag_msiaddr_patch.py",
     "kernel/test_spi_s5l_patch.py",
     "tools/test_check_offline.py",
 )
@@ -157,6 +158,10 @@ def main() -> int:
     if args.pcie_j81_selftest_source:
         outcomes.append(execute("kernel/test_pcie_msi_selftest_patch.py", [
             "kernel/test_pcie_msi_selftest_patch.py", "--j81-msi-source",
+            str(args.pcie_j81_selftest_source.resolve()),
+        ], args.timeout))
+        outcomes.append(execute("kernel/test_pcie_diag_msiaddr_patch.py", [
+            "kernel/test_pcie_diag_msiaddr_patch.py", "--j81-msi-source",
             str(args.pcie_j81_selftest_source.resolve()),
         ], args.timeout))
     if args.pcie_j81_msi_source:

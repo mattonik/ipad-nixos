@@ -32,7 +32,7 @@ HEADERS = ("linux/bitops.h", "linux/build_bug.h", "linux/log2.h", "linux/delay.h
            "linux/mutex.h", "linux/of_irq.h")
 
 
-def run_trace(source: Path, *args: str) -> str:
+def run_trace(source: Path, *args: str, defines: tuple = ()) -> str:
     cc = shutil.which("cc") or shutil.which("gcc") or shutil.which("clang")
     assert cc, "no C compiler"
     with tempfile.TemporaryDirectory(prefix="pcie-trace-") as tmp:
@@ -46,7 +46,7 @@ def run_trace(source: Path, *args: str) -> str:
         binary = tmp / "trace"
         build = subprocess.run(
             [cc, "-std=gnu11", "-Wall", "-Wextra", "-Wno-unused-function", "-Wno-unused-parameter",
-             "-Wno-unused-variable", f"-I{tmp / 'inc'}", f"-I{HARNESS}",
+             "-Wno-unused-variable", *[f"-D{d}" for d in defines], f"-I{tmp / 'inc'}", f"-I{HARNESS}",
              f'-DDRIVER_SOURCE="{tmp / "src" / "pcie-apple-t7000.c"}"', str(HARNESS / "main.c"),
              "-o", str(binary)], capture_output=True, text=True)
         assert build.returncode == 0, build.stdout + build.stderr

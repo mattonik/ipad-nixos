@@ -197,3 +197,11 @@ struct fwnode_handle *dev_fwnode(struct device *dev);
 void *devm_kzalloc(struct device *dev, size_t size, int gfp);
 int devm_add_action_or_reset(struct device *dev, void (*action)(void *), void *data);
 #endif
+
+/* Kconfig symbols the driver tests with IS_ENABLED(); the harness builds them off unless -D'd. */
+#ifndef CONFIG_PCIE_APPLE_T7000_DIAG_MSIADDR
+#define CONFIG_PCIE_APPLE_T7000_DIAG_MSIADDR 0
+#endif
+#ifndef IS_ENABLED
+#define IS_ENABLED(x) (x)
+#endif

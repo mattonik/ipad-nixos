@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Static verification of the Wi-Fi-only J81 REG_ON staging payload (stdlib only).
 
-Usage: python3 boot/verify_pcie_j81_reg_on_payload.py PAYLOAD_DIR [--dllla | --clean | --doorbell | --msi | --msi-selftest]
+Usage: python3 boot/verify_pcie_j81_reg_on_payload.py PAYLOAD_DIR [--dllla | --clean | --doorbell | --msi | --msi-selftest | --msi-diag]
 
 --dllla additionally requires the 0053 DLLLA link-wait strings and rejects the old
 `link-wait-test: link_up=` poll output. --clean (patch 0054) requires the durable
@@ -76,7 +76,8 @@ def main(argv):
     payload = Path(argv[1])
     flags = set(argv[2:])
     selftest = "--msi-selftest" in flags
-    msi = "--msi" in flags or selftest
+    diag = "--msi-diag" in flags
+    msi = "--msi" in flags or selftest or diag
     doorbell = "--doorbell" in flags or msi
     clean = "--clean" in flags or doorbell
     dllla = "--dllla" in flags or clean
@@ -179,6 +180,13 @@ def main(argv):
         for needle in (b"t7000-msi-selftest: ", b"t7000-msi-selftest"):
             if needle not in image:
                 problems.append(f"kernel lacks {needle.decode()!r}")
+    if diag:
+        if b"(MSIADDR, read-only)" not in image:
+            problems.append("kernel lacks the read-only +0x168 diagnostic string")
+    elif msi and b"(MSIADDR, read-only)" in image:
+        problems.append("test-only +0x168 diagnostic is present in a non-diag payload")
+    if selftest:
+        pass
     elif msi and b"t7000-msi-selftest" in image:
         problems.append("test-only MSI self-test driver is present in a non-selftest payload")
 
@@ -203,6 +211,6 @@ def main(argv):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) not in (2, 3) or (len(sys.argv) == 3 and sys.argv[2] not in ("--dllla", "--clean", "--doorbell", "--msi", "--msi-selftest")):
+    if len(sys.argv) not in (2, 3) or (len(sys.argv) == 3 and sys.argv[2] not in ("--dllla", "--clean", "--doorbell", "--msi", "--msi-selftest", "--msi-diag")):
         sys.exit(__doc__)
     sys.exit(main(sys.argv))
