@@ -229,3 +229,13 @@ write reaches the AIC through the DART, and edge-vs-level behaviour (U2, U3). Th
 hardware gates and still need the user's go-ahead.
 
 Next: `0058` (H1 self-test, test kernel only) and the read-only `+0x168` dump diagnostic.
+
+### 10.1 Build result (2026-10-05)
+
+The first `m1n1-hoolock-pcie-j81-msi` build failed to compile: `0056`'s
+`static_assert(is_power_of_2(...))` is not a constant expression in the real kernel (the host
+stub had made it a macro, hiding it). Fixed in `0056` (plain bit test) and the stub is now a
+function so the harness catches this class. The rebuilt payload (0052-0057) compiles cleanly;
+`boot/verify_pcie_j81_reg_on_payload.py DIR --msi` passes (checksums, composition, DTB
+`msi-controller`/`msi-parent`/`msi-ranges` = `<&aic 0 224 1 32>`, doorbell `0xbffff000`, the
+`t7000-pcie: MSI domain:` string in the kernel). `result` points at it. **Not booted.**
