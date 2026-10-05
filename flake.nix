@@ -743,6 +743,19 @@
             hoolockConfig = patchedHoolockPcieRegOnTestConfig;
           };
 
+          # Board-bound follow-up to the hardware-proven REG_ON test:
+          # J81's PCIe node explicitly names the D2207 PMIC. The driver
+          # asserts and verifies only BCM4350 Wi-Fi GPIO3 before PCIe; it
+          # does not look up an arbitrary PMIC or describe Bluetooth GPIO2.
+          patchedHoolockPcieJ81RegOnConfig = pkgs.runCommand "ipad-t7001-hoolock-pcie-j81-reg-on-defconfig-4k" {} ''
+            cat ${patchedHoolockConfig} > "$out"
+            echo 'CONFIG_PCIE_APPLE_T7000=y' >> "$out"
+          '';
+          hoolockPcieJ81RegOnKernel = pkgsCross.callPackage ./kernel/hoolock-pcie-j81-reg-on.nix {
+            source = inputs.hoolockLinux;
+            hoolockConfig = patchedHoolockPcieJ81RegOnConfig;
+          };
+
           # Stage 5G: isolated PMGR gate test -- explicitly attaches
           # ps_pcie_aux/ps_pcie_ref alongside the already-automatic
           # ps_pcie, no register-level changes.
@@ -957,6 +970,7 @@
         hoolock-pcie-link-wait-write-test-kernel = hoolockPcieLinkWaitWriteTestKernel;
         hoolock-pcie-link-speed-write-test-kernel = hoolockPcieLinkSpeedWriteTestKernel;
         hoolock-pcie-reg-on-test-kernel = hoolockPcieRegOnTestKernel;
+        hoolock-pcie-j81-reg-on-kernel = hoolockPcieJ81RegOnKernel;
         hoolock-pcie-gate-aux-ref-test-kernel = hoolockPcieGateAuxRefTestKernel;
         hoolock-pcie-gate-register-test-kernel = hoolockPcieGateRegisterTestKernel;
 
@@ -2753,6 +2767,38 @@
              done
            } | cpio --null -o -H newc --owner=0:0 --reproducible
           ) >> initramfs.cpio
+          gzip -n -c initramfs.cpio > "$out/initramfs.gz"
+
+          printf '%s\n' 'chosen.bootargs=console=tty0 loglevel=8 ignore_loglevel rdinit=/init PMOS_NO_OUTPUT_REDIRECT pd_ignore_unused clk_ignore_unused' \
+            > "$out/bootargs"
+          cat "$out/m1n1.bin" "$out/bootargs" "$out/t7001-j81.dtb" \
+            "$out/Image.gz" "$out/initramfs.gz" > "$out/m1n1-linux.bin"
+          sha256sum "$out/Pongo.bin" "$out/m1n1.bin" "$out/m1n1-linux.bin" \
+            > "$out/SHA256SUMS"
+        '';
+
+        # The reviewable J81 Wi-Fi-only successor to the 0050 test payload.
+        # It deliberately carries neither Bluetooth userland nor I2C tools: the
+        # kernel's board-bound 0x0403 action is its entire new PMU surface.
+        m1n1-hoolock-pcie-j81-reg-on = pkgs.runCommand "ipad-air2-m1n1-hoolock-pcie-j81-reg-on" {
+          nativeBuildInputs = [ pkgs.gzip pkgs.dtc pkgs.cpio ];
+        } ''
+          mkdir -p "$out"
+          cp ${inputs.hoolockDocs}/binaries/Pongo.bin "$out/Pongo.bin"
+          cp ${inputs.hoolockM1n1}/m1n1.bin "$out/m1n1.bin"
+          gzip -n -c ${hoolockPcieJ81RegOnKernel}/Image > "$out/Image.gz"
+
+          dtc -I dtb -O dts ${hoolockPcieJ81RegOnKernel}/dtbs/apple/t7001-j81.dtb \
+            | sed -e '/^\tchosen {$/,/^\t};$/ s/framebuffer@0 {/framebuffer {/' \
+            | dtc -I dts -O dtb -p 0x10000 -o "$out/t7001-j81.dtb"
+
+          gzip -dc ${inputs.linuxAppleResources}/debug_initrd.img > initramfs.cpio
+          mkdir -p original-etc overlay/etc
+          (cd original-etc && cpio -id --no-absolute-filenames etc/deviceinfo < ../initramfs.cpio)
+          cp original-etc/etc/deviceinfo overlay/etc/deviceinfo
+          printf '\ndeviceinfo_usb_rndis_function="ecm.usb0"\n' >> overlay/etc/deviceinfo
+          touch -d @1 overlay/etc/deviceinfo
+          (cd overlay && printf '%s\0' "etc/deviceinfo" | cpio --null -o -H newc --owner=0:0 --reproducible) >> initramfs.cpio
           gzip -n -c initramfs.cpio > "$out/initramfs.gz"
 
           printf '%s\n' 'chosen.bootargs=console=tty0 loglevel=8 ignore_loglevel rdinit=/init PMOS_NO_OUTPUT_REDIRECT pd_ignore_unused clk_ignore_unused' \

@@ -174,3 +174,23 @@ The earlier "October 2026 research/tooling handoff" and the 14 merged research b
 are already integrated; this session added hardware validation and the corrections above
 on top of them. The pending disk-space cleanup request was never completed (the Mac had
 77 GiB free; the builder VM disk was not checked).
+
+## 2026-10-05 builder results (static only; nothing booted)
+
+Following [`2026-10-05-touch-pcie-builder-handoff.md`](2026-10-05-touch-pcie-builder-handoff.md):
+
+- **Touch:** the opt-in GPIO55 `display_sync` pinmux experiment is implemented in
+  `touch-diag` (`--display-sync-pinmux --approve-display-sync-pinmux`, requires
+  `--spi-dev`, refuses an already-muxed pin, restores the exact saved word on every
+  exit). Built into the touch-diag and touch-SPI payloads; both gates pass; 13 source
+  tests. See `j81-touch-diagnostic.md`. **Not run**; needs the user's approval.
+- **PCIe:** patch `0052` (board-gated Wi-Fi `REG_ON`, `apple,reg-on-pmic` phandle,
+  binding doc, `of_property_present`, intentional non-deassert comment) applies with
+  zero fuzz to the exact Stage-5F source and builds. Payload
+  `m1n1-hoolock-pcie-j81-reg-on` passes `boot/verify_pcie_j81_reg_on_payload.py`: checksums
+  and composition, the phandle appears only on the PCIe node and resolves to the D2207
+  `pmic@3c`, no `btattach` or I2C tools in the initramfs, only the board-gated REG_ON
+  strings in the kernel. The `git diff --check` warnings on the patch are false positives
+  from the patch file's own context lines; the added lines have no whitespace problems.
+  Still inherited technical debt: the Stage-5F `+0x88` bit-6 link poll (the separate
+  DLLLA cleanup is not done). **Not booted.**
