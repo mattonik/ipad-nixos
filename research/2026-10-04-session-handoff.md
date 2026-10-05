@@ -267,3 +267,15 @@ about 0.857 s with the old fixed poll (about 0.5 s faster). The BCM4350 (`14e4:4
 unchanged; `+0x088` still reads `0x5` with the link up (a state word, not a link flag).
 See `j81-d2207-gpio-register-correction.md`. Remaining PCIe work: clean the inherited
 `0040`-`0045` test-stage writes/logging into a reviewable driver (separate task).
+
+## 2026-10-05 review of the PCIe audit / MSI plan / GPIO55 identity record
+
+Reviewed in [`2026-10-05-review-pcie-audit-msi-and-evidence.md`](2026-10-05-review-pcie-audit-msi-and-evidence.md).
+Two items to fix before the MSI plan is builder-ready: the DART reserves an MSI doorbell
+page at the **M1 address `0xfffff000`** (inherited `CONFIG_PCIE_APPLE_MSI_DOORBELL_ADDR`)
+while J81's doorbell is `0xbffff000`, and whether J81's DART passes the doorbell through is
+unknown. The first MSI proof is entangled with the firmware gate. The GPIO55 identity note
+wrongly says the preflight session predates the feature: it does not (`7aa9227` is an
+ancestor of `770b03a`, and that payload contains the flag), so the run's payload identity
+is established by same-boot continuity. Suggested builder addition: a write-sequence
+fingerprint test for the clean-driver series.
