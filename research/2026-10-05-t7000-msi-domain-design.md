@@ -331,3 +331,34 @@ the `g_multi` gadget `-22`.
 Still not established (H1B delivery): DART/fabric acceptance of an endpoint-originated doorbell
 write, edge-vs-level behaviour at the AIC, the hardware default of `+0x168` (the `0059`
 read-only dump variant is next), and port-event handling.
+
+## 14. `+0x168` read-only dump result (2026-10-05)
+
+Payload `m1n1-hoolock-pcie-j81-msi-diag` (0052-0057 + 0059), store path
+`/nix/store/shpy74fvbdlsv1kyrfgjcrwmmzlfl2g8-ipad-air2-m1n1-hoolock-pcie-j81-msi-diag`,
+`m1n1-linux.bin` SHA-256 `bdd24c77317413174d1f98ba9f95bc3a7cca0989f845c93255928d1d2815c536`
+(host-side identity only). Boot normal; link and enumeration unchanged; no new warnings.
+
+```
+t7000-pcie: link active=1 lnksta=0x3011
+t7000-pcie: diag port 1 +0x168 (MSIADDR, read-only) = 0x00000000
+```
+
+**`+0x168` reads 0 after the full controller init** (including the `+0x124`/`+0x128` MSI writes).
+Per the delivery-path pre-study's table, zero means no endpoint-delivery claim is interpretable
+yet and a delivery test must not go ahead: the J81 firmware did not leave the M1-style doorbell
+register at `0xbffff000`, and the recovered iOS 8.1 path never writes it.
+
+Readings that remain open (static research, not guesses to act on):
+
+1. on T7000, `+0x168` is not the doorbell register (the M1 offset map does not carry over; the
+   ADT `msi-address` is consumed elsewhere, or by a different offset in the same window);
+2. the doorbell is decoded by hardware independent of any register (hard-wired `0xbffff000`), and
+   the register is unused;
+3. the doorbell is only live after something iOS does that Linux does not (e.g. `msi-crypto-address`
+   path, or the per-port event source enable).
+
+Not authorized and not done: any write to `+0x168`. Next research: re-read the iOS
+`AppleEmbeddedPCIEPort`/controller code for every consumer of the ADT `msi-address` property and
+for any register in the controller window written with `0xbffff000` (or its `>> 12` form), before
+any delivery experiment.
