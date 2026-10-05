@@ -253,3 +253,33 @@ checks over telnet. This payload has no I2C tools and no Bluetooth userland by d
 This validates the board-gated form as a drop-in for the test-stage assert. The inherited
 Stage-5F link wait (`+0x88` bit 6) is unchanged technical debt; DLLLA is the real link
 signal.
+
+## Hardware result, 2026-10-05: DLLLA link wait (patch `0053`) works
+
+Payload `m1n1-hoolock-pcie-j81-dllla` (patch `0053` on `0052`, commit `9d0c2c7`), cold
+boot with the user's go-ahead (its only PMU write is the same board-gated `0x0403`
+assert); recorded session (private), read-only checks over telnet.
+
+- `J81 Wi-Fi REG_ON: 0x0403 0x09 -> 0x0b` at 0.1328 s (a first probe attempt at 0.127 s
+  deferred until the PMIC regmap existed, then the second attempt asserted it, as designed).
+- **New link wait:** `link-start` write at 0.351 s, then
+  `t7000-pcie link-wait: link active=1 lnksta=0x3011 (controller +0x088=0x00000005
+  +0x08c=0x00000000, undecoded)` at **0.3574 s**, i.e. the root port's DLL Link Active
+  bit was set about **6 ms** after link start. No timeout warning.
+- **Boot is about 0.5 s faster to enumeration:** the old fixed 500 ms `+0x88` poll always
+  ran to its deadline (init complete at about 0.856 s); now `init complete` is at 0.3575 s
+  and the root port enumerates at 0.3586 s.
+- Same endpoint result as every earlier REG_ON run: `106b:1002` root port, `14e4:43a3`
+  endpoint rev `0x05` (class `0x028000`), `lspci` lists both. Config space afterwards:
+  root port `LnkSta = 0x7011` (2.5 GT/s x1, DLLLA = 1, training 0; the extra bit 14 vs.
+  the earlier `0x3011` is the kernel's bandwidth-management flag set by its own retrain
+  attempt), endpoint `LnkSta = 0x1011`, `LnkCap` 2.5 GT/s x1.
+- The same benign `retraining failed` and `iommu-map id 0x8` lines appear. No PCIe error,
+  AER or oops lines.
+- The controller's `+0x088` still reads `0x5` with the link up, confirming it is a state
+  word and not the link-up indicator (its encoding remains undecoded, **U**).
+- Nothing was written beyond the kernel's own `0x0403` assert; no chip memory, firmware,
+  OTP/NVRAM or Bluetooth action. `0x0402` not read (no I2C tools in this payload).
+
+DLLLA is now the production link-success signal in this staging driver. The inherited
+`0040`-`0045` test-stage writes and logs remain (not part of this task).

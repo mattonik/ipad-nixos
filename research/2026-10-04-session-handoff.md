@@ -257,3 +257,13 @@ Patch `0053-pcie-apple-t7000-link-wait-dllla.patch` (on top of `0052`; kernel re
   tunable and `link-wait-test:` write logging. A hardware boot of the new payload is a
   separate user decision; expected result is `link active=1 lnksta=0x7011` (or similar)
   and the same BCM4350 enumeration.
+
+## 2026-10-05 hardware: DLLLA link wait (`0053`)
+
+Booted `m1n1-hoolock-pcie-j81-dllla`: `link active=1 lnksta=0x3011` at 0.3574 s, about 6 ms
+after the link-start write, no timeout warning; enumeration at 0.3586 s instead of
+about 0.857 s with the old fixed poll (about 0.5 s faster). The BCM4350 (`14e4:43a3`, rev
+`0x05`) enumerates exactly as before; benign `retraining failed` / `iommu-map` lines
+unchanged; `+0x088` still reads `0x5` with the link up (a state word, not a link flag).
+See `j81-d2207-gpio-register-correction.md`. Remaining PCIe work: clean the inherited
+`0040`-`0045` test-stage writes/logging into a reviewable driver (separate task).
