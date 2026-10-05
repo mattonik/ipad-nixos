@@ -26,10 +26,17 @@ typedef uint64_t u64;
 #define EPROBE_DEFER 517
 #define PCIE_RESET_CONFIG_WAIT_MS 100
 
-#define dev_info(dev, ...) do { (void)(dev); } while (0)
-#define dev_warn(dev, ...) do { (void)(dev); } while (0)
-#define dev_err(dev, ...) do { (void)(dev); } while (0)
-#define dev_dbg(dev, ...) do { (void)(dev); } while (0)
+/*
+ * Logging: as in the real kernel, dev_info/dev_warn/dev_err ALWAYS evaluate their
+ * arguments (so a readl() used as a log argument is a real read), while dev_dbg
+ * does NOT (no_printk / disabled dynamic debug). The harness mirrors that, so moving
+ * a read into a dev_dbg argument changes the traced read sequence and is caught.
+ */
+void pcie_trace_log(const void *dev, const char *fmt, ...);
+#define dev_info(dev, ...) pcie_trace_log((dev), __VA_ARGS__)
+#define dev_warn(dev, ...) pcie_trace_log((dev), __VA_ARGS__)
+#define dev_err(dev, ...) pcie_trace_log((dev), __VA_ARGS__)
+#define dev_dbg(dev, ...) do { if (0) pcie_trace_log((dev), __VA_ARGS__); } while (0)
 #define dev_err_probe(dev, err, ...) ((void)(dev), (err))
 #define MODULE_DEVICE_TABLE(a, b)
 #define MODULE_DESCRIPTION(x)

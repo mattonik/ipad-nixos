@@ -37,6 +37,7 @@ HOST_TESTS = (
     "boot/test_t7001_reserved_memory.py",
     "kernel/test_hdq_uart_patch.py",
     "kernel/test_pcie_j81_reg_on_patch.py",
+    "kernel/test_pcie_clean_and_doorbell_patches.py",
     "kernel/test_pcie_link_wait_dllla_patch.py",
     "kernel/test_spi_s5l_patch.py",
     "tools/test_check_offline.py",
@@ -72,6 +73,7 @@ def main() -> int:
     parser.add_argument("--z2-source", type=Path, help="local exact pinned apple_z2.c; enables touchscreen harness")
     parser.add_argument("--openiboot-source", type=Path, help="local exact pinned multitouch-z2.c; enables legacy comparison harness")
     parser.add_argument("--pcie-j81-reg-on-test-source", type=Path, help="exact source tree built by the 0050 REG_ON test derivation")
+    parser.add_argument("--pcie-j81-dllla-source", type=Path, help="source tree of the 0053 kernel derivation; enables the zero-fuzz apply of 0054 and 0055")
     parser.add_argument("--pcie-t7000-source", type=Path, help="pcie-apple-t7000.c to fingerprint against the 0053 golden write trace")
     parser.add_argument("--dhd-source", type=Path, help="exact pinned public DHD dhd_pcie.c")
     parser.add_argument("--dhd-header", type=Path, help="matching pinned sbchipc.h; required with --dhd-source")
@@ -99,6 +101,8 @@ def main() -> int:
             parser.error("USB payload arguments must be existing directories")
     if args.pcie_j81_reg_on_test_source and not args.pcie_j81_reg_on_test_source.is_dir():
         parser.error("--pcie-j81-reg-on-test-source must be an existing directory")
+    if args.pcie_j81_dllla_source and not args.pcie_j81_dllla_source.is_dir():
+        parser.error("--pcie-j81-dllla-source must be an existing directory")
     if args.pcie_t7000_source and not args.pcie_t7000_source.is_file():
         parser.error("--pcie-t7000-source must be an existing file")
 
@@ -133,6 +137,11 @@ def main() -> int:
             if args.sanitize:
                 arguments.append("--sanitize")
             outcomes.append(execute(name, arguments, args.timeout))
+    if args.pcie_j81_dllla_source:
+        outcomes.append(execute("kernel/test_pcie_clean_and_doorbell_patches.py", [
+            "kernel/test_pcie_clean_and_doorbell_patches.py", "--j81-dllla-source",
+            str(args.pcie_j81_dllla_source.resolve()),
+        ], args.timeout))
     if args.pcie_t7000_source:
         outcomes.append(execute("kernel/test_pcie_write_sequence.py", [
             "kernel/test_pcie_write_sequence.py", "--source", str(args.pcie_t7000_source.resolve()),

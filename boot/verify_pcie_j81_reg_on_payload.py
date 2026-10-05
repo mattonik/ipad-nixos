@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Static verification of the Wi-Fi-only J81 REG_ON staging payload (stdlib only).
 
-Usage: python3 boot/verify_pcie_j81_reg_on_payload.py PAYLOAD_DIR [--dllla]
+Usage: python3 boot/verify_pcie_j81_reg_on_payload.py PAYLOAD_DIR [--dllla | --clean | --doorbell]
 
 --dllla additionally requires the 0053 DLLLA link-wait strings and rejects the old
-`link-wait-test: link_up=` poll output.
+`link-wait-test: link_up=` poll output. --clean (patch 0054) requires the durable
+`t7000-pcie: link active=` string and rejects every test-stage log prefix. --doorbell
+(patch 0055) is --clean plus the PCIe node's `apple,msi-doorbell` = 0xbffff000.
 
 Checks the built `m1n1-hoolock-pcie-j81-reg-on` output without any device:
 checksums and m1n1-linux.bin composition; the DTB names the D2207 PMIC for the PCIe
@@ -69,7 +71,10 @@ def fdt_nodes(blob):
 
 def main(argv):
     payload = Path(argv[1])
-    dllla = "--dllla" in argv[2:]
+    flags = set(argv[2:])
+    doorbell = "--doorbell" in flags
+    clean = "--clean" in flags or doorbell
+    dllla = "--dllla" in flags or clean
     problems = []
 
     # Checksums and composition.
@@ -124,10 +129,26 @@ def main(argv):
             problems.append(f"kernel still has test-stage string {stale.decode()!r}")
 
     if dllla:
-        if b"t7000-pcie link-wait: link active=" not in image:
-            problems.append("kernel lacks the DLLLA link-wait log string")
+        link_string = b"t7000-pcie: link active=" if clean else b"t7000-pcie link-wait: link active="
+        if link_string not in image:
+            problems.append(f"kernel lacks the DLLLA link-wait log string {link_string.decode()!r}")
         if b"link-wait-test: link_up=" in image:
             problems.append("kernel still has the +0x88 bit-6 link-up poll output")
+    if clean:
+        for stale in (b"tuning-baseline-test", b"dbi-write-test", b"link-wait-test", b"link-speed-test",
+                      b"dbi-ecam-read-test", b"t7000-pcie link-wait:"):
+            if stale in image:
+                problems.append(f"kernel still has test-stage string {stale.decode()!r}")
+    if doorbell:
+        if b"apple,msi-doorbell" not in image:
+            problems.append("kernel lacks the apple,msi-doorbell property lookup")
+        holder = [p for p, v in nodes.items() if "apple,msi-doorbell" in v]
+        if len(holder) != 1 or "pcie@610000000" not in holder[0]:
+            problems.append(f"apple,msi-doorbell must be on the PCIe node only, found {holder}")
+        else:
+            value = nodes[holder[0]]["apple,msi-doorbell"]
+            if struct.unpack(">II", value) != (0, 0xBFFFF000):
+                problems.append(f"apple,msi-doorbell is {value.hex()}, expected 00000000bffff000")
 
     if problems:
         print("FAIL")
@@ -136,7 +157,11 @@ def main(argv):
         return 1
     print("PASS: checksums, composition, DT phandle (PCIe node only, resolves to D2207),")
     print("      no btattach/I2C tools in the initramfs, board-gated REG_ON strings only")
-    if dllla:
+    if doorbell:
+        print("      clean-up strings only; per-controller MSI doorbell 0xbffff000 on the PCIe node")
+    elif clean:
+        print("      clean-up strings only (no test-stage log prefixes)")
+    elif dllla:
         print("      DLLLA link wait present; the +0x88 bit-6 poll is gone")
     else:
         print("NOTE: the inherited Stage-5F link wait still polls +0x88 bit 6 (technical debt, not a pass/fail signal)")
@@ -144,6 +169,6 @@ def main(argv):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) not in (2, 3) or (len(sys.argv) == 3 and sys.argv[2] != "--dllla"):
+    if len(sys.argv) not in (2, 3) or (len(sys.argv) == 3 and sys.argv[2] not in ("--dllla", "--clean", "--doorbell")):
         sys.exit(__doc__)
     sys.exit(main(sys.argv))

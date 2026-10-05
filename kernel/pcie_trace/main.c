@@ -38,6 +38,7 @@ static struct region *add_region(const char *name, u64 phys, size_t size)
 }
 
 void trace_event(const char *fmt, ...) { (void)fmt; }
+void pcie_trace_log(const void *dev, const char *fmt, ...) { (void)dev; (void)fmt; }
 
 static void trace(const char *kind, const void *addr, unsigned long long v)
 {
@@ -47,9 +48,9 @@ static void trace(const char *kind, const void *addr, unsigned long long v)
 	fprintf(trace_out, "%s %s+0x%05zx 0x%08llx\n", kind, r ? r->name : "?", off, v);
 }
 
-u8 readb(const void __iomem *a) { size_t o; struct region *r = find_region(a, &o); return r ? r->mem[o] : 0; }
-u16 readw(const void __iomem *a) { size_t o; struct region *r = find_region(a, &o); u16 v = 0; if (r) memcpy(&v, r->mem + o, 2); return v; }
-u32 readl(const void __iomem *a) { size_t o; struct region *r = find_region(a, &o); u32 v = 0; if (r) memcpy(&v, r->mem + o, 4); return v; }
+u8 readb(const void __iomem *a) { size_t o; struct region *r = find_region(a, &o); u8 v = r ? r->mem[o] : 0; trace("R8 ", a, v); return v; }
+u16 readw(const void __iomem *a) { size_t o; struct region *r = find_region(a, &o); u16 v = 0; if (r) memcpy(&v, r->mem + o, 2); trace("R16", a, v); return v; }
+u32 readl(const void __iomem *a) { size_t o; struct region *r = find_region(a, &o); u32 v = 0; if (r) memcpy(&v, r->mem + o, 4); trace("R32", a, v); return v; }
 void writeb(u8 v, void __iomem *a) { size_t o; struct region *r = find_region(a, &o); trace("W8 ", a, v); if (r) r->mem[o] = v; }
 void writew(u16 v, void __iomem *a) { size_t o; struct region *r = find_region(a, &o); trace("W16", a, v); if (r) memcpy(r->mem + o, &v, 2); }
 void writel(u32 v, void __iomem *a) { size_t o; struct region *r = find_region(a, &o); trace("W32", a, v); if (r) memcpy(r->mem + o, &v, 4); }

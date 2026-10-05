@@ -4,8 +4,9 @@
 Compiles the REAL driver source against a stub kernel API (kernel/pcie_trace/),
 runs its probe through the real init path against fake registers (all-zero and
 all-ones, so read-modify-write masks and values are visible), and compares the
-ordered trace of every MMIO write, PMU write, GPIO action and delay with the golden
-trace recorded from the hardware-proven 0053 driver. A clean-up that renames or
+ordered trace of every MMIO READ and write, PMU write, GPIO action and delay with the
+golden trace recorded from the hardware-proven 0053 driver. dev_info() evaluates its
+arguments (reads happen) while dev_dbg() does not, exactly like the kernel. A clean-up that renames or
 restructures code must leave this trace byte-identical; anything that changes an
 offset, mask, value, order or delay fails here.
 
@@ -52,6 +53,22 @@ def run_trace(source: Path) -> str:
         return result.stdout
 
 
+def normalize(trace: str) -> str:
+    """Sort each run of consecutive reads. C leaves the evaluation order of several
+    readl() call arguments unspecified, so the order inside a run may differ between
+    compilers; added, removed or moved reads (across a write or delay) still differ."""
+    out, run = [], []
+    for line in trace.splitlines():
+        if line.startswith("R"):
+            run.append(line)
+            continue
+        out.extend(sorted(run))
+        run = []
+        out.append(line)
+    out.extend(sorted(run))
+    return "\n".join(out) + "\n"
+
+
 def check_invariants(trace: str) -> None:
     """Properties that must hold for every version, independent of the golden file."""
     scenarios = re.split(r"^== scenario ", trace, flags=re.M)[1:]
@@ -61,6 +78,7 @@ def check_invariants(trace: str) -> None:
         assert "?" not in body.replace("== probe returned", ""), f"{name}: write outside a mapped window"
         # The controller's +0x88/+0x8c words are undecoded and must never be written.
         assert not re.search(r"W\d+ +win3\+0x0008[8c] ", body), f"{name}: write to +0x88/+0x8c"
+        # ... and its value must never decide anything: a read is allowed, a branch on it is not.
         # Only port 1's windows and the ECAM view are ever touched; no Bluetooth PMU register.
         assert not re.search(r"PMU_W 0x0402", body), f"{name}: Bluetooth GPIO2 written"
         assert body.rstrip().endswith("== probe returned 0"), f"{name}: probe did not succeed"
@@ -84,7 +102,8 @@ def main() -> int:
         args.golden.write_text(trace)
         print(f"golden updated: {args.golden} ({len(trace.splitlines())} lines)")
         return 0
-    expected = args.golden.read_text()
+    expected = normalize(args.golden.read_text())
+    trace = normalize(trace)
     if trace != expected:
         import difflib
         sys.stdout.writelines(difflib.unified_diff(expected.splitlines(True), trace.splitlines(True),
