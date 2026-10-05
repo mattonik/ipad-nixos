@@ -210,3 +210,14 @@ backoff at a real temperature.
 identical to the 0050 test. `0x0402` was not read (no I2C tools in this payload); the
 patch has no reference to it. See `j81-d2207-gpio-register-correction.md`. Remaining PCIe
 debt: replace the `+0x88` bit-6 poll with DLLLA.
+
+## Next task, queued 2026-10-05 (start only after the pending hardware tests are done)
+
+**PCIe link-wait cleanup** (separate commit series, per
+`2026-10-05-touch-pcie-builder-handoff.md`): replace the inherited Stage-5F `+0x88`
+bit-6 link poll with the root port's DLL Link Active (LnkSta bit 13), read through the
+already-established root-port ECAM view with a bounded timeout, or let normal
+enumeration be the success outcome. Keep Gen1 / 2.5 GT/s, add no new MMIO sequence, no
+PMU action and no Bluetooth work; retain comments that separate recovered writes from
+unresolved parts. Pending hardware tests before it: the GPIO55 `display_sync` pinmux
+experiment (touch-SPI payload). It needs its own boot review before any hardware run.
