@@ -25,7 +25,7 @@ import tempfile
 HERE = Path(__file__).parent
 HARNESS = HERE / "pcie_trace"
 GOLDEN = HARNESS / "golden-0053.trace"
-HEADERS = ("linux/bitops.h", "linux/delay.h", "linux/err.h", "linux/gpio/consumer.h", "linux/i2c.h",
+HEADERS = ("linux/bitops.h", "linux/build_bug.h", "linux/log2.h", "linux/delay.h", "linux/err.h", "linux/gpio/consumer.h", "linux/i2c.h",
            "linux/io.h", "linux/jiffies.h", "linux/module.h", "linux/of.h", "linux/of_address.h",
            "linux/pci-ecam.h", "linux/platform_device.h", "linux/regmap.h")
 

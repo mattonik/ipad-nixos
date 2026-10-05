@@ -175,9 +175,20 @@ evidence. To avoid waiting on that, validate the plumbing earlier, in increasing
 | `0057` | the MSI parent domain (section 3), `msi-controller`/`msi-parent`/`msi-ranges` in `t7001-air2.dtsi`, binding update. One atomic change. | A1-A8 |
 | `0058` | the H1 self-test driver, **test kernel variant only** | review; explicit hardware approval |
 
-## 9. Decisions requested
+## 9. Decisions (resolved by the user, 2026-10-05)
 
-1. Allow `MSI_FLAG_MULTI_PCI_MSI` in the first version, or keep to one vector? (Recommended: one.)
-2. Approve the H1 self-test concept (config writes to the endpoint's MSI capability and command
-   register) as the way to validate the plumbing before firmware exists?
-3. Should U2's read-only `+0x168` dump be built into the diagnostic variant?
+1. **One vector.** The first domain does not advertise `MSI_FLAG_MULTI_PCI_MSI` and has no
+   block allocation beyond a single slot. `brcmfmac` asks for exactly one vector, and
+   multi-vector would rest on the unobserved low-bit routing assumption (hardware has never
+   delivered a J81 MSI). Revisit only after one vector has been seen to work.
+2. **H1 self-test concept approved.** The allocation self-test (config writes to the
+   endpoint's MSI capability and command register, test kernel only) is approved as a concept.
+   Each hardware run of it still gets its own go-ahead at run time and a recorded session.
+3. **The read-only `+0x168` dump is included** in a diagnostic variant (U2): a `dev_dbg`-level
+   read of the port's MSI address register after the existing init, so the hardware default can
+   be compared with `0xbffff000` without writing anything.
+
+Series state: `0056` (derive the register values from base/count) is implemented, host-verified
+(zero-fuzz apply, real driver compiled in the trace harness with the new `static_assert`s, trace
+identical to golden) and built as `m1n1-hoolock-pcie-j81-msi`. `0057` (the domain, atomic with
+the DT) and `0058` (H1 self-test driver, test variant only) follow.

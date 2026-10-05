@@ -19,6 +19,9 @@ typedef uint32_t u32;
 typedef uint64_t u64;
 #define __iomem
 #define BIT(n) (1U << (n))
+#define ilog2(n) (31 - __builtin_clz(n))
+#define is_power_of_2(n) ((n) != 0 && (((n) & ((n) - 1)) == 0))
+#define static_assert _Static_assert
 #define EINVAL 22
 #define ENOMEM 12
 #define EIO 5
