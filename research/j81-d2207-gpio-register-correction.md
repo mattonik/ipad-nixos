@@ -228,3 +228,28 @@ host; nothing written. Both devices expose a PCIe capability:
 No code change is needed for the warnings. The one recommended change is to the
 link-wait logic in the future production driver (use DLLLA), not to the test
 stages.
+
+## Hardware result, 2026-10-05: board-gated `0052` payload enumerates the BCM4350
+
+Payload `m1n1-hoolock-pcie-j81-reg-on` (patch `0052`, commit `d23fb35`), cold boot with
+the user's go-ahead for its single PMU write; recorded session (private), read-only
+checks over telnet. This payload has no I2C tools and no Bluetooth userland by design.
+
+- Kernel log at 0.135 s, before PCIe probe: `J81 Wi-Fi REG_ON: 0x0403 0x09 -> 0x0b`
+  (the board-declared path via `apple,reg-on-pmic`; no `failed to assert`, no deferral
+  messages).
+- Enumeration identical to the 0050 test: root port `106b:1002`, endpoint
+  **`14e4:43a3`**, class `0x028000`, **revision `0x05`**, BAR 0 (32 KB) and BAR 2 (4 MB)
+  assigned, IOMMU group 0, `lspci` lists both.
+- Link, from config space: root port `LnkCap` 5.0 GT/s x1, `LnkSta` 2.5 GT/s x1,
+  **DLLLA = 1**, training 0; endpoint `LnkCap` 2.5 GT/s x1. Same benign
+  `retraining failed` and `iommu-map id 0x8` messages as before (explained earlier).
+- Bluetooth `0x0402`: the patch contains no reference to it (statically verified), and
+  the payload has no `btattach` or I2C tools. The register was **not read** this run
+  (no tool in the image), so "untouched" rests on the code, not a readback.
+- Nothing beyond config-space reads and the kernel's own `0x0403` write; no chip memory,
+  firmware, OTP/NVRAM or Bluetooth action.
+
+This validates the board-gated form as a drop-in for the test-stage assert. The inherited
+Stage-5F link wait (`+0x88` bit 6) is unchanged technical debt; DLLLA is the real link
+signal.

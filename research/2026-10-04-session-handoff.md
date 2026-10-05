@@ -202,3 +202,11 @@ Following [`2026-10-05-touch-pcie-builder-handoff.md`](2026-10-05-touch-pcie-bui
 read-only dashboard rendered and exited cleanly with no auto-launch. Details in the
 tethered-tablet plan. Still unexercised on hardware: the real 80% boundary and the 42 C
 backoff at a real temperature.
+
+## 2026-10-05 hardware: board-gated Wi-Fi REG_ON payload
+
+`m1n1-hoolock-pcie-j81-reg-on` (patch `0052`) booted: `J81 Wi-Fi REG_ON: 0x0403 0x09 ->
+0x0b` at 0.135 s, then the BCM4350 (`14e4:43a3`, rev `0x05`) enumerated with DLLLA set,
+identical to the 0050 test. `0x0402` was not read (no I2C tools in this payload); the
+patch has no reference to it. See `j81-d2207-gpio-register-correction.md`. Remaining PCIe
+debt: replace the `+0x88` bit-6 poll with DLLLA.
