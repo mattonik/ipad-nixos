@@ -76,3 +76,10 @@ Not established: that IOVAs outside Apple's window really fail on J81 (the premi
 the window is exactly 1 GiB-minus-a-page in hardware rather than only Apple's software
 allocation range. Validation needs a DMA-capable endpoint test (the firmware gate); do not
 merge into the production payload before that.
+
+### `0060` compile result (2026-10-05)
+
+`hoolock-pcie-j81-iova-kernel` (0052-0057 + 0060) builds cleanly; `apple-dart.o` compiles against
+the real kernel headers and the kernel `Image` contains the `apple,iova-window` lookup. The first
+attempt failed only because the builder's disk was full (`rsync` broken pipe during install);
+a plain retry after Nix's auto-GC succeeded. Still a proposal: no payload built, nothing booted.
