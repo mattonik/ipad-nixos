@@ -336,3 +336,37 @@ register values from base/count; trace-identical), `0057` (domain + DT, one atom
   PMU byte (`0x0403`).
 - Still open: `0058` H1 self-test (test variant), the read-only `+0x168` dump, whether the DART
   passes the doorbell write, edge vs level, port-event interrupt handling.
+
+## Update 2026-10-05 (end of day): MSI series complete through H1A, doorbell register open
+
+Series on `main` (patch chain after `0052`-`0055`): `0056` derive port MSI values, `0057` one-vector
+MSI parent domain + DT (atomic), `0058` H1A self-test driver (test kernels only), `0059` read-only
+`+0x168` dump (test kernels only; `0058` and `0059` are separate variants and do not combine).
+
+| Gate | Payload (flake output) | Result | Record |
+| --- | --- | --- | --- |
+| host | harness + mutations | pass (nine driver mutations caught; default trace == `0053` golden) | design sec. 10 |
+| build | `m1n1-hoolock-pcie-j81-msi` | pass after fixing `0056`'s `is_power_of_2` static_assert (host stub had hidden it) | sec. 10.1 |
+| H0 | `...-msi` | domain created before host init; link/enumeration unchanged | sec. 11 |
+| H1A | `m1n1-hoolock-pcie-j81-msi-selftest` | **PASS**: endpoint MSI addr `0xbffff000`, data 8; slot 8 -> AIC event 232 (hwirq 65768 = type bit 16 + 232); `request_irq` ok, `fired=0`; teardown clears enable. New benign `of_irq_parse_pci` -22 when a driver binds | sec. 13 |
+| diag | `m1n1-hoolock-pcie-j81-msi-diag` | `+0x168` reads **0x00000000** after init: delivery test blocked until the doorbell register is understood | sec. 14 |
+
+Other-agent notes reviewed and answered in `research/2026-10-05-review-of-delivery-path-research.md`
+(chain assertion adopted into `0058`; run-token-in-bootargs identity binding adopted as a plan for
+the next hardware run, not implemented yet).
+
+**Next work for the research agent (static, no hardware):** every consumer of the ADT `msi-address`
+(`0xbffff000`) and of `msi-crypto-address` in the iOS 8.1 controller/port code, and any register in
+the controller window written with `0xbffff000` or `>> 12`; decide among the three readings in
+design sec. 14. Also the J81 wired port-event parent (AIC 215) handler contract
+(`2026-10-05-t7000-pcie-port-event-contract.md`).
+
+**Open, needs the user:** any write to `+0x168` (not authorized); H1B delivery (needs a real
+endpoint MSI, i.e. the firmware gate); Bluetooth `0x0402`; touch firmware; ANS1 read-only repeat.
+**Charging:** the PCIe payloads have no I2C tools and a read-only charger sysfs, so the tablet runs
+at the 100 mA default while testing; 2400 mA needs the `m1n1-hoolock-tablet` payload (boot-time
+policy) or a manual register push, both awaiting the user's choice. Disk-space cleanup request from
+the start of the session is still unfulfilled (about 62 GiB free; nothing deleted).
+
+Offline suite: 31 passed, 0 failed, 7 skipped (`python3 tools/check_offline.py` with the
+`--pcie-j81-*-source` options). Raw hardware sessions stay under the ignored `artifacts/live/`.
