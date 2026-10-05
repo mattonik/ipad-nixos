@@ -307,3 +307,17 @@ state and enumeration are unchanged. Open: DART pass-through vs IOVA mapping of 
 (needs an MSI-raising endpoint). Clean-driver series status: step 1 harness, step 2 `0054` and
 step 3 `0055` are all hardware-confirmed behaviour-neutral/effective as designed. See
 `2026-10-05-review-pcie-audit-msi-and-evidence.md`.
+
+## 2026-10-05 MSI domain design (design only)
+
+[`2026-10-05-t7000-msi-domain-design.md`](2026-10-05-t7000-msi-domain-design.md) turns the research
+agent's MSI contract into an architecture, a no-hardware acceptance matrix (A1-A8) and a staged
+hardware plan (H0 read-only, H1 allocation self-test, H2 delivery with firmware). New evidence:
+the AIC reports **256 IRQs** on J81 (so MSI lines 224..255 end exactly at the last valid one);
+iOS's `+0x124`/`+0x128` encodings (`EN | log2(n) << 4`, `base | base << 16`) are the in-tree M1
+`PORT_MSICFG`/`PORT_MSIBASE` encodings; **iOS never writes `+0x168`** (the M1 `PORT_MSIADDR`), so the
+doorbell is hardware-defaulted and we must not guess a write; iOS builds a hierarchical MSI
+controller (32 vectors at AIC 224) as a child of the AIC; J81's tail unmasks exactly the M1
+`LINK_UP/LINK_DOWN/MSI_ERR/MSI_BAD_DATA/CPL_TIMEOUT` events. Series proposed: `0056` (derive the
+register values from base/count; trace-identical), `0057` (domain + DT, one atomic change), `0058`
+(self-test driver, test kernel only). Three user decisions are listed at the end of the design.
