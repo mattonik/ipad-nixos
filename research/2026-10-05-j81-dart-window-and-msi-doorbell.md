@@ -52,3 +52,27 @@ found statically. The window arithmetic is solid; the routing mechanism is still
 
 DART property reads were located with `tools/ghidra/find_adr_refs.py` (string references use
 `ADR`), then `tools/ghidra/DecompTo.java`.
+
+## `0060` drafted (2026-10-05, proposal; not hardware-tested)
+
+`kernel/patches/0060-apple-dart-per-controller-iova-window.patch` (on top of `0055`/`0057`):
+
+- new controller DT property `apple,iova-window = <start_hi start_lo end_hi end_lo>` (J81:
+  `<0x0 0x80000000 0x0 0xbffff000>`), binding documented as `uint64-array`, 2 items;
+- `apple_dart_get_resv_regions()` additionally reserves, as `IOMMU_RESV_RESERVED`, everything in
+  `[0, 2^ias)` outside the window for PCI devices behind that controller: `[0, 0x80000000)` and
+  `[0xc0000000, 4 GiB)` (the upper gap starts above the doorbell page, which keeps its own
+  `IOMMU_RESV_MSI` region from `0055`, so reservations never overlap);
+- without the property nothing changes (M1 and the global-doorbell fallback keep their behaviour);
+  the DART hardware is not touched.
+
+Host evidence: the pure gap helper is extracted from the patched driver and compiled; window +
+doorbell page + gaps tile `[0, 4 GiB)` exactly for J81, and degenerate inputs (empty, reversed,
+past-top window) produce no reservation (`kernel/test_apple_dart_iova_window_patch.py`, 9 cases,
+registered in `tools/check_offline.py` via `--pcie-j81-selftest-source`). Kernel
+variant: `hoolock-pcie-j81-iova-kernel` (0052-0057 + 0060), a compile gate only.
+
+Not established: that IOVAs outside Apple's window really fail on J81 (the premise), or that
+the window is exactly 1 GiB-minus-a-page in hardware rather than only Apple's software
+allocation range. Validation needs a DMA-capable endpoint test (the firmware gate); do not
+merge into the production payload before that.

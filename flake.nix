@@ -780,6 +780,12 @@
             hoolockConfig = patchedHoolockPcieJ81RegOnConfig;
           };
 
+          # PROPOSAL: 0052-0057 plus 0060 (per-controller IOVA window in the Apple DART).
+          hoolockPcieJ81IovaKernel = pkgsCross.callPackage ./kernel/hoolock-pcie-j81-iova.nix {
+            source = inputs.hoolockLinux;
+            hoolockConfig = patchedHoolockPcieJ81RegOnConfig;
+          };
+
           # TEST ONLY: 0052-0057 plus 0059 (read-only +0x168 dump).
           patchedHoolockPcieJ81MsiDiagConfig = pkgs.runCommand "ipad-t7001-hoolock-pcie-j81-msi-diag-defconfig-4k" {} ''
             cat ${patchedHoolockPcieJ81RegOnConfig} > "$out"
@@ -1022,6 +1028,7 @@
         hoolock-pcie-j81-msi-kernel = hoolockPcieJ81MsiKernel;
         hoolock-pcie-j81-msi-selftest-kernel = hoolockPcieJ81MsiSelftestKernel;
         hoolock-pcie-j81-msi-diag-kernel = hoolockPcieJ81MsiDiagKernel;
+        hoolock-pcie-j81-iova-kernel = hoolockPcieJ81IovaKernel;
         hoolock-pcie-gate-aux-ref-test-kernel = hoolockPcieGateAuxRefTestKernel;
         hoolock-pcie-gate-register-test-kernel = hoolockPcieGateRegisterTestKernel;
 

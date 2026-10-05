@@ -1,0 +1,129 @@
+diff --git a/Documentation/devicetree/bindings/pci/apple,t7000-pcie.yaml b/Documentation/devicetree/bindings/pci/apple,t7000-pcie.yaml
+--- a/Documentation/devicetree/bindings/pci/apple,t7000-pcie.yaml
++++ b/Documentation/devicetree/bindings/pci/apple,t7000-pcie.yaml
+@@ -46,6 +46,16 @@
+       driver allocates one vector per device, only from port 1's slice (vectors 8..15),
+       and composes the message with data equal to the global vector number.
+ 
++  apple,iova-window:
++    $ref: /schemas/types.yaml#/definitions/uint64-array
++    minItems: 2
++    maxItems: 2
++    description: |
++      IOVA window [start, end) in which the controller's DART translates DMA (the ADT
++      dart `vm-offset` and `vm-offset + vm-size`; [0x80000000, 0xbffff000) on J81). The
++      Apple DART reserves the rest of its address space for every PCI device behind the
++      controller. When absent no window is enforced.
++
+ additionalProperties: true
+ 
+ examples:
+@@ -54,6 +64,7 @@
+       compatible = "apple,t7000-pcie";
+       apple,reg-on-pmic = <&d2207>;
+       apple,msi-doorbell = <0x0 0xbffff000>;
++      apple,iova-window = <0x0 0x80000000 0x0 0xbffff000>;
+       msi-controller;
+       msi-parent = <&pcie>;
+       msi-ranges = <&aic AIC_IRQ 224 IRQ_TYPE_EDGE_RISING 32>;
+diff --git a/arch/arm64/boot/dts/apple/t7001-air2.dtsi b/arch/arm64/boot/dts/apple/t7001-air2.dtsi
+--- a/arch/arm64/boot/dts/apple/t7001-air2.dtsi
++++ b/arch/arm64/boot/dts/apple/t7001-air2.dtsi
+@@ -199,6 +199,13 @@
+ 	apple,msi-doorbell = <0x0 0xbffff000>;
+ 
+ 	/*
++	 * IOVA window the PCIe DART translates in Apple's configuration (ADT dart-apcie1
++	 * vm-offset 0x80000000, vm-size 0x3ffff000); it ends at the doorbell page above.
++	 * Everything outside it is reserved so DMA mappings never use it.
++	 */
++	apple,iova-window = <0x0 0x80000000 0x0 0xbffff000>;
++
++	/*
+ 	 * The controller's 32 hardware MSI vectors are AIC lines 224..255 (ADT
+ 	 * `msi-vector-offset` 224, `#msi-vectors` 32; the AIC reports 256 IRQs). Port 1 owns
+ 	 * vectors 8..15. These three properties are declared together with the driver's
+diff --git a/drivers/iommu/apple-dart.c b/drivers/iommu/apple-dart.c
+--- a/drivers/iommu/apple-dart.c
++++ b/drivers/iommu/apple-dart.c
+@@ -1152,6 +1152,51 @@
+ 	       !of_property_read_u64(parent->of_node, "apple,msi-doorbell", doorbell);
+ }
+ 
++/*
++ * The IOVA window of the PCIe host bridge above a PCI device, if its controller node declares
++ * one with `apple,iova-window` (two 64-bit values: start and end, end exclusive). The T7000 PCIe
++ * DART translates only [vm-offset, vm-offset + vm-size) in Apple's configuration (J81:
++ * [0x80000000, 0xbffff000), directly below the MSI doorbell page); everything else is left
++ * unreserved by the stock driver, whose allocator would hand out IOVAs near the top of its
++ * 32-bit space.
++ */
++static bool apple_dart_pci_iova_window(struct device *dev, u64 *start, u64 *end)
++{
++	struct pci_host_bridge *bridge = pci_find_host_bridge(to_pci_dev(dev)->bus);
++	struct device *parent = bridge ? bridge->dev.parent : NULL;
++
++	return parent && parent->of_node &&
++	       !of_property_read_u64_index(parent->of_node, "apple,iova-window", 0, start) &&
++	       !of_property_read_u64_index(parent->of_node, "apple,iova-window", 1, end);
++}
++
++struct apple_dart_iova_gap {
++	u64 start;
++	u64 len;
++};
++
++/*
++ * Ranges of [0, top) outside the window [start, end). When the doorbell page sits at `end` it
++ * already has its own IOMMU_RESV_MSI region, so the upper gap begins above it. Returns the
++ * number of gaps (0 to 2); an invalid window (empty, or beyond `top`) yields none.
++ */
++static int apple_dart_iova_window_gaps(u64 start, u64 end, u64 doorbell, bool have_doorbell,
++				       u64 top, struct apple_dart_iova_gap gaps[2])
++{
++	u64 high = end;
++	int n = 0;
++
++	if (start >= end || end > top)
++		return 0;
++	if (have_doorbell && (doorbell & PAGE_MASK) == end)
++		high += PAGE_SIZE;
++	if (start)
++		gaps[n++] = (struct apple_dart_iova_gap){ 0, start };
++	if (high < top)
++		gaps[n++] = (struct apple_dart_iova_gap){ high, top - high };
++	return n;
++}
++
+ static void apple_dart_get_resv_regions(struct device *dev,
+ 					struct list_head *head)
+ {
+@@ -1178,6 +1223,28 @@
+ 			return;
+ 
+ 		list_add_tail(&region->list, head);
++	}
++
++	if (dev_is_pci(dev)) {
++		struct apple_dart_master_cfg *cfg = dev_iommu_priv_get(dev);
++		struct apple_dart_iova_gap gaps[2];
++		u64 start, end, top;
++		int i, n;
++
++		if (cfg && apple_dart_pci_iova_window(dev, &start, &end)) {
++			top = BIT_ULL(cfg->stream_maps[0].dart->ias);
++			n = apple_dart_iova_window_gaps(start, end, doorbell, have_doorbell, top, gaps);
++			for (i = 0; i < n; i++) {
++				struct iommu_resv_region *region;
++
++				region = iommu_alloc_resv_region(gaps[i].start, gaps[i].len, 0,
++								 IOMMU_RESV_RESERVED, GFP_KERNEL);
++				if (!region)
++					return;
++
++				list_add_tail(&region->list, head);
++			}
++		}
+ 	}
+ 
+ 	iommu_dma_get_resv_regions(dev, head);
