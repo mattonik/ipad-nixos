@@ -28,7 +28,7 @@ iOS never writes `+0x168` and why it reads 0 on hardware.
    `aicVector - msi-vector-offset`. It never touches `msi-address`.
 4. Each port allocates its vectors from its own range allocator initialised with
    `(msi-vector-base, #msi-vectors)` (decompile around the `+0x188/+0x18c` port fields). The
-   vector numbers handed out, and therefore the message data, are **absolute** (port 1: 8..15),
+   vector numbers handed out, and therefore the message data, are **absolute** (port 1: 8..15; this step is inferred from the allocator's initialisation and the handler's `aicVector - offset` indexing, the allocate-to-`param_6` hand-off itself was not traced),
    the same `base | base<<16` window the port-tail MSI write programs.
 
 ## What this settles and what it does not
