@@ -30,7 +30,7 @@ def check_text():
                      "T7000_PCIE_MSI_PORT_BASE\t\t8", "T7000_PCIE_MSI_PORT_COUNT\t\t8",
                      "ilog2(T7000_PCIE_MSI_PORT_COUNT)", "static_assert(T7000_PCIE_PORT_MSICFG_VALUE == 0x00000031)",
                      "static_assert(T7000_PCIE_PORT_MSIBASE_VALUE == 0x00080008)",
-                     "static_assert(is_power_of_2(T7000_PCIE_MSI_PORT_COUNT))",
+                     "static_assert(T7000_PCIE_MSI_PORT_COUNT && !(T7000_PCIE_MSI_PORT_COUNT & (T7000_PCIE_MSI_PORT_COUNT - 1)))",
                      "#include <linux/build_bug.h>", "#include <linux/log2.h>"):
         assert fragment in plus, fragment
     # The doorbell register is documented as not written, and nothing new is written.

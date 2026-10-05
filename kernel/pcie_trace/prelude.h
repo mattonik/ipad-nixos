@@ -20,7 +20,8 @@ typedef uint64_t u64;
 #define __iomem
 #define BIT(n) (1U << (n))
 #define ilog2(n) (31 - __builtin_clz(n))
-#define is_power_of_2(n) ((n) != 0 && (((n) & ((n) - 1)) == 0))
+/* A function, as in the kernel: unusable in static_assert (that was a real build break). */
+static inline int is_power_of_2(unsigned long n) { return n != 0 && (n & (n - 1)) == 0; }
 #define static_assert _Static_assert
 #define EINVAL 22
 #define ENOMEM 12

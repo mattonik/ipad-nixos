@@ -57,7 +57,7 @@
 +	(T7000_PCIE_MSI_PORT_BASE | \
 +	 (T7000_PCIE_MSI_PORT_BASE << T7000_PCIE_PORT_MSIBASE_1_SHIFT))
 +
-+static_assert(is_power_of_2(T7000_PCIE_MSI_PORT_COUNT));
++static_assert(T7000_PCIE_MSI_PORT_COUNT && !(T7000_PCIE_MSI_PORT_COUNT & (T7000_PCIE_MSI_PORT_COUNT - 1)));
 +static_assert(T7000_PCIE_MSI_PORT_BASE % T7000_PCIE_MSI_PORT_COUNT == 0);
 +static_assert(T7000_PCIE_MSI_PORT_BASE + T7000_PCIE_MSI_PORT_COUNT <= 32);
 +/* The values Apple's callback produces for 8 vectors at base 8 (hardware-proven since 0045). */
