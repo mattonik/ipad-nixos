@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """Static verification of the Wi-Fi-only J81 REG_ON staging payload (stdlib only).
 
-Usage: python3 boot/verify_pcie_j81_reg_on_payload.py PAYLOAD_DIR [--dllla | --clean | --doorbell | --msi]
+Usage: python3 boot/verify_pcie_j81_reg_on_payload.py PAYLOAD_DIR [--dllla | --clean | --doorbell | --msi | --msi-selftest]
 
 --dllla additionally requires the 0053 DLLLA link-wait strings and rejects the old
 `link-wait-test: link_up=` poll output. --clean (patch 0054) requires the durable
 `t7000-pcie: link active=` string and rejects every test-stage log prefix. --doorbell
 (patch 0055) is --clean plus the PCIe node's `apple,msi-doorbell` = 0xbffff000. --msi (patch
 0057) is --doorbell plus the one-vector MSI domain: `msi-controller`, `msi-parent` and `msi-ranges`
-(AIC 224, 32 vectors, edge) on the PCIe node and the driver's domain string.
+(AIC 224, 32 vectors, edge) on the PCIe node and the driver's domain string. --msi-selftest (patch
+0058, TEST payload) is --msi plus the self-test driver's strings.
 
 Checks the built `m1n1-hoolock-pcie-j81-reg-on` output without any device:
 checksums and m1n1-linux.bin composition; the DTB names the D2207 PMIC for the PCIe
@@ -74,7 +75,8 @@ def fdt_nodes(blob):
 def main(argv):
     payload = Path(argv[1])
     flags = set(argv[2:])
-    msi = "--msi" in flags
+    selftest = "--msi-selftest" in flags
+    msi = "--msi" in flags or selftest
     doorbell = "--doorbell" in flags or msi
     clean = "--clean" in flags or doorbell
     dllla = "--dllla" in flags or clean
@@ -173,6 +175,13 @@ def main(argv):
             if needle not in image:
                 problems.append(f"kernel lacks {needle.decode()!r}")
 
+    if selftest:
+        for needle in (b"t7000-msi-selftest: ", b"t7000-msi-selftest"):
+            if needle not in image:
+                problems.append(f"kernel lacks {needle.decode()!r}")
+    elif msi and b"t7000-msi-selftest" in image:
+        problems.append("test-only MSI self-test driver is present in a non-selftest payload")
+
     if problems:
         print("FAIL")
         for p in problems:
@@ -194,6 +203,6 @@ def main(argv):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) not in (2, 3) or (len(sys.argv) == 3 and sys.argv[2] not in ("--dllla", "--clean", "--doorbell", "--msi")):
+    if len(sys.argv) not in (2, 3) or (len(sys.argv) == 3 and sys.argv[2] not in ("--dllla", "--clean", "--doorbell", "--msi", "--msi-selftest")):
         sys.exit(__doc__)
     sys.exit(main(sys.argv))

@@ -260,3 +260,30 @@ read-only checks over telnet (session recorded under `artifacts/live/sessions/`,
 H0 passes. Open for H1: allocate a vector on `01:00.0`, read back the endpoint's MSI capability
 address/data (`0xbffff000` / `8`..`15`), free it. (Enabling `CONFIG_GENERIC_IRQ_DEBUGFS` in the H1
 test variant would also give the domain listing.)
+
+## 12. `0058` H1 self-test implemented (2026-10-05, not yet run on hardware)
+
+`kernel/patches/0058-pcie-apple-t7000-msi-selftest.patch` adds an opt-in built-in driver
+(`CONFIG_PCIE_APPLE_T7000_MSI_SELFTEST`, depends on the host driver being built in) that binds
+`14e4:43a3` and, once:
+
+1. `pci_alloc_irq_vectors(pdev, 1, 1, PCI_IRQ_MSI)`;
+2. reads back the endpoint MSI capability (control, address hi/lo, data) and logs the interrupt's
+   parent chain (virq -> MSI domain -> AIC hwirq);
+3. `request_irq()`/`free_irq()` once, so the AIC `set_type`/unmask path runs;
+4. `pci_free_irq_vectors()`, re-reads control (the enable bit must be clear), and returns
+   `-ENODEV` so it never stays bound.
+
+PASS means: allocation returned 1, control enable set, address `0x00000000_bffff000`, data in
+8..15, `request_irq` succeeded. Log prefix `t7000-msi-selftest:`.
+
+Safety properties (enforced by `kernel/test_pcie_msi_selftest_patch.py`): no bus mastering, no
+`pci_enable_device`, no MMIO or MSI-X, no firmware/DMA/PMU/GPIO; the only device writes are the
+MSI capability fields the PCI core writes. The endpoint is never made to raise an MSI. It is a
+test-only variant: `m1n1-hoolock-pcie-j81-msi-selftest` (kernel `kernel/hoolock-pcie-j81-msi-selftest.nix`,
+which also sets `CONFIG_GENERIC_IRQ_DEBUGFS=y` for the domain listing). The `--msi` verifier
+mode rejects the self-test strings, `--msi-selftest` requires them, so the production MSI payload
+cannot silently gain the driver.
+
+Each boot of the self-test payload (H1) is its own hardware decision and writes the usual one PMU
+byte (`0x0403`).

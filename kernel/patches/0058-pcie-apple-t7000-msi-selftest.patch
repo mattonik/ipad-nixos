@@ -1,0 +1,149 @@
+diff --git a/drivers/pci/controller/Kconfig b/drivers/pci/controller/Kconfig
+--- a/drivers/pci/controller/Kconfig
++++ b/drivers/pci/controller/Kconfig
+@@ -72,6 +72,17 @@
+ 
+ 	  If unsure, say N.
+ 
++config PCIE_APPLE_T7000_MSI_SELFTEST
++	bool "Apple T7000 PCIe MSI allocation self-test (test kernels only)"
++	depends on PCIE_APPLE_T7000=y
++	help
++	  Binds to the J81 BCM4350 at boot, allocates and frees one MSI vector,
++	  logs the address/data programmed into the endpoint's MSI capability,
++	  and declines the device. It never makes the endpoint raise an MSI.
++	  Not for production kernels.
++
++	  If unsure, say N.
++
+ config PCI_VERSATILE
+ 	bool "ARM Versatile PB PCI controller"
+ 	depends on ARCH_VERSATILE || COMPILE_TEST
+diff --git a/drivers/pci/controller/Makefile b/drivers/pci/controller/Makefile
+--- a/drivers/pci/controller/Makefile
++++ b/drivers/pci/controller/Makefile
+@@ -41,6 +41,7 @@
+ obj-$(CONFIG_PCIE_HISI_ERR) += pcie-hisi-error.o
+ obj-$(CONFIG_PCIE_APPLE) += pcie-apple.o
+ obj-$(CONFIG_PCIE_APPLE_T7000) += pcie-apple-t7000.o
++obj-$(CONFIG_PCIE_APPLE_T7000_MSI_SELFTEST) += pcie-apple-t7000-msi-selftest.o
+ obj-$(CONFIG_PCIE_MT7621) += pcie-mt7621.o
+ obj-$(CONFIG_PCIE_ASPEED) += pcie-aspeed.o
+ 
+diff --git a/drivers/pci/controller/pcie-apple-t7000-msi-selftest.c b/drivers/pci/controller/pcie-apple-t7000-msi-selftest.c
+--- /dev/null
++++ b/drivers/pci/controller/pcie-apple-t7000-msi-selftest.c
+@@ -0,0 +1,113 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Apple T7000 PCIe (iPad Air 2) MSI allocation self-test. TEST KERNELS ONLY.
++ *
++ * Binds to the J81 BCM4350 (14e4:43a3), allocates exactly one MSI vector through the
++ * host controller's MSI domain, reads back what the core programmed into the endpoint's
++ * MSI capability (address, data, control) and the interrupt's parent chain, takes and
++ * releases the interrupt, frees the vector and declines the device (-ENODEV).
++ *
++ * It enables no bus mastering, writes no firmware, and does not touch the controller's
++ * registers: the only device writes are the MSI capability fields written by the PCI core.
++ * The endpoint is never made to raise an MSI, so no interrupt is expected to fire.
++ *
++ * Expected on J81 (design: research/2026-10-05-t7000-msi-domain-design.md section 9):
++ * address 0x00000000_bffff000, data in 8..15, control with the enable bit set.
++ */
++#include <linux/interrupt.h>
++#include <linux/irq.h>
++#include <linux/irqdomain.h>
++#include <linux/module.h>
++#include <linux/pci.h>
++
++#define T7000_MSI_SELFTEST_PREFIX	"t7000-msi-selftest: "
++#define T7000_MSI_AIC_BASE		224	/* msi-vector-offset, ADT */
++#define T7000_MSI_EXPECT_ADDR		0xbffff000UL
++#define T7000_MSI_SLOT_FIRST		8
++#define T7000_MSI_SLOT_LAST		15
++
++static atomic_t t7000_msi_fired = ATOMIC_INIT(0);
++
++static irqreturn_t t7000_msi_selftest_irq(int irq, void *data)
++{
++	atomic_inc(&t7000_msi_fired);
++	return IRQ_HANDLED;
++}
++
++static void t7000_msi_selftest_chain(int virq)
++{
++	struct irq_data *d;
++
++	for (d = irq_get_irq_data(virq); d; d = d->parent_data)
++		pr_info(T7000_MSI_SELFTEST_PREFIX "  chain: domain=%s hwirq=%lu\n",
++			d->domain && d->domain->name ? d->domain->name : "?", d->hwirq);
++}
++
++static int t7000_msi_selftest_probe(struct pci_dev *pdev, const struct pci_device_id *id)
++{
++	struct device *dev = &pdev->dev;
++	u16 ctl = 0, data = 0;
++	u32 lo = 0, hi = 0;
++	int pos, nvec, virq, ret;
++	bool ok;
++
++	pos = pci_find_capability(pdev, PCI_CAP_ID_MSI);
++	if (!pos) {
++		dev_err(dev, T7000_MSI_SELFTEST_PREFIX "no MSI capability\n");
++		return -ENODEV;
++	}
++
++	nvec = pci_alloc_irq_vectors(pdev, 1, 1, PCI_IRQ_MSI);
++	if (nvec != 1) {
++		dev_err(dev, T7000_MSI_SELFTEST_PREFIX "FAIL: pci_alloc_irq_vectors(1,1,MSI) = %d\n", nvec);
++		return -ENODEV;
++	}
++
++	virq = pci_irq_vector(pdev, 0);
++	pci_read_config_word(pdev, pos + PCI_MSI_FLAGS, &ctl);
++	pci_read_config_dword(pdev, pos + PCI_MSI_ADDRESS_LO, &lo);
++	if (ctl & PCI_MSI_FLAGS_64BIT) {
++		pci_read_config_dword(pdev, pos + PCI_MSI_ADDRESS_HI, &hi);
++		pci_read_config_word(pdev, pos + PCI_MSI_DATA_64, &data);
++	} else {
++		pci_read_config_word(pdev, pos + PCI_MSI_DATA_32, &data);
++	}
++
++	dev_info(dev, T7000_MSI_SELFTEST_PREFIX "virq=%d cap@0x%x ctl=0x%04x addr=0x%08x_%08x data=%u\n",
++		 virq, pos, ctl, hi, lo, data);
++	t7000_msi_selftest_chain(virq);
++
++	/* Exercises the parent's set_type/unmask path; nothing is expected to fire. */
++	ret = request_irq(virq, t7000_msi_selftest_irq, 0, "t7000-msi-selftest", pdev);
++	if (ret)
++		dev_err(dev, T7000_MSI_SELFTEST_PREFIX "request_irq failed: %d\n", ret);
++	else
++		free_irq(virq, pdev);
++
++	ok = !ret && (ctl & PCI_MSI_FLAGS_ENABLE) && !hi && lo == T7000_MSI_EXPECT_ADDR &&
++	     data >= T7000_MSI_SLOT_FIRST && data <= T7000_MSI_SLOT_LAST;
++	dev_info(dev, T7000_MSI_SELFTEST_PREFIX "%s (fired=%d, expected AIC hwirq %u)\n",
++		 ok ? "PASS" : "FAIL", atomic_read(&t7000_msi_fired), T7000_MSI_AIC_BASE + data);
++
++	pci_free_irq_vectors(pdev);
++	pci_read_config_word(pdev, pos + PCI_MSI_FLAGS, &ctl);
++	dev_info(dev, T7000_MSI_SELFTEST_PREFIX "after free: ctl=0x%04x (enable bit %s)\n", ctl,
++		 (ctl & PCI_MSI_FLAGS_ENABLE) ? "STILL SET" : "clear");
++	return -ENODEV;
++}
++
++static const struct pci_device_id t7000_msi_selftest_ids[] = {
++	{ PCI_DEVICE(PCI_VENDOR_ID_BROADCOM, 0x43a3) },
++	{ }
++};
++MODULE_DEVICE_TABLE(pci, t7000_msi_selftest_ids);
++
++static struct pci_driver t7000_msi_selftest_driver = {
++	.name		= "t7000-msi-selftest",
++	.id_table	= t7000_msi_selftest_ids,
++	.probe		= t7000_msi_selftest_probe,
++};
++module_pci_driver(t7000_msi_selftest_driver);
++
++MODULE_DESCRIPTION("Apple T7000 PCIe MSI allocation self-test (test kernels only)");
++MODULE_LICENSE("GPL");
