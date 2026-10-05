@@ -4,8 +4,9 @@
  *
  * Sequence and values come from Apple's iPad5,3 iOS 8.1 AppleMultitouchSPI
  * (research/j81-touch-clock-kclt-a8x.md, j81-touch-gpio-polarity-a8x.md,
- * j81-z2-n1-transport-framing.md). It makes NO SPI transfer, uploads NO
- * firmware, and never writes the D2207 voltage register. It only answers:
+ * j81-z2-n1-transport-framing.md). By default it makes NO SPI transfer; with
+ * --spi-dev it sends only the four handshake frames described below. It never
+ * uploads firmware and never writes the D2207 voltage register. It answers:
  * "after Apple's power order and one reset release, does the controller
  * raise its boot interrupt on GPIO84?" Then it unwinds in reverse order.
  *
@@ -23,6 +24,14 @@
  *                       also send the four minimal frames of
  *                       research/j81-touch-spi-experiment-design.md
  *                       (no firmware, no register write)
+ *   ... run ... --spi-dev D --display-sync-pinmux --approve-display-sync-pinmux
+ *                       opt-in experiment: before the SPI frames, select
+ *                       peripheral function 1 on GPIO55 (Apple's display_sync
+ *                       enable, research/2026-10-04-display-sync-pinmux-decode.md).
+ *                       This is a PINMUX change of the pin's PERIPH field, NOT a
+ *                       GPIO-high write. Requires --spi-dev, refuses a pin that
+ *                       is already muxed, and restores the exact saved 32-bit word
+ *                       on every exit. A user-approved experiment only.
  */
 #include <errno.h>
 #include <fcntl.h>
@@ -64,6 +73,10 @@
 #define GPIO_POWER 95			/* OIPG flags 01 01 00 00: active high */
 #define GPIO_DISPLAY_SYNC 55		/* not driven by this diagnostic */
 #define GPIO_CS 51			/* owned by the SPI3 pinmux; never requested */
+/* Apple pin-mode 2: (word & ~0x260) | 0x220 = PERIPH 1 + input enable. */
+#define PINMUX_MASK 0x260u
+#define PINMUX_PERIPH1 0x220u
+#define PINMUX_PERIPH_FIELD 0x60u	/* bits 6:5 */
 
 #define RESET_DEASSERT_DELAY_MS 15	/* AppleMultitouchSPIJ82 personality */
 #define RAIL_DELAY_MS 10		/* conservative; Apple's value unknown */
@@ -72,6 +85,9 @@
 static int g_i2c = -1, g_mem = -1;
 static volatile uint32_t *g_clk;
 static volatile uint32_t *g_gpio;
+static volatile uint32_t *g_gpio_w;	/* writable GPIO page: only with the pinmux flag */
+static int g_ds_pinmux;			/* --display-sync-pinmux acknowledged */
+static int g_restore_failed;
 static int g_reset_fd = -1, g_power_fd = -1, g_irq_fd = -1;
 static volatile sig_atomic_t g_signal;
 
@@ -94,7 +110,8 @@ static const uint8_t F_ATN_LONG[8] = { 0x1a, 0xa1, 0x18, 0xe1, 0x18, 0xe1, 0x18,
 
 /* State needed to unwind. */
 static struct {
-	int ldo_changed, power_on, clock_changed, reset_released;
+	int ldo_changed, power_on, clock_changed, reset_released, ds_changed;
+	uint32_t ds_saved;
 	uint8_t ldo_orig;
 	uint32_t clk_orig;
 } g_st;
@@ -139,7 +156,7 @@ static int open_pmu(void)
 	return 0;
 }
 
-static int open_mem(int writable)
+static int open_mem(int writable, int gpio_writable)
 {
 	int prot = PROT_READ | (writable ? PROT_WRITE : 0);
 	void *p;
@@ -161,6 +178,15 @@ static int open_mem(int writable)
 		return -1;
 	}
 	g_gpio = p;
+	if (gpio_writable) {
+		/* A second, writable view, created only for the opt-in pinmux experiment. */
+		p = mmap(NULL, 4096, PROT_READ | PROT_WRITE, MAP_SHARED, g_mem, GPIO_BASE);
+		if (p == MAP_FAILED) {
+			perror("mmap gpio (writable)");
+			return -1;
+		}
+		g_gpio_w = p;
+	}
 	return 0;
 }
 
@@ -259,6 +285,17 @@ static void unwind(void)
 	say("unwind: asserting reset\n");
 	if (g_reset_fd >= 0)
 		set_line(g_reset_fd, 1);
+	if (g_st.ds_changed && g_gpio_w) {
+		uint32_t rb;
+
+		g_gpio_w[GPIO_DISPLAY_SYNC] = g_st.ds_saved;
+		rb = g_gpio[GPIO_DISPLAY_SYNC];
+		say("unwind: GPIO%d word restored 0x%08x (saved 0x%08x)%s\n", GPIO_DISPLAY_SYNC, rb,
+		    g_st.ds_saved, rb == g_st.ds_saved ? "" : "  RESTORE MISMATCH");
+		if (rb != g_st.ds_saved)
+			g_restore_failed = 1;
+		g_st.ds_changed = 0;
+	}
 	if (g_st.power_on && g_power_fd >= 0) {
 		say("unwind: GPIO95 low\n");
 		set_line(g_power_fd, 0);
@@ -348,7 +385,7 @@ static int status(void)
 	uint8_t v;
 	static const unsigned int pins[] = { GPIO_CS, GPIO_DISPLAY_SYNC, GPIO_RESET, GPIO_IRQ, GPIO_POWER };
 
-	if (open_pmu() || open_mem(0))
+	if (open_pmu() || open_mem(0, 0))
 		return 1;
 	if (!pmu_read(REG_LDO14_ENABLE, &v))
 		say("PMU 0x%04x LDO14 enable   = 0x%02x (bit2 %s)\n", REG_LDO14_ENABLE, v,
@@ -373,6 +410,10 @@ static void plan(void)
 	    " 5. skip display_sync (GPIO%d) and the dummy SPI transfer: no SPI at all\n"
 	    " 6. release reset (drive high), wait %d ms, then watch GPIO%d for up to %d ms\n"
 	    " 7. unwind in reverse: reset low, GPIO%d low, LDO14 restored, clock disabled\n"
+	    "Optional opt-in experiment (needs --spi-dev): --display-sync-pinmux\n"
+	    "    --approve-display-sync-pinmux selects peripheral function 1 on GPIO55 before step 5\n"
+	    "    (a pinmux change, not a GPIO-high write); refused if the pin is already muxed;\n"
+	    "    the exact saved word is restored on every exit\n"
 	    "Optional SPI stage: add --spi-dev /dev/spidevB.C [--spi-mode 0..3] [--spi-hz N]:\n"
 	    "    before step 6 a 16-byte dummy transfer; after the IRQ edge wake, short and long\n"
 	    "    ATN/ACK (handshake frames only: no firmware, no register write)\n"
@@ -389,7 +430,7 @@ static int run(void)
 	int rc = 1, level_before = -1, level_after = -1, got_edge = 0;
 	uint8_t v = 0, volt = 0;
 
-	if (open_pmu() || open_mem(1))
+	if (open_pmu() || open_mem(1, g_ds_pinmux))
 		return 1;
 	if (pmu_read(REG_LDO14_ENABLE, &g_st.ldo_orig) || pmu_read(REG_LDO14_VOLTAGE, &volt)) {
 		say("abort: cannot read PMU\n");
@@ -451,6 +492,29 @@ static int run(void)
 	g_st.power_on = 1;
 	msleep(RAIL_DELAY_MS);
 	CHECK_ABORT();
+
+	if (g_ds_pinmux) {
+		uint32_t saved = g_gpio[GPIO_DISPLAY_SYNC], want, rb;
+
+		say("step 4b: GPIO%d display_sync pinmux (PERIPH field, not a level)\n", GPIO_DISPLAY_SYNC);
+		say("        saved word 0x%08x\n", saved);
+		if (saved & PINMUX_PERIPH_FIELD) {
+			say("abort: GPIO%d is already muxed to a peripheral (PERIPH != 0); not touching it\n",
+			    GPIO_DISPLAY_SYNC);
+			goto out;
+		}
+		want = (saved & ~PINMUX_MASK) | PINMUX_PERIPH1;
+		g_st.ds_saved = saved;
+		g_st.ds_changed = 1;		/* set first so every exit restores */
+		g_gpio_w[GPIO_DISPLAY_SYNC] = want;
+		rb = g_gpio[GPIO_DISPLAY_SYNC];
+		say("        requested field 0x%03x, wrote 0x%08x, readback 0x%08x\n", PINMUX_PERIPH1, want, rb);
+		if ((rb & PINMUX_MASK) != PINMUX_PERIPH1) {
+			say("abort: pinmux readback does not show PERIPH=1\n");
+			goto out;
+		}
+		CHECK_ABORT();
+	}
 
 	if (g_spi_dev) {
 		say("step 5: SPI dummy transfer (clock high before reset release)\n");
@@ -525,19 +589,34 @@ int main(int argc, char **argv)
 	if (!strcmp(cmd, "spi-check"))
 		return spi_open() ? 1 : 0;
 	if (!strcmp(cmd, "run")) {
-		int exec = 0, approve = 0;
+		int exec = 0, approve = 0, ds_flag = 0, ds_approve = 0;
 
 		for (int i = 2; i < argc; i++) {
 			exec |= !strcmp(argv[i], "--execute");
 			approve |= !strcmp(argv[i], "--approve-pmu-write");
+			ds_flag |= !strcmp(argv[i], "--display-sync-pinmux");
+			ds_approve |= !strcmp(argv[i], "--approve-display-sync-pinmux");
 		}
 		if (!exec || !approve) {
 			fprintf(stderr, "run needs --execute and --approve-pmu-write; showing the plan only\n");
 			plan();
 			return 2;
 		}
-		return run();
+		if (ds_flag != ds_approve) {
+			fprintf(stderr, "--display-sync-pinmux and --approve-display-sync-pinmux must be given together\n");
+			return 2;
+		}
+		if (ds_flag && !g_spi_dev) {
+			fprintf(stderr, "--display-sync-pinmux requires --spi-dev: it is only meaningful with the SPI frames\n");
+			return 2;
+		}
+		g_ds_pinmux = ds_flag;
+		{
+			int rc = run();
+
+			return (!rc && g_restore_failed) ? 1 : rc;
+		}
 	}
-	fprintf(stderr, "usage: touch-diag [plan|status|spi-check|run --execute --approve-pmu-write] [--spi-dev D --spi-mode M --spi-hz H]\n");
+	fprintf(stderr, "usage: touch-diag [plan|status|spi-check|run --execute --approve-pmu-write] [--spi-dev D --spi-mode M --spi-hz H] [--display-sync-pinmux --approve-display-sync-pinmux]\n");
 	return 2;
 }

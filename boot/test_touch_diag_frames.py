@@ -54,5 +54,63 @@ class FrameTests(unittest.TestCase):
         self.assertNotIn("read-only handshake", SOURCE)
 
 
+class DisplaySyncPinmuxTests(unittest.TestCase):
+    """Source-level contract for the opt-in GPIO55 pinmux experiment."""
+
+    def test_masks_and_word_math_match_the_decode(self):
+        self.assertIn("#define PINMUX_MASK 0x260u", SOURCE)
+        self.assertIn("#define PINMUX_PERIPH1 0x220u", SOURCE)
+        self.assertIn("#define PINMUX_PERIPH_FIELD 0x60u", SOURCE)
+        # Model of the exact word the tool computes, from the recorded baseline.
+        saved = 0x00072A82
+        self.assertEqual(saved & 0x60, 0, "baseline is PERIPH=0")
+        want = (saved & ~0x260) | 0x220
+        self.assertEqual((want >> 5) & 3, 1)
+        self.assertEqual(want & 0x260, 0x220)
+        # Only bits inside the 0x260 mask may change.
+        self.assertEqual(saved & ~0x260, want & ~0x260)
+        # A pin already in a peripheral function must be refused.
+        self.assertNotEqual(0x00072623 & 0x60, 0)
+
+    def test_both_acknowledgements_and_spi_device_required(self):
+        self.assertIn('"--display-sync-pinmux"', SOURCE)
+        self.assertIn('"--approve-display-sync-pinmux"', SOURCE)
+        self.assertIn("ds_flag != ds_approve", SOURCE)
+        self.assertIn("--display-sync-pinmux requires --spi-dev", SOURCE)
+        # Still behind the existing execute + PMU-write acknowledgement.
+        run_branch = SOURCE.split('if (!strcmp(cmd, "run"))', 1)[1]
+        self.assertLess(run_branch.index("--execute"), run_branch.index("ds_flag != ds_approve"))
+
+    def test_refuses_a_pin_that_is_already_muxed(self):
+        self.assertIn("if (saved & PINMUX_PERIPH_FIELD)", SOURCE)
+        self.assertIn("already muxed to a peripheral", SOURCE)
+
+    def test_exact_saved_word_is_restored_and_verified_before_rail_cleanup(self):
+        unwind = SOURCE.split("static void unwind(void)", 1)[1].split("static int status", 1)[0]
+        self.assertIn("g_gpio_w[GPIO_DISPLAY_SYNC] = g_st.ds_saved", unwind)
+        self.assertIn("RESTORE MISMATCH", unwind)
+        # Reset is asserted first, then the pin word, then rails and clock.
+        order = [unwind.index(m) for m in ("asserting reset", "g_st.ds_saved", "GPIO95 low",
+                                           "restoring LDO14", "disabling touch clock")]
+        self.assertEqual(order, sorted(order))
+        # The state flag is set before the write so every later exit restores it.
+        self.assertLess(SOURCE.index("g_st.ds_changed = 1;"),
+                        SOURCE.index("g_gpio_w[GPIO_DISPLAY_SYNC] = want"))
+
+    def test_status_path_and_normal_run_keep_gpio_read_only(self):
+        self.assertIn("open_pmu() || open_mem(0, 0)", SOURCE)
+        self.assertIn("open_mem(1, g_ds_pinmux)", SOURCE)
+        self.assertIn("if (gpio_writable)", SOURCE)
+        # The only GPIO writes are through g_gpio_w; the read mapping is PROT_READ only.
+        self.assertIn("MAP_SHARED, g_mem, GPIO_BASE);\n\tif (p == MAP_FAILED) {\n\t\tperror(\"mmap gpio\");", SOURCE)
+        self.assertNotRegex(SOURCE, r"g_gpio\[[^\]]*\]\s*=[^=]")
+
+    def test_no_new_frames_or_levels_were_added(self):
+        for name in ("F_DUMMY", "F_WAKE", "F_ATN_SHORT", "F_ATN_LONG"):
+            self.assertIn(name, SOURCE)
+        self.assertEqual(len(re.findall(r"static const uint8_t F_", SOURCE)), 4)
+        self.assertIn("NOT a\n *                       GPIO-high write", SOURCE)
+
+
 if __name__ == "__main__":
     unittest.main()

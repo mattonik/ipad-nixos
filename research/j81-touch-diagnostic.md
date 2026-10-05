@@ -143,3 +143,35 @@ approved** SPI experiment: add the touch child to the DT, run Apple's recovered
 framing (wake, bootloader ATN/ACK, register read) and *only then* consider
 firmware. That needs a decision on SPI3 mode/rate (still unknown) and on how to
 express LDO14/clock/GPIO ownership in the kernel.
+
+## Opt-in GPIO55 `display_sync` pinmux experiment: implemented, not run (2026-10-05)
+
+Implemented per `2026-10-05-touch-pcie-builder-handoff.md`; `touch-diag` only, no DT
+change, no touchscreen binding. Built into the touch-diag and touch-SPI payloads; **not
+booted**.
+
+- `run --execute --approve-pmu-write --spi-dev D --display-sync-pinmux
+  --approve-display-sync-pinmux`. Both new flags are required together, and `--spi-dev`
+  is mandatory. Without them nothing about GPIO55 changes; the GPIO page stays mapped
+  read-only (a second, writable mapping exists only when the flag is given; `status`
+  never has one).
+- Step 4b, after the rail delay and before the dummy frame: snapshot the whole GPIO55
+  word; **refuse** if `PERIPH` (bits 6:5) is not 0; write `(saved & ~0x260) | 0x220`;
+  require `readback & 0x260 == 0x220`. It is a pinmux change, not a GPIO-high write.
+- The selected mux is held through the dummy frame, reset release, the IRQ wait and the
+  wake / short-ATN / long-ATN frames. No new frame, level write, firmware or
+  download-mode action.
+- Unwind: reset asserted first, then the **exact saved 32-bit word** is restored and
+  verified (a `RESTORE MISMATCH` line and a non-zero exit if not), then GPIO95, LDO14 and
+  the clock as before. The restore flag is set before the write so every later exit
+  restores it.
+- Tests: 13 source-level tests in `boot/test_touch_diag_frames.py` cover the masks and
+  the word math from the recorded baseline `0x00072a82` (-> `0x00072aa2`), both
+  acknowledgements, the mandatory SPI device, the already-muxed refusal (GPIO51's
+  `0x00072623` is the example), restore order, and that the read mapping stays read-only.
+- Static checks: both payloads compile warning-free under `-Werror`; the static payload
+  gate passes; the binary contains the new flags. Not run on hardware: it needs the
+  user's explicit approval at run time.
+
+Expected value: a tightly scoped comparison against the existing SPI idle-pattern
+result, not a claim that touch will work.
