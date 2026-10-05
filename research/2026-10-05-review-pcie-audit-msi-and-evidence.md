@@ -106,3 +106,28 @@ identifier) is good and should be adopted.
 3. **Out of scope until MSI exists:** `BRCMFMAC_PCIE`, firmware/NVRAM, Bluetooth.
 4. **Retraining-quirk exemption:** correctly deferred. It is a few milliseconds of harmless
    work; do not add code to avoid it.
+
+## Follow-up 2026-10-05: DART doorbell reservation, baseline measured and fix built
+
+**Baseline on hardware (clean payload, `0054`, read-only):** the endpoint's IOMMU group
+reports `reserved_regions = 0x00000000fffff000 0x00000000ffffffff msi`. That is the M1-family
+doorbell from the inherited `CONFIG_PCIE_APPLE_MSI_DOORBELL_ADDR`, not J81's `0xbffff000`,
+confirming on the device what the source review found: the real J81 doorbell page is
+ordinary allocatable IOVA space today.
+
+**Fix (patch `0055`, per-controller):** the Apple DART now reads `apple,msi-doorbell` (a
+64-bit address) from the host bridge's controller node and reserves that page, falling back to
+the global Kconfig value when the property is absent so other users are unchanged. The J81 DT
+declares `apple,msi-doorbell = <0x0 0xbffff000>` on the PCIe node; the binding documents it
+(and the example, which `0052` left unterminated, is repaired).
+
+**Built and verified on the host:** payload `m1n1-hoolock-pcie-j81-doorbell` builds; the
+verifier's `--doorbell` mode passes (checksums, composition, the PMIC phandle, no Bluetooth or
+I2C tools, only clean-up log strings, `apple,msi-doorbell = 0x0 0xbffff000` on the PCIe node
+and nowhere else, the property lookup present in the kernel). Against the clean payload, only
+`Image.gz` and `t7001-j81.dtb` differ; Pongo, m1n1, initramfs and bootargs are byte-identical.
+
+**Prediction for the hardware test (read-only):** the same IOMMU group should now list
+`0x00000000bffff000 0x00000000bffffffff msi` instead of the `0xfffff000` line, with link,
+enumeration and config space unchanged. Whether J81's DART lets an endpoint write to the
+doorbell untranslated is still **unknown** and is not testable until an endpoint raises an MSI.
