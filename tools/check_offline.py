@@ -37,6 +37,7 @@ HOST_TESTS = (
     "boot/test_t7001_reserved_memory.py",
     "kernel/test_hdq_uart_patch.py",
     "kernel/test_pcie_j81_reg_on_patch.py",
+    "kernel/test_pcie_link_wait_dllla_patch.py",
     "kernel/test_spi_s5l_patch.py",
     "tools/test_check_offline.py",
 )

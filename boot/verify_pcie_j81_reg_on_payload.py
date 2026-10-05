@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """Static verification of the Wi-Fi-only J81 REG_ON staging payload (stdlib only).
 
-Usage: python3 boot/verify_pcie_j81_reg_on_payload.py PAYLOAD_DIR
+Usage: python3 boot/verify_pcie_j81_reg_on_payload.py PAYLOAD_DIR [--dllla]
+
+--dllla additionally requires the 0053 DLLLA link-wait strings and rejects the old
+`link-wait-test: link_up=` poll output.
 
 Checks the built `m1n1-hoolock-pcie-j81-reg-on` output without any device:
 checksums and m1n1-linux.bin composition; the DTB names the D2207 PMIC for the PCIe
@@ -66,6 +69,7 @@ def fdt_nodes(blob):
 
 def main(argv):
     payload = Path(argv[1])
+    dllla = "--dllla" in argv[2:]
     problems = []
 
     # Checksums and composition.
@@ -119,6 +123,12 @@ def main(argv):
         if stale in image:
             problems.append(f"kernel still has test-stage string {stale.decode()!r}")
 
+    if dllla:
+        if b"t7000-pcie link-wait: link active=" not in image:
+            problems.append("kernel lacks the DLLLA link-wait log string")
+        if b"link-wait-test: link_up=" in image:
+            problems.append("kernel still has the +0x88 bit-6 link-up poll output")
+
     if problems:
         print("FAIL")
         for p in problems:
@@ -126,11 +136,14 @@ def main(argv):
         return 1
     print("PASS: checksums, composition, DT phandle (PCIe node only, resolves to D2207),")
     print("      no btattach/I2C tools in the initramfs, board-gated REG_ON strings only")
-    print("NOTE: the inherited Stage-5F link wait still polls +0x88 bit 6 (technical debt, not a pass/fail signal)")
+    if dllla:
+        print("      DLLLA link wait present; the +0x88 bit-6 poll is gone")
+    else:
+        print("NOTE: the inherited Stage-5F link wait still polls +0x88 bit 6 (technical debt, not a pass/fail signal)")
     return 0
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
+    if len(sys.argv) not in (2, 3) or (len(sys.argv) == 3 and sys.argv[2] != "--dllla"):
         sys.exit(__doc__)
     sys.exit(main(sys.argv))

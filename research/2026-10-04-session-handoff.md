@@ -231,3 +231,29 @@ preconditions are now tried (power order, reset, clock, SPI mode/rate, download 
 optional, `display_sync` pinmux). The next touch step is the firmware decision, which is
 the user's alone. Queued after the hardware tests: the PCIe link-wait (DLLLA) cleanup.
 See `j81-touch-diagnostic.md`, "Hardware result 3".
+
+## 2026-10-05 PCIe link-wait (DLLLA) cleanup: implemented, built, not booted
+
+Patch `0053-pcie-apple-t7000-link-wait-dllla.patch` (on top of `0052`; kernel recipe
+`kernel/hoolock-pcie-j81-dllla.nix`, payload `m1n1-hoolock-pcie-j81-dllla`):
+
+- The inherited `+0x88` bit-6 poll is replaced by a bounded poll (1000 ms, 5 ms steps) of
+  the root port's **DLL Link Active** bit (LnkSta bit 13), read through the existing
+  bus 0 / device 1 / function 0 ECAM view before any `pci_dev` exists. It first checks the
+  root port's LnkCap DLL-link-active-reporting bit and otherwise relies on enumeration.
+  A timeout logs a warning and is **not fatal**, as before.
+- The PCIe-capability walk is shared (`t7000_pcie_find_express_cap`) with the unchanged
+  Gen1 `LnkCtl2` write. The raw controller words `+0x88`/`+0x8c` are still logged, marked
+  undecoded, and decide nothing.
+- **No write of any kind is added**; no PMU action, no new MMIO sequence, nothing about
+  Bluetooth. Gen1 / 2.5 GT/s handling is untouched. The 1000 ms bound is a design value
+  from the PCIe reset-to-link expectation, not an Apple-recovered number.
+- Host test `kernel/test_pcie_link_wait_dllla_patch.py` (text contract; with
+  `--j81-reg-on-source DIR` also a zero-fuzz apply and checks of the patched file).
+  Payload verifier gained `--dllla` (requires the new strings, rejects the old
+  `link-wait-test: link_up=` output; it correctly rejects the `0052` payload). Offline
+  suite: 25 passed, 7 skipped.
+- Remaining inherited test-stage code (not part of this task): the `0040`-`0045` DBI,
+  tunable and `link-wait-test:` write logging. A hardware boot of the new payload is a
+  separate user decision; expected result is `link active=1 lnksta=0x7011` (or similar)
+  and the same BCM4350 enumeration.
