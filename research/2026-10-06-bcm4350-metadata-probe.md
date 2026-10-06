@@ -72,3 +72,11 @@ firmware, use DMA, enable bus mastering or MSI, or involve brcmfmac.
 Same recipe as the other test payloads (`m1n1-hoolock-pcie-j81-bcm-probe`); it writes the usual
 one PMU byte (`0x0403`) at boot and, in addition, the BAR0 window register (restored) and the
 device's memory-decode enable (undone). Expect the `t7000-bcm-probe:` log lines above.
+
+## Build result (2026-10-06)
+
+`m1n1-hoolock-pcie-j81-bcm-probe` builds cleanly (first attempt, no builder disk problem):
+store path `/nix/store/3f7d8in121qpwibfs5s6wxfddpm1cbad-ipad-air2-m1n1-hoolock-pcie-j81-bcm-probe`,
+`m1n1-linux.bin` SHA-256 `4eff68d7b33d18f02fe910d4cecb89384dd96e2a688f74d5b23ffbe695ae3ccf`.
+`--bcm-probe` verifier passes (probe strings present, no `brcmfmac`); `--msi` and
+`--msi-selftest` correctly reject this payload. `result` points at it. Not booted.
