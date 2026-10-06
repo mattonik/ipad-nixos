@@ -63,3 +63,14 @@ Kernel/payload outputs: `m1n1-hoolock-pcie-j81-dma-rebase` (model A) and
 `m1n1-hoolock-pcie-j81-dma-raw` (model B). Only model A is built now (compile gate for the shared
 driver change); neither is booted. Boot decisions belong to the DMA discrimination in plan phase 3,
 which needs the firmware/NVRAM input from the proven OTP identity first.
+
+## Build result (2026-10-06)
+
+The first model A build failed to compile: `apple_dart_rebase_valid()` was defined after its first
+use in `apple_dart_finalize_domain()` (the host harness cannot see use-before-define). Fixed in
+`0063` (helper moved above its first use) and the test now asserts helper ordering. The rebuild
+compiled cleanly:
+`/nix/store/hplr7fcixmhbvwzc4isw2g3x87iyg1ca-ipad-air2-m1n1-hoolock-pcie-j81-dma-rebase`.
+`--dma-rebase` passes (DTB `apple,iova-window` and `apple,iova-rebase` present, no probe drivers);
+`--dma-raw` correctly rejects it. Model B (`m1n1-hoolock-pcie-j81-dma-raw`) is defined but not
+built. Nothing booted.
