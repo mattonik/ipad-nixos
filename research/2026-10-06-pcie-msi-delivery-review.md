@@ -75,9 +75,30 @@ failure.
 * extracted PRELINK text: `322bd7e33a6410caa520aae1282ca14e8791c4d2bd2af3b991ae1bb4a0f5c108`
 * saved J81 ADT: `cf743765e66a1a5b45cbf4e18c0e5ae21454bb1cb678b66e7007e2db04f5b6c2`
 
+## APCIe-to-DART rebase: static result
+
+That trace is now complete. Apple allocates mapper-apcie1 IOVAs in rebased
+page space, adds `vm-offset >> 12` (`0x80000`) before returning an address to
+the PCIe endpoint, and subtracts it again for every DART mapping, unmapping,
+and lookup. Therefore endpoint-visible `0x80000000` maps to DART PTE page 0
+in Apple's software model.
+
+No traced `AppleEmbeddedPCIE`/`AppleT7000PCIe` code programs an outbound,
+inbound, or ATU base; it only performs resource, power, PHY, and link setup.
+The DART setup programs page tables and control state but no IOVA-base or
+aperture register. The unresolved boundary is consequently the transaction
+as presented by the T7000 APCIe fabric to the DART: fixed hardware decode,
+inherited boot-stage state, or undocumented DART address interpretation.
+
+This makes the `0060` limitation concrete: it restricts Linux allocation but
+does **not** reproduce Apple's PTE rebase. Do not deploy it. In particular,
+an unmodified Linux mapping for external IOVA `0x80000000` would occupy raw
+DART page `0x80000`, not Apple's page 0.
+
 ## Next and stop condition
 
-Trace only the APCIe/fabric DMA-address conversion. If it does not show how
-the external IOVA reaches the rebased DART page-table index, stop static work:
-the smallest discriminating future test is a deliberately bounded DMA mapping
-comparison, not more guessed registers or address dumps.
+Static research has reached its evidence boundary. The smallest discriminating
+future observation is a bounded DMA-translation comparison that distinguishes
+the page-0 and page-`0x80000` models, after the BCM4350 firmware/NVRAM gate.
+Do not continue with guessed controller registers, broad address dumps, or
+an MSI delivery test until that DMA model is established.
