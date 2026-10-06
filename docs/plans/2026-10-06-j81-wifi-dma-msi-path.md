@@ -40,7 +40,8 @@ user go-ahead and a recorded, recoverable USB-network session.
 | Phase | Objective | Research agent | Development agent | iPad run / acceptance |
 | --- | --- | --- | --- | --- |
 | 0 | Preserve the known baseline | Audit claims and keep run identity evidence current. | None. Do not promote patch `0060`; it is compile-only research. | None. |
-| 1 | Prove firmware identity inputs | Recover the BCM4350 NVM-record format, module/vendor/version tuple, Apple C2/C4 selector, and the role of old J81 calibration fields. Review only private captures locally. | Prepare only a bounded, test-only NVM metadata-capture design after review. It must identify chip/core revision, size/strap state, and restore every core/window selection. | Explicitly approved capture; private output must prove a nonempty tuple and record boundaries. Any unsupported core/wrapper is a clean stop. |
+| 1a | Observe NVM mapping state | Match the observed chip/core revision and strap state to a source-supported mapping path. | Build a test-only **observation** probe: report chip/core revision, capabilities, OTP layout, and SROM control; save/restore its core/window selection; make no OTP-selector write and capture no shadow bytes. | Explicitly approved read-only observation. Unknown core/wrapper/strap is a clean stop. |
+| 1b | Prove firmware identity inputs | Decode the private shadow with the observed mapping; recover one complete module/vendor/version tuple, Apple C2/C4 selection, and the role of old J81 calibration fields. | After 1a review, build the separately approved bounded shadow-capture payload. Its span must follow the observed mapping and all selection state must be restored. | Private capture must prove a nonempty tuple and record boundaries. Never infer an offset from BCM4355/4364. |
 | 2 | Make a correct Linux DMA-model candidate | Specify the smallest Linux-side representation of Apple's `vm-offset` rebase and its failure/unwind behaviour. Verify that it cannot change other DART users. | Implement one isolated **test** mapping model, with source tests and a payload verifier. It must not claim that `0060` alone solves the rebase. Build-only review first. | None until Phase 1 identifies the exact firmware/NVRAM input. |
 | 3 | Discriminate DMA mapping and establish H1B | Define logs and pass/fail criteria before any run. Review the built payload identity and boot token. | Build one model per payload; preserve telnet recovery and add no scan/association automation. Capture DART faults, endpoint MSI capability, AIC counters, port status, and mailbox state. | First firmware preinit control completion, normally `cur_etheraddr`, is the event. **Pass:** matching D2H completion plus AIC 232/slot 8 and no DART/MSI error. **Fail:** pending D2H completion with MSI enabled but no AIC event, wrong vector, or MSI error. Firmware/NVRAM/DMA setup failure is inconclusive. |
 | 4 | Interface creation without RF use | Audit logs and distinguish transport success from calibration success. | Enable `BRCMFMAC_PCIE` only in the approved test payload; package the proven private assets outside Git. Stop after firmware/interface creation. | Confirm interface creation and stable control path; no scan or association. A calibration mismatch is a stop, not a fallback opportunity. |
@@ -60,23 +61,29 @@ user go-ahead and a recorded, recoverable USB-network session.
 
 ### Best suited to development
 
-1. Write and compile the bounded NVM metadata diagnostic after its static
-   contract is approved.
-2. Implement the isolated DMA-rebase candidate and build test payloads.
-3. Maintain payload verification, run tokens, initramfs recovery access, and
+1. Write and compile the observation-only NVM metadata probe first. Its
+   initial version must not change the OTP selector or read shadow contents.
+2. Write the bounded shadow-capture diagnostic only after the observation
+   selects a source-supported mapping path.
+3. Implement the isolated DMA-rebase candidate and build test payloads.
+4. Maintain payload verification, run tokens, initramfs recovery access, and
    private-asset packaging.
-4. Keep `0060` out of any production/default payload unless a later DMA run
+5. Keep `0060` out of any production/default payload unless a later DMA run
    validates the full model.
 
 ### Needs the iPad
 
-1. NVM metadata capture (Phase 1).
+1. NVM mapping observation, then separately a private shadow capture
+   (Phases 1a--1b).
 2. Firmware/DMA/MSI control-completion experiment (Phase 3).
 3. Interface creation, then separately any RF use (Phases 4--5).
 
 ## Decision gates
 
 ```text
+NVM mapping observation
+        |
+        v
 private NVM identity
         |
         v
@@ -92,7 +99,8 @@ first D2H control completion --> AIC 232 observed? --> H1B delivery proven
 interface creation, then separately scan/association
 ```
 
-If Phase 1 cannot prove the NVM tuple or calibration policy, stop before
+If Phase 1a cannot select a supported mapping path, or Phase 1b cannot prove
+the NVM tuple or calibration policy, stop before
 loading firmware. If Phase 3 cannot attribute a result because firmware did
 not start or DMA faulted first, fix that earlier gate rather than calling MSI
 broken.
