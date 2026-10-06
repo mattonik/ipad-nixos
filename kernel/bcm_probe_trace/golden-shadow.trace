@@ -1,0 +1,721 @@
+== scenario ok-rev48-chipcommon
+CFGR 0x80 -> 0x18000000
+ENABLE_MEM
+REQUEST_REGION 0
+IOMAP bar=0 off=0x0 len=0x1000
+LOG INFO t7000-bcm-probe: saved BAR0 window=0x18000000
+CFGW 0x80 <- 0x18000000
+CFGR 0x80 -> 0x18000000
+RD win=0x18000000 off=0x000 -> 0x00024350
+RD win=0x18000000 off=0x0fc -> 0x180ff000
+CFGW 0x80 <- 0x180ff000
+CFGR 0x80 -> 0x180ff000
+RD win=0x180ff000 off=0x000 -> 0x00000000
+RD win=0x180ff000 off=0x004 -> 0x00080001
+RD win=0x180ff000 off=0x008 -> 0x30000000
+CFGW 0x80 <- 0x18000000
+CFGR 0x80 -> 0x18000000
+RD win=0x18000000 off=0x004 -> 0x00080000
+RD win=0x18000000 off=0x01c -> 0x00010000
+RD win=0x18000000 off=0x190 -> 0x00000031
+LOG INFO t7000-bcm-probe: shadow: not captured - SPROM present: the published predicates disagree
+LOG INFO t7000-bcm-probe: chipid=0x00024350 chip=0x4350 chiprev=2 pkg=0 eromptr=0x180ff000
+LOG INFO t7000-bcm-probe: erom first component: id=0x800 rev=48 (cia=0x00080001 cib=0x30000000)
+LOG INFO t7000-bcm-probe: capabilities=0x00080000 otpsize_enc=1 otplayout=0x00010000 wrap=1 sromcontrol=0x00000031 srom_present=1 srom_size_enc=0 otpsel=1 otp_present=1
+LOG INFO t7000-bcm-probe: predicates: android(otpsel&&otp_present)=1 newer(otp_present&&!srom_present)=0
+LOG INFO t7000-bcm-probe: mapping path: chipcommon
+IOUNMAP
+CFGW 0x80 <- 0x18000000
+CFGR 0x80 -> 0x18000000
+LOG INFO t7000-bcm-probe: BAR0 window restore PASS (saved 0x18000000, now 0x18000000)
+RELEASE_REGION 0
+DISABLE
+RD16 count=0 first=0x000 last=0x000 contiguous=0
+ALLOC allocs=0 frees=0 kept=0
+PROBE_RET -19
+FINAL_WINDOW 0x18000000 INITIAL 0x18000000
+VIOLATIONS 0
+== scenario ok-rev49-gci
+CFGR 0x80 -> 0x18000000
+ENABLE_MEM
+REQUEST_REGION 0
+IOMAP bar=0 off=0x0 len=0x1000
+LOG INFO t7000-bcm-probe: saved BAR0 window=0x18000000
+CFGW 0x80 <- 0x18000000
+CFGR 0x80 -> 0x18000000
+RD win=0x18000000 off=0x000 -> 0x00024350
+RD win=0x18000000 off=0x0fc -> 0x180ff000
+CFGW 0x80 <- 0x180ff000
+CFGR 0x80 -> 0x180ff000
+RD win=0x180ff000 off=0x000 -> 0x00080001
+RD win=0x180ff000 off=0x004 -> 0x31000000
+CFGW 0x80 <- 0x18000000
+CFGR 0x80 -> 0x18000000
+RD win=0x18000000 off=0x004 -> 0x00080000
+RD win=0x18000000 off=0x01c -> 0x00010000
+RD win=0x18000000 off=0x190 -> 0x00000020
+LOG INFO t7000-bcm-probe: shadow: not captured - mapping path is not chipcommon
+LOG INFO t7000-bcm-probe: chipid=0x00024350 chip=0x4350 chiprev=2 pkg=0 eromptr=0x180ff000
+LOG INFO t7000-bcm-probe: erom first component: id=0x800 rev=49 (cia=0x00080001 cib=0x31000000)
+LOG INFO t7000-bcm-probe: capabilities=0x00080000 otpsize_enc=1 otplayout=0x00010000 wrap=1 sromcontrol=0x00000020 srom_present=0 srom_size_enc=0 otpsel=0 otp_present=1
+LOG INFO t7000-bcm-probe: predicates: android(otpsel&&otp_present)=0 newer(otp_present&&!srom_present)=1
+LOG INFO t7000-bcm-probe: mapping path: gci
+IOUNMAP
+CFGW 0x80 <- 0x18000000
+CFGR 0x80 -> 0x18000000
+LOG INFO t7000-bcm-probe: BAR0 window restore PASS (saved 0x18000000, now 0x18000000)
+RELEASE_REGION 0
+DISABLE
+RD16 count=0 first=0x000 last=0x000 contiguous=0
+ALLOC allocs=0 frees=0 kept=0
+PROBE_RET -19
+FINAL_WINDOW 0x18000000 INITIAL 0x18000000
+VIOLATIONS 0
+== scenario ok-rev51-chipcommon
+CFGR 0x80 -> 0x18000000
+ENABLE_MEM
+REQUEST_REGION 0
+IOMAP bar=0 off=0x0 len=0x1000
+LOG INFO t7000-bcm-probe: saved BAR0 window=0x18000000
+CFGW 0x80 <- 0x18000000
+CFGR 0x80 -> 0x18000000
+RD win=0x18000000 off=0x000 -> 0x00024350
+RD win=0x18000000 off=0x0fc -> 0x180ff000
+CFGW 0x80 <- 0x180ff000
+CFGR 0x80 -> 0x180ff000
+RD win=0x180ff000 off=0x000 -> 0x00080001
+RD win=0x180ff000 off=0x004 -> 0x33000000
+CFGW 0x80 <- 0x18000000
+CFGR 0x80 -> 0x18000000
+RD win=0x18000000 off=0x004 -> 0x00080000
+RD win=0x18000000 off=0x01c -> 0x00010000
+RD win=0x18000000 off=0x190 -> 0x00000030
+KMALLOC 256 bytes
+DEBUGFS_BLOB name=t7000-bcm-otp-shadow mode=400 size=256 crc=0xfdaca51e
+LOG INFO t7000-bcm-probe: shadow: captured 128 words (256 bytes) crc32=0xfdaca51e allones=0 zero=0; bytes in debugfs t7000-bcm-otp-shadow (root only, private, not for Git)
+LOG INFO t7000-bcm-probe: chipid=0x00024350 chip=0x4350 chiprev=2 pkg=0 eromptr=0x180ff000
+LOG INFO t7000-bcm-probe: erom first component: id=0x800 rev=51 (cia=0x00080001 cib=0x33000000)
+LOG INFO t7000-bcm-probe: capabilities=0x00080000 otpsize_enc=1 otplayout=0x00010000 wrap=1 sromcontrol=0x00000030 srom_present=0 srom_size_enc=0 otpsel=1 otp_present=1
+LOG INFO t7000-bcm-probe: predicates: android(otpsel&&otp_present)=1 newer(otp_present&&!srom_present)=1
+LOG INFO t7000-bcm-probe: mapping path: chipcommon
+IOUNMAP
+CFGW 0x80 <- 0x18000000
+CFGR 0x80 -> 0x18000000
+LOG INFO t7000-bcm-probe: BAR0 window restore PASS (saved 0x18000000, now 0x18000000)
+RELEASE_REGION 0
+DISABLE
+RD16 count=128 first=0x800 last=0x8fe contiguous=1
+ALLOC allocs=1 frees=0 kept=1
+PROBE_RET -19
+FINAL_WINDOW 0x18000000 INITIAL 0x18000000
+VIOLATIONS 0
+== scenario stop-rev43
+CFGR 0x80 -> 0x18000000
+ENABLE_MEM
+REQUEST_REGION 0
+IOMAP bar=0 off=0x0 len=0x1000
+LOG INFO t7000-bcm-probe: saved BAR0 window=0x18000000
+CFGW 0x80 <- 0x18000000
+CFGR 0x80 -> 0x18000000
+RD win=0x18000000 off=0x000 -> 0x00024350
+RD win=0x18000000 off=0x0fc -> 0x180ff000
+CFGW 0x80 <- 0x180ff000
+CFGR 0x80 -> 0x180ff000
+RD win=0x180ff000 off=0x000 -> 0x00080001
+RD win=0x180ff000 off=0x004 -> 0x2b000000
+LOG INFO t7000-bcm-probe: chipid=0x00024350 chip=0x4350 chiprev=2 pkg=0 eromptr=0x180ff000
+LOG INFO t7000-bcm-probe: erom first component: id=0x800 rev=43 (cia=0x00080001 cib=0x2b000000)
+LOG INFO t7000-bcm-probe: mapping path: STOP - ChipCommon revision below the published reader's minimum
+IOUNMAP
+CFGW 0x80 <- 0x18000000
+CFGR 0x80 -> 0x18000000
+LOG INFO t7000-bcm-probe: BAR0 window restore PASS (saved 0x18000000, now 0x18000000)
+RELEASE_REGION 0
+DISABLE
+RD16 count=0 first=0x800 last=0x8fe contiguous=1
+ALLOC allocs=0 frees=0 kept=0
+PROBE_RET -19
+FINAL_WINDOW 0x18000000 INITIAL 0x18000000
+VIOLATIONS 0
+== scenario stop-chip-4354
+CFGR 0x80 -> 0x18000000
+ENABLE_MEM
+REQUEST_REGION 0
+IOMAP bar=0 off=0x0 len=0x1000
+LOG INFO t7000-bcm-probe: saved BAR0 window=0x18000000
+CFGW 0x80 <- 0x18000000
+CFGR 0x80 -> 0x18000000
+RD win=0x18000000 off=0x000 -> 0x00024354
+RD win=0x18000000 off=0x0fc -> 0x180ff000
+LOG INFO t7000-bcm-probe: chipid=0x00024354 chip=0x4354 chiprev=2 pkg=0 eromptr=0x180ff000
+LOG INFO t7000-bcm-probe: mapping path: STOP - chip is not a BCM4350
+IOUNMAP
+CFGW 0x80 <- 0x18000000
+CFGR 0x80 -> 0x18000000
+LOG INFO t7000-bcm-probe: BAR0 window restore PASS (saved 0x18000000, now 0x18000000)
+RELEASE_REGION 0
+DISABLE
+RD16 count=0 first=0x800 last=0x8fe contiguous=1
+ALLOC allocs=0 frees=0 kept=0
+PROBE_RET -19
+FINAL_WINDOW 0x18000000 INITIAL 0x18000000
+VIOLATIONS 0
+== scenario stop-chipid-allones
+CFGR 0x80 -> 0x18000000
+ENABLE_MEM
+REQUEST_REGION 0
+IOMAP bar=0 off=0x0 len=0x1000
+LOG INFO t7000-bcm-probe: saved BAR0 window=0x18000000
+CFGW 0x80 <- 0x18000000
+CFGR 0x80 -> 0x18000000
+RD win=0x18000000 off=0x000 -> 0xffffffff
+RD win=0x18000000 off=0x0fc -> 0xffffffff
+LOG INFO t7000-bcm-probe: mapping path: STOP - chip is not a BCM4350
+LOG ERR t7000-bcm-probe: STOP: access error -19 (see above for what was read)
+IOUNMAP
+CFGW 0x80 <- 0x18000000
+CFGR 0x80 -> 0x18000000
+LOG INFO t7000-bcm-probe: BAR0 window restore PASS (saved 0x18000000, now 0x18000000)
+RELEASE_REGION 0
+DISABLE
+RD16 count=0 first=0x800 last=0x8fe contiguous=1
+ALLOC allocs=0 frees=0 kept=0
+PROBE_RET -19
+FINAL_WINDOW 0x18000000 INITIAL 0x18000000
+VIOLATIONS 0
+== scenario stop-window-rejected
+CFGR 0x80 -> 0x18100000
+ENABLE_MEM
+REQUEST_REGION 0
+IOMAP bar=0 off=0x0 len=0x1000
+LOG INFO t7000-bcm-probe: saved BAR0 window=0x18100000
+CFGW 0x80 <- 0x18000000 (ignored)
+CFGR 0x80 -> 0x18100000
+LOG ERR t7000-bcm-probe: window 0x18000000 not accepted (read 0x18100000)
+LOG INFO t7000-bcm-probe: mapping path: STOP - chip is not a BCM4350
+LOG ERR t7000-bcm-probe: STOP: access error -5 (see above for what was read)
+IOUNMAP
+CFGW 0x80 <- 0x18100000
+CFGR 0x80 -> 0x18100000
+LOG INFO t7000-bcm-probe: BAR0 window restore PASS (saved 0x18100000, now 0x18100000)
+RELEASE_REGION 0
+DISABLE
+RD16 count=0 first=0x800 last=0x8fe contiguous=1
+ALLOC allocs=0 frees=0 kept=0
+PROBE_RET -19
+FINAL_WINDOW 0x18100000 INITIAL 0x18100000
+VIOLATIONS 0
+== scenario stop-eromptr-range
+CFGR 0x80 -> 0x18000000
+ENABLE_MEM
+REQUEST_REGION 0
+IOMAP bar=0 off=0x0 len=0x1000
+LOG INFO t7000-bcm-probe: saved BAR0 window=0x18000000
+CFGW 0x80 <- 0x18000000
+CFGR 0x80 -> 0x18000000
+RD win=0x18000000 off=0x000 -> 0x00024350
+RD win=0x18000000 off=0x0fc -> 0x10000000
+LOG ERR t7000-bcm-probe: eromptr 0x10000000 outside the enumeration space
+LOG INFO t7000-bcm-probe: chipid=0x00024350 chip=0x4350 chiprev=2 pkg=0 eromptr=0x10000000
+LOG INFO t7000-bcm-probe: mapping path: STOP - first EROM component is not ChipCommon
+IOUNMAP
+CFGW 0x80 <- 0x18000000
+CFGR 0x80 -> 0x18000000
+LOG INFO t7000-bcm-probe: BAR0 window restore PASS (saved 0x18000000, now 0x18000000)
+RELEASE_REGION 0
+DISABLE
+RD16 count=0 first=0x800 last=0x8fe contiguous=1
+ALLOC allocs=0 frees=0 kept=0
+PROBE_RET -19
+FINAL_WINDOW 0x18000000 INITIAL 0x18000000
+VIOLATIONS 0
+== scenario stop-first-component-not-cc
+CFGR 0x80 -> 0x18000000
+ENABLE_MEM
+REQUEST_REGION 0
+IOMAP bar=0 off=0x0 len=0x1000
+LOG INFO t7000-bcm-probe: saved BAR0 window=0x18000000
+CFGW 0x80 <- 0x18000000
+CFGR 0x80 -> 0x18000000
+RD win=0x18000000 off=0x000 -> 0x00024350
+RD win=0x18000000 off=0x0fc -> 0x180ff000
+CFGW 0x80 <- 0x180ff000
+CFGR 0x80 -> 0x180ff000
+RD win=0x180ff000 off=0x000 -> 0x00081201
+RD win=0x180ff000 off=0x004 -> 0x30000000
+LOG INFO t7000-bcm-probe: chipid=0x00024350 chip=0x4350 chiprev=2 pkg=0 eromptr=0x180ff000
+LOG INFO t7000-bcm-probe: erom first component: id=0x812 rev=48 (cia=0x00081201 cib=0x30000000)
+LOG INFO t7000-bcm-probe: mapping path: STOP - first EROM component is not ChipCommon
+IOUNMAP
+CFGW 0x80 <- 0x18000000
+CFGR 0x80 -> 0x18000000
+LOG INFO t7000-bcm-probe: BAR0 window restore PASS (saved 0x18000000, now 0x18000000)
+RELEASE_REGION 0
+DISABLE
+RD16 count=0 first=0x800 last=0x8fe contiguous=1
+ALLOC allocs=0 frees=0 kept=0
+PROBE_RET -19
+FINAL_WINDOW 0x18000000 INITIAL 0x18000000
+VIOLATIONS 0
+== scenario stop-no-component
+CFGR 0x80 -> 0x18000000
+ENABLE_MEM
+REQUEST_REGION 0
+IOMAP bar=0 off=0x0 len=0x1000
+LOG INFO t7000-bcm-probe: saved BAR0 window=0x18000000
+CFGW 0x80 <- 0x18000000
+CFGR 0x80 -> 0x18000000
+RD win=0x18000000 off=0x000 -> 0x00024350
+RD win=0x18000000 off=0x0fc -> 0x180ff000
+CFGW 0x80 <- 0x180ff000
+CFGR 0x80 -> 0x180ff000
+RD win=0x180ff000 off=0x000 -> 0x00000000
+RD win=0x180ff000 off=0x004 -> 0x00000000
+RD win=0x180ff000 off=0x008 -> 0x00000000
+RD win=0x180ff000 off=0x00c -> 0x00000000
+RD win=0x180ff000 off=0x010 -> 0x00000000
+RD win=0x180ff000 off=0x014 -> 0x00000000
+RD win=0x180ff000 off=0x018 -> 0x00000000
+RD win=0x180ff000 off=0x01c -> 0x00000000
+LOG INFO t7000-bcm-probe: chipid=0x00024350 chip=0x4350 chiprev=2 pkg=0 eromptr=0x180ff000
+LOG INFO t7000-bcm-probe: mapping path: STOP - first EROM component is not ChipCommon
+IOUNMAP
+CFGW 0x80 <- 0x18000000
+CFGR 0x80 -> 0x18000000
+LOG INFO t7000-bcm-probe: BAR0 window restore PASS (saved 0x18000000, now 0x18000000)
+RELEASE_REGION 0
+DISABLE
+RD16 count=0 first=0x800 last=0x8fe contiguous=1
+ALLOC allocs=0 frees=0 kept=0
+PROBE_RET -19
+FINAL_WINDOW 0x18000000 INITIAL 0x18000000
+VIOLATIONS 0
+== scenario stop-wrap-not-40nm
+CFGR 0x80 -> 0x18000000
+ENABLE_MEM
+REQUEST_REGION 0
+IOMAP bar=0 off=0x0 len=0x1000
+LOG INFO t7000-bcm-probe: saved BAR0 window=0x18000000
+CFGW 0x80 <- 0x18000000
+CFGR 0x80 -> 0x18000000
+RD win=0x18000000 off=0x000 -> 0x00024350
+RD win=0x18000000 off=0x0fc -> 0x180ff000
+CFGW 0x80 <- 0x180ff000
+CFGR 0x80 -> 0x180ff000
+RD win=0x180ff000 off=0x000 -> 0x00080001
+RD win=0x180ff000 off=0x004 -> 0x30000000
+CFGW 0x80 <- 0x18000000
+CFGR 0x80 -> 0x18000000
+RD win=0x18000000 off=0x004 -> 0x00080000
+RD win=0x18000000 off=0x01c -> 0x00020000
+RD win=0x18000000 off=0x190 -> 0x00000030
+LOG INFO t7000-bcm-probe: shadow: not captured - OTP wrapper is not the documented 40 nm type
+LOG INFO t7000-bcm-probe: chipid=0x00024350 chip=0x4350 chiprev=2 pkg=0 eromptr=0x180ff000
+LOG INFO t7000-bcm-probe: erom first component: id=0x800 rev=48 (cia=0x00080001 cib=0x30000000)
+LOG INFO t7000-bcm-probe: capabilities=0x00080000 otpsize_enc=1 otplayout=0x00020000 wrap=2 sromcontrol=0x00000030 srom_present=0 srom_size_enc=0 otpsel=1 otp_present=1
+LOG INFO t7000-bcm-probe: predicates: android(otpsel&&otp_present)=1 newer(otp_present&&!srom_present)=1
+LOG INFO t7000-bcm-probe: mapping path: STOP - OTP wrapper is not the documented 40 nm type
+IOUNMAP
+CFGW 0x80 <- 0x18000000
+CFGR 0x80 -> 0x18000000
+LOG INFO t7000-bcm-probe: BAR0 window restore PASS (saved 0x18000000, now 0x18000000)
+RELEASE_REGION 0
+DISABLE
+RD16 count=0 first=0x800 last=0x8fe contiguous=1
+ALLOC allocs=0 frees=0 kept=0
+PROBE_RET -19
+FINAL_WINDOW 0x18000000 INITIAL 0x18000000
+VIOLATIONS 0
+== scenario restore-nondefault-window
+CFGR 0x80 -> 0x1810a000
+ENABLE_MEM
+REQUEST_REGION 0
+IOMAP bar=0 off=0x0 len=0x1000
+LOG INFO t7000-bcm-probe: saved BAR0 window=0x1810a000
+CFGW 0x80 <- 0x18000000
+CFGR 0x80 -> 0x18000000
+RD win=0x18000000 off=0x000 -> 0x00024350
+RD win=0x18000000 off=0x0fc -> 0x180ff000
+CFGW 0x80 <- 0x180ff000
+CFGR 0x80 -> 0x180ff000
+RD win=0x180ff000 off=0x000 -> 0x00080001
+RD win=0x180ff000 off=0x004 -> 0x30000000
+CFGW 0x80 <- 0x18000000
+CFGR 0x80 -> 0x18000000
+RD win=0x18000000 off=0x004 -> 0x00080000
+RD win=0x18000000 off=0x01c -> 0x00010000
+RD win=0x18000000 off=0x190 -> 0x00000031
+LOG INFO t7000-bcm-probe: shadow: not captured - SPROM present: the published predicates disagree
+LOG INFO t7000-bcm-probe: chipid=0x00024350 chip=0x4350 chiprev=2 pkg=0 eromptr=0x180ff000
+LOG INFO t7000-bcm-probe: erom first component: id=0x800 rev=48 (cia=0x00080001 cib=0x30000000)
+LOG INFO t7000-bcm-probe: capabilities=0x00080000 otpsize_enc=1 otplayout=0x00010000 wrap=1 sromcontrol=0x00000031 srom_present=1 srom_size_enc=0 otpsel=1 otp_present=1
+LOG INFO t7000-bcm-probe: predicates: android(otpsel&&otp_present)=1 newer(otp_present&&!srom_present)=0
+LOG INFO t7000-bcm-probe: mapping path: chipcommon
+IOUNMAP
+CFGW 0x80 <- 0x1810a000
+CFGR 0x80 -> 0x1810a000
+LOG INFO t7000-bcm-probe: BAR0 window restore PASS (saved 0x1810a000, now 0x1810a000)
+RELEASE_REGION 0
+DISABLE
+RD16 count=0 first=0x800 last=0x8fe contiguous=1
+ALLOC allocs=0 frees=0 kept=0
+PROBE_RET -19
+FINAL_WINDOW 0x1810a000 INITIAL 0x1810a000
+VIOLATIONS 0
+== scenario fail-enable
+CFGR 0x80 -> 0x18000000
+ENABLE_MEM (fails)
+LOG ERR t7000-bcm-probe: enable failed: -5
+RD16 count=0 first=0x800 last=0x8fe contiguous=1
+ALLOC allocs=0 frees=0 kept=0
+PROBE_RET -19
+FINAL_WINDOW 0x18000000 INITIAL 0x18000000
+VIOLATIONS 0
+== scenario fail-region
+CFGR 0x80 -> 0x18000000
+ENABLE_MEM
+REQUEST_REGION 0 (fails)
+LOG ERR t7000-bcm-probe: BAR0 busy: -16
+CFGW 0x80 <- 0x18000000
+CFGR 0x80 -> 0x18000000
+LOG INFO t7000-bcm-probe: BAR0 window restore PASS (saved 0x18000000, now 0x18000000)
+DISABLE
+RD16 count=0 first=0x800 last=0x8fe contiguous=1
+ALLOC allocs=0 frees=0 kept=0
+PROBE_RET -19
+FINAL_WINDOW 0x18000000 INITIAL 0x18000000
+VIOLATIONS 0
+== scenario shadow-j81-enc5-384
+CFGR 0x80 -> 0x18003000
+ENABLE_MEM
+REQUEST_REGION 0
+IOMAP bar=0 off=0x0 len=0x1000
+LOG INFO t7000-bcm-probe: saved BAR0 window=0x18003000
+CFGW 0x80 <- 0x18000000
+CFGR 0x80 -> 0x18000000
+RD win=0x18000000 off=0x000 -> 0x00054350
+RD win=0x18000000 off=0x0fc -> 0x1810d000
+CFGW 0x80 <- 0x1810d000
+CFGR 0x80 -> 0x1810d000
+RD win=0x1810d000 off=0x000 -> 0x00080001
+RD win=0x1810d000 off=0x004 -> 0x2f000000
+CFGW 0x80 <- 0x18000000
+CFGR 0x80 -> 0x18000000
+RD win=0x18000000 off=0x004 -> 0x58680009
+RD win=0x18000000 off=0x01c -> 0x10115200
+RD win=0x18000000 off=0x190 -> 0x00000032
+KMALLOC 768 bytes
+DEBUGFS_BLOB name=t7000-bcm-otp-shadow mode=400 size=768 crc=0x5d77c9f4
+LOG INFO t7000-bcm-probe: shadow: captured 384 words (768 bytes) crc32=0x5d77c9f4 allones=0 zero=0; bytes in debugfs t7000-bcm-otp-shadow (root only, private, not for Git)
+LOG INFO t7000-bcm-probe: chipid=0x00054350 chip=0x4350 chiprev=5 pkg=0 eromptr=0x1810d000
+LOG INFO t7000-bcm-probe: erom first component: id=0x800 rev=47 (cia=0x00080001 cib=0x2f000000)
+LOG INFO t7000-bcm-probe: capabilities=0x58680009 otpsize_enc=5 otplayout=0x10115200 wrap=1 sromcontrol=0x00000032 srom_present=0 srom_size_enc=1 otpsel=1 otp_present=1
+LOG INFO t7000-bcm-probe: predicates: android(otpsel&&otp_present)=1 newer(otp_present&&!srom_present)=1
+LOG INFO t7000-bcm-probe: mapping path: chipcommon
+IOUNMAP
+CFGW 0x80 <- 0x18003000
+CFGR 0x80 -> 0x18003000
+LOG INFO t7000-bcm-probe: BAR0 window restore PASS (saved 0x18003000, now 0x18003000)
+RELEASE_REGION 0
+DISABLE
+RD16 count=384 first=0x800 last=0xafe contiguous=1
+ALLOC allocs=1 frees=0 kept=1
+PROBE_RET -19
+FINAL_WINDOW 0x18003000 INITIAL 0x18003000
+VIOLATIONS 0
+== scenario shadow-enc7-512
+CFGR 0x80 -> 0x18000000
+ENABLE_MEM
+REQUEST_REGION 0
+IOMAP bar=0 off=0x0 len=0x1000
+LOG INFO t7000-bcm-probe: saved BAR0 window=0x18000000
+CFGW 0x80 <- 0x18000000
+CFGR 0x80 -> 0x18000000
+RD win=0x18000000 off=0x000 -> 0x00024350
+RD win=0x18000000 off=0x0fc -> 0x180ff000
+CFGW 0x80 <- 0x180ff000
+CFGR 0x80 -> 0x180ff000
+RD win=0x180ff000 off=0x000 -> 0x00080001
+RD win=0x180ff000 off=0x004 -> 0x30000000
+CFGW 0x80 <- 0x18000000
+CFGR 0x80 -> 0x18000000
+RD win=0x18000000 off=0x004 -> 0x00380000
+RD win=0x18000000 off=0x01c -> 0x00010000
+RD win=0x18000000 off=0x190 -> 0x00000030
+KMALLOC 1024 bytes
+DEBUGFS_BLOB name=t7000-bcm-otp-shadow mode=400 size=1024 crc=0xc50d6794
+LOG INFO t7000-bcm-probe: shadow: captured 512 words (1024 bytes) crc32=0xc50d6794 allones=0 zero=0; bytes in debugfs t7000-bcm-otp-shadow (root only, private, not for Git)
+LOG INFO t7000-bcm-probe: chipid=0x00024350 chip=0x4350 chiprev=2 pkg=0 eromptr=0x180ff000
+LOG INFO t7000-bcm-probe: erom first component: id=0x800 rev=48 (cia=0x00080001 cib=0x30000000)
+LOG INFO t7000-bcm-probe: capabilities=0x00380000 otpsize_enc=7 otplayout=0x00010000 wrap=1 sromcontrol=0x00000030 srom_present=0 srom_size_enc=0 otpsel=1 otp_present=1
+LOG INFO t7000-bcm-probe: predicates: android(otpsel&&otp_present)=1 newer(otp_present&&!srom_present)=1
+LOG INFO t7000-bcm-probe: mapping path: chipcommon
+IOUNMAP
+CFGW 0x80 <- 0x18000000
+CFGR 0x80 -> 0x18000000
+LOG INFO t7000-bcm-probe: BAR0 window restore PASS (saved 0x18000000, now 0x18000000)
+RELEASE_REGION 0
+DISABLE
+RD16 count=512 first=0x800 last=0xbfe contiguous=1
+ALLOC allocs=1 frees=0 kept=1
+PROBE_RET -19
+FINAL_WINDOW 0x18000000 INITIAL 0x18000000
+VIOLATIONS 0
+== scenario shadow-enc0-refused
+CFGR 0x80 -> 0x18000000
+ENABLE_MEM
+REQUEST_REGION 0
+IOMAP bar=0 off=0x0 len=0x1000
+LOG INFO t7000-bcm-probe: saved BAR0 window=0x18000000
+CFGW 0x80 <- 0x18000000
+CFGR 0x80 -> 0x18000000
+RD win=0x18000000 off=0x000 -> 0x00024350
+RD win=0x18000000 off=0x0fc -> 0x180ff000
+CFGW 0x80 <- 0x180ff000
+CFGR 0x80 -> 0x180ff000
+RD win=0x180ff000 off=0x000 -> 0x00080001
+RD win=0x180ff000 off=0x004 -> 0x30000000
+CFGW 0x80 <- 0x18000000
+CFGR 0x80 -> 0x18000000
+RD win=0x18000000 off=0x004 -> 0x00000000
+RD win=0x18000000 off=0x01c -> 0x00010000
+RD win=0x18000000 off=0x190 -> 0x00000030
+LOG INFO t7000-bcm-probe: shadow: not captured - OTP size encoding 0 (none)
+LOG INFO t7000-bcm-probe: chipid=0x00024350 chip=0x4350 chiprev=2 pkg=0 eromptr=0x180ff000
+LOG INFO t7000-bcm-probe: erom first component: id=0x800 rev=48 (cia=0x00080001 cib=0x30000000)
+LOG INFO t7000-bcm-probe: capabilities=0x00000000 otpsize_enc=0 otplayout=0x00010000 wrap=1 sromcontrol=0x00000030 srom_present=0 srom_size_enc=0 otpsel=1 otp_present=1
+LOG INFO t7000-bcm-probe: predicates: android(otpsel&&otp_present)=1 newer(otp_present&&!srom_present)=1
+LOG INFO t7000-bcm-probe: mapping path: chipcommon
+IOUNMAP
+CFGW 0x80 <- 0x18000000
+CFGR 0x80 -> 0x18000000
+LOG INFO t7000-bcm-probe: BAR0 window restore PASS (saved 0x18000000, now 0x18000000)
+RELEASE_REGION 0
+DISABLE
+RD16 count=0 first=0x800 last=0xbfe contiguous=1
+ALLOC allocs=0 frees=0 kept=0
+PROBE_RET -19
+FINAL_WINDOW 0x18000000 INITIAL 0x18000000
+VIOLATIONS 0
+== scenario shadow-srom-present-refused
+CFGR 0x80 -> 0x18000000
+ENABLE_MEM
+REQUEST_REGION 0
+IOMAP bar=0 off=0x0 len=0x1000
+LOG INFO t7000-bcm-probe: saved BAR0 window=0x18000000
+CFGW 0x80 <- 0x18000000
+CFGR 0x80 -> 0x18000000
+RD win=0x18000000 off=0x000 -> 0x00024350
+RD win=0x18000000 off=0x0fc -> 0x180ff000
+CFGW 0x80 <- 0x180ff000
+CFGR 0x80 -> 0x180ff000
+RD win=0x180ff000 off=0x000 -> 0x00080001
+RD win=0x180ff000 off=0x004 -> 0x30000000
+CFGW 0x80 <- 0x18000000
+CFGR 0x80 -> 0x18000000
+RD win=0x18000000 off=0x004 -> 0x00280000
+RD win=0x18000000 off=0x01c -> 0x00010000
+RD win=0x18000000 off=0x190 -> 0x00000031
+LOG INFO t7000-bcm-probe: shadow: not captured - SPROM present: the published predicates disagree
+LOG INFO t7000-bcm-probe: chipid=0x00024350 chip=0x4350 chiprev=2 pkg=0 eromptr=0x180ff000
+LOG INFO t7000-bcm-probe: erom first component: id=0x800 rev=48 (cia=0x00080001 cib=0x30000000)
+LOG INFO t7000-bcm-probe: capabilities=0x00280000 otpsize_enc=5 otplayout=0x00010000 wrap=1 sromcontrol=0x00000031 srom_present=1 srom_size_enc=0 otpsel=1 otp_present=1
+LOG INFO t7000-bcm-probe: predicates: android(otpsel&&otp_present)=1 newer(otp_present&&!srom_present)=0
+LOG INFO t7000-bcm-probe: mapping path: chipcommon
+IOUNMAP
+CFGW 0x80 <- 0x18000000
+CFGR 0x80 -> 0x18000000
+LOG INFO t7000-bcm-probe: BAR0 window restore PASS (saved 0x18000000, now 0x18000000)
+RELEASE_REGION 0
+DISABLE
+RD16 count=0 first=0x800 last=0xbfe contiguous=1
+ALLOC allocs=0 frees=0 kept=0
+PROBE_RET -19
+FINAL_WINDOW 0x18000000 INITIAL 0x18000000
+VIOLATIONS 0
+== scenario shadow-otpsel-clear-refused
+CFGR 0x80 -> 0x18000000
+ENABLE_MEM
+REQUEST_REGION 0
+IOMAP bar=0 off=0x0 len=0x1000
+LOG INFO t7000-bcm-probe: saved BAR0 window=0x18000000
+CFGW 0x80 <- 0x18000000
+CFGR 0x80 -> 0x18000000
+RD win=0x18000000 off=0x000 -> 0x00024350
+RD win=0x18000000 off=0x0fc -> 0x180ff000
+CFGW 0x80 <- 0x180ff000
+CFGR 0x80 -> 0x180ff000
+RD win=0x180ff000 off=0x000 -> 0x00080001
+RD win=0x180ff000 off=0x004 -> 0x30000000
+CFGW 0x80 <- 0x18000000
+CFGR 0x80 -> 0x18000000
+RD win=0x18000000 off=0x004 -> 0x00280000
+RD win=0x18000000 off=0x01c -> 0x00010000
+RD win=0x18000000 off=0x190 -> 0x00000020
+LOG INFO t7000-bcm-probe: shadow: not captured - OTP is not both present and selected (a selector write would be needed; refused)
+LOG INFO t7000-bcm-probe: chipid=0x00024350 chip=0x4350 chiprev=2 pkg=0 eromptr=0x180ff000
+LOG INFO t7000-bcm-probe: erom first component: id=0x800 rev=48 (cia=0x00080001 cib=0x30000000)
+LOG INFO t7000-bcm-probe: capabilities=0x00280000 otpsize_enc=5 otplayout=0x00010000 wrap=1 sromcontrol=0x00000020 srom_present=0 srom_size_enc=0 otpsel=0 otp_present=1
+LOG INFO t7000-bcm-probe: predicates: android(otpsel&&otp_present)=0 newer(otp_present&&!srom_present)=1
+LOG INFO t7000-bcm-probe: mapping path: chipcommon
+IOUNMAP
+CFGW 0x80 <- 0x18000000
+CFGR 0x80 -> 0x18000000
+LOG INFO t7000-bcm-probe: BAR0 window restore PASS (saved 0x18000000, now 0x18000000)
+RELEASE_REGION 0
+DISABLE
+RD16 count=0 first=0x800 last=0xbfe contiguous=1
+ALLOC allocs=0 frees=0 kept=0
+PROBE_RET -19
+FINAL_WINDOW 0x18000000 INITIAL 0x18000000
+VIOLATIONS 0
+== scenario shadow-gci-refused
+CFGR 0x80 -> 0x18000000
+ENABLE_MEM
+REQUEST_REGION 0
+IOMAP bar=0 off=0x0 len=0x1000
+LOG INFO t7000-bcm-probe: saved BAR0 window=0x18000000
+CFGW 0x80 <- 0x18000000
+CFGR 0x80 -> 0x18000000
+RD win=0x18000000 off=0x000 -> 0x00024350
+RD win=0x18000000 off=0x0fc -> 0x180ff000
+CFGW 0x80 <- 0x180ff000
+CFGR 0x80 -> 0x180ff000
+RD win=0x180ff000 off=0x000 -> 0x00080001
+RD win=0x180ff000 off=0x004 -> 0x31000000
+CFGW 0x80 <- 0x18000000
+CFGR 0x80 -> 0x18000000
+RD win=0x18000000 off=0x004 -> 0x00280000
+RD win=0x18000000 off=0x01c -> 0x00010000
+RD win=0x18000000 off=0x190 -> 0x00000030
+LOG INFO t7000-bcm-probe: shadow: not captured - mapping path is not chipcommon
+LOG INFO t7000-bcm-probe: chipid=0x00024350 chip=0x4350 chiprev=2 pkg=0 eromptr=0x180ff000
+LOG INFO t7000-bcm-probe: erom first component: id=0x800 rev=49 (cia=0x00080001 cib=0x31000000)
+LOG INFO t7000-bcm-probe: capabilities=0x00280000 otpsize_enc=5 otplayout=0x00010000 wrap=1 sromcontrol=0x00000030 srom_present=0 srom_size_enc=0 otpsel=1 otp_present=1
+LOG INFO t7000-bcm-probe: predicates: android(otpsel&&otp_present)=1 newer(otp_present&&!srom_present)=1
+LOG INFO t7000-bcm-probe: mapping path: gci
+IOUNMAP
+CFGW 0x80 <- 0x18000000
+CFGR 0x80 -> 0x18000000
+LOG INFO t7000-bcm-probe: BAR0 window restore PASS (saved 0x18000000, now 0x18000000)
+RELEASE_REGION 0
+DISABLE
+RD16 count=0 first=0x800 last=0xbfe contiguous=1
+ALLOC allocs=0 frees=0 kept=0
+PROBE_RET -19
+FINAL_WINDOW 0x18000000 INITIAL 0x18000000
+VIOLATIONS 0
+== scenario shadow-kmalloc-fails
+CFGR 0x80 -> 0x18000000
+ENABLE_MEM
+REQUEST_REGION 0
+IOMAP bar=0 off=0x0 len=0x1000
+LOG INFO t7000-bcm-probe: saved BAR0 window=0x18000000
+CFGW 0x80 <- 0x18000000
+CFGR 0x80 -> 0x18000000
+RD win=0x18000000 off=0x000 -> 0x00024350
+RD win=0x18000000 off=0x0fc -> 0x180ff000
+CFGW 0x80 <- 0x180ff000
+CFGR 0x80 -> 0x180ff000
+RD win=0x180ff000 off=0x000 -> 0x00080001
+RD win=0x180ff000 off=0x004 -> 0x30000000
+CFGW 0x80 <- 0x18000000
+CFGR 0x80 -> 0x18000000
+RD win=0x18000000 off=0x004 -> 0x00280000
+RD win=0x18000000 off=0x01c -> 0x00010000
+RD win=0x18000000 off=0x190 -> 0x00000030
+KMALLOC fails
+LOG ERR t7000-bcm-probe: shadow: no memory for 384 words
+LOG INFO t7000-bcm-probe: chipid=0x00024350 chip=0x4350 chiprev=2 pkg=0 eromptr=0x180ff000
+LOG INFO t7000-bcm-probe: erom first component: id=0x800 rev=48 (cia=0x00080001 cib=0x30000000)
+LOG INFO t7000-bcm-probe: capabilities=0x00280000 otpsize_enc=5 otplayout=0x00010000 wrap=1 sromcontrol=0x00000030 srom_present=0 srom_size_enc=0 otpsel=1 otp_present=1
+LOG INFO t7000-bcm-probe: predicates: android(otpsel&&otp_present)=1 newer(otp_present&&!srom_present)=1
+LOG INFO t7000-bcm-probe: mapping path: chipcommon
+IOUNMAP
+CFGW 0x80 <- 0x18000000
+CFGR 0x80 -> 0x18000000
+LOG INFO t7000-bcm-probe: BAR0 window restore PASS (saved 0x18000000, now 0x18000000)
+RELEASE_REGION 0
+DISABLE
+RD16 count=0 first=0x800 last=0xbfe contiguous=1
+ALLOC allocs=0 frees=0 kept=0
+PROBE_RET -19
+FINAL_WINDOW 0x18000000 INITIAL 0x18000000
+VIOLATIONS 0
+== scenario shadow-debugfs-fails
+CFGR 0x80 -> 0x18000000
+ENABLE_MEM
+REQUEST_REGION 0
+IOMAP bar=0 off=0x0 len=0x1000
+LOG INFO t7000-bcm-probe: saved BAR0 window=0x18000000
+CFGW 0x80 <- 0x18000000
+CFGR 0x80 -> 0x18000000
+RD win=0x18000000 off=0x000 -> 0x00024350
+RD win=0x18000000 off=0x0fc -> 0x180ff000
+CFGW 0x80 <- 0x180ff000
+CFGR 0x80 -> 0x180ff000
+RD win=0x180ff000 off=0x000 -> 0x00080001
+RD win=0x180ff000 off=0x004 -> 0x30000000
+CFGW 0x80 <- 0x18000000
+CFGR 0x80 -> 0x18000000
+RD win=0x18000000 off=0x004 -> 0x00280000
+RD win=0x18000000 off=0x01c -> 0x00010000
+RD win=0x18000000 off=0x190 -> 0x00000030
+KMALLOC 768 bytes
+DEBUGFS_BLOB t7000-bcm-otp-shadow fails
+LOG ERR t7000-bcm-probe: shadow: debugfs file not created, capture dropped
+KFREE
+LOG INFO t7000-bcm-probe: chipid=0x00024350 chip=0x4350 chiprev=2 pkg=0 eromptr=0x180ff000
+LOG INFO t7000-bcm-probe: erom first component: id=0x800 rev=48 (cia=0x00080001 cib=0x30000000)
+LOG INFO t7000-bcm-probe: capabilities=0x00280000 otpsize_enc=5 otplayout=0x00010000 wrap=1 sromcontrol=0x00000030 srom_present=0 srom_size_enc=0 otpsel=1 otp_present=1
+LOG INFO t7000-bcm-probe: predicates: android(otpsel&&otp_present)=1 newer(otp_present&&!srom_present)=1
+LOG INFO t7000-bcm-probe: mapping path: chipcommon
+IOUNMAP
+CFGW 0x80 <- 0x18000000
+CFGR 0x80 -> 0x18000000
+LOG INFO t7000-bcm-probe: BAR0 window restore PASS (saved 0x18000000, now 0x18000000)
+RELEASE_REGION 0
+DISABLE
+RD16 count=384 first=0x800 last=0xafe contiguous=1
+ALLOC allocs=1 frees=1 kept=0
+PROBE_RET -19
+FINAL_WINDOW 0x18000000 INITIAL 0x18000000
+VIOLATIONS 0
+== scenario shadow-device-returns-allones
+CFGR 0x80 -> 0x18000000
+ENABLE_MEM
+REQUEST_REGION 0
+IOMAP bar=0 off=0x0 len=0x1000
+LOG INFO t7000-bcm-probe: saved BAR0 window=0x18000000
+CFGW 0x80 <- 0x18000000
+CFGR 0x80 -> 0x18000000
+RD win=0x18000000 off=0x000 -> 0x00024350
+RD win=0x18000000 off=0x0fc -> 0x180ff000
+CFGW 0x80 <- 0x180ff000
+CFGR 0x80 -> 0x180ff000
+RD win=0x180ff000 off=0x000 -> 0x00080001
+RD win=0x180ff000 off=0x004 -> 0x30000000
+CFGW 0x80 <- 0x18000000
+CFGR 0x80 -> 0x18000000
+RD win=0x18000000 off=0x004 -> 0x00280000
+RD win=0x18000000 off=0x01c -> 0x00010000
+RD win=0x18000000 off=0x190 -> 0x00000030
+KMALLOC 768 bytes
+DEBUGFS_BLOB name=t7000-bcm-otp-shadow mode=400 size=768 crc=0x0641b703
+LOG INFO t7000-bcm-probe: shadow: captured 384 words (768 bytes) crc32=0x0641b703 allones=384 zero=0; bytes in debugfs t7000-bcm-otp-shadow (root only, private, not for Git)
+LOG INFO t7000-bcm-probe: chipid=0x00024350 chip=0x4350 chiprev=2 pkg=0 eromptr=0x180ff000
+LOG INFO t7000-bcm-probe: erom first component: id=0x800 rev=48 (cia=0x00080001 cib=0x30000000)
+LOG INFO t7000-bcm-probe: capabilities=0x00280000 otpsize_enc=5 otplayout=0x00010000 wrap=1 sromcontrol=0x00000030 srom_present=0 srom_size_enc=0 otpsel=1 otp_present=1
+LOG INFO t7000-bcm-probe: predicates: android(otpsel&&otp_present)=1 newer(otp_present&&!srom_present)=1
+LOG INFO t7000-bcm-probe: mapping path: chipcommon
+IOUNMAP
+CFGW 0x80 <- 0x18000000
+CFGR 0x80 -> 0x18000000
+LOG INFO t7000-bcm-probe: BAR0 window restore PASS (saved 0x18000000, now 0x18000000)
+RELEASE_REGION 0
+DISABLE
+RD16 count=384 first=0x800 last=0xafe contiguous=1
+ALLOC allocs=1 frees=0 kept=1
+PROBE_RET -19
+FINAL_WINDOW 0x18000000 INITIAL 0x18000000
+VIOLATIONS 0

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Static verification of the Wi-Fi-only J81 REG_ON staging payload (stdlib only).
 
-Usage: python3 boot/verify_pcie_j81_reg_on_payload.py PAYLOAD_DIR [--dllla | --clean | --doorbell | --msi | --msi-selftest | --msi-diag | --bcm-probe]
+Usage: python3 boot/verify_pcie_j81_reg_on_payload.py PAYLOAD_DIR [--dllla | --clean | --doorbell | --msi | --msi-selftest | --msi-diag | --bcm-probe | --bcm-shadow]
 
 --dllla additionally requires the 0053 DLLLA link-wait strings and rejects the old
 `link-wait-test: link_up=` poll output. --clean (patch 0054) requires the durable
@@ -77,7 +77,8 @@ def main(argv):
     flags = set(argv[2:])
     selftest = "--msi-selftest" in flags
     diag = "--msi-diag" in flags
-    bcm = "--bcm-probe" in flags
+    shadow = "--bcm-shadow" in flags
+    bcm = "--bcm-probe" in flags or shadow
     msi = "--msi" in flags or selftest or diag or bcm
     doorbell = "--doorbell" in flags or msi
     clean = "--clean" in flags or doorbell
@@ -199,7 +200,13 @@ def main(argv):
         for needle in (b"brcmfmac", b"brcm/brcmfmac"):
             if needle in image:
                 problems.append(f"kernel contains {needle.decode()!r}: the probe payload must not carry brcmfmac")
-    elif msi and b"t7000-bcm-probe" in image:
+    if shadow:
+        for needle in (b"t7000-bcm-otp-shadow", b"private, not for Git"):
+            if needle not in image:
+                problems.append(f"kernel lacks {needle.decode()!r}")
+    elif bcm and b"t7000-bcm-otp-shadow" in image:
+        problems.append("OTP shadow capture is present in a probe-only payload")
+    if not bcm and msi and b"t7000-bcm-probe" in image:
         problems.append("test-only BCM4350 probe is present in a non-probe payload")
 
     if problems:
@@ -223,6 +230,6 @@ def main(argv):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) not in (2, 3) or (len(sys.argv) == 3 and sys.argv[2] not in ("--dllla", "--clean", "--doorbell", "--msi", "--msi-selftest", "--msi-diag", "--bcm-probe")):
+    if len(sys.argv) not in (2, 3) or (len(sys.argv) == 3 and sys.argv[2] not in ("--dllla", "--clean", "--doorbell", "--msi", "--msi-selftest", "--msi-diag", "--bcm-probe", "--bcm-shadow")):
         sys.exit(__doc__)
     sys.exit(main(sys.argv))

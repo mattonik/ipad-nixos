@@ -48,3 +48,19 @@ void pci_release_region(struct pci_dev *pdev, int bar);
 void *pci_iomap_range(struct pci_dev *pdev, int bar, unsigned long offset, unsigned long maxlen);
 void pci_iounmap(struct pci_dev *pdev, void *addr);
 u32 ioread32(void *addr);
+
+/* Shadow-capture stubs (patch 0062). The Kconfig symbol is off unless the test passes -D. */
+#ifndef CONFIG_PCIE_APPLE_T7000_BCM_PROBE_SHADOW
+#define CONFIG_PCIE_APPLE_T7000_BCM_PROBE_SHADOW 0
+#endif
+#define IS_ENABLED(x) (x)
+#define GFP_KERNEL 0
+struct dentry;
+static inline bool IS_ERR_OR_NULL(const void *p) { return !p || (unsigned long)p >= (unsigned long)-4095; }
+struct debugfs_blob_wrapper { void *data; unsigned long size; };
+struct dentry *debugfs_create_blob(const char *name, unsigned short mode, struct dentry *parent,
+				   struct debugfs_blob_wrapper *blob);
+void *kmalloc_array(size_t n, size_t size, int flags);
+void kfree(const void *p);
+u32 crc32_le(u32 crc, const u8 *p, size_t len);
+u16 ioread16(void *addr);

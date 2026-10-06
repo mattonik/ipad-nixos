@@ -47,17 +47,17 @@ def check_text():
     assert re.search(r"out:\n[^}]*pci_write_config_dword\(pdev, BCM_BAR0_WINDOW, saved\)", code, re.S)
 
 
-def run_harness(driver):
+def run_harness(driver, defines=()):
     cc = shutil.which("cc") or shutil.which("gcc") or shutil.which("clang")
     assert cc, "no C compiler"
     with tempfile.TemporaryDirectory(prefix="bcm-probe-") as tmp:
         tmp = Path(tmp)
-        for header in ("io.h", "module.h", "pci.h"):
+        for header in ("io.h", "module.h", "pci.h", "crc32.h", "debugfs.h", "slab.h"):
             (tmp / "inc" / "linux" / header).parent.mkdir(parents=True, exist_ok=True)
             (tmp / "inc" / "linux" / header).write_text("")
         shutil.copy(driver, tmp / "drv.c")
         binary = tmp / "t"
-        build = subprocess.run([cc, "-std=gnu11", "-Wall", "-Wextra", "-Wno-unused-parameter",
+        build = subprocess.run([cc, "-std=gnu11", "-Wall", "-Wextra", "-Wno-unused-parameter", *[f"-D{d}" for d in defines],
                                 f"-I{tmp / 'inc'}", f"-I{HERE / 'bcm_probe_trace'}",
                                 f'-DDRIVER_SOURCE="{tmp / "drv.c"}"', str(HERE / "bcm_probe_trace" / "main.c"),
                                 "-o", str(binary)], capture_output=True, text=True)
@@ -78,7 +78,7 @@ def reads(block):
 
 def check_invariants(trace):
     sc = scenarios(trace)
-    assert len(sc) == 14, sorted(sc)
+    assert len(sc) in (14, 23), sorted(sc)
     for name, block in sc.items():
         assert "PROBE_RET -19" in block, name                      # always declines the device
         assert "VIOLATIONS 0" in block, name
