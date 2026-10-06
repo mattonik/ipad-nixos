@@ -80,3 +80,48 @@ store path `/nix/store/3f7d8in121qpwibfs5s6wxfddpm1cbad-ipad-air2-m1n1-hoolock-p
 `m1n1-linux.bin` SHA-256 `4eff68d7b33d18f02fe910d4cecb89384dd96e2a688f74d5b23ffbe695ae3ccf`.
 `--bcm-probe` verifier passes (probe strings present, no `brcmfmac`); `--msi` and
 `--msi-selftest` correctly reject this payload. `result` points at it. Not booted.
+
+## Hardware result (2026-10-06): observation succeeded, mapping path `chipcommon`
+
+Payload `m1n1-hoolock-pcie-j81-bcm-probe` (`m1n1-linux.bin` SHA-256 `4eff68d7...`, host-side identity
+only, no run token), loaded by the usual palera1n/PongoOS route; read-only shell checks
+afterwards (session under the ignored `artifacts/live/sessions/`). Boot normal; link and
+enumeration unchanged; one PMU byte (`0x0403`) written as usual.
+
+```
+t7000-bcm-probe: saved BAR0 window=0x18003000
+t7000-bcm-probe: chipid=0x17054350 chip=0x4350 chiprev=5 pkg=0 eromptr=0x1810d000
+t7000-bcm-probe: erom first component: id=0x800 rev=47 (cia=0x4bf80001 cib=0x2f084411)
+t7000-bcm-probe: capabilities=0x58680009 otpsize_enc=5 otplayout=0x10115200 wrap=1 sromcontrol=0x00000032 srom_present=0 srom_size_enc=1 otpsel=1 otp_present=1
+t7000-bcm-probe: predicates: android(otpsel&&otp_present)=1 newer(otp_present&&!srom_present)=1
+t7000-bcm-probe: mapping path: chipcommon
+t7000-bcm-probe: BAR0 window restore PASS (saved 0x18003000, now 0x18003000)
+```
+
+Reading it (all from the pinned source audit, none verified on this module yet):
+
+- **The chip answers before firmware** and is a BCM4350, silicon revision 5, package 0.
+- **ChipCommon core revision 47**: inside the published reader's accepted range and on its
+  ChipCommon (not GCI) side; revision 49 and above would have needed the GCI path.
+- **OTP wrapper type 1 (40 nm)** and **OTP size encoding 5**. By the audit's 40 nm formula that is
+  `(5 + 1) * 1024 = 6144` bits = 384 16-bit words = 768 bytes, which fits the 1024-byte ChipCommon
+  shadow window at `+0x800`. This is a derived number, not a measured one.
+- **No SPROM present, OTP present and already selected** (`sromcontrol=0x32`): both published
+  predicates agree (Android and newer). So no selector write should be needed to expose OTP in the
+  shadow, which is what phase 1b needed to know.
+- The BAR0 window was **not** at the default when the probe started (`0x18003000`), so the
+  save/restore was exercised for real; it restored and read back equal.
+- No new warnings. Unrelated, already known: `g_multi` gadget `-22`, `retraining failed`,
+  `of_irq_parse_pci` `-22` (when a driver binds the endpoint); also a battery gauge read error
+  (`bq27xxx-hdq-uart ... error reading flags`, `-110`) that appeared at about 0.88 s on this boot.
+  It is the battery frontend, not PCIe; keep an eye on it if it repeats.
+
+## What this unlocks (phase 1b, not started)
+
+A bounded shadow-capture diagnostic can now be designed from observed facts: ChipCommon path,
+shadow at `ChipCommon +0x800`, at most 768 bytes (384 words) by the 40 nm formula and never more
+than the 1024-byte window, OTP already selected so no selector write, restore the window on
+every exit as in `0061`. Open decisions for the user before it is built or run: that capture
+reads real calibration/NVM data (stays private under `artifacts/`, never committed) and is the
+standing-rule "BCM4350 OTP/NVRAM access" item, which needs its own explicit go-ahead. The record
+offset inside the shadow is still unknown (do not assume `0x8c0` from other chips).
