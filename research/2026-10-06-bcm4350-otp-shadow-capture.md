@@ -62,3 +62,47 @@ memory-decode enable (undone); reads 768 bytes of OTP shadow into kernel memory 
 `m1n1-linux.bin` SHA-256 `09d32ad00056ee879f96b3453bf850096a65c9f39cb54434e08691fd9f829324`.
 `--bcm-shadow` passes; `--bcm-probe` rejects it (shadow code present). `result` points at it.
 **Not booted.**
+
+## Hardware result (2026-10-06): 768-byte shadow captured, CRC verified
+
+Payload `m1n1-hoolock-pcie-j81-bcm-shadow` (`m1n1-linux.bin` SHA-256 prefix `09d32ad0...`,
+host-side identity only). Boot normal, link and enumeration unchanged, one PMU byte written as
+usual. The probe lines are the same as in the metadata run (chip `0x4350`, ChipCommon rev 47,
+`chipcommon` path, window restore PASS) plus:
+
+```
+t7000-bcm-probe: shadow: captured 384 words (768 bytes) crc32=<matches> allones=0 zero=320; bytes in debugfs ...
+```
+
+The blob was read over the telnet shell (`base64` of the root-only debugfs file), the host-side
+CRC32 matched the kernel's, and the 768 bytes are stored **only** under the ignored
+`artifacts/live/private/` (mode 0600). The values, the CRC and the file hash are deliberately not
+recorded in Git: the OTP is per-device calibration/identity data.
+
+Structure only (no values), 16-bit words indexed from ChipCommon `+0x800`:
+
+- 384 words captured, **320 are zero, 64 are non-zero**, none are `0xffff`;
+- non-zero runs (word index, inclusive): `0-5`, `16`, `28`, `31-38`, `44-62`, `74-76`, `80-82`,
+  `84-85`, `96-97`, `99-116`, and one isolated word at `273` (byte offset `0xa22`);
+- so the populated region is the first 117 words (offsets `0x800-0x8e9`), then zeros up to the
+  stray word at `0xa22`, then zeros to the end of the captured span.
+
+Observation for the research agent, **not a conclusion**: word index 96 is byte offset `0x8c0`,
+the record start other Broadcom chips in the Hoolock reader use, and a non-zero run begins exactly
+there (`96-97`, `99-116`). The earlier audit's candidate `0x840` (word 32) falls inside the run
+`31-38`. Neither offset is established for BCM4350/J81; decoding the record format, locating the
+module/vendor/version tuple and the Apple C2/C4 selection is phase 1b's analysis (private, local,
+research-agent work). The span reported by the 40 nm formula (384 words) was readable and
+contained no all-ones words, so the formula and the ChipCommon shadow window behaved as the
+source audit predicted on this module.
+
+Unrelated, already known log lines were unchanged (`g_multi` `-22`, `retraining failed`,
+`of_irq_parse_pci` `-22`).
+
+## Next
+
+1. Local, private analysis of the capture with the existing Apple-record parser contract
+   (`research/j81-otp-parser-validation.md`) and the layout facts above: find the system-vendor
+   record, the M/V/m tuple and chip revision. Keep outputs under `artifacts/`.
+2. Only after a nonempty tuple is proven: firmware/NVRAM selection (`j81-wifi-loader-selection.md`)
+   and the DMA-rebase candidate (plan phase 2).
