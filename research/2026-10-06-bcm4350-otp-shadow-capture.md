@@ -54,3 +54,11 @@ inside the shadow is **not** assumed (do not use `0x8c0` or `0x840` from other c
 Payload `m1n1-hoolock-pcie-j81-bcm-shadow`: same recipe as the other test payloads; writes the
 usual PMU byte (`0x0403`) plus, as in the probe, the BAR0 window register (restored) and the
 memory-decode enable (undone); reads 768 bytes of OTP shadow into kernel memory and debugfs.
+
+## Build result (2026-10-06)
+
+`m1n1-hoolock-pcie-j81-bcm-shadow` builds cleanly (first attempt):
+`/nix/store/xmdq4f6fcyfvwmcnd966p4yafzqc1962-ipad-air2-m1n1-hoolock-pcie-j81-bcm-shadow`,
+`m1n1-linux.bin` SHA-256 `09d32ad00056ee879f96b3453bf850096a65c9f39cb54434e08691fd9f829324`.
+`--bcm-shadow` passes; `--bcm-probe` rejects it (shadow code present). `result` points at it.
+**Not booted.**
