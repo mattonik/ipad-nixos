@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Static verification of the Wi-Fi-only J81 REG_ON staging payload (stdlib only).
 
-Usage: python3 boot/verify_pcie_j81_reg_on_payload.py PAYLOAD_DIR [--dllla | --clean | --doorbell | --msi | --msi-selftest | --msi-diag | --bcm-probe | --bcm-shadow]
+Usage: python3 boot/verify_pcie_j81_reg_on_payload.py PAYLOAD_DIR [--dllla | --clean | --doorbell | --msi | --msi-selftest | --msi-diag | --bcm-probe | --bcm-shadow | --dma-rebase | --dma-raw]
 
 --dllla additionally requires the 0053 DLLLA link-wait strings and rejects the old
 `link-wait-test: link_up=` poll output. --clean (patch 0054) requires the durable
@@ -78,8 +78,10 @@ def main(argv):
     selftest = "--msi-selftest" in flags
     diag = "--msi-diag" in flags
     shadow = "--bcm-shadow" in flags
+    dma_rebase, dma_raw = "--dma-rebase" in flags, "--dma-raw" in flags
+    msi_extra = dma_rebase or dma_raw
     bcm = "--bcm-probe" in flags or shadow
-    msi = "--msi" in flags or selftest or diag or bcm
+    msi = "--msi" in flags or selftest or diag or bcm or msi_extra
     doorbell = "--doorbell" in flags or msi
     clean = "--clean" in flags or doorbell
     dllla = "--dllla" in flags or clean
@@ -209,6 +211,21 @@ def main(argv):
     if not bcm and msi and b"t7000-bcm-probe" in image:
         problems.append("test-only BCM4350 probe is present in a non-probe payload")
 
+    if msi_extra:
+        pcie = [p for p in nodes if p.endswith("pcie@610000000")]
+        props = nodes[pcie[0]] if len(pcie) == 1 else {}
+        window = props.get("apple,iova-window", b"")
+        if len(window) != 16 or struct.unpack(">4I", window) != (0, 0x80000000, 0, 0xBFFFF000):
+            problems.append(f"apple,iova-window is {window.hex()}, expected <0 0x80000000 0 0xbffff000>")
+        if dma_rebase and "apple,iova-rebase" not in props:
+            problems.append("DMA model A requires apple,iova-rebase on the PCIe node")
+        if dma_raw and "apple,iova-rebase" in props:
+            problems.append("DMA model B (raw) must not carry apple,iova-rebase")
+        if b"apple,iova-window" not in image:
+            problems.append("kernel lacks the apple,iova-window lookup")
+        if b"t7000-bcm-probe" in image or b"t7000-msi-selftest" in image:
+            problems.append("DMA payloads must not carry the probe/self-test drivers")
+
     if problems:
         print("FAIL")
         for p in problems:
@@ -230,6 +247,6 @@ def main(argv):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) not in (2, 3) or (len(sys.argv) == 3 and sys.argv[2] not in ("--dllla", "--clean", "--doorbell", "--msi", "--msi-selftest", "--msi-diag", "--bcm-probe", "--bcm-shadow")):
+    if len(sys.argv) not in (2, 3) or (len(sys.argv) == 3 and sys.argv[2] not in ("--dllla", "--clean", "--doorbell", "--msi", "--msi-selftest", "--msi-diag", "--bcm-probe", "--bcm-shadow", "--dma-rebase", "--dma-raw")):
         sys.exit(__doc__)
     sys.exit(main(sys.argv))
