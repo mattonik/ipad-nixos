@@ -97,9 +97,15 @@ int main(void)
 
 
 def check_math(driver_text):
+    # Both pure helpers; rebase_valid must come before its first use in finalize_domain (a build
+    # break caught by the real compile), window_range before of_xlate.
+    rv = driver_text.index("/*\n * Clearing dma_min's bits equals subtracting")
+    assert rv < driver_text.index("static int apple_dart_finalize_domain("), "rebase_valid must precede finalize_domain"
+    assert rv < driver_text.index("apple_dart_rebase_valid(cfg->dma_min"), "rebase_valid used before its definition"
+    rv_end = driver_text.index("static int apple_dart_finalize_domain(")
     a = driver_text.index("/* Window [start, end) as an inclusive DMA range")
     b = driver_text.index("static int apple_dart_of_xlate")
-    helpers = driver_text[a:b]
+    helpers = driver_text[rv:rv_end] + driver_text[a:b]
     cc = shutil.which("cc") or shutil.which("gcc") or shutil.which("clang")
     assert cc, "no C compiler"
     with tempfile.TemporaryDirectory(prefix="dart-p63-") as tmp:
@@ -125,6 +131,13 @@ def check_apply(source):
             assert r.returncode == 0, patch.name + "\n" + r.stdout + r.stderr
         driver = (tree / DART).read_text()
         check_math(driver)
+        # Use-before-define would break the kernel build (it did once): every new helper must be
+        # defined before its first call.
+        for name in ("apple_dart_pci_bridge_node", "apple_dart_pci_iova_window", "apple_dart_window_range",
+                     "apple_dart_rebase_valid"):
+            first = driver.index(name + "(")
+            assert re.match(r"static [^\n]*\b" + name + r"\(|static [^\n]*\n" + name + r"\(", driver[driver.rindex("\n", 0, first - 40) if first > 40 else 0:first + len(name) + 1]) or \
+                driver[first - 20:first].rstrip().endswith(("bool", "int", "struct device_node *")), f"{name} used before definition"
         # Existing users are untouched: the old masks remain as the fallbacks, after the new raw branch.
         assert "dart_domain->mask = ~cfg->dma_min;" in driver and "dart_domain->mask = DMA_BIT_MASK(pgtbl_cfg.ias);" in driver
         assert driver.index("cfg->pci_window && cfg->no_rebase") < driver.index("dart_domain->mask = ~cfg->dma_min;")

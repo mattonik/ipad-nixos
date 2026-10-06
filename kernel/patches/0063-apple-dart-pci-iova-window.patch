@@ -60,7 +60,24 @@ diff --git a/drivers/iommu/apple-dart.c b/drivers/iommu/apple-dart.c
  	 * DMA aperture start and end to be overridden by "iommus"' phandle
  	 * args. By default determined by DART's ias but may be outside of it.
  	 */
-@@ -730,10 +737,21 @@
+@@ -691,6 +698,16 @@
+ 	stream_map->dart->hw->invalidate_tlb(stream_map);
+ }
+ 
++/*
++ * Clearing dma_min's bits equals subtracting dma_min only when every address of the aperture
++ * carries all of them, i.e. the aperture lies inside the block that dma_min's lowest set bit
++ * opens (0x80000000 opens [0x80000000, 0x100000000)). Otherwise the rebase would alias pages.
++ */
++static bool apple_dart_rebase_valid(dma_addr_t dma_min, dma_addr_t dma_max)
++{
++	return !dma_min || (dma_max - dma_min) < (dma_min & -dma_min);
++}
++
+ static int apple_dart_finalize_domain(struct apple_dart_domain *dart_domain,
+ 				      struct apple_dart_master_cfg *cfg)
+ {
+@@ -730,10 +747,21 @@
  		goto done;
  	}
  
@@ -84,7 +101,7 @@ diff --git a/drivers/iommu/apple-dart.c b/drivers/iommu/apple-dart.c
  
  	dart_domain->domain.pgsize_bitmap = pgtbl_cfg.pgsize_bitmap;
  	dart_domain->domain.geometry.aperture_start = cfg->dma_min;
-@@ -907,6 +925,54 @@
+@@ -907,6 +935,44 @@
  	kfree(dart_domain);
  }
  
@@ -124,16 +141,6 @@ diff --git a/drivers/iommu/apple-dart.c b/drivers/iommu/apple-dart.c
 +	*dma_min = start;
 +	*dma_max = end - 1;
 +	return 0;
-+}
-+
-+/*
-+ * Clearing dma_min's bits equals subtracting dma_min only when every address of the aperture
-+ * carries all of them, i.e. the aperture lies inside the block that dma_min's lowest set bit
-+ * opens (0x80000000 opens [0x80000000, 0x100000000)). Otherwise the rebase would alias pages.
-+ */
-+static bool apple_dart_rebase_valid(dma_addr_t dma_min, dma_addr_t dma_max)
-+{
-+	return !dma_min || (dma_max - dma_min) < (dma_min & -dma_min);
 +}
 +
  static int apple_dart_of_xlate(struct device *dev,
