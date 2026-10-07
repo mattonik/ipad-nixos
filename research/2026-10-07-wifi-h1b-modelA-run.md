@@ -188,3 +188,22 @@ implementation later); (2) with the firmware awake, something else still keeps i
 the mailbox/shared-structure state: the console is only read when an interrupt arrives or on error, and E2 produced no interrupt, so we saw only the banner.
 Next (read-only): poll the firmware console every 100 ms while the query is pending, read it at the failure snapshot, and log the shared-structure flags,
 version, mailbox data words and mailbox registers.
+
+# Run 6: E2b, DEVICE_WAKE high with the firmware console poll and shared-state snapshot (Model A + 0068)
+
+Identity-qualified. Same as run 5 plus the new read-only evidence:
+
+- **The awake firmware is completely silent**: the console was polled every 100 ms for the whole 2 s the control query was pending and printed nothing after its
+  start banner (no error, no trap text, no "host not ready"). It is alive but idle, not crashed.
+- Shared structure: protocol **version 5, flags `0x00000005`** (only the version field; no host-ready doorbell flag, no DMA-index capability, so TCM indices and no
+  extra "host ready" step are right for this firmware). Host-to-device and device-to-host mailbox words 0 (nothing pending in either direction); the host's
+  mailbox mask is `0x30300`.
+- **`h2d_mailbox_0` still reads `1` two seconds after the host rang it**: the doorbell latch was never cleared, i.e. the firmware never serviced the
+  host-to-device doorbell, consistent with the ring read indices staying at 0 (control ring 17 items, rx-post 255) and the scratch word 0.
+- No interrupt (isr count 0), no DART or PCIe error.
+
+So with the wake pin held high the firmware stays awake (confirmed twice) and does not process the doorbell. What the missing piece is remains open. The ADT
+shows the Wi-Fi port is enabled by the Wi-Fi driver itself (`manual-enable`, port control function) with ASPM and L1 power-management settings of its own
+(`pci-aspm-default 2` on the endpoint, `pci-l1pm-control`, `~cpie-l1ss-workaround 0xf`), while Linux enabled L1 on both ends by default (`ASPM: default states L1`).
+A link that has dropped into L1 would explain a device that cannot issue its DMA reads or serve the doorbell without reporting any error, so the cheapest next test
+is to run with ASPM disabled (`pcie_aspm.policy=performance`), which needs no new kernel.
