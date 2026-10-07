@@ -207,3 +207,14 @@ shows the Wi-Fi port is enabled by the Wi-Fi driver itself (`manual-enable`, por
 (`pci-aspm-default 2` on the endpoint, `pci-l1pm-control`, `~cpie-l1ss-workaround 0xf`), while Linux enabled L1 on both ends by default (`ASPM: default states L1`).
 A link that has dropped into L1 would explain a device that cannot issue its DMA reads or serve the doorbell without reporting any error, so the cheapest next test
 is to run with ASPM disabled (`pcie_aspm.policy=performance`), which needs no new kernel.
+
+# Run 7: E4, DEVICE_WAKE high and ASPM disabled (Model A + 0068, `pcie_apple_t7000.device_wake=1 pcie_aspm.policy=performance`)
+
+Identity-qualified. The change took effect: after boot both ends read `LnkCtl` ASPM control bits 0 (disabled; link x1 at 2.5 GT/s, `LnkSta` `0x1011` endpoint /
+`0x7011` root port), compared with the "default states L1" the kernel had enabled in the earlier runs. Result: **identical to run 6**: firmware awake and silent
+after its banner, no deep-sleep request, no interrupt, `h2d_mailbox_0` still `1`, control ring 17 and rx-post ring 255 items posted with device read index 0, scratch word 0,
+query timeout at 2 s, no DART or PCIe error.
+
+**ASPM/L1 is eliminated** as the cause. Eliminated so far: DMA translation errors (no fault anywhere), the MSI route (an interrupt was delivered when the firmware asked
+for one), the deep-sleep acknowledgement (E1), the firmware sleeping (E2: it stays awake with DEVICE_WAKE high), and ASPM. Established: the host side is right, the
+firmware runs its start-up and then neither prints nor services the host-to-device doorbell.
