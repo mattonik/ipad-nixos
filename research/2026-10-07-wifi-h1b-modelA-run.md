@@ -269,3 +269,11 @@ because the combined run is negative).
 
 Note: `h1b_run_record.py` needs Python 3.10+ (`ipad_console.py` uses `X | None`); the first attempt with the system
 `python3` (3.9.6) failed before touching the device; rerun with `/opt/homebrew/bin/python3`.
+
+## Run 11: Model B (raw DMA window, no Apple rebase), stock wake
+
+Payload `wifi-h1b-modelB-20261007T125638Z` (public base `...-h1b-base-raw`: 0063 without 0064, no toggles/0068/0069).
+Same stall as every Model A run: the deep-sleep request arrived (isr #1, mailbox status 0x100), the control query
+timed out, isr count 1 and mailbox int 0x1 at failure, d2h scratch 0, no DART fault, no MSI error. The aperture is
+reported as 0x80000000..0xbfffefff in both models. DMA Model A versus B therefore makes no difference to the stall;
+the DMA-model hypothesis is closed.
