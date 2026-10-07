@@ -92,3 +92,19 @@ Re-extracted the C2 set from the matching iPad5,3 `12B410` restore without mount
    the selected NVRAM. The three binaries match the recorded size and SHA-256 exactly; the NVRAM is
    a 3.4 KB text file. The image was detached and the IPSW, encrypted and decrypted DMGs and the key were
    deleted from scratch.
+
+## Private firmware store (kept locally, never in Git)
+
+So the restore never has to be fetched or reconstructed again, the following live under the
+Git-ignored `firmware/j81-12B410/` (directories 0700, files 0600; `git check-ignore` confirms):
+
+| Path | Content |
+| --- | --- |
+| `ipsw/iPad5,3_8.1_12B410_Restore.ipsw` | Apple's public restore, 2,178,168,430 bytes, SHA-256 `d9cb4feda3d98fdb3c1d92713bac2bc6f5d1f317a2707770a248cbd1829ebc07` (valid zip, contains `058-01629-167.dmg`) |
+| `keys/Keys_OkemoTaos_12B410_iPad5,3.txt` | the public RootFS key lines for this build from the firmware-key wiki (the key itself is not recorded here) |
+| `wifi/C-4350__s-C2/` | the four extracted files described above |
+
+To rebuild the extraction from the stored IPSW: `ipsw extract --dmg fs --device iPad5,3 <ipsw>`, then
+`tools/vfdecrypt_ios8.py <encrypted dmg> <out dmg> keys/<file>`, check the decrypted image against the recorded
+SHA-256, attach it read-only with `hdiutil`, and copy the four files. Back this directory up with the
+other private material; it is not recoverable from Git.
