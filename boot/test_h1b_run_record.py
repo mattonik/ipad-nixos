@@ -67,9 +67,11 @@ def main():
     assert cl["dart_fault"]["count"] == 1 and cl["fw_load_failed"]["count"] == 1 and cl["interface_created"]["count"] == 1
     # Every command is read-only.
     assert all(c.startswith(READONLY_PREFIXES) for _, c in R.COMMANDS), R.COMMANDS
-    for _, c in R.COMMANDS:
+    MOUNT = "mountpoint -q /sys/kernel/debug && echo mounted || mount -t debugfs none /sys/kernel/debug"
+    assert R.COMMANDS[0] == ("debugfs_mount", MOUNT), "the only non-read command is the fixed debugfs mount"
+    for _, c in R.COMMANDS[1:]:
         assert not any(w in c for w in (" > ", "echo ", "ip ", "iw ", "ifconfig", "modprobe", "insmod", "dd ", "setpci", "wpa", "rm ")), c
-        assert "mount" not in c.replace("mountpoint -q /sys/kernel/debug && echo mounted || mount -t debugfs none /sys/kernel/debug", ""), c
+        assert "mount" not in c, c
     # End to end against a fake payload directory and fake shell.
     d = Path(tempfile.mkdtemp(prefix="h1b-rec-"))
     try:
