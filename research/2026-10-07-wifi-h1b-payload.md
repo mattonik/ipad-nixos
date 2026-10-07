@@ -144,3 +144,32 @@ appear. No scan or association is started by anything in the payload, but firmwa
 
 Run: DFU, palera1n, load `m1n1-linux.bin` from the private payload directory, then `python3 boot/h1b_run_record.py <dir>`;
 classify with `2026-10-07-wifi-h1b-evidence-matrix.md`. Build Model B only if Model A fails at the DMA setup stage.
+
+## Run-1 follow-ups implemented (2026-10-07)
+
+The first run (`2026-10-07-wifi-h1b-modelA-run.md`) exposed three observation gaps; all three are now addressed in
+the payload and the capture, for the next run:
+
+1. **60 s firmware-loader stall**: removed by building the test kernel without `FW_LOADER_USER_HELPER(_FALLBACK)`
+   (a missing board-suffixed name now fails at once and the canonical name is tried immediately). The base verifier
+   requires the string `Falling back to sysfs fallback` to be absent from the kernel image.
+2. **Ring/MSI/DMA logging**: patch `0065` (`CONFIG_BRCMFMAC_PCIE_H1B_DIAG`, test kernels only, read-only). It logs
+   (prefix `t7000-h1b:`) the IOMMU domain type and aperture, every ring/scratch/ring-update buffer's size and IOVA with its
+   IOMMU translation to a physical address (shows which page the DART resolves for the address handed to the firmware),
+   the endpoint MSI capability (control, address, data), the interrupt chain (hwirqs down to the AIC) right after
+   `pci_enable_msi` and after `request_irq`, the first 32 interrupts with their mailbox status, and, when the firmware is
+   declared dead, a snapshot: per-ring depth/item size/IOVA with the host and the *device-side* read/write indices, the
+   first item (32 bytes of protocol header) of the control submit and control complete rings, the 8-byte d2h scratch word
+   the device writes by DMA, and the mailbox interrupt status. Those answer: did the device consume the request
+   (device read index advanced), did it write anything back by DMA (scratch/completion item, device write index), and did an
+   interrupt arrive (count and line). It writes nothing, dumps no firmware RAM, and is contract-tested
+   (`kernel/test_brcmfmac_h1b_diag_patch.py`, four mutations caught).
+3. **Capture too late**: `boot/h1b_run_record.py <dir> --watch SECONDS` samples once per second while brcmfmac is bound
+   (device uptime, brcmfmac/MSI lines of `/proc/interrupts`, endpoint MSI capability bytes, removal flag) into
+   `watch.jsonl`, then takes the normal record; the summary carries the last enabled MSI capability and the peak interrupt
+   count. The sample command is read-only and was checked once against the live shell.
+
+Reading guide for the next run: if the device-side control-submit read index advanced but nothing came back, the device read
+the request (host-to-device DMA works) and the failure is the write-back/completion path; if it did not advance, the
+firmware never fetched the request (doorbell or DMA read problem). The d2h scratch word shows whether device DMA writes land
+in host memory at all. Compare with Model B only after this snapshot, since the snapshot localises the stage.

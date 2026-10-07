@@ -32,7 +32,33 @@ class FakeShell:
         return ""
 
 
+def watch_reply(up, irq, msi_hex, removed):
+    return (f"UP {up}\nINT\n" + (f" 55:   0   {irq}   0  AIC  65700 Level  brcmf_pcie_intr\n" if irq is not None else "") +
+            "MSI\n" + (f"000000 05 00 89 00 {msi_hex}\n000010\n" if msi_hex else "") + f"REMOVED\n{removed}\nEND\n")
+
+
+class WatchShell:
+    """Replays scripted watch replies; the last one reports brcmfmac removed."""
+    def __init__(self, replies):
+        self.replies, self.commands = list(replies), []
+
+    def run(self, command, timeout=10, check=True):
+        self.commands.append(command)
+        return self.replies.pop(0) if self.replies else watch_reply(99.0, None, "", 1)
+
+
 def main():
+    # Watch parsing: a bound driver with an interrupt, then removal.
+    s = R.parse_sample(watch_reply(61.5, 3, "00 f0 ff bf 00 00 00 00 08 00 00 00", 0))
+    assert s["uptime"] == 61.5 and not s["removed"] and s["msi"]["address_lo"] == 0xBFFFF000 and s["msi"]["data"] == 8
+    assert any("brcmf_pcie_intr" in l for l in s["interrupts"])
+    assert R.parse_sample(watch_reply(70.0, None, "", 1))["removed"] and R.parse_sample("garbage")["uptime"] is None
+    # The watch command itself is read-only.
+    cmd = R.WATCH_COMMAND
+    for token in ("cut -d", "grep -i", "od -A x", "dmesg | grep -c"):
+        assert token in cmd
+    for bad in (" > ", ">>", "echo 1", "rm ", "ip ", "iw ", "ifconfig", "modprobe", "setpci", "dd ", "mount", "wpa", "tee"):
+        assert bad not in cmd.replace("2>&1", ""), bad
     # Decoder and classifier.
     msi = R.msi_readback("000000 05 00 89 00 00 f0 ff bf 00 00 00 00 08 00 00 00\n000010\n")
     assert msi == {"cap_id_next": 5, "control": 0x89, "address_lo": 0xBFFFF000, "address_hi": 0, "data": 8}, msi
@@ -57,6 +83,28 @@ def main():
         # Wrong/missing token downgrades the identity claim.
         _, bad = R.record(FakeShell("ab" * 16, ok=False), d, now="T2")
         assert not bad["token_matches_cmdline"] and bad["identity"].startswith("handoff_only")
+        # Watch mode: samples recorded until removal; summary holds the last enabled MSI capability and the peak count.
+        ticks = iter(range(0, 1000))
+        ws = WatchShell([watch_reply(60.0, 0, "00 f0 ff bf 00 00 00 00 08 00 00 00", 0),
+                         watch_reply(61.0, 1, "00 f0 ff bf 00 00 00 00 08 00 00 00", 0),
+                         watch_reply(62.0, 4, "00 f0 ff bf 00 00 00 00 08 00 00 00", 0),
+                         watch_reply(64.0, None, "", 1)])
+        # Reuse the fake dmesg shell for the final record, replaying watch replies first.
+        class Both(FakeShell):
+            def run(self, command, timeout=10, check=True):
+                if command == R.WATCH_COMMAND:
+                    return ws.run(command)
+                return super().run(command, timeout, check)
+        both = Both("ab" * 16)
+        out3, sm3 = R.record(both, d, now="T3", watch_seconds=30, interval=0.0, clock=lambda: float(next(ticks)), sleep=lambda x: None)
+        w = sm3["watch"]
+        assert w["samples"] == 4 and w["driver_removed_seen"] and w["msi_seen_enabled"]
+        assert w["last_enabled_msi"]["address_lo"] == 0xBFFFF000 and w["last_enabled_msi"]["data"] == 8
+        assert w["brcmf_irq_max_count"] == 4, w
+        assert len((out3 / "watch.jsonl").read_text().splitlines()) == 4 and ws.commands.count(R.WATCH_COMMAND) == 4
+        assert oct(os.stat(out3 / "watch.jsonl").st_mode & 0o777) == "0o600"
+        # Without --watch nothing is sampled.
+        assert R.record(FakeShell("ab" * 16), d, now="T4")[1]["watch"] is None
         # A run directory is never overwritten.
         try:
             R.record(shell, d, now="T1")
