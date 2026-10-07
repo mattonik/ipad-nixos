@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Static verification of the Wi-Fi-only J81 REG_ON staging payload (stdlib only).
 
-Usage: python3 boot/verify_pcie_j81_reg_on_payload.py PAYLOAD_DIR [--dllla | --clean | --doorbell | --msi | --msi-selftest | --msi-diag | --bcm-probe | --bcm-shadow | --dma-rebase | --dma-raw]
+Usage: python3 boot/verify_pcie_j81_reg_on_payload.py PAYLOAD_DIR [--dllla | --clean | --doorbell | --msi | --msi-selftest | --msi-diag | --bcm-probe | --bcm-shadow | --dma-rebase | --dma-raw | --wifi-h1b-base]
 
 --dllla additionally requires the 0053 DLLLA link-wait strings and rejects the old
 `link-wait-test: link_up=` poll output. --clean (patch 0054) requires the durable
@@ -78,7 +78,8 @@ def main(argv):
     selftest = "--msi-selftest" in flags
     diag = "--msi-diag" in flags
     shadow = "--bcm-shadow" in flags
-    dma_rebase, dma_raw = "--dma-rebase" in flags, "--dma-raw" in flags
+    wifi_base = "--wifi-h1b-base" in flags
+    dma_rebase, dma_raw = "--dma-rebase" in flags or wifi_base, "--dma-raw" in flags
     msi_extra = dma_rebase or dma_raw
     bcm = "--bcm-probe" in flags or shadow
     msi = "--msi" in flags or selftest or diag or bcm or msi_extra
@@ -211,6 +212,24 @@ def main(argv):
     if not bcm and msi and b"t7000-bcm-probe" in image:
         problems.append("test-only BCM4350 probe is present in a non-probe payload")
 
+    if wifi_base:
+        # Public base of the Wi-Fi H1B payload: brcmfmac PCIe built in, no firmware, no supplicant/scan tools,
+        # no probe drivers, USB recovery (ECM) intact. The private overlay is added by the local assembler.
+        for needle in (b"brcmfmac4350c2-pcie", b"brcmf_pcie", b"brcmfmac"):
+            if needle not in image:
+                problems.append(f"kernel lacks {needle.decode()!r}: brcmfmac PCIe is not built in")
+        wifi_tools = {"wpa_supplicant", "wpa_cli", "hostapd", "iw", "iwctl", "iwd", "NetworkManager", "nmcli", "connmand", "wpa_passphrase"}
+        found = sorted(n for n in entries if n.rsplit("/", 1)[-1] in wifi_tools)
+        if found:
+            problems.append(f"Wi-Fi client/scan tools in the initramfs: {found}")
+        fw = sorted(n for n in entries if n.startswith("lib/firmware/brcm/") and n.rsplit("/", 1)[-1].startswith("brcmfmac"))
+        if fw:
+            problems.append(f"public base must not carry brcmfmac firmware/NVRAM: {fw}")
+        if b"t7000-bcm-otp-shadow" in image:
+            problems.append("OTP shadow capture must not be in the Wi-Fi payload")
+        bootargs = (payload / "bootargs").read_text()
+        if "brcmfmac.debug=" not in bootargs:
+            problems.append("bootargs lack brcmfmac.debug (the H1B run needs the PCIe/MSGBUF/FWCON log)")
     if msi_extra:
         pcie = [p for p in nodes if p.endswith("pcie@610000000")]
         props = nodes[pcie[0]] if len(pcie) == 1 else {}
@@ -247,6 +266,6 @@ def main(argv):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) not in (2, 3) or (len(sys.argv) == 3 and sys.argv[2] not in ("--dllla", "--clean", "--doorbell", "--msi", "--msi-selftest", "--msi-diag", "--bcm-probe", "--bcm-shadow", "--dma-rebase", "--dma-raw")):
+    if len(sys.argv) not in (2, 3) or (len(sys.argv) == 3 and sys.argv[2] not in ("--dllla", "--clean", "--doorbell", "--msi", "--msi-selftest", "--msi-diag", "--bcm-probe", "--bcm-shadow", "--dma-rebase", "--dma-raw", "--wifi-h1b-base")):
         sys.exit(__doc__)
     sys.exit(main(sys.argv))
