@@ -52,7 +52,8 @@ FORBIDDEN_WIFI_TOOLS = {"wpa_supplicant", "wpa_cli", "hostapd", "iw", "iwctl", "
                         "nmcli", "connmand", "wpa_passphrase"}
 PRIVATE_SUBDIR = ("artifacts", "live", "private")
 # Test-only boot arguments the run may add (kernel toggles of patch 0067); anything else is refused.
-EXTRA_BOOTARG_ALLOWED = (r"pcie_apple_t7000\.device_wake=[01]", r"brcmfmac\.h1b_ds_ack=[012]")
+EXTRA_BOOTARG_ALLOWED = (r"pcie_apple_t7000\.device_wake=[01]", r"brcmfmac\.h1b_ds_ack=[012]",
+                         r"pcie_aspm\.policy=(default|performance|powersave|powersupersave)", r"pcie_aspm=off")
 
 
 def sha256(data):
