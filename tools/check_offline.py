@@ -184,6 +184,10 @@ def main() -> int:
             "kernel/test_readonly_debugfs_diag_patch.py", "--j81-msi-source",
             str(args.pcie_j81_selftest_source.resolve()),
         ], args.timeout))
+        outcomes.append(execute("kernel/test_wifi_toggle_patch.py", [
+            "kernel/test_wifi_toggle_patch.py", "--j81-msi-source",
+            str(args.pcie_j81_selftest_source.resolve()),
+        ], args.timeout))
         outcomes.append(execute("kernel/test_bcm_shadow_patch.py", [
             "kernel/test_bcm_shadow_patch.py", "--j81-msi-source",
             str(args.pcie_j81_selftest_source.resolve()),

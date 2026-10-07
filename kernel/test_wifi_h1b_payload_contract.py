@@ -23,7 +23,7 @@ EXPECTED_TAIL = [
     "0055-apple-dart-per-controller-msi-doorbell.patch", "0056-pcie-apple-t7000-derive-msi-port-values.patch",
     "0057-pcie-apple-t7000-msi-domain.patch", "0063-apple-dart-pci-iova-window.patch",
     "0064-t7001-air2-pcie-iova-rebase.patch", "0065-brcmfmac-pcie-h1b-diag.patch",
-    "0066-readonly-debugfs-diag-dart-and-t7000-port.patch",
+    "0066-readonly-debugfs-diag-dart-and-t7000-port.patch", "0067-j81-wifi-deep-sleep-and-device-wake-toggles.patch",
 ]
 
 
@@ -37,13 +37,14 @@ def main():
     cfg = m.group(0)
     for line in ("CONFIG_WIRELESS=y", "CONFIG_CFG80211=y", "CONFIG_WLAN=y", "CONFIG_WLAN_VENDOR_BROADCOM=y",
                  "CONFIG_BRCMUTIL=y", "CONFIG_BRCMFMAC=y", "CONFIG_BRCMFMAC_PCIE=y", "CONFIG_BRCMDBG=y",
-                 "CONFIG_BRCMFMAC_PCIE_H1B_DIAG=y", "CONFIG_APPLE_DART_H1B_DIAG=y", "CONFIG_PCIE_APPLE_T7000_DEBUGFS_DIAG=y", "CONFIG_FW_LOADER_USER_HELPER_FALLBACK=n", "CONFIG_FW_LOADER_USER_HELPER=n"):
+                 "CONFIG_BRCMFMAC_PCIE_H1B_DIAG=y", "CONFIG_APPLE_DART_H1B_DIAG=y", "CONFIG_PCIE_APPLE_T7000_DEBUGFS_DIAG=y", "CONFIG_PCIE_APPLE_T7000_DEVICE_WAKE_TEST=y", "CONFIG_FW_LOADER_USER_HELPER_FALLBACK=n", "CONFIG_FW_LOADER_USER_HELPER=n"):
         assert f"echo '{line}'" in cfg, line
     for banned in ("BCM_PROBE", "MSI_SELFTEST", "DIAG_MSIADDR", "BRCMFMAC_SDIO=y", "BRCMFMAC_USB=y"):
         assert banned not in cfg, banned
     # Model B (raw) is the same list without 0064 and nothing else.
     raw = re.findall(r'patch -d "\$out" -p1 < \$\{\./patches/([^}]+)\}', NIX_RAW)
-    assert raw == [p for p in patches if not p.startswith("0064-")], raw
+    # Model B was built before 0067 existed and is the plain comparison payload: no 0064, no 0067.
+    assert raw == [p for p in patches if not p.startswith(("0064-", "0067-"))], raw
     assert not any(p.startswith("0064-") for p in raw)
     raw_pay = re.search(r"m1n1-hoolock-pcie-j81-wifi-h1b-base-raw = .*?\n        '';", FLAKE, re.S)
     assert raw_pay and "hoolockPcieJ81WifiH1bRawKernel" in raw_pay.group(0) and "brcmfmac.debug=0x001c0004" in raw_pay.group(0)

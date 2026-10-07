@@ -222,6 +222,10 @@ def main(argv):
         for needle in (b"apple-dart-%s", b"t7000-pcie", b"port1_regs"):
             if needle not in image:
                 problems.append(f"kernel lacks the 0066 debugfs diagnostics ({needle.decode()!r})")
+        if not wifi_raw:
+            for needle in (b"t7000-h1b: deep sleep request NOT acknowledged", b"t7000-pcie: DEVICE_WAKE asserted", b"h1b_ds_ack"):
+                if needle not in image:
+                    problems.append(f"kernel lacks the 0067 toggles ({needle.decode()!r})")
         if b"t7000-h1b: " not in image:
             problems.append("kernel lacks the 0065 H1B diagnostics")
         if b"Falling back to sysfs fallback" in image:

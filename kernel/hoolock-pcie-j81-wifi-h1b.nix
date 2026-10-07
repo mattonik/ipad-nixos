@@ -1,5 +1,5 @@
 # TEST ONLY (Wi-Fi H1B base): the MSI series (0052-0057), DMA model A (0063 DART window + 0064 Apple rebase) and
-# brcmfmac built in with the PCIe bus (CONFIG_BRCMFMAC_PCIE, BRCMDBG) plus 0065 and 0066, read-only DMA/MSI diagnostics (0066: debugfs register dumps of the DART and the T7000 port)
+# brcmfmac built in with the PCIe bus (CONFIG_BRCMFMAC_PCIE, BRCMDBG) plus 0065 and 0066, read-only DMA/MSI diagnostics, and 0067 (boot-argument toggles for the deep-sleep ACK and the DEVICE_WAKE GPIO; both off by default) (0066: debugfs register dumps of the DART and the T7000 port)
 # (ring IOVAs and their IOMMU translation, MSI capability while bound, per-interrupt log, ring snapshot at the crash). NO 0060, no probe/self-test drivers. The public base
 # payload carries no firmware; the private C2 rieslinga firmware/CLM/TxCap/NVRAM overlay is added locally by
 # boot/assemble_private_wifi_payload.py and never enters Git or the Nix store. See research/2026-10-07-wifi-h1b-payload.md.
@@ -56,6 +56,7 @@ let
     patch -d "$out" -p1 < ${./patches/0064-t7001-air2-pcie-iova-rebase.patch}
     patch -d "$out" -p1 < ${./patches/0065-brcmfmac-pcie-h1b-diag.patch}
     patch -d "$out" -p1 < ${./patches/0066-readonly-debugfs-diag-dart-and-t7000-port.patch}
+    patch -d "$out" -p1 < ${./patches/0067-j81-wifi-deep-sleep-and-device-wake-toggles.patch}
   '';
   buildArgs = builtins.removeAttrs args [ "source" "hoolockConfig" "runCommand" ];
 in

@@ -51,6 +51,8 @@ NVRAM_STAGED = BASE + ".txt"
 FORBIDDEN_WIFI_TOOLS = {"wpa_supplicant", "wpa_cli", "hostapd", "iw", "iwctl", "iwd", "NetworkManager",
                         "nmcli", "connmand", "wpa_passphrase"}
 PRIVATE_SUBDIR = ("artifacts", "live", "private")
+# Test-only boot arguments the run may add (kernel toggles of patch 0067); anything else is refused.
+EXTRA_BOOTARG_ALLOWED = (r"pcie_apple_t7000\.device_wake=[01]", r"brcmfmac\.h1b_ds_ack=[012]")
 
 
 def sha256(data):
@@ -119,9 +121,12 @@ def read_parts(public):
     return names, parts
 
 
-def compose(parts, names, overlay, token):
+def compose(parts, names, overlay, token, extra=()):
     initramfs = gzip.compress(gzip.decompress(parts["initramfs.gz"]) + overlay, mtime=0)
-    bootargs = parts["bootargs"].rstrip(b"\n") + f" j81.run_id={token}".encode() + b"\n"
+    for arg in extra:
+        if not any(re.fullmatch(p, arg) for p in EXTRA_BOOTARG_ALLOWED):
+            raise SystemExit(f"boot argument {arg!r} is not an allowed test toggle")
+    bootargs = parts["bootargs"].rstrip(b"\n") + b"".join(f" {a}".encode() for a in extra) + f" j81.run_id={token}".encode() + b"\n"
     final = dict(parts, **{"initramfs.gz": initramfs, "bootargs": bootargs})
     return final, b"".join(final[n] for n in names)
 
@@ -145,7 +150,7 @@ def write_private(path, data):
         f.write(data)
 
 
-def assemble(public, assets, out, nvram_name=NVRAM_NAME, check_hashes=True, token=None):
+def assemble(public, assets, out, nvram_name=NVRAM_NAME, check_hashes=True, token=None, extra_bootargs=()):
     out = private_out_dir(out)
     if out.exists() and any(out.iterdir()):
         raise SystemExit(f"{out} already exists and is not empty")
@@ -166,7 +171,7 @@ def assemble(public, assets, out, nvram_name=NVRAM_NAME, check_hashes=True, toke
     manifest_assets.append({"source": nvram_name, "staged": NVRAM_STAGED, "size": len(staged), "sha256": sha256(staged),
                             "source_sha256": sha256(raw), "key_value_lines": npairs, "normalised": True})
     token = token or secrets.token_hex(16)
-    final_parts, blob = compose(parts, names, build_overlay(files), token)
+    final_parts, blob = compose(parts, names, build_overlay(files), token, tuple(extra_bootargs))
     out.mkdir(parents=True, exist_ok=True)
     os.chmod(out, 0o700)
     write_private(out / "m1n1-linux.bin", blob)
@@ -177,7 +182,7 @@ def assemble(public, assets, out, nvram_name=NVRAM_NAME, check_hashes=True, toke
         "run_id": token, "public_payload": str(Path(public).resolve()),
         "public_parts_sha256": {n: sha256(parts[n]) for n in names},
         "final_m1n1_linux_sha256": sha256(blob), "final_size": len(blob),
-        "bootargs": final_parts["bootargs"].decode().strip(), "assets": manifest_assets,
+        "bootargs": final_parts["bootargs"].decode().strip(), "extra_bootargs": list(extra_bootargs), "assets": manifest_assets,
         "selection": "explicit: C2 rieslinga set + tuple-selected NVRAM staged under canonical brcmfmac4350c2-pcie names",
     }
     write_private(out / "PRIVATE_MANIFEST.json", (json.dumps(manifest, indent=2) + "\n").encode())
@@ -235,6 +240,7 @@ def main():
     ap.add_argument("--out", type=Path)
     ap.add_argument("--verify", type=Path)
     ap.add_argument("--nvram", default=NVRAM_NAME)
+    ap.add_argument("--extra-bootarg", action="append", default=[], help="test toggle: pcie_apple_t7000.device_wake=1 | brcmfmac.h1b_ds_ack=0|1|2")
     ap.add_argument("--no-hash-check", action="store_true", help="test fixtures only (synthetic assets)")
     args = ap.parse_args()
     if args.verify:
@@ -249,7 +255,8 @@ def main():
         return 0
     if not (args.public and args.assets and args.out):
         ap.error("--public, --assets and --out are required")
-    manifest = assemble(args.public, args.assets, args.out, args.nvram, check_hashes=not args.no_hash_check)
+    manifest = assemble(args.public, args.assets, args.out, args.nvram, check_hashes=not args.no_hash_check,
+                        extra_bootargs=args.extra_bootarg)
     problems, _ = verify(args.out)
     if problems:
         print("FAIL after assembly:", problems)

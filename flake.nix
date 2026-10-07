@@ -795,6 +795,25 @@
             echo 'CONFIG_BRCMFMAC_PCIE_H1B_DIAG=y' >> "$out"
             echo 'CONFIG_APPLE_DART_H1B_DIAG=y' >> "$out"
             echo 'CONFIG_PCIE_APPLE_T7000_DEBUGFS_DIAG=y' >> "$out"
+            echo 'CONFIG_PCIE_APPLE_T7000_DEVICE_WAKE_TEST=y' >> "$out"
+            echo 'CONFIG_FW_LOADER_USER_HELPER_FALLBACK=n' >> "$out"
+            echo 'CONFIG_FW_LOADER_USER_HELPER=n' >> "$out"
+          '';
+          # Model B keeps the configuration it was built with (before the 0067 toggles); same derivation name and content.
+          patchedHoolockPcieJ81WifiH1bRawConfig = pkgs.runCommand "ipad-t7001-hoolock-pcie-j81-wifi-h1b-defconfig-4k" {} ''
+            cat ${patchedHoolockPcieJ81RegOnConfig} > "$out"
+            echo 'CONFIG_WIRELESS=y' >> "$out"
+            echo 'CONFIG_CFG80211=y' >> "$out"
+            echo 'CONFIG_CFG80211_REQUIRE_SIGNED_REGDB=n' >> "$out"
+            echo 'CONFIG_WLAN=y' >> "$out"
+            echo 'CONFIG_WLAN_VENDOR_BROADCOM=y' >> "$out"
+            echo 'CONFIG_BRCMUTIL=y' >> "$out"
+            echo 'CONFIG_BRCMFMAC=y' >> "$out"
+            echo 'CONFIG_BRCMFMAC_PCIE=y' >> "$out"
+            echo 'CONFIG_BRCMDBG=y' >> "$out"
+            echo 'CONFIG_BRCMFMAC_PCIE_H1B_DIAG=y' >> "$out"
+            echo 'CONFIG_APPLE_DART_H1B_DIAG=y' >> "$out"
+            echo 'CONFIG_PCIE_APPLE_T7000_DEBUGFS_DIAG=y' >> "$out"
             echo 'CONFIG_FW_LOADER_USER_HELPER_FALLBACK=n' >> "$out"
             echo 'CONFIG_FW_LOADER_USER_HELPER=n' >> "$out"
           '';
@@ -805,7 +824,7 @@
           # Same, DMA model B (raw PTE indexing): no 0064.
           hoolockPcieJ81WifiH1bRawKernel = pkgsCross.callPackage ./kernel/hoolock-pcie-j81-wifi-h1b-raw.nix {
             source = inputs.hoolockLinux;
-            hoolockConfig = patchedHoolockPcieJ81WifiH1bConfig;
+            hoolockConfig = patchedHoolockPcieJ81WifiH1bRawConfig;
           };
 
           # TEST ONLY: DMA models for plan phase 2/3 (0063 window; 0064 selects Apple's rebase).

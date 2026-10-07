@@ -117,6 +117,13 @@ def main():
             A.assemble(pub2, assets, out2, check_hashes=False)
             found = A.verify(out2)[0]
             assert any(frag in p for p in found), (tag, found)
+        # Allowlisted test toggles are appended before the run token and recorded; anything else is refused.
+        out3 = work / "toggles"
+        m3 = A.assemble(pub, assets, out3, check_hashes=False, extra_bootargs=("pcie_apple_t7000.device_wake=1", "brcmfmac.h1b_ds_ack=2"))
+        assert m3["extra_bootargs"] == ["pcie_apple_t7000.device_wake=1", "brcmfmac.h1b_ds_ack=2"]
+        assert "pcie_apple_t7000.device_wake=1 brcmfmac.h1b_ds_ack=2 j81.run_id=" in m3["bootargs"] and not A.verify(out3)[0]
+        for bad in ("pcie_apple_t7000.device_wake=2", "brcmfmac.h1b_ds_ack=3", "init=/bin/sh", "brcmfmac.debug=0"):
+            expect_exit(lambda b=bad: A.assemble(pub, assets, work / ("bad" + str(abs(hash(b)) % 1000)), check_hashes=False, extra_bootargs=(b,)), "not an allowed test toggle")
         # Bad inputs refuse before anything is written.
         (assets / A.NVRAM_NAME).write_bytes(b"")
         expect_exit(lambda: A.assemble(pub, assets, work / "x2", check_hashes=False), "empty")
