@@ -190,3 +190,16 @@ debugfs dumps (`0066`); `--wifi-h1b-base` passes and requires the `0066` strings
 (`artifacts/live/private/wifi-h1b-modelA3-<UTC>/`, same four files, new run token). The run record now also reads
 `/sys/kernel/debug/apple-dart-*/regs`, `/sys/kernel/debug/t7000-pcie/port1_regs` and the PCI config (including extended
 space) of the endpoint and root port. Not booted. Model B (`-base-raw`) is building.
+
+## Model B (raw indexing) payload (2026-10-07)
+
+`/nix/store/40968bybz4qxhdxppqfpxvx2n5f4lijz-ipad-air2-m1n1-hoolock-pcie-j81-wifi-h1b-base-raw` compiled cleanly (Model A's list without `0064` and
+without `0067`, with `0065`/`0066`); `--wifi-h1b-base-raw` passes (DTB window `<0 0x80000000 0 0xbffff000>`, no `apple,iova-rebase`). Private
+overlay assembled and verified (`artifacts/live/private/wifi-h1b-modelB-<UTC>/`). Not booted. By the run-3 evidence it is now a control, not
+the leading hypothesis (see `2026-10-07-ios-wifi-bus-driver-analysis.md`).
+
+## Model A + 0067 toggles (queued)
+
+`0067` adds boot-argument toggles on Model A: `brcmfmac.h1b_ds_ack=0|1|2` (stock ACK / no ACK / ACK through MMIO H2D mailbox 1, Apple's way) and
+`pcie_apple_t7000.device_wake=1` (drive the root-port `device-wake-gpios` = GPIO 165 high after link-up). All off by default; the assembler
+(`--extra-bootarg`) accepts exactly these values, appends them before the run token and records them in the private manifest.
