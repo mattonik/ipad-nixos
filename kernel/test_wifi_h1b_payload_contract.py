@@ -25,6 +25,7 @@ EXPECTED_TAIL = [
     "0064-t7001-air2-pcie-iova-rebase.patch", "0065-brcmfmac-pcie-h1b-diag.patch",
     "0066-readonly-debugfs-diag-dart-and-t7000-port.patch", "0067-j81-wifi-deep-sleep-and-device-wake-toggles.patch",
     "0068-brcmfmac-h1b-console-poll-and-shared-state.patch",
+    "0069-brcmfmac-h1b-chipcommon-gpio-snapshot.patch",
 ]
 
 
@@ -44,8 +45,8 @@ def main():
         assert banned not in cfg, banned
     # Model B (raw) is the same list without 0064 and nothing else.
     raw = re.findall(r'patch -d "\$out" -p1 < \$\{\./patches/([^}]+)\}', NIX_RAW)
-    # Model B was built before 0067/0068 existed and is the plain comparison payload: no 0064, 0067, 0068.
-    assert raw == [p for p in patches if not p.startswith(("0064-", "0067-", "0068-"))], raw
+    # Model B was built before 0067/0068 existed and is the plain comparison payload: no 0064, 0067, 0068, 0069.
+    assert raw == [p for p in patches if not p.startswith(("0064-", "0067-", "0068-", "0069-"))], raw
     assert not any(p.startswith("0064-") for p in raw)
     raw_pay = re.search(r"m1n1-hoolock-pcie-j81-wifi-h1b-base-raw = .*?\n        '';", FLAKE, re.S)
     assert raw_pay and "hoolockPcieJ81WifiH1bRawKernel" in raw_pay.group(0) and "brcmfmac.debug=0x001c0004" in raw_pay.group(0)

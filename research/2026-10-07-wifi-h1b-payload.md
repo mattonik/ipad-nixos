@@ -221,3 +221,14 @@ first seconds of boot, so the in-kernel `t7000-h1b:` log and the register dumps 
 needs the user's go-ahead at run time) and **E0b** (no toggle, stock behaviour, for a console comparison). Not booted. The run reads the firmware console every
 100 ms during the 2 s the first control query is pending and once more at the failure snapshot, plus the shared-structure flags/version, the mailbox words and the mailbox
 registers.
+
+## Payload with the read-only ChipCommon GPIO snapshot (patch 0069)
+
+Patch `0069-brcmfmac-h1b-chipcommon-gpio-snapshot.patch` (Model A only) logs ChipCommon
+gpiopullup/pulldown/in/out/outen/control (0x58..0x6c) and registers 0xc40 and 0xe00 as
+`t7000-h1b: chipcommon gpio (...)`. It logs once after `request_irq` and once at the failure
+snapshot. Reads only: the BAR0 window moves to ChipCommon with the interrupt disabled and goes back to PCIe2.
+Test: `kernel/test_brcmfmac_h1b_gpio_patch.py`; offline suite 48 passed, 0 failed, 7 skipped.
+Public base: `/nix/store/qp2g4zqdznsvwcpx7rrs2c80vj93jzhw-ipad-air2-m1n1-hoolock-pcie-j81-wifi-h1b-base`.
+Private variants (under ignored `artifacts/live/private/`): G1 = `device_wake=1` (firmware awake, preferred),
+G0 = stock (no toggles). Neither has been run on hardware.

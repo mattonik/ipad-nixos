@@ -188,6 +188,10 @@ def main() -> int:
             "kernel/test_brcmfmac_h1b_console_patch.py", "--j81-msi-source",
             str(args.pcie_j81_selftest_source.resolve()),
         ], args.timeout))
+        outcomes.append(execute("kernel/test_brcmfmac_h1b_gpio_patch.py", [
+            "kernel/test_brcmfmac_h1b_gpio_patch.py", "--j81-msi-source",
+            str(args.pcie_j81_selftest_source.resolve()),
+        ], args.timeout))
         outcomes.append(execute("kernel/test_wifi_toggle_patch.py", [
             "kernel/test_wifi_toggle_patch.py", "--j81-msi-source",
             str(args.pcie_j81_selftest_source.resolve()),
