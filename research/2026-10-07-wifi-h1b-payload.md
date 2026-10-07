@@ -213,3 +213,11 @@ private manifest): a no-toggle baseline (`modelA4`), **E1** `brcmfmac.h1b_ds_ack
 (acknowledge by MMIO H2D mailbox 1, Apple's way) and **E2** `pcie_apple_t7000.device_wake=1` (drive GPIO 165 high; a GPIO write to the module, needs the
 user's go-ahead at run time). Not booted. Suggested order: E1, E3, then E2; read each with `boot/h1b_run_record.py <dir>` (the whole exchange happens in the
 first seconds of boot, so the in-kernel `t7000-h1b:` log and the register dumps are the evidence).
+
+## Model A + 0068 (firmware console poll and shared-state snapshot): built and assembled (2026-10-07)
+
+`/nix/store/bs8pxqd44ikf9i3rbxi9ph0pf9mzbl0n-ipad-air2-m1n1-hoolock-pcie-j81-wifi-h1b-base` compiled cleanly; `--wifi-h1b-base` now also requires the
+`t7000-h1b: shared: version` snapshot string. Two private payloads assembled and verified from it: **E2b** (`pcie_apple_t7000.device_wake=1`, GPIO 165 high,
+needs the user's go-ahead at run time) and **E0b** (no toggle, stock behaviour, for a console comparison). Not booted. The run reads the firmware console every
+100 ms during the 2 s the first control query is pending and once more at the failure snapshot, plus the shared-structure flags/version, the mailbox words and the mailbox
+registers.
