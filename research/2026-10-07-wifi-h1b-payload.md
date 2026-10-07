@@ -173,3 +173,11 @@ Reading guide for the next run: if the device-side control-submit read index adv
 the request (host-to-device DMA works) and the failure is the write-back/completion path; if it did not advance, the
 firmware never fetched the request (doorbell or DMA read problem). The d2h scratch word shows whether device DMA writes land
 in host memory at all. Compare with Model B only after this snapshot, since the snapshot localises the stage.
+
+## Run-2 payload (2026-10-07): Model A with diagnostics, fallback off
+
+Rebuilt public base (`/nix/store/30n5wbdm8cnac5yp7qsjqlny7iz9759x-ipad-air2-m1n1-hoolock-pcie-j81-wifi-h1b-base`) compiled
+cleanly with `0065`; `--wifi-h1b-base` passes and now requires the `t7000-h1b:` diagnostics and the absence of the sysfs
+fallback (confirmed: diagnostics and ring snapshot strings present, `Falling back to sysfs fallback` absent). The private
+overlay was assembled and verified again (`artifacts/live/private/wifi-h1b-modelA2-<UTC>/`, same four files, new run token).
+Run with `python3 boot/h1b_run_record.py <dir> --watch 120` started right after the device answers pings. Not booted.
