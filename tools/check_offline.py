@@ -47,6 +47,7 @@ HOST_TESTS = (
     "kernel/test_bcm_probe_patch.py",
     "kernel/test_bcm_shadow_patch.py",
     "kernel/test_apple_dart_pci_window_patch.py",
+    "kernel/test_brcmfmac_h1b_diag_patch.py",
     "kernel/test_wifi_h1b_payload_contract.py",
     "boot/test_assemble_private_wifi_payload.py",
     "boot/test_h1b_run_record.py",
@@ -173,6 +174,10 @@ def main() -> int:
         ], args.timeout))
         outcomes.append(execute("kernel/test_apple_dart_pci_window_patch.py", [
             "kernel/test_apple_dart_pci_window_patch.py", "--j81-msi-source",
+            str(args.pcie_j81_selftest_source.resolve()),
+        ], args.timeout))
+        outcomes.append(execute("kernel/test_brcmfmac_h1b_diag_patch.py", [
+            "kernel/test_brcmfmac_h1b_diag_patch.py", "--j81-msi-source",
             str(args.pcie_j81_selftest_source.resolve()),
         ], args.timeout))
         outcomes.append(execute("kernel/test_bcm_shadow_patch.py", [

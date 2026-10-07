@@ -792,6 +792,9 @@
             echo 'CONFIG_BRCMFMAC=y' >> "$out"
             echo 'CONFIG_BRCMFMAC_PCIE=y' >> "$out"
             echo 'CONFIG_BRCMDBG=y' >> "$out"
+            echo 'CONFIG_BRCMFMAC_PCIE_H1B_DIAG=y' >> "$out"
+            echo 'CONFIG_FW_LOADER_USER_HELPER_FALLBACK=n' >> "$out"
+            echo 'CONFIG_FW_LOADER_USER_HELPER=n' >> "$out"
           '';
           hoolockPcieJ81WifiH1bKernel = pkgsCross.callPackage ./kernel/hoolock-pcie-j81-wifi-h1b.nix {
             source = inputs.hoolockLinux;

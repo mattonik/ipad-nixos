@@ -1,5 +1,6 @@
 # TEST ONLY (Wi-Fi H1B base): the MSI series (0052-0057), DMA model A (0063 DART window + 0064 Apple rebase) and
-# brcmfmac built in with the PCIe bus (CONFIG_BRCMFMAC_PCIE, BRCMDBG). NO 0060, no probe/self-test drivers. The public base
+# brcmfmac built in with the PCIe bus (CONFIG_BRCMFMAC_PCIE, BRCMDBG) plus 0065, read-only DMA/MSI diagnostics
+# (ring IOVAs and their IOMMU translation, MSI capability while bound, per-interrupt log, ring snapshot at the crash). NO 0060, no probe/self-test drivers. The public base
 # payload carries no firmware; the private C2 rieslinga firmware/CLM/TxCap/NVRAM overlay is added locally by
 # boot/assemble_private_wifi_payload.py and never enters Git or the Nix store. See research/2026-10-07-wifi-h1b-payload.md.
 { buildLinux
@@ -53,6 +54,7 @@ let
     patch -d "$out" -p1 < ${./patches/0057-pcie-apple-t7000-msi-domain.patch}
     patch -d "$out" -p1 < ${./patches/0063-apple-dart-pci-iova-window.patch}
     patch -d "$out" -p1 < ${./patches/0064-t7001-air2-pcie-iova-rebase.patch}
+    patch -d "$out" -p1 < ${./patches/0065-brcmfmac-pcie-h1b-diag.patch}
   '';
   buildArgs = builtins.removeAttrs args [ "source" "hoolockConfig" "runCommand" ];
 in

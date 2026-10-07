@@ -218,6 +218,10 @@ def main(argv):
         for needle in (b"brcmfmac4350c2-pcie", b"brcmf_pcie", b"brcmfmac"):
             if needle not in image:
                 problems.append(f"kernel lacks {needle.decode()!r}: brcmfmac PCIe is not built in")
+        if b"t7000-h1b: " not in image:
+            problems.append("kernel lacks the 0065 H1B diagnostics")
+        if b"Falling back to sysfs fallback" in image:
+            problems.append("firmware sysfs fallback is still built in (60 s stall on a missing board-suffixed file)")
         wifi_tools = {"wpa_supplicant", "wpa_cli", "hostapd", "iw", "iwctl", "iwd", "NetworkManager", "nmcli", "connmand", "wpa_passphrase"}
         found = sorted(n for n in entries if n.rsplit("/", 1)[-1] in wifi_tools)
         if found:

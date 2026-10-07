@@ -21,20 +21,21 @@ EXPECTED_TAIL = [
     "0053-pcie-apple-t7000-link-wait-dllla.patch", "0054-pcie-apple-t7000-clean-up.patch",
     "0055-apple-dart-per-controller-msi-doorbell.patch", "0056-pcie-apple-t7000-derive-msi-port-values.patch",
     "0057-pcie-apple-t7000-msi-domain.patch", "0063-apple-dart-pci-iova-window.patch",
-    "0064-t7001-air2-pcie-iova-rebase.patch",
+    "0064-t7001-air2-pcie-iova-rebase.patch", "0065-brcmfmac-pcie-h1b-diag.patch",
 ]
 
 
 def main():
     patches = re.findall(r'patch -d "\$out" -p1 < \$\{\./patches/([^}]+)\}', NIX)
     assert patches[-len(EXPECTED_TAIL):] == EXPECTED_TAIL, patches
-    for banned in ("0058", "0059", "0060", "0061", "0062", "0017", "0018"):
+    for banned in ("0058", "0059", "0060", "0061", "0062", "0017", "0018"):  # 0065 (brcmfmac diagnostics) is wanted
         assert not any(p.startswith(banned + "-") for p in patches), f"{banned} must not be in the Wi-Fi H1B kernel"
     m = re.search(r"patchedHoolockPcieJ81WifiH1bConfig = .*?\n          '';", FLAKE, re.S)
     assert m, "config derivation missing"
     cfg = m.group(0)
     for line in ("CONFIG_WIRELESS=y", "CONFIG_CFG80211=y", "CONFIG_WLAN=y", "CONFIG_WLAN_VENDOR_BROADCOM=y",
-                 "CONFIG_BRCMUTIL=y", "CONFIG_BRCMFMAC=y", "CONFIG_BRCMFMAC_PCIE=y", "CONFIG_BRCMDBG=y"):
+                 "CONFIG_BRCMUTIL=y", "CONFIG_BRCMFMAC=y", "CONFIG_BRCMFMAC_PCIE=y", "CONFIG_BRCMDBG=y",
+                 "CONFIG_BRCMFMAC_PCIE_H1B_DIAG=y", "CONFIG_FW_LOADER_USER_HELPER_FALLBACK=n", "CONFIG_FW_LOADER_USER_HELPER=n"):
         assert f"echo '{line}'" in cfg, line
     for banned in ("BCM_PROBE", "MSI_SELFTEST", "DIAG_MSIADDR", "BRCMFMAC_SDIO=y", "BRCMFMAC_USB=y"):
         assert banned not in cfg, banned
