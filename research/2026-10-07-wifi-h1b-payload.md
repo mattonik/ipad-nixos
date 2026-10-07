@@ -181,3 +181,12 @@ cleanly with `0065`; `--wifi-h1b-base` passes and now requires the `t7000-h1b:` 
 fallback (confirmed: diagnostics and ring snapshot strings present, `Falling back to sysfs fallback` absent). The private
 overlay was assembled and verified again (`artifacts/live/private/wifi-h1b-modelA2-<UTC>/`, same four files, new run token).
 Run with `python3 boot/h1b_run_record.py <dir> --watch 120` started right after the device answers pings. Not booted.
+
+## Run-3 payload (2026-10-07): Model A + 0065 + 0066, built and assembled
+
+`/nix/store/dq1l084d82nkkddwh29rrf0r50pgvy21-ipad-air2-m1n1-hoolock-pcie-j81-wifi-h1b-base` compiled cleanly with the read-only
+debugfs dumps (`0066`); `--wifi-h1b-base` passes and requires the `0066` strings (`port1_regs`, `apple-dart-%s`) as well as the
+`0065` diagnostics; the sysfs fallback is absent. Private overlay assembled and verified
+(`artifacts/live/private/wifi-h1b-modelA3-<UTC>/`, same four files, new run token). The run record now also reads
+`/sys/kernel/debug/apple-dart-*/regs`, `/sys/kernel/debug/t7000-pcie/port1_regs` and the PCI config (including extended
+space) of the endpoint and root port. Not booted. Model B (`-base-raw`) is building.
