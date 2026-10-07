@@ -1,0 +1,51 @@
+#!/usr/bin/env python3
+"""Contract for the Wi-Fi H1B base payload variant (no hardware, no build).
+
+The first private-firmware transport run must use exactly the known-good host path (0052-0057) plus
+DMA model A (0063 + 0064), with brcmfmac PCIe built in. It must not contain 0060 (the superseded
+allocator-only proposal), the probe/self-test/shadow/diag drivers, or any firmware in the public
+outputs.
+"""
+from pathlib import Path
+import re
+
+ROOT = Path(__file__).resolve().parent.parent
+NIX = (ROOT / "kernel" / "hoolock-pcie-j81-wifi-h1b.nix").read_text()
+FLAKE = (ROOT / "flake.nix").read_text()
+
+EXPECTED_TAIL = [
+    "0016-pcie-apple-t7000-compile-only-skeleton.patch", "0040-pcie-apple-t7000-tuning-baseline-test.patch",
+    "0041-pcie-apple-t7000-dbi-ecam-read-test.patch", "0042-pcie-apple-t7000-dbi-tunables-write-test.patch",
+    "0043-pcie-apple-t7000-link-state-probe-test.patch", "0044-pcie-apple-t7000-link-wait-write-test.patch",
+    "0045-pcie-apple-t7000-link-speed-write-test.patch", "0052-pcie-apple-t7000-j81-reg-on.patch",
+    "0053-pcie-apple-t7000-link-wait-dllla.patch", "0054-pcie-apple-t7000-clean-up.patch",
+    "0055-apple-dart-per-controller-msi-doorbell.patch", "0056-pcie-apple-t7000-derive-msi-port-values.patch",
+    "0057-pcie-apple-t7000-msi-domain.patch", "0063-apple-dart-pci-iova-window.patch",
+    "0064-t7001-air2-pcie-iova-rebase.patch",
+]
+
+
+def main():
+    patches = re.findall(r'patch -d "\$out" -p1 < \$\{\./patches/([^}]+)\}', NIX)
+    assert patches[-len(EXPECTED_TAIL):] == EXPECTED_TAIL, patches
+    for banned in ("0058", "0059", "0060", "0061", "0062", "0017", "0018"):
+        assert not any(p.startswith(banned + "-") for p in patches), f"{banned} must not be in the Wi-Fi H1B kernel"
+    m = re.search(r"patchedHoolockPcieJ81WifiH1bConfig = .*?\n          '';", FLAKE, re.S)
+    assert m, "config derivation missing"
+    cfg = m.group(0)
+    for line in ("CONFIG_WIRELESS=y", "CONFIG_CFG80211=y", "CONFIG_WLAN=y", "CONFIG_WLAN_VENDOR_BROADCOM=y",
+                 "CONFIG_BRCMUTIL=y", "CONFIG_BRCMFMAC=y", "CONFIG_BRCMFMAC_PCIE=y", "CONFIG_BRCMDBG=y"):
+        assert f"echo '{line}'" in cfg, line
+    for banned in ("BCM_PROBE", "MSI_SELFTEST", "DIAG_MSIADDR", "BRCMFMAC_SDIO=y", "BRCMFMAC_USB=y"):
+        assert banned not in cfg, banned
+    pay = re.search(r"m1n1-hoolock-pcie-j81-wifi-h1b-base = .*?\n        '';", FLAKE, re.S)
+    assert pay, "payload missing"
+    body = pay.group(0)
+    assert "hoolockPcieJ81WifiH1bKernel" in body and "brcmfmac.debug=0x001c0004" in body
+    assert "firmware" not in body.lower().replace("brcmfmac", ""), "no firmware may be copied into the public payload"
+    assert "rdinit=/init" in body and 'deviceinfo_usb_rndis_function="ecm.usb0"' in body, "USB recovery must stay"
+    print("PASS: Wi-Fi H1B base contract (host path 0052-0057 + 0063/0064, no 0060/probe drivers, brcmfmac PCIe, no firmware, USB recovery)")
+
+
+if __name__ == "__main__":
+    main()
