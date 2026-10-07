@@ -58,3 +58,58 @@ failed one step earlier.
 - Improve the capture (watch mode) and fix the 60 s stall; add ring-address logging; then repeat Model A once for a cleaner record.
 - Build and run Model B (`m1n1-hoolock-pcie-j81-dma-raw`) with the same private overlay, now that Model A fails at the DMA/ring
   stage, and compare using the same classification.
+
+# Run 2 (Model A + 0065 diagnostics, sysfs fallback off): result
+
+Payload `wifi-h1b-modelA2-*` (private), identity-qualified again (token seen in `/proc/cmdline`). With the sysfs fallback
+removed the 60 s stall is gone: firmware, NVRAM and the control query all happen in the first 3 s of boot, before the
+shell is reachable, so the watch (started after the device answers pings) sampled one tick after brcmfmac had already
+removed itself. The in-kernel `t7000-h1b:` log carries everything instead (private run record, `dmesg.txt`).
+
+## Host side: all as designed
+
+- IOMMU domain: type `0x3` (DMA), aperture `0x80000000..0xbfffefff`, force aperture 1, i.e. `0063`/`0064` are active.
+- Every DMA buffer given to the firmware is inside the window, allocated top-down (control submit ring `0xbfffe000`,
+  rx-post ring `0xbfff0000`, ... scratch `0xbffdf000`, ring-update `0xbffde000`), and the DART resolves each IOVA to a
+  physical page (`0x804ea0000`, ... in DRAM). The translation tables are correct from the CPU side.
+- MSI: capability control `0x0089`, address `0x00000000_bffff000`, data 8 both after `pci_enable_msi` and after
+  `request_irq` and at the failure snapshot; interrupt chain `PCI-MSI hwirq 0` to `pcie hwirq 8` to AIC `65768` (event 232, i.e.
+  slot 8 / AIC 232), exactly the designed mapping.
+- One interrupt was delivered (`isr #1 irq 56 mailbox status 0x100`, the firmware's DEEP SLEEP REQ): the MSI route works
+  end to end for a device-originated MSI. `pci command 0x0406` at the snapshot (memory + bus master).
+
+## Device side: the firmware consumed nothing
+
+Snapshot when the control query times out (2.0 s after submission):
+
+| Ring | Host w | Device r | Device w |
+| --- | --- | --- | --- |
+| 0 control submit | 17 | **0** | 17 |
+| 1 rx-post | 255 | **0** | 255 |
+| 2, 3, 4 (device to host) | 0 | 0 | 0 |
+
+- the device never advanced the read index of either host-to-device ring: it fetched none of the 17 control items nor the 255
+  rx-post buffers (the first control item in host memory is a well-formed ioctl request pointing at an in-window buffer);
+- the d2h scratch word the device writes by DMA is still `0`, and there is no completion;
+- no DART translation-fault message (the S5L8960X fault handler exists and would print `translation fault: ... NO TTBR/PTE`),
+  no port `MSI_ERR`/`MSI_BAD_DATA` evidence, no firmware crash text; the firmware console printed only its start banner.
+
+## Classification
+
+Matrix row "control request pending, no D2H ring update": **the first host-to-device DMA read never completes** (or the firmware
+never reacts to the doorbell), while device-to-host signalling works (MSI/mailbox). The MSI route is therefore *validated for
+delivery* but H1B (a control *completion* by MSI) cannot be observed until the firmware reads its rings. Two explanations remain
+and are exactly what the model comparison was designed to separate:
+
+1. DMA read path: the endpoint's reads of the host rings are not reaching memory correctly (fabric/DART address model), possibly
+   without a DART error being latched or reported (DART IRQ delivery itself is not yet proven);
+2. doorbell/protocol: the firmware does not see or act on the host-to-device doorbell (for example after its deep-sleep
+   handshake) so it never starts fetching, which would make the DMA model irrelevant.
+
+## Next (offline work first; each hardware run still needs the user's go-ahead)
+
+- Build Model B (`m1n1-hoolock-pcie-j81-dma-raw` equivalent for the Wi-Fi payload) with the same overlay and diagnostics.
+- Add read-only discriminators for explanation 1: the DART's latched error registers (S5L8960X `ERROR`/`ERROR_ADDR`, plus
+  stream state) and the port-1 event status/mask (`+0x100`/`+0x104`, read-only) exposed through debugfs so the run record can read
+  them after the failure without any write; whether reading `+0x100` has side effects must be confirmed from the iOS trace
+  (the Apple driver reads it in its handler and acknowledges with a separate write).
