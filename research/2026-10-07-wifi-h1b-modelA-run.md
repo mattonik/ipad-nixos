@@ -276,4 +276,8 @@ Payload `wifi-h1b-modelB-20261007T125638Z` (public base `...-h1b-base-raw`: 0063
 Same stall as every Model A run: the deep-sleep request arrived (isr #1, mailbox status 0x100), the control query
 timed out, isr count 1 and mailbox int 0x1 at failure, d2h scratch 0, no DART fault, no MSI error. The aperture is
 reported as 0x80000000..0xbfffefff in both models. DMA Model A versus B therefore makes no difference to the stall;
-the DMA-model hypothesis is closed.
+the DMA-model hypothesis is closed only in the weak sense below.
+Caveat: the Model B ring IOVAs in the log (e.g. 0xbfffe000, 0xbfff0000) are the same top-down addresses Model A uses,
+so B does not exercise a different addressing scheme at the device. Both models hand the device the same IOVAs; the
+difference is only in how the host-side allocator and aperture were derived. A real "raw low-IOVA" control would need
+a different window, which has not been tried.
