@@ -95,3 +95,28 @@ Status: hypothesis only. A test would be a read-only ChipCommon
 gpioout/gpioouten/gpiocontrol snapshot via the BAR0 window first. A write would
 be an extra hardware action, so it needs the user's explicit go-ahead, and the
 level to drive is not yet established.
+
+## Follow-up leads after the GPIO snapshot (static, no hardware)
+
+Runs 8/9 (ChipCommon GPIO snapshot, see `2026-10-07-wifi-h1b-modelA-run.md`) closed the GPIO side: chip GPIO 0
+is already an output driving low (Apple's D0 level), and chip GPIO 1 is the DEVICE_WAKE input.
+
+1. **Caller of `FUN_c10a24` (drives chip GPIO 0 high).** It is vtable slot 0x668 of the class whose vtable
+   starts at `0xffffff8002c1d180` (slot address `0xffffff8002c1d7e8`; `c0e27c` itself is not in any vtable).
+   A scan of PRELINK_TEXT for `ldr xN, [xM, #0x668]` finds 141 sites, none in the Wi-Fi kext range
+   (`0x2bf...-0x2c11...`). The ones decompiled belong to unrelated classes (USB HID, PCIe link training).
+   No caller can be attributed from the slot offset alone. Unresolved; low priority because GPIO 0 is low in both
+   hardware runs and nothing in the GPIO block depends on the host.
+2. **DMA-engine interrupt / coalescing registers (0x188-0x19c).** The register-name table lists them, but the
+   decompiled Wi-Fi bus driver never writes them directly (only the literal writes below). Apple's literal
+   register writes are: mailbox status/mask `0x48`/`0x4c` (setup: mask `0x10100`, then status `0xffffffff`;
+   teardown: mask 0), ARM wrapper IOCtrl/ResetCtrl `0x408`/`0x800` (start sequence), mailbox `0x144` (DMB trap and
+   deep-sleep ACK, value 1), and the core-0 GPIO block above. Nothing else is programmed by the host.
+3. **`0xc40` / `0xe00`.** Only written inside the GPIO routine. The chip already holds `0xc40=1`, `0xe00=0x22000`
+   (not 0 and 1) with GPIO0 driving low, so those writes look like part of the same pin setup rather than a
+   requirement for the doorbell. Meaning still unidentified.
+
+Net: Apple's host-side register protocol is no larger than Linux's. The mask (`0x10100` vs Linux `0x30300`) only
+affects host interrupts, while the stall is the device-side latch (`h2d_mailbox_0` = 1 never cleared). The remaining
+difference must therefore be in shared-memory content (ring/host-capability fields) or in the exact ordering
+of the setup, not in extra registers.
