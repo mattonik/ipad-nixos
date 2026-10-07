@@ -69,3 +69,29 @@ state machine asserts DEVICE_WAKE and waits for the exit notification before usi
 The object at `param_1[0x1b9]` was identified as the wake helper from its position in the power state machine and from the strings and the
 NVRAM option, not by following its vtable to `setDeviceWake`; the GPIO polarity is inferred. The ACK-register difference (config `0x98`
 vs MMIO `0x144`) is documented fact, its effect is not. None of this was tested on the device.
+
+## FUN_ffffff8002c0e27c: chip GPIO 0 drive (static, no hardware)
+
+The function selects core index 0 (ChipCommon) and writes, in order:
+`0xc40=0`, `0xe00=1`, `0x6c=0`, `0x68=1`, `0x64=(param==1)`.
+In the standard Broadcom ChipCommon map `0x64` is `gpioout`, `0x68` is
+`gpioouten` and `0x6c` is `gpiocontrol`. So Apple makes **chip GPIO 0 an
+output** (control=0, outen=1) and drives it high or low. `0xc40` and `0xe00`
+are not identified; they are probably pin-mux or function-select registers.
+It records the level in the driver at +0xdd0, and temporarily clears and
+restores the +0x7c1 flag (a vtable +0x98 call).
+
+Callers:
+- Power-state D0 path, when +0x1ba is set: called with 0 (GPIO0 low).
+- `FUN_ffffff8002c10a24` (a vtable method, 28 bytes): called with 1 (GPIO0 high).
+  Its caller is not yet identified.
+
+Linux brcmfmac never touches chip GPIO 0 on this path. The rieslinga NVRAM has
+no gpio keys; it has `device_wake_opt=1`, `host_wake_opt=0`, `uart_wake_gpio=2`,
+`btc_mode=1`. The chip GPIO 0 line is probably routed to a module/coex signal
+(possibly BT/WLAN coexistence). Whether it gates doorbell servicing is unknown.
+
+Status: hypothesis only. A test would be a read-only ChipCommon
+gpioout/gpioouten/gpiocontrol snapshot via the BAR0 window first. A write would
+be an extra hardware action, so it needs the user's explicit go-ahead, and the
+level to drive is not yet established.
