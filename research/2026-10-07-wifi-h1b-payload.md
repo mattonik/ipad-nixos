@@ -203,3 +203,13 @@ the leading hypothesis (see `2026-10-07-ios-wifi-bus-driver-analysis.md`).
 `0067` adds boot-argument toggles on Model A: `brcmfmac.h1b_ds_ack=0|1|2` (stock ACK / no ACK / ACK through MMIO H2D mailbox 1, Apple's way) and
 `pcie_apple_t7000.device_wake=1` (drive the root-port `device-wake-gpios` = GPIO 165 high after link-up). All off by default; the assembler
 (`--extra-bootarg`) accepts exactly these values, appends them before the run token and records them in the private manifest.
+
+## Model A + 0067 toggles: built and assembled (2026-10-07)
+
+`/nix/store/kd3r3pirk5nh1lzq2l3yb5i50192p578-ipad-air2-m1n1-hoolock-pcie-j81-wifi-h1b-base` compiled cleanly with `0067`; `--wifi-h1b-base` passes and requires
+the toggle strings (`h1b_ds_ack`, `NOT acknowledged`, `DEVICE_WAKE asserted`); the sysfs fallback is absent. Four private payloads were assembled and
+verified from it (`artifacts/live/private/wifi-h1b-modelA*-<UTC>/`, same four C2 files, each with its own run token and the exact toggle recorded in its
+private manifest): a no-toggle baseline (`modelA4`), **E1** `brcmfmac.h1b_ds_ack=1` (do not acknowledge deep sleep), **E3** `brcmfmac.h1b_ds_ack=2`
+(acknowledge by MMIO H2D mailbox 1, Apple's way) and **E2** `pcie_apple_t7000.device_wake=1` (drive GPIO 165 high; a GPIO write to the module, needs the
+user's go-ahead at run time). Not booted. Suggested order: E1, E3, then E2; read each with `boot/h1b_run_record.py <dir>` (the whole exchange happens in the
+first seconds of boot, so the in-kernel `t7000-h1b:` log and the register dumps are the evidence).
