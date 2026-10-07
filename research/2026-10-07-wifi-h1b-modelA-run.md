@@ -169,3 +169,22 @@ Status of the hypotheses:
 - deep-sleep acknowledgement as the cause: **refuted** (E1);
 - the ACK route (config `0x98` vs MMIO `0x144`, E3): unlikely given the latched bit, not tested;
 - DEVICE_WAKE (GPIO 165, E2): still the leading explanation; it is a GPIO write to the module and needs the user's explicit go-ahead.
+
+# Run 5: E2, DEVICE_WAKE (GPIO 165) held high (Model A + 0067 `pcie_apple_t7000.device_wake=1`)
+
+Identity-qualified (token in `/proc/cmdline`), with the user's explicit go-ahead for the GPIO output.
+
+- `t7000-pcie: DEVICE_WAKE asserted, GPIO reads 1`: the pin was driven high after link-up and read back high. Link, enumeration, DMA mappings, MSI
+  capability and interrupt chain are unchanged from the earlier runs.
+- **The firmware behaviour changed for the first time**: there is **no deep-sleep request and no interrupt at all** (`isr count 0`, no mailbox
+  status), whereas every earlier run had the request about 10 ms after the first control query. Holding DEVICE_WAKE high therefore does what iOS relies on:
+  the firmware stays awake and no longer asks to sleep. This confirms the link between the NVRAM's `device_wake_opt=1`, the wake pin and the
+  firmware's sleep request.
+- But the **rings are still not consumed**: control and rx-post rings device read index 0 (17 and 255 posted), d2h scratch word 0, the control query times out
+  at 2.0 s with the same `-5`, no DART or PCIe error. The sleeping firmware was therefore *not* the only reason it ignored the rings.
+
+So there are two separate findings: (1) DEVICE_WAKE must be driven (done for E2; the controller driver or DT needs a permanent, board-correct
+implementation later); (2) with the firmware awake, something else still keeps it from servicing the rings. The remaining evidence gap is the firmware's own console and
+the mailbox/shared-structure state: the console is only read when an interrupt arrives or on error, and E2 produced no interrupt, so we saw only the banner.
+Next (read-only): poll the firmware console every 100 ms while the query is pending, read it at the failure snapshot, and log the shared-structure flags,
+version, mailbox data words and mailbox registers.
