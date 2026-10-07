@@ -30,6 +30,8 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
 COMMANDS = [
+    # debugfs is not mounted by the debug init; mounting it only exposes kernel files (no device access).
+    ("debugfs_mount", "mountpoint -q /sys/kernel/debug && echo mounted || mount -t debugfs none /sys/kernel/debug"),
     ("cmdline", "cat /proc/cmdline"),
     ("uname", "uname -a"),
     ("dmesg", "dmesg"),

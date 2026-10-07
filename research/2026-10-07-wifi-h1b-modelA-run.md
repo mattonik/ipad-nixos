@@ -113,3 +113,41 @@ and are exactly what the model comparison was designed to separate:
   stream state) and the port-1 event status/mask (`+0x100`/`+0x104`, read-only) exposed through debugfs so the run record can read
   them after the failure without any write; whether reading `+0x100` has side effects must be confirmed from the iOS trace
   (the Apple driver reads it in its handler and acknowledges with a separate write).
+
+# Run 3 (Model A + 0065 + 0066): register and PCIe-error evidence
+
+Same failure (first control query times out at 2.0 s, device-side read index of the submit and rx-post rings still 0, one
+mailbox interrupt) with the new read-only dumps taken afterwards (debugfs had to be mounted by hand: the debug init does not mount
+it; the run record now mounts it, a kernel-file exposure only).
+
+## DART (`/sys/kernel/debug/apple-dart-602002000.iommu/regs`)
+
+- `tcr 0x80` (stream 0 translating); stream 0's four TTBRs hold valid table pointers (`0x8080271a..d`), the other streams point
+  at the shared dummy table (`0x80ffff80`). The endpoint (requester `0x100`, stream 0) has live tables.
+- `error 0x00000100`, `error_addr 0x01e0f000`, **fault flag (bit 31) clear**, and the AIC DART fault interrupt (AIC event 216) count is **0**.
+  Apple's own handler (kext function at `0xffffff80026c53f0`) decodes the cause from bits 0 (TTBR invalid), 1 (STE invalid), 2
+  (PTE invalid), 3 (write protect), 6:5 (AXI slave error/decode), 10 (write), 25:24 stream: none of the cause bits is set in `0x100`
+  (bit 8 is not decoded there; the latched address is a stale value, not one of our buffers). So **no translation fault is recorded**.
+
+## T7000 port 1 (`/sys/kernel/debug/t7000-pcie/port1_regs`)
+
+- link start 1, state `0x15`; MSI config `0x31` / `0x00080008` as programmed; `msiaddr` 0.
+- event mask `0x0070afff` (link-up/down, MSI error, bad MSI data, request-address and completion-timeout events unmasked),
+  event status `0x00003000` (bits 12 and 13, link-up related and masked-or-benign): **no MSI_ERR, MSI_BAD_DATA, REQADDR_GT32 or CPL_TIMEOUT latched**.
+
+## PCI error state
+
+Endpoint and root port: AER capabilities present; uncorrectable and correctable status registers are all **zero**, root error status
+zero. No unsupported request, completer abort, completion timeout or poisoned TLP was recorded on either side. The command register
+at the end was back to memory-only because brcmfmac had already torn itself down (bus master was set at the failure snapshot).
+
+## What this changes
+
+There is **no evidence of any DMA error**: no DART fault, no PCIe error status, no controller completion-timeout. The firmware
+runs, the MSI/mailbox interrupt path works, the host-side mappings are right, and still the firmware never advances its read index
+of the host-to-device rings. That favours explanation 2 (the firmware does not act on the host-to-device doorbell/protocol
+state, for example because it sent its own deep-sleep request and nothing wakes it) over a DMA translation problem; Model B stays
+a useful but now less likely discriminator. The firmware's first deep-sleep request arrives right after the three ring doorbells
+and before the control query, so the host/firmware handshake around the doorbell and the deep-sleep request (what Apple's host
+driver sends after `shared` setup, host-ready flags, the doorbell register and any wake action) is the next thing to compare with the iOS
+Wi-Fi bus driver rather than more translation experiments.

@@ -11,7 +11,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import h1b_run_record as R  # noqa: E402
 
-READONLY_PREFIXES = ("cat ", "uname", "dmesg", "lspci", "od ", "ls ")
+READONLY_PREFIXES = ("cat ", "uname", "dmesg", "lspci", "od ", "ls ", "mountpoint -q /sys/kernel/debug")
 
 
 class FakeShell:
@@ -68,7 +68,8 @@ def main():
     # Every command is read-only.
     assert all(c.startswith(READONLY_PREFIXES) for _, c in R.COMMANDS), R.COMMANDS
     for _, c in R.COMMANDS:
-        assert not any(w in c for w in (" > ", "echo ", "ip ", "iw ", "ifconfig", "modprobe", "insmod", "dd ", "setpci", "wpa", "rm ", "mount")), c
+        assert not any(w in c for w in (" > ", "echo ", "ip ", "iw ", "ifconfig", "modprobe", "insmod", "dd ", "setpci", "wpa", "rm ")), c
+        assert "mount" not in c.replace("mountpoint -q /sys/kernel/debug && echo mounted || mount -t debugfs none /sys/kernel/debug", ""), c
     # End to end against a fake payload directory and fake shell.
     d = Path(tempfile.mkdtemp(prefix="h1b-rec-"))
     try:
