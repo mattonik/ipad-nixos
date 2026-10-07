@@ -218,3 +218,29 @@ query timeout at 2 s, no DART or PCIe error.
 **ASPM/L1 is eliminated** as the cause. Eliminated so far: DMA translation errors (no fault anywhere), the MSI route (an interrupt was delivered when the firmware asked
 for one), the deep-sleep acknowledgement (E1), the firmware sleeping (E2: it stays awake with DEVICE_WAKE high), and ASPM. Established: the host side is right, the
 firmware runs its start-up and then neither prints nor services the host-to-device doorbell.
+
+## Run 8: G1 (DEVICE_WAKE high, read-only ChipCommon GPIO snapshot, patch 0069)
+
+Payload: Model A + 0069, `pcie_apple_t7000.device_wake=1`. Same stall as runs 5-7: DEVICE_WAKE GPIO reads 1,
+firmware banner, control query times out, isr count 0, mailbox int 0x0, `h2d_mailbox_0` stays 0x1,
+host-to-dev and dev-to-host mailbox words 0, d2h scratch 0.
+
+ChipCommon snapshot, identical after `request_irq` (0.73 s) and at failure (2.81 s):
+
+| register | value |
+|---|---|
+| gpiopullup 0x58 | 0x00000000 |
+| gpiopulldown 0x5c | 0x00000002 |
+| gpioin 0x60 | 0x0000290e |
+| gpioout 0x64 | 0x00000000 |
+| gpioouten 0x68 | 0x00000001 |
+| gpiocontrol 0x6c | 0x00000000 |
+| 0xc40 | 0x00000001 |
+| 0xe00 | 0x00022000 |
+
+Reading: the firmware has already made chip GPIO 0 an output driving low. That equals the state Apple's D0 path
+writes (`FUN_c0e27c(.., 0)`: control 0, outen 1, out 0), so the missing-GPIO0-setup hypothesis is not supported for
+the low level. The GPIO is not held high at any point; Apple's high write (`FUN_c10a24`, caller unknown) is the
+open question. `0xc40`/`0xe00` hold different values from what Apple writes (0 and 1) but their meaning is unknown, and
+the firmware may have set them itself. Nothing changes between 0.7 s and 2.8 s, which is consistent with a firmware
+that is idle rather than hung mid-init. G0 (stock) not yet run.
