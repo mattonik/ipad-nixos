@@ -257,3 +257,15 @@ pullup 0, pulldown 0x2, **in 0x0000290c** (G1: 0x290e), out 0, outen 0x1, contro
 DEVICE_WAKE input and the wiring is confirmed. Chip GPIO 0 is an output driving low in both runs, and the rest of the
 GPIO block does not depend on the host. Conclusion: no GPIO-side difference explains the stall; chip GPIO 0 and the
 GPIO block are closed as hypotheses unless Apple's high write (`FUN_c10a24`) is found to matter.
+
+## Run 10: S7 (Apple shared-memory parity, mask 7, DEVICE_WAKE high)
+
+Payload: Model A + 0070, `brcmfmac.h1b_apple_shared=7` and `pcie_apple_t7000.device_wake=1`. The log confirms the
+toggle took effect: 4096-byte scratch buffer (IOVA 0xbfff5000), "ring-update buffer not provided". Result is the
+same stall as runs 5-9: no interrupts, `h2d_mailbox_0` stays 0x1, mailbox words 0, d2h scratch 0, control query
+times out. Matching Apple's scratch length, omitting the ring-update buffer and using Apple's ring depths therefore
+makes no difference. These three shared-memory differences are closed as causes (taken together; not bisected
+because the combined run is negative).
+
+Note: `h1b_run_record.py` needs Python 3.10+ (`ipad_console.py` uses `X | None`); the first attempt with the system
+`python3` (3.9.6) failed before touching the device; rerun with `/opt/homebrew/bin/python3`.
