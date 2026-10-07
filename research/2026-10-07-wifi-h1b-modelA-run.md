@@ -151,3 +151,21 @@ a useful but now less likely discriminator. The firmware's first deep-sleep requ
 and before the control query, so the host/firmware handshake around the doorbell and the deep-sleep request (what Apple's host
 driver sends after `shared` setup, host-ready flags, the doorbell register and any wake action) is the next thing to compare with the iOS
 Wi-Fi bus driver rather than more translation experiments.
+
+# Run 4: E1, deep-sleep request not acknowledged (Model A + 0067 `brcmfmac.h1b_ds_ack=1`)
+
+Identity-qualified (token in `/proc/cmdline`). The toggle took effect: `t7000-h1b: deep sleep request NOT acknowledged (h1b_ds_ack=1)`
+(brcmfmac's own unconditional debug line "sent DEEP SLEEP ACK" still prints right after it; the line is misleading in this mode, no acknowledgement
+was sent). Everything else is the same as the earlier runs: the firmware's `DEEP SLEEP REQ` arrives ~10 ms after the control query is submitted (one
+interrupt, `isr #1`, status `0x100`), the control query times out at 2.0 s, rings 0 and 1 have device-side read index 0 (17 and 255 items posted), the d2h
+scratch word is 0, no DART or PCIe error.
+
+One new detail: the mailbox interrupt status at the failure snapshot is `0x0` here, whereas the stock run left bit 0 set (`0x1`) after our config-space
+acknowledgement. So the stock acknowledgement did reach the device hardware (it latches that bit) and the firmware never consumed it either. The firmware
+behaves the same whether or not it is acknowledged, so **the acknowledgement is not what stops it**: with `device_wake_opt=1` it is either asleep after its
+own request and needs the wake pin, or stuck for another reason before servicing any host message.
+
+Status of the hypotheses:
+- deep-sleep acknowledgement as the cause: **refuted** (E1);
+- the ACK route (config `0x98` vs MMIO `0x144`, E3): unlikely given the latched bit, not tested;
+- DEVICE_WAKE (GPIO 165, E2): still the leading explanation; it is a GPIO write to the module and needs the user's explicit go-ahead.
