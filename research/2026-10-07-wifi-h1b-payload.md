@@ -73,3 +73,22 @@ mutations of the assembler are caught).
   not available locally. They must be provided or re-extracted (a download) by the user's decision.
 - Then: review the assembled payload, wait for an approved run, classify with
   `2026-10-07-wifi-h1b-evidence-matrix.md`; build Model B only if Model A fails at the DMA setup stage.
+
+## Private asset extraction (2026-10-07, with the user's approval of the download)
+
+Re-extracted the C2 set from the matching iPad5,3 `12B410` restore without mounting through `ipsw`
+(its mount step needs an admin password, so that path was cancelled; no credentials were entered):
+
+1. `iPad5,3_8.1_12B410_Restore.ipsw` (2,178,168,430 bytes) from Apple's public download host to a
+   private scratch directory outside the repository; `ipsw extract --dmg fs` produced the still
+   encrypted (`encrcdsa`) `058-01629-167.dmg`.
+2. The RootFS key was read from the public firmware-key page through the wiki API (the same source
+   `ipsw --lookup` uses; the page's browser challenge was not touched). It stays out of Git.
+3. `tools/vfdecrypt_ios8.py` decrypted the image (blocks of 512 bytes, AES-128-CBC, HMAC-SHA1 IVs).
+   **The result's size and SHA-256 equal the values already recorded in `j81-private-firmware-assets.md`**
+   (2,123,313,195 bytes, `b187f71f...`), so it is the same filesystem used for the earlier audit.
+4. `hdiutil attach -readonly -nobrowse` (no prompt), then only the four needed files were copied to
+   the ignored `firmware/j81-12B410/wifi/C-4350__s-C2/` (mode 0600): `rieslinga.trx`, `.clmb`, `.txcb` and
+   the selected NVRAM. The three binaries match the recorded size and SHA-256 exactly; the NVRAM is
+   a 3.4 KB text file. The image was detached and the IPSW, encrypted and decrypted DMGs and the key were
+   deleted from scratch.
