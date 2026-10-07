@@ -244,3 +244,16 @@ the low level. The GPIO is not held high at any point; Apple's high write (`FUN_
 open question. `0xc40`/`0xe00` hold different values from what Apple writes (0 and 1) but their meaning is unknown, and
 the firmware may have set them itself. Nothing changes between 0.7 s and 2.8 s, which is consistent with a firmware
 that is idle rather than hung mid-init. G0 (stock) not yet run.
+
+## Run 9: G0 (stock, no toggles, ChipCommon GPIO snapshot)
+
+Same stall. The firmware's deep-sleep request arrived (isr #1, mailbox status 0x100), the stock config-space
+ACK was written (host-to-dev mailbox word 0x2), and the control query still timed out; `h2d_mailbox_0` stayed 0x1,
+d2h scratch 0, mailbox int 0x1 at failure.
+
+ChipCommon GPIO, identical after `request_irq` and at failure, and identical to run 8 except `gpioin`:
+pullup 0, pulldown 0x2, **in 0x0000290c** (G1: 0x290e), out 0, outen 0x1, control 0, 0xc40 = 1, 0xe00 = 0x22000.
+`gpioin` bit 1 follows the host DEVICE_WAKE level (1 with the GPIO high, 0 without), so chip GPIO 1 is the
+DEVICE_WAKE input and the wiring is confirmed. Chip GPIO 0 is an output driving low in both runs, and the rest of the
+GPIO block does not depend on the host. Conclusion: no GPIO-side difference explains the stall; chip GPIO 0 and the
+GPIO block are closed as hypotheses unless Apple's high write (`FUN_c10a24`) is found to matter.
