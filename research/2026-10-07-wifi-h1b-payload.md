@@ -108,3 +108,39 @@ To rebuild the extraction from the stored IPSW: `ipsw extract --dmg fs --device 
 `tools/vfdecrypt_ios8.py <encrypted dmg> <out dmg> keys/<file>`, check the decrypted image against the recorded
 SHA-256, attach it read-only with `hdiutil`, and copy the four files. Back this directory up with the
 other private material; it is not recoverable from Git.
+
+## Build and assembly result (2026-10-07)
+
+- Public base `m1n1-hoolock-pcie-j81-wifi-h1b-base` built cleanly
+  (`/nix/store/12mhj67lrrymd4jwpjkfipljq8wxdm0j-ipad-air2-m1n1-hoolock-pcie-j81-wifi-h1b-base`);
+  `--wifi-h1b-base` passes: brcmfmac PCIe built in (`brcmfmac4350c2-pcie`, `brcmf_pcie_isr_thread`, firmware loader strings
+  present), Model A DTB (`apple,iova-window` + `apple,iova-rebase`), no probe/shadow drivers, no firmware, no Wi-Fi client
+  tools, `brcmfmac.debug=0x001c0004` and ECM recovery intact; `--dma-raw` correctly rejects it.
+- Private payload assembled and verified: `artifacts/live/private/wifi-h1b-modelA-<UTC>/` (ignored; directory 0700, files 0600):
+  `m1n1-linux.bin` (about 11.1 MB), `initramfs.gz`, `bootargs`, `PRIVATE_MANIFEST.json`. Four firmware files staged (C2
+  firmware 566,531 bytes, CLM 9,001, TxCap 316, NVRAM 3,447 bytes with 156 `key=value` lines, all non-empty); the
+  verifier found no stray firmware, no Wi-Fi client/scan tools and an intact ECM recovery config. Run token, payload hash
+  and every asset hash are in the private manifest only.
+- Post-boot capture: `boot/h1b_run_record.py <payload dir>` (read-only commands only; tested with a fake shell) stores
+  raw `/proc/cmdline` (token check), full `dmesg`, `/proc/interrupts`, `lspci`, the endpoint MSI capability readback
+  (config `0x58..0x67`, decoded), IOMMU group, net interfaces and firmware file listing under `run-<UTC>/`, plus a
+  classifier summary of the matrix's evidence classes (it labels, the reviewer decides). It never brings an interface up,
+  scans or writes a register.
+
+## Review checklist before the run (all satisfied offline)
+
+| Item | State |
+| --- | --- |
+| no `0060` | exact patch list pinned by `kernel/test_wifi_h1b_payload_contract.py` |
+| payload hash and private asset hashes recorded locally | `PRIVATE_MANIFEST.json` |
+| non-empty NVRAM actually selected | staged, 3,447 bytes / 156 pairs; the only `.txt` in the overlay |
+| no scan, association, intentional transmission | no supplicant/scan tool in the initramfs; nothing brings `wlan0` up; the run script only reads |
+| USB recovery remains enabled | ECM deviceinfo and the debug `rdinit` shell unchanged |
+
+Not covered offline: whether firmware starts, whether DMA model A is right, whether the first preinit completion arrives by MSI.
+Those are the run's questions. Expected cost on the device: the usual PMU byte (`0x0403`), PCI memory/bus-master enable and
+DMA mappings through the DART window, firmware download and start, brcmfmac's own preinit exchange, and a `wlan0` interface may
+appear. No scan or association is started by anything in the payload, but firmware start cannot promise absolute RF silence.
+
+Run: DFU, palera1n, load `m1n1-linux.bin` from the private payload directory, then `python3 boot/h1b_run_record.py <dir>`;
+classify with `2026-10-07-wifi-h1b-evidence-matrix.md`. Build Model B only if Model A fails at the DMA setup stage.
