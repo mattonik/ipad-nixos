@@ -232,3 +232,13 @@ Test: `kernel/test_brcmfmac_h1b_gpio_patch.py`; offline suite 48 passed, 0 faile
 Public base: `/nix/store/qp2g4zqdznsvwcpx7rrs2c80vj93jzhw-ipad-air2-m1n1-hoolock-pcie-j81-wifi-h1b-base`.
 Private variants (under ignored `artifacts/live/private/`): G1 = `device_wake=1` (firmware awake, preferred),
 G0 = stock (no toggles). Neither has been run on hardware.
+
+## Payload with Apple shared-memory parity toggle (patch 0070)
+
+Static comparison of Apple's `FUN_c05974` with `brcmf_pcie_init_*` found three shared-memory differences:
+scratch buffer length 0x1000 (Linux 8), no ring-update buffer (Apple never writes shared +0x40/+0x44; Linux
+provides 1 KiB), and common-ring depths 128/256/128/256/256 (Linux 64/1024/64/1024/1024). Patch
+`0070-brcmfmac-h1b-apple-shared-memory-parity.patch` adds `brcmfmac.h1b_apple_shared` (bit 0 no ringupd, bit 1
+4 KiB scratch, bit 2 Apple depths; default 0 = stock). Test: `kernel/test_brcmfmac_h1b_shared_patch.py`; offline
+suite 49 passed, 0 failed, 7 skipped. Public base: `/nix/store/s96zkyvq6ng34nzkbzd0s6c77skbjz74-ipad-air2-m1n1-hoolock-pcie-j81-wifi-h1b-base`.
+Private variants: S7 = mask 7 + `device_wake=1`; S7s = mask 7, stock wake. Not run yet.
