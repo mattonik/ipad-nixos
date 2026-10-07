@@ -11,6 +11,7 @@ import re
 
 ROOT = Path(__file__).resolve().parent.parent
 NIX = (ROOT / "kernel" / "hoolock-pcie-j81-wifi-h1b.nix").read_text()
+NIX_RAW = (ROOT / "kernel" / "hoolock-pcie-j81-wifi-h1b-raw.nix").read_text()
 FLAKE = (ROOT / "flake.nix").read_text()
 
 EXPECTED_TAIL = [
@@ -22,6 +23,7 @@ EXPECTED_TAIL = [
     "0055-apple-dart-per-controller-msi-doorbell.patch", "0056-pcie-apple-t7000-derive-msi-port-values.patch",
     "0057-pcie-apple-t7000-msi-domain.patch", "0063-apple-dart-pci-iova-window.patch",
     "0064-t7001-air2-pcie-iova-rebase.patch", "0065-brcmfmac-pcie-h1b-diag.patch",
+    "0066-readonly-debugfs-diag-dart-and-t7000-port.patch",
 ]
 
 
@@ -35,17 +37,23 @@ def main():
     cfg = m.group(0)
     for line in ("CONFIG_WIRELESS=y", "CONFIG_CFG80211=y", "CONFIG_WLAN=y", "CONFIG_WLAN_VENDOR_BROADCOM=y",
                  "CONFIG_BRCMUTIL=y", "CONFIG_BRCMFMAC=y", "CONFIG_BRCMFMAC_PCIE=y", "CONFIG_BRCMDBG=y",
-                 "CONFIG_BRCMFMAC_PCIE_H1B_DIAG=y", "CONFIG_FW_LOADER_USER_HELPER_FALLBACK=n", "CONFIG_FW_LOADER_USER_HELPER=n"):
+                 "CONFIG_BRCMFMAC_PCIE_H1B_DIAG=y", "CONFIG_APPLE_DART_H1B_DIAG=y", "CONFIG_PCIE_APPLE_T7000_DEBUGFS_DIAG=y", "CONFIG_FW_LOADER_USER_HELPER_FALLBACK=n", "CONFIG_FW_LOADER_USER_HELPER=n"):
         assert f"echo '{line}'" in cfg, line
     for banned in ("BCM_PROBE", "MSI_SELFTEST", "DIAG_MSIADDR", "BRCMFMAC_SDIO=y", "BRCMFMAC_USB=y"):
         assert banned not in cfg, banned
+    # Model B (raw) is the same list without 0064 and nothing else.
+    raw = re.findall(r'patch -d "\$out" -p1 < \$\{\./patches/([^}]+)\}', NIX_RAW)
+    assert raw == [p for p in patches if not p.startswith("0064-")], raw
+    assert not any(p.startswith("0064-") for p in raw)
+    raw_pay = re.search(r"m1n1-hoolock-pcie-j81-wifi-h1b-base-raw = .*?\n        '';", FLAKE, re.S)
+    assert raw_pay and "hoolockPcieJ81WifiH1bRawKernel" in raw_pay.group(0) and "brcmfmac.debug=0x001c0004" in raw_pay.group(0)
     pay = re.search(r"m1n1-hoolock-pcie-j81-wifi-h1b-base = .*?\n        '';", FLAKE, re.S)
     assert pay, "payload missing"
     body = pay.group(0)
     assert "hoolockPcieJ81WifiH1bKernel" in body and "brcmfmac.debug=0x001c0004" in body
     assert "firmware" not in body.lower().replace("brcmfmac", ""), "no firmware may be copied into the public payload"
     assert "rdinit=/init" in body and 'deviceinfo_usb_rndis_function="ecm.usb0"' in body, "USB recovery must stay"
-    print("PASS: Wi-Fi H1B base contract (host path 0052-0057 + 0063/0064, no 0060/probe drivers, brcmfmac PCIe, no firmware, USB recovery)")
+    print("PASS: Wi-Fi H1B base contracts (model A and B: host path 0052-0057 + 0063 (+0064), 0065/0066 diagnostics, no 0060/probe drivers, brcmfmac PCIe, no firmware, USB recovery)")
 
 
 if __name__ == "__main__":

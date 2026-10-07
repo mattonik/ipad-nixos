@@ -40,6 +40,14 @@ COMMANDS = [
     ("iommu_group", "ls -l /sys/bus/pci/devices/0000:01:00.0/iommu_group"),
     ("net", "ls /sys/class/net"),
     ("firmware_files", "ls -l /lib/firmware/brcm"),
+    # Read-only register dumps added by patch 0066 (DART error/TTBR state and port-1 event/MSI registers) ...
+    ("dart_regs", "cat /sys/kernel/debug/apple-dart-*/regs 2>&1"),
+    ("port1_regs", "cat /sys/kernel/debug/t7000-pcie/port1_regs 2>&1"),
+    # ... and the PCI config of the endpoint and root port (status/error bits, PCIe capability, AER if present).
+    ("ep_cfg", "od -A x -t x1 -N 256 /sys/bus/pci/devices/0000:01:00.0/config 2>&1"),
+    ("ep_cfg_ext", "od -A x -t x1 -j 256 -N 128 /sys/bus/pci/devices/0000:01:00.0/config 2>&1"),
+    ("rp_cfg", "od -A x -t x1 -N 256 /sys/bus/pci/devices/0000:00:01.0/config 2>&1"),
+    ("rp_cfg_ext", "od -A x -t x1 -j 256 -N 128 /sys/bus/pci/devices/0000:00:01.0/config 2>&1"),
 ]
 
 # (label, regex over dmesg lines) -> evidence class names from the matrix.

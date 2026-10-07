@@ -793,10 +793,17 @@
             echo 'CONFIG_BRCMFMAC_PCIE=y' >> "$out"
             echo 'CONFIG_BRCMDBG=y' >> "$out"
             echo 'CONFIG_BRCMFMAC_PCIE_H1B_DIAG=y' >> "$out"
+            echo 'CONFIG_APPLE_DART_H1B_DIAG=y' >> "$out"
+            echo 'CONFIG_PCIE_APPLE_T7000_DEBUGFS_DIAG=y' >> "$out"
             echo 'CONFIG_FW_LOADER_USER_HELPER_FALLBACK=n' >> "$out"
             echo 'CONFIG_FW_LOADER_USER_HELPER=n' >> "$out"
           '';
           hoolockPcieJ81WifiH1bKernel = pkgsCross.callPackage ./kernel/hoolock-pcie-j81-wifi-h1b.nix {
+            source = inputs.hoolockLinux;
+            hoolockConfig = patchedHoolockPcieJ81WifiH1bConfig;
+          };
+          # Same, DMA model B (raw PTE indexing): no 0064.
+          hoolockPcieJ81WifiH1bRawKernel = pkgsCross.callPackage ./kernel/hoolock-pcie-j81-wifi-h1b-raw.nix {
             source = inputs.hoolockLinux;
             hoolockConfig = patchedHoolockPcieJ81WifiH1bConfig;
           };
@@ -1086,6 +1093,7 @@
         hoolock-pcie-j81-dma-rebase-kernel = hoolockPcieJ81DmaRebaseKernel;
         hoolock-pcie-j81-dma-raw-kernel = hoolockPcieJ81DmaRawKernel;
         hoolock-pcie-j81-wifi-h1b-kernel = hoolockPcieJ81WifiH1bKernel;
+        hoolock-pcie-j81-wifi-h1b-raw-kernel = hoolockPcieJ81WifiH1bRawKernel;
         hoolock-pcie-gate-aux-ref-test-kernel = hoolockPcieGateAuxRefTestKernel;
         hoolock-pcie-gate-register-test-kernel = hoolockPcieGateRegisterTestKernel;
 
@@ -3205,6 +3213,36 @@
           gzip -n -c ${hoolockPcieJ81WifiH1bKernel}/Image > "$out/Image.gz"
 
           dtc -I dtb -O dts ${hoolockPcieJ81WifiH1bKernel}/dtbs/apple/t7001-j81.dtb \
+            | sed -e '/^\tchosen {$/,/^\t};$/ s/framebuffer@0 {/framebuffer {/' \
+            | dtc -I dts -O dtb -p 0x10000 -o "$out/t7001-j81.dtb"
+
+          gzip -dc ${inputs.linuxAppleResources}/debug_initrd.img > initramfs.cpio
+          mkdir -p original-etc overlay/etc
+          (cd original-etc && cpio -id --no-absolute-filenames etc/deviceinfo < ../initramfs.cpio)
+          cp original-etc/etc/deviceinfo overlay/etc/deviceinfo
+          printf '\ndeviceinfo_usb_rndis_function="ecm.usb0"\n' >> overlay/etc/deviceinfo
+          touch -d @1 overlay/etc/deviceinfo
+          (cd overlay && printf '%s\0' "etc/deviceinfo" | cpio --null -o -H newc --owner=0:0 --reproducible) >> initramfs.cpio
+          gzip -n -c initramfs.cpio > "$out/initramfs.gz"
+
+          printf '%s\n' 'chosen.bootargs=console=tty0 loglevel=8 ignore_loglevel rdinit=/init PMOS_NO_OUTPUT_REDIRECT pd_ignore_unused clk_ignore_unused brcmfmac.debug=0x001c0004' \
+            > "$out/bootargs"
+          cat "$out/m1n1.bin" "$out/bootargs" "$out/t7001-j81.dtb" \
+            "$out/Image.gz" "$out/initramfs.gz" > "$out/m1n1-linux.bin"
+          sha256sum "$out/Pongo.bin" "$out/m1n1.bin" "$out/m1n1-linux.bin" \
+            > "$out/SHA256SUMS"
+        '';
+
+        # TEST ONLY: Wi-Fi H1B base (public), DMA MODEL B (raw) + brcmfmac PCIe, NO firmware; private overlay is added locally.
+        m1n1-hoolock-pcie-j81-wifi-h1b-base-raw = pkgs.runCommand "ipad-air2-m1n1-hoolock-pcie-j81-wifi-h1b-base-raw" {
+          nativeBuildInputs = [ pkgs.gzip pkgs.dtc pkgs.cpio ];
+        } ''
+          mkdir -p "$out"
+          cp ${inputs.hoolockDocs}/binaries/Pongo.bin "$out/Pongo.bin"
+          cp ${inputs.hoolockM1n1}/m1n1.bin "$out/m1n1.bin"
+          gzip -n -c ${hoolockPcieJ81WifiH1bRawKernel}/Image > "$out/Image.gz"
+
+          dtc -I dtb -O dts ${hoolockPcieJ81WifiH1bRawKernel}/dtbs/apple/t7001-j81.dtb \
             | sed -e '/^\tchosen {$/,/^\t};$/ s/framebuffer@0 {/framebuffer {/' \
             | dtc -I dts -O dtb -p 0x10000 -o "$out/t7001-j81.dtb"
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Static verification of the Wi-Fi-only J81 REG_ON staging payload (stdlib only).
 
-Usage: python3 boot/verify_pcie_j81_reg_on_payload.py PAYLOAD_DIR [--dllla | --clean | --doorbell | --msi | --msi-selftest | --msi-diag | --bcm-probe | --bcm-shadow | --dma-rebase | --dma-raw | --wifi-h1b-base]
+Usage: python3 boot/verify_pcie_j81_reg_on_payload.py PAYLOAD_DIR [--dllla | --clean | --doorbell | --msi | --msi-selftest | --msi-diag | --bcm-probe | --bcm-shadow | --dma-rebase | --dma-raw | --wifi-h1b-base | --wifi-h1b-base-raw]
 
 --dllla additionally requires the 0053 DLLLA link-wait strings and rejects the old
 `link-wait-test: link_up=` poll output. --clean (patch 0054) requires the durable
@@ -78,8 +78,9 @@ def main(argv):
     selftest = "--msi-selftest" in flags
     diag = "--msi-diag" in flags
     shadow = "--bcm-shadow" in flags
-    wifi_base = "--wifi-h1b-base" in flags
-    dma_rebase, dma_raw = "--dma-rebase" in flags or wifi_base, "--dma-raw" in flags
+    wifi_raw = "--wifi-h1b-base-raw" in flags
+    wifi_base = "--wifi-h1b-base" in flags or wifi_raw
+    dma_rebase, dma_raw = "--dma-rebase" in flags or ("--wifi-h1b-base" in flags), "--dma-raw" in flags or wifi_raw
     msi_extra = dma_rebase or dma_raw
     bcm = "--bcm-probe" in flags or shadow
     msi = "--msi" in flags or selftest or diag or bcm or msi_extra
@@ -218,6 +219,9 @@ def main(argv):
         for needle in (b"brcmfmac4350c2-pcie", b"brcmf_pcie", b"brcmfmac"):
             if needle not in image:
                 problems.append(f"kernel lacks {needle.decode()!r}: brcmfmac PCIe is not built in")
+        for needle in (b"apple-dart-%s", b"t7000-pcie", b"port1_regs"):
+            if needle not in image:
+                problems.append(f"kernel lacks the 0066 debugfs diagnostics ({needle.decode()!r})")
         if b"t7000-h1b: " not in image:
             problems.append("kernel lacks the 0065 H1B diagnostics")
         if b"Falling back to sysfs fallback" in image:
@@ -270,6 +274,6 @@ def main(argv):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) not in (2, 3) or (len(sys.argv) == 3 and sys.argv[2] not in ("--dllla", "--clean", "--doorbell", "--msi", "--msi-selftest", "--msi-diag", "--bcm-probe", "--bcm-shadow", "--dma-rebase", "--dma-raw", "--wifi-h1b-base")):
+    if len(sys.argv) not in (2, 3) or (len(sys.argv) == 3 and sys.argv[2] not in ("--dllla", "--clean", "--doorbell", "--msi", "--msi-selftest", "--msi-diag", "--bcm-probe", "--bcm-shadow", "--dma-rebase", "--dma-raw", "--wifi-h1b-base", "--wifi-h1b-base-raw")):
         sys.exit(__doc__)
     sys.exit(main(sys.argv))
