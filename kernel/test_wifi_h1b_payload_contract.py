@@ -27,6 +27,7 @@ EXPECTED_TAIL = [
     "0068-brcmfmac-h1b-console-poll-and-shared-state.patch",
     "0069-brcmfmac-h1b-chipcommon-gpio-snapshot.patch",
     "0070-brcmfmac-h1b-apple-shared-memory-parity.patch",
+    "0071-brcmfmac-h1b-readonly-query-interface.patch",
 ]
 
 
@@ -47,7 +48,7 @@ def main():
     # Model B (raw) is the same list without 0064 and nothing else.
     raw = re.findall(r'patch -d "\$out" -p1 < \$\{\./patches/([^}]+)\}', NIX_RAW)
     # Model B was built before 0067/0068 existed and is the plain comparison payload: no 0064, 0067, 0068, 0069.
-    assert raw == [p for p in patches if not p.startswith(("0064-", "0067-", "0068-", "0069-", "0070-"))], raw
+    assert raw == [p for p in patches if not p.startswith(("0064-", "0067-", "0068-", "0069-", "0070-", "0071-"))], raw
     assert not any(p.startswith("0064-") for p in raw)
     raw_pay = re.search(r"m1n1-hoolock-pcie-j81-wifi-h1b-base-raw = .*?\n        '';", FLAKE, re.S)
     assert raw_pay and "hoolockPcieJ81WifiH1bRawKernel" in raw_pay.group(0) and "brcmfmac.debug=0x001c0004" in raw_pay.group(0)

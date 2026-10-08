@@ -242,3 +242,14 @@ provides 1 KiB), and common-ring depths 128/256/128/256/256 (Linux 64/1024/64/10
 4 KiB scratch, bit 2 Apple depths; default 0 = stock). Test: `kernel/test_brcmfmac_h1b_shared_patch.py`; offline
 suite 49 passed, 0 failed, 7 skipped. Public base: `/nix/store/s96zkyvq6ng34nzkbzd0s6c77skbjz74-ipad-air2-m1n1-hoolock-pcie-j81-wifi-h1b-base`.
 Private variants: S7 = mask 7 + `device_wake=1`; S7s = mask 7, stock wake. Not run yet.
+
+## Payload with the read-only query interface and hold toggle (patch 0071)
+
+`0071-brcmfmac-h1b-readonly-query-interface.patch` adds (a) a failure-time dump of the shared structure, ring info and
+common-ring memory table, (b) `brcmfmac.h1b_hold=1`, which skips `device_release_driver()` after a setup failure so the
+device stays bound and quiet, and (c) `/sys/kernel/debug/brcmfmac-h1b/{query,result}` with read-only commands
+`tcm`, `core pcie2|cc`, `shared`, `rings`, `console` (core reads only with `h1b_hold=1`). Host tool:
+`boot/h1b_query.py` (allowlisted commands, results under ignored `queries-<UTC>/`). Tests:
+`kernel/test_brcmfmac_h1b_query_patch.py`, `boot/test_h1b_query.py`; offline suite 51 passed, 0 failed, 7 skipped
+(run with Homebrew Python 3.14; the system `python3` 3.9.6 fails the console tests). Public base: `/nix/store/j1yilwj1g1gcf6w2vhlhk8w25gbq0gbd-ipad-air2-m1n1-hoolock-pcie-j81-wifi-h1b-base`.
+Private variants: Q1 = hold + `device_wake=1`, Q0 = hold, stock wake. Not run yet.
