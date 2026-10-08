@@ -433,3 +433,17 @@ blocks that the firmware now clocks differently) reset the machine. So the reset
 diagnostic**, the same class of mistake as the PCIe2 sweep in run 12. Patch 0075 removes `0xc40`/`0xe00` from the snapshot and from the
 query safe-list and drops the snapshot call after `request_irq`; the standard GPIO block 0x58-0x6c stays (failure-time snapshot and queries).
 Not yet proven: the next run (same payload, new kernel) shows whether the machine now survives and whether the control query completes.
+
+## Run 18: D2 (0075, no unsafe ChipCommon reads, deferred start at 40 s): the first device DMA resets the machine
+
+Payload `wifi-h1b-modelA-D2-defer40-macaddr-hold-devwake-20261008T094937Z`. The machine now survives past `msi after request_irq`
+(42.234 s), so the ChipCommon 0xc40/0xe00 reads were a real cause of the earlier resets. The real-time log then shows the host's first
+ring activity: `brcmf_proto_msgbuf_attach Feeding buffers, rx data 255, rx event 8, rx ioctl resp 8` (42.28 s), `ring_mb_write_wptr W w_ptr 255 (0), ring 1`
+(42.284 s) and `ring_mb_ring_bell RING !` (42.290 s). The link is lost within ~40 ms after the first doorbell; no panic text.
+
+This is the first time the firmware acts on a ring: with "host memory indices" and the ring memory in host RAM, its first
+actions are DMA reads of the ring items and DMA writes of the read index through the DART. Neither IOVA model (A: rebased PTE
+indexing, B: raw) has ever been exercised by a real device DMA (all earlier runs had a silent firmware), and the 0063/0064 choice was made
+from static analysis only. The reset after the first doorbell points at the DMA path (a DART or PCIe fault escalating to a fatal
+exception/watchdog reset); a power event on the radio is the other candidate. Next experiment: boot argument `apple_dart.pci_rebase=0|1`
+(patch 0076) flips the model without a rebuild; run the same payload with model B and compare. The idxbuf mapping is now logged too.
