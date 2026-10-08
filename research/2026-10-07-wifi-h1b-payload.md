@@ -281,3 +281,12 @@ string present, and the live pciedev interrupt-mask fields all 0). `boot/assembl
 appends `macaddr=MAC` to the staged NVRAM (unicast, locally administered, not all zero, never added twice; recorded in the
 private manifest only). Test: `boot/test_assemble_private_wifi_payload.py`. Payload M1 = the 0073 build (`/nix/store/xmrm0bzi1m30q0vh55kwvdc5r41f9aik-ipad-air2-m1n1-hoolock-pcie-j81-wifi-h1b-base`) +
 `h1b_hold=1` + `device_wake=1` + a fixed locally administered test MAC (not any device's real address). Not run yet.
+
+## Payload with deferred PCIe registration and a log streamer (patch 0074)
+
+Runs 15-16: with a `macaddr` in the NVRAM (M1 without the base package, M2 with it) the iPad restarted within seconds of
+boot, before the USB network (about 12 s) was up, so no log was captured. `0074-brcmfmac-h1b-deferred-pcie-registration.patch` adds
+`brcmfmac.h1b_defer_s=N` (register the PCIe driver N seconds after init; default 0 = unchanged). `boot/h1b_stream.py` streams `dmesg`
+(read-only) to a private log on the host until the link dies. Test: `kernel/test_brcmfmac_h1b_defer_patch.py`,
+`boot/test_h1b_stream.py`; offline suite 56 passed, 0 failed, 7 skipped. Public base (with the J81 base package): `/nix/store/xgazv60p779xpnnjrzif8s8k6yw06rqd-ipad-air2-m1n1-hoolock-pcie-j81-wifi-h1b-base`.
+Private payload D1 = this base + `h1b_defer_s=60` + `h1b_hold=1` + `device_wake=1` + the test MAC. Not run yet.

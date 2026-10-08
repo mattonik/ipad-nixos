@@ -1,5 +1,5 @@
 # TEST ONLY (Wi-Fi H1B base): the MSI series (0052-0057), DMA model A (0063 DART window + 0064 Apple rebase) and
-# brcmfmac built in with the PCIe bus (CONFIG_BRCMFMAC_PCIE, BRCMDBG) plus 0065 and 0066, read-only DMA/MSI diagnostics, 0068 (firmware console poll, shared-state snapshot), 0069 (read-only ChipCommon GPIO snapshot), 0070 (test toggle: Apple shared-memory parity), 0071 (read-only debugfs query interface and hold toggle), 0072 (ring id/type toggle, safe-register list for core reads), 0073 (RAM snapshot/diff, ARM state, gated ROM reads) and 0067 (boot-argument toggles for the deep-sleep ACK and the DEVICE_WAKE GPIO; both off by default) (0066: debugfs register dumps of the DART and the T7000 port)
+# brcmfmac built in with the PCIe bus (CONFIG_BRCMFMAC_PCIE, BRCMDBG) plus 0065 and 0066, read-only DMA/MSI diagnostics, 0068 (firmware console poll, shared-state snapshot), 0069 (read-only ChipCommon GPIO snapshot), 0070 (test toggle: Apple shared-memory parity), 0071 (read-only debugfs query interface and hold toggle), 0072 (ring id/type toggle, safe-register list for core reads), 0073 (RAM snapshot/diff, ARM state, gated ROM reads), 0074 (deferred PCIe driver registration for log streaming) and 0067 (boot-argument toggles for the deep-sleep ACK and the DEVICE_WAKE GPIO; both off by default) (0066: debugfs register dumps of the DART and the T7000 port)
 # (ring IOVAs and their IOMMU translation, MSI capability while bound, per-interrupt log, ring snapshot at the crash). NO 0060, no probe/self-test drivers. The public base
 # payload carries no firmware; the private C2 rieslinga firmware/CLM/TxCap/NVRAM overlay is added locally by
 # boot/assemble_private_wifi_payload.py and never enters Git or the Nix store. See research/2026-10-07-wifi-h1b-payload.md.
@@ -66,6 +66,7 @@ let
     patch -d "$out" -p1 < ${./patches/0071-brcmfmac-h1b-readonly-query-interface.patch}
     patch -d "$out" -p1 < ${./patches/0072-brcmfmac-h1b-ring-ids-and-safe-register-reads.patch}
     patch -d "$out" -p1 < ${./patches/0073-brcmfmac-h1b-query-snapshot-arm-and-gated-rom.patch}
+    patch -d "$out" -p1 < ${./patches/0074-brcmfmac-h1b-deferred-pcie-registration.patch}
   '';
   buildArgs = builtins.removeAttrs args [ "source" "hoolockConfig" "runCommand" ];
 in

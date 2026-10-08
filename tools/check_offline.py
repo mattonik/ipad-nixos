@@ -53,6 +53,7 @@ HOST_TESTS = (
     "boot/test_assemble_private_wifi_payload.py",
     "boot/test_h1b_run_record.py",
     "boot/test_h1b_query.py",
+    "boot/test_h1b_stream.py",
     "kernel/test_spi_s5l_patch.py",
     "tools/test_check_offline.py",
 )
@@ -188,6 +189,10 @@ def main() -> int:
         ], args.timeout))
         outcomes.append(execute("kernel/test_brcmfmac_h1b_console_patch.py", [
             "kernel/test_brcmfmac_h1b_console_patch.py", "--j81-msi-source",
+            str(args.pcie_j81_selftest_source.resolve()),
+        ], args.timeout))
+        outcomes.append(execute("kernel/test_brcmfmac_h1b_defer_patch.py", [
+            "kernel/test_brcmfmac_h1b_defer_patch.py", "--j81-msi-source",
             str(args.pcie_j81_selftest_source.resolve()),
         ], args.timeout))
         outcomes.append(execute("kernel/test_brcmfmac_h1b_romgate_patch.py", [
