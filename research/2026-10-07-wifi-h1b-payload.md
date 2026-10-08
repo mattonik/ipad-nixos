@@ -297,3 +297,9 @@ Private payload D1 = this base + `h1b_defer_s=60` + `h1b_hold=1` + `device_wake=
 snapshot call after `request_irq` (run 17: reset caused by my own diagnostic once the firmware's Wi-Fi core was running).
 Test: `kernel/test_brcmfmac_h1b_safereads_patch.py`; offline suite 57 passed, 0 failed, 7 skipped. Public base: `/nix/store/li5mmwyqd65zya1vfy9yn0vrr32f7rxg-ipad-air2-m1n1-hoolock-pcie-j81-wifi-h1b-base`.
 Private payload D2 = this base + `h1b_defer_s=40` + `h1b_hold=1` + `device_wake=1` + the test MAC. Not run yet.
+
+## Payload with the DART IOVA model override (patch 0076)
+
+`apple_dart.pci_rebase=0|1` selects model B (raw) or A (rebased) at boot, replacing the device-tree choice; `idxbuf` is now logged. Test:
+`kernel/test_apple_dart_rebase_override_patch.py`; offline suite 58 passed, 0 failed, 7 skipped. Public base: `/nix/store/1fkg94j1lvgm4fq5whrpf4xwhsh7lvg3-ipad-air2-m1n1-hoolock-pcie-j81-wifi-h1b-base`.
+Private payloads (D2 settings: `h1b_defer_s=40`, `h1b_hold=1`, `device_wake=1`, test MAC): D3r0 = model B, D3r1 = model A. Not run yet.
