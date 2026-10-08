@@ -41,3 +41,13 @@ value appears here or anywhere in Git; MACs stay in private artifacts only.
 
 Recommendation: finish bring-up with option 1 (M1 first), then do option 2 as a normal DT change once the Wi-Fi path works, so
 the validation run can also check the node binding.
+
+## Cross-check of the attach path (ROM + original image, Ghidra)
+Decompiling the bmac attach `FUN_001e74ac` (called from `wlc_attach` `FUN_001e482c`, probe `FUN_001e323c`) with the chip ROM
+imported at 0x0 confirms the agent's finding: near its end the function looks up the MAC variable; if the lookup returns
+nothing it returns **0x15**, and if the value is the all-zero or a multicast address it returns **0x16**. All other NVRAM reads
+on this path use the integer-variable getter with a default (they do not fail when a key is missing); the other error returns
+(0xc, 0xd, 0xe, 0xf, 0x11, 0x12, 0x13) come from allocation and core-setup steps, not from NVRAM. So `macaddr` is the only
+NVRAM key this attach path requires, and the test MAC (unicast, locally administered) satisfies both checks. Note for future
+analysis: the firmware reclaims its init code after boot, so the live RAM has zeros there; use the original image for code and
+the live dump for state.
