@@ -223,7 +223,7 @@ def main(argv):
             if needle not in image:
                 problems.append(f"kernel lacks the 0066 debugfs diagnostics ({needle.decode()!r})")
         if not wifi_raw:
-            for needle in (b"t7000-h1b: shared: version", b"t7000-h1b: deep sleep request NOT acknowledged", b"t7000-pcie: DEVICE_WAKE asserted", b"h1b_ds_ack", b"t7000-h1b: chipcommon gpio", b"h1b_apple_shared", b"brcmfmac-h1b", b"h1b_hold", b"h1b_ring_ids"):
+            for needle in (b"t7000-h1b: shared: version", b"t7000-h1b: deep sleep request NOT acknowledged", b"t7000-pcie: DEVICE_WAKE asserted", b"h1b_ds_ack", b"t7000-h1b: chipcommon gpio", b"h1b_apple_shared", b"brcmfmac-h1b", b"h1b_hold", b"h1b_ring_ids", b"ROM reads unlocked"):
                 if needle not in image:
                     problems.append(f"kernel lacks the 0067 toggles ({needle.decode()!r})")
         if b"t7000-h1b: " not in image:

@@ -44,6 +44,22 @@ def main():
             assert not (Path(tmp) / "queries-U").exists()
         else:
             raise AssertionError("injection accepted")
+    for rom in ("unlock rom", "rom 0x0 256"):
+        try:
+            Q.validate(rom)
+        except ValueError as e:
+            assert "--allow-rom" in str(e)
+        else:
+            raise AssertionError("rom accepted without --allow-rom")
+        assert Q.validate(rom, allow_rom=True) == rom
+    for bad in ("rom 0x0", "unlock", "unlock rom now", "snap 1", "diff all"):
+        try:
+            Q.validate(bad, allow_rom=True)
+        except ValueError:
+            continue
+        raise AssertionError(bad)
+    for good in ("snap", "diff", "arm"):
+        assert Q.validate(good) == good
     print("PASS")
 
 

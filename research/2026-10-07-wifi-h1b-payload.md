@@ -261,3 +261,13 @@ Private variants: Q1 = hold + `device_wake=1`, Q0 = hold, stock wake. Not run ye
 memory entry; `core` queries are limited to a safe-register list. Test: `kernel/test_brcmfmac_h1b_ringids_patch.py`;
 offline suite 52 passed, 0 failed, 7 skipped. Public base: `/nix/store/flbkvdx68rr650fj09w3yrw4a7vyzfp1-ipad-air2-m1n1-hoolock-pcie-j81-wifi-h1b-base`.
 Private variant R1 = ring ids + hold + `device_wake=1`. Not run yet.
+
+## Payload with RAM snapshot/diff, ARM state and gated ROM reads (patch 0073)
+
+`0073-brcmfmac-h1b-query-snapshot-arm-and-gated-rom.patch` extends the query interface: `tcm` takes absolute ARM addresses
+inside [rambase, rambase + ramsize); `snap` / `diff` snapshot the whole RAM and list changed words (is the ARM running?);
+`arm` prints ARM CR4 / PCIe2 / ChipCommon core info and up state (hold only); `unlock rom` then `rom OFF LEN` read below the RAM
+base (hold only, locked until the unlock, <= 0x1000 bytes, inside BAR2, logged first). The host tool refuses the ROM
+commands without `--allow-rom`. A first build failed (`struct brcmf_core` has no `wrapbase`); fixed. Tests:
+`kernel/test_brcmfmac_h1b_romgate_patch.py`, `boot/test_h1b_query.py`; offline suite 53 passed, 0 failed, 7 skipped.
+Public base: `/nix/store/xmrm0bzi1m30q0vh55kwvdc5r41f9aik-ipad-air2-m1n1-hoolock-pcie-j81-wifi-h1b-base`. Private variant T1 = hold + `device_wake=1` (no ring ids). Not run yet.
