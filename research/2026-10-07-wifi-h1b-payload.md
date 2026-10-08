@@ -290,3 +290,10 @@ boot, before the USB network (about 12 s) was up, so no log was captured. `0074-
 (read-only) to a private log on the host until the link dies. Test: `kernel/test_brcmfmac_h1b_defer_patch.py`,
 `boot/test_h1b_stream.py`; offline suite 56 passed, 0 failed, 7 skipped. Public base (with the J81 base package): `/nix/store/xgazv60p779xpnnjrzif8s8k6yw06rqd-ipad-air2-m1n1-hoolock-pcie-j81-wifi-h1b-base`.
 Private payload D1 = this base + `h1b_defer_s=60` + `h1b_hold=1` + `device_wake=1` + the test MAC. Not run yet.
+
+## Payload without the unsafe ChipCommon reads (patch 0075)
+
+`0075-brcmfmac-h1b-drop-unsafe-chipcommon-reads.patch` removes the `0xc40`/`0xe00` reads (snapshot and query safe-list) and the
+snapshot call after `request_irq` (run 17: reset caused by my own diagnostic once the firmware's Wi-Fi core was running).
+Test: `kernel/test_brcmfmac_h1b_safereads_patch.py`; offline suite 57 passed, 0 failed, 7 skipped. Public base: `/nix/store/li5mmwyqd65zya1vfy9yn0vrr32f7rxg-ipad-air2-m1n1-hoolock-pcie-j81-wifi-h1b-base`.
+Private payload D2 = this base + `h1b_defer_s=40` + `h1b_hold=1` + `device_wake=1` + the test MAC. Not run yet.
