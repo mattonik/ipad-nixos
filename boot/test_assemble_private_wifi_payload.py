@@ -128,6 +128,14 @@ def main():
         assert "pcie_apple_t7000.device_wake=1 brcmfmac.h1b_ds_ack=2 j81.run_id=" in m3["bootargs"] and not A.verify(out3)[0]
         for bad in ("pcie_apple_t7000.device_wake=2", "brcmfmac.h1b_ds_ack=3", "brcmfmac.h1b_apple_shared=8", "brcmfmac.h1b_hold=2", "brcmfmac.h1b_ring_ids=2", "init=/bin/sh", "brcmfmac.debug=0", "pcie_aspm.policy=bogus", "pcie_aspm=on"):
             expect_exit(lambda b=bad: A.assemble(pub, assets, work / ("bad" + str(abs(hash(b)) % 1000)), check_hashes=False, extra_bootargs=(b,)), "not an allowed test toggle")
+        # A test MAC can be appended to the staged NVRAM (unicast, locally administered only; never twice).
+        mm = A.assemble(pub, assets, work / "mac", check_hashes=False, nvram_macaddr="02:6A:38:70:00:01")
+        nvm = {a["staged"]: a for a in mm["assets"]}[A.NVRAM_STAGED]
+        assert nvm["macaddr_added"] and nvm["macaddr"] == "02:6a:38:70:00:01" and not A.verify(work / "mac")[0]
+        ent_m = cpio_entries(gzip.decompress((work / "mac" / "initramfs.gz").read_bytes()))
+        assert ent_m["lib/firmware/brcm/" + A.NVRAM_STAGED][1].endswith(b"macaddr=02:6a:38:70:00:01\n")
+        for badmac in ("00:11:22:33:44:55", "03:6a:38:70:00:01", "02:6a:38:70:00", "zz:6a:38:70:00:01", "02:00:00:00:00:00"):
+            expect_exit(lambda b=badmac: A.assemble(pub, assets, work / ("badmac" + str(abs(hash(b)) % 1000)), check_hashes=False, nvram_macaddr=b), "nvram-macaddr")
         # Bad inputs refuse before anything is written.
         (assets / A.NVRAM_NAME).write_bytes(b"")
         expect_exit(lambda: A.assemble(pub, assets, work / "x2", check_hashes=False), "empty")

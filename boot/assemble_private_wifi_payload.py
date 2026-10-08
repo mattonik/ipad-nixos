@@ -76,6 +76,22 @@ def normalize_nvram(raw):
     return ("\n".join(out) + "\n").encode("ascii")
 
 
+MAC_RE = re.compile(r"^[0-9a-f]{2}(:[0-9a-f]{2}){5}$")
+
+
+def check_macaddr(mac):
+    """A test MAC for the firmware's required `macaddr` NVRAM key: unicast, locally administered, not all zero."""
+    mac = mac.lower()
+    if not MAC_RE.match(mac):
+        raise SystemExit(f"--nvram-macaddr must look like 02:xx:xx:xx:xx:xx, got {mac!r}")
+    first = int(mac[:2], 16)
+    if first & 1 or not first & 2:
+        raise SystemExit("--nvram-macaddr must be unicast and locally administered (first octet bit0=0, bit1=1)")
+    if mac == "02:00:00:00:00:00" or set(mac.replace(":", "")) == {"0"}:
+        raise SystemExit("--nvram-macaddr must not be all zero")
+    return mac
+
+
 def check_nvram(raw):
     if not raw.strip():
         raise SystemExit("NVRAM is empty")
@@ -151,7 +167,7 @@ def write_private(path, data):
         f.write(data)
 
 
-def assemble(public, assets, out, nvram_name=NVRAM_NAME, check_hashes=True, token=None, extra_bootargs=()):
+def assemble(public, assets, out, nvram_name=NVRAM_NAME, check_hashes=True, token=None, extra_bootargs=(), nvram_macaddr=None):
     out = private_out_dir(out)
     if out.exists() and any(out.iterdir()):
         raise SystemExit(f"{out} already exists and is not empty")
@@ -168,9 +184,17 @@ def assemble(public, assets, out, nvram_name=NVRAM_NAME, check_hashes=True, toke
         manifest_assets.append({"source": src, "staged": staged_name, "size": len(data), "sha256": sha256(data)})
     raw = (assets / nvram_name).read_bytes()
     staged, npairs = check_nvram(raw)
+    macaddr = None
+    if nvram_macaddr:
+        macaddr = check_macaddr(nvram_macaddr)
+        if any(l.split("=", 1)[0].strip().lower() == "macaddr" for l in staged.decode().split("\n") if "=" in l):
+            raise SystemExit("the NVRAM already has a macaddr line; refusing to add another")
+        staged = staged + f"macaddr={macaddr}\n".encode("ascii")
+        npairs += 1
     files.append((NVRAM_STAGED, staged))
     manifest_assets.append({"source": nvram_name, "staged": NVRAM_STAGED, "size": len(staged), "sha256": sha256(staged),
-                            "source_sha256": sha256(raw), "key_value_lines": npairs, "normalised": True})
+                            "source_sha256": sha256(raw), "key_value_lines": npairs, "normalised": True,
+                            "macaddr_added": bool(macaddr), **({"macaddr": macaddr} if macaddr else {})})
     token = token or secrets.token_hex(16)
     final_parts, blob = compose(parts, names, build_overlay(files), token, tuple(extra_bootargs))
     out.mkdir(parents=True, exist_ok=True)
@@ -242,6 +266,7 @@ def main():
     ap.add_argument("--verify", type=Path)
     ap.add_argument("--nvram", default=NVRAM_NAME)
     ap.add_argument("--extra-bootarg", action="append", default=[], help="test toggle: pcie_apple_t7000.device_wake=1 | brcmfmac.h1b_ds_ack=0|1|2")
+    ap.add_argument("--nvram-macaddr", help="append macaddr=<MAC> to the staged NVRAM (the firmware needs the key to attach its Wi-Fi core); unicast, locally administered, e.g. 02:6a:38:70:00:01")
     ap.add_argument("--no-hash-check", action="store_true", help="test fixtures only (synthetic assets)")
     args = ap.parse_args()
     if args.verify:
@@ -257,7 +282,7 @@ def main():
     if not (args.public and args.assets and args.out):
         ap.error("--public, --assets and --out are required")
     manifest = assemble(args.public, args.assets, args.out, args.nvram, check_hashes=not args.no_hash_check,
-                        extra_bootargs=args.extra_bootarg)
+                        extra_bootargs=args.extra_bootarg, nvram_macaddr=args.nvram_macaddr)
     problems, _ = verify(args.out)
     if problems:
         print("FAIL after assembly:", problems)

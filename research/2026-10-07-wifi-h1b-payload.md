@@ -271,3 +271,13 @@ base (hold only, locked until the unlock, <= 0x1000 bytes, inside BAR2, logged f
 commands without `--allow-rom`. A first build failed (`struct brcmf_core` has no `wrapbase`); fixed. Tests:
 `kernel/test_brcmfmac_h1b_romgate_patch.py`, `boot/test_h1b_query.py`; offline suite 53 passed, 0 failed, 7 skipped.
 Public base: `/nix/store/xmrm0bzi1m30q0vh55kwvdc5r41f9aik-ipad-air2-m1n1-hoolock-pcie-j81-wifi-h1b-base`. Private variant T1 = hold + `device_wake=1` (no ring ids). Not run yet.
+
+## Payload with a test MAC in the NVRAM (assembler option, no new kernel)
+
+The sub-agent's live-RAM analysis (`research/2026-10-08-live-ram-device-state-analysis.md`) found that the firmware never
+enabled its PCIe2 interrupt because its `wl` (D11) core failed to attach (silently), at the `macaddr` NVRAM lookup, and that
+the staged NVRAM (156 keys) has no `macaddr` line; I confirmed both (no `macaddr` key in the NVRAM, the firmware's `macaddr`
+string present, and the live pciedev interrupt-mask fields all 0). `boot/assemble_private_wifi_payload.py --nvram-macaddr MAC`
+appends `macaddr=MAC` to the staged NVRAM (unicast, locally administered, not all zero, never added twice; recorded in the
+private manifest only). Test: `boot/test_assemble_private_wifi_payload.py`. Payload M1 = the 0073 build (`/nix/store/xmrm0bzi1m30q0vh55kwvdc5r41f9aik-ipad-air2-m1n1-hoolock-pcie-j81-wifi-h1b-base`) +
+`h1b_hold=1` + `device_wake=1` + a fixed locally administered test MAC (not any device's real address). Not run yet.
