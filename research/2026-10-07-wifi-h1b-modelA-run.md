@@ -378,3 +378,20 @@ Same T1 session, held device, safe-list reads only:
   `combined-rom-ram.bin` (ROM at 0, live RAM at 0x180000) in the T1 payload directory.
 - A sub-agent is mining the live RAM (and, now, the ROM) for the pciedev interrupt-mask logic; its note will be
   `research/2026-10-08-live-ram-device-state-analysis.md`.
+
+## Run 15: M2 (J81 base package + test MAC + hold + DEVICE_WAKE) did not reach Linux
+
+Payload `wifi-h1b-modelA-M2-base-macaddr-hold-devwake-20261008T064755Z`, 13,016,807 bytes (first payload built through
+`mkJ81BasePayload`: kernel with 0017, Dropbear closure, charging-policy and tablet tools in the initramfs, private C2 overlay).
+The loader finished the upload and the `bootm` handoff as usual; the iPad then restarted straight back to iOS, and no
+172.16.42.1 answer appeared in 2 minutes. No evidence from the device (no Linux log), so the cause is not known.
+
+Candidates, not yet separated:
+- **Payload size.** 13.02 MB is the largest payload tried. Booted payloads so far: 10.75-11.12 MB (all Wi-Fi runs), the tablet payload
+  12.71 MB (2026-10-05). The earliest m1n1 rounds used 12.58-12.59 MB. The public base of this build is 12.69 MB (just under the
+  tablet payload); M2 adds the private overlay (+0.33 MB). No size limit is documented for the Hoolock/m1n1 route.
+- **Something in the new base content** (0017 in the H1B kernel, the Dropbear overlay and hook) causing an early reset.
+- A one-off failure of the handoff.
+To separate them: run the public base payload with no private overlay (12.69 MB); if it boots, the base content is fine and the
+size/overlay is the issue. Size reduction is available: the kernel accepts xz/zstd initramfs (CONFIG_RD_XZ/RD_ZSTD=y); xz would
+shrink the initramfs from 3.2 MB to about 1.8 MB, and an xz kernel from 8.2 MB to about 5.9 MB if m1n1 accepts it.
