@@ -457,3 +457,13 @@ and 172.16.42.1 never answered (120-240 s), twice, same screen. D2 (same payload
 happens long before the 40 s deferred Wi-Fi start, so it is not the first doorbell. Either the model-B override breaks the boot (the raw PTE indexing of the
 0x80000000..0xbfffefff window is untested) or something in the 0076 kernel does; the next run (default model on the 0077 kernel) separates the two.
 Model B therefore remains untested at the device.
+
+## Run 21: D4 (default DMA model, fast firmware-console poll, deferred start at 40 s)
+
+Booted and answered like D2 (the 0076/0077 kernel is fine; the model-B boot hang of runs 19-20 was specific to `apple_dart.pci_rebase=0`). The real-time log shows the
+firmware console in full detail (1 ms poll): banner, `wl0: Broadcom BCM4350 802.11 Wireless Controller ...`, two `reclaim section` lines at 42.214-42.220 s, then nothing more
+from the firmware; the host logs ring and DMA setup (`dma idxbuf: size 360 iova 0xbfffe000`, rings at 0xbfffd000 .. 0xbffe0000, scratch, ringupd, `msi after request_irq`,
+`Feeding buffers, rx data 255, rx event 8, rx ioctl resp 8` at 42.2247 s) and the log ends there; the link is lost. There is no firmware output between its init and the reset, and the
+last captured host line comes a few ms earlier than in D2 (which reached the first `RING !`), i.e. the reset is not tied to one specific host statement. Together with D1 (reset
+right after `request_irq`) this fits "the machine resets about 100-200 ms after the firmware starts, whatever the host does at that moment", for example a clock/power or PCIe-link
+event of the device itself once the Wi-Fi core is attached, followed by a fatal host access. Patch 0078 (`brcmfmac.h1b_step_s`) pauses between the setup phases to test that.
