@@ -332,3 +332,31 @@ ARM addresses (shared structure at 0x1dd6c8, ring memory at 0x23a644; RAM starts
 `ramsize` is rejected. The check should be `rambase <= off < rambase + ramsize`. This needs a one-line kernel fix before
 `tcm` queries of the live firmware state (ring indices at 0x23a914..0x23aa70, mailbox words 0x23aa7c.., console 0x23deb0)
 can be used.
+
+## Run 14: T1 (query interface with snapshot/diff/arm, hold, DEVICE_WAKE high): the firmware is running
+
+Payload `wifi-h1b-modelA-T1-query-hold-devwake-20261008T030909Z` (0073, no ring-id toggle). Same stall (control query timed
+out). With `h1b_hold` the queries ran against the live, quiescent device (no crash this time; only safe-list registers read).
+
+- **ARM state (`arm`):** ARM CR4 rev 6 base 0x18002000 up 1; PCIe2 rev 11 base 0x18003000 up 1; ChipCommon rev 47 up 1.
+  The PCIe2 core is rev 11, an older core (the 4350's `splitrx` firmware targets `rev <= 13` doorbell behaviour in
+  Broadcom's own host driver; Linux's default register table covers it, Apple uses the same 0x140).
+- **The firmware is alive:** `snap`, ~9 s wait, `diff` over the whole 768 KiB RAM (0x180000..0x240000) shows only 12 changed
+  words, all of them timer-like (e.g. 0x77b1 -> 0x99fb, delta 0x224a, about 8.8 s in ms; 0x78bd -> 0x9b07; a pseudo-random
+  word). So the ARM runs its scheduler/timer tick and is neither halted nor trapped (shared trap_addr is 0).
+- **Ring state:** host-to-device write indices: control submit 17 (0x11), rxpost 255 (0xff); every read index (device side) 0;
+  all device-to-host indices 0. The host wrote its items and rang the doorbell; the firmware consumed nothing.
+- **Doorbell:** PCIe2 0x140 reads 1 (pending, never cleared); mailbox int 0x48 = 0, mask 0x4c = 0x30300.
+- **Firmware console** (the only text it printed): `RTE (SDIO-MSG_BUF) 7.15.114.157 (r504364) on BCM4350 r5 @ 37.4/240.8/240.8MHz`,
+  `allocating a max of 255 rxcplid buffers`, `pciemsgbuf0: Broadcom PCIE MSGBUF driver`, two `reclaim section` lines, `TCAM: 256 used`.
+  Nothing after that: no trap, no error text, no "host ready" message.
+- A live RAM image (0x180000..0x240000) was assembled to the private run directory (`ram-0x180000-live.bin`, ignored; not
+  committed). 97186 of 141632 words of the firmware file equal the live RAM at the same offsets (code and constants); the rest
+  are initialised data, heap and runtime state.
+
+Conclusion: the firmware initialised its msgbuf driver and then does nothing with the host's doorbell although its timer
+runs. The doorbell interrupt is either masked inside the device (its PCIe2 interrupt mask / the ARM's backplane interrupt
+routing) or the ROM's wait condition is not satisfied by something the host has not provided. The ROM (below 0x180000)
+holds that logic. A gated ROM read path exists (`unlock rom`, then `rom OFF LEN`, `--allow-rom` on the host tool); it has not
+been used. The remaining unprobed registers that would show the device's interrupt masking are PCIe2 0x20 (IntStatus) and
+0x24 (IntMask); they are on the safe list but were never read before.
