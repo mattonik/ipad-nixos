@@ -253,3 +253,11 @@ device stays bound and quiet, and (c) `/sys/kernel/debug/brcmfmac-h1b/{query,res
 `kernel/test_brcmfmac_h1b_query_patch.py`, `boot/test_h1b_query.py`; offline suite 51 passed, 0 failed, 7 skipped
 (run with Homebrew Python 3.14; the system `python3` 3.9.6 fails the console tests). Public base: `/nix/store/j1yilwj1g1gcf6w2vhlhk8w25gbq0gbd-ipad-air2-m1n1-hoolock-pcie-j81-wifi-h1b-base`.
 Private variants: Q1 = hold + `device_wake=1`, Q0 = hold, stock wake. Not run yet.
+
+## Payload with Apple ring id/type words and safe-register core reads (patch 0072)
+
+`0072-brcmfmac-h1b-ring-ids-and-safe-register-reads.patch`: `brcmfmac.h1b_ring_ids=1` writes Apple's id/type word
+(`type << 16 | id`: 0x00000000, 0x00020001, 0x00010000, 0x00040001, 0x00030002) into word 0 of each common-ring
+memory entry; `core` queries are limited to a safe-register list. Test: `kernel/test_brcmfmac_h1b_ringids_patch.py`;
+offline suite 52 passed, 0 failed, 7 skipped. Public base: `/nix/store/flbkvdx68rr650fj09w3yrw4a7vyzfp1-ipad-air2-m1n1-hoolock-pcie-j81-wifi-h1b-base`.
+Private variant R1 = ring ids + hold + `device_wake=1`. Not run yet.

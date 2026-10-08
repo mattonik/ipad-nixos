@@ -281,3 +281,36 @@ Caveat: the Model B ring IOVAs in the log (e.g. 0xbfffe000, 0xbfff0000) are the 
 so B does not exercise a different addressing scheme at the device. Both models hand the device the same IOVAs; the
 difference is only in how the host-side allocator and aperture were derived. A real "raw low-IOVA" control would need
 a different window, which has not been tried.
+
+## Run 12: Q1 (patch 0071 hold + query interface, DEVICE_WAKE high) - first look inside the firmware's shared memory
+
+Setup failed as before (same stall; `h1b_hold` left the driver bound, "device held for queries"). The failure-time dump
+and the first two queries worked. The third query, `core pcie2 0x0 256` (a PCIe2-core register sweep through the BAR0
+window), killed the USB link and the iPad restarted. The PCIe2 sweep is therefore unsafe: some register in 0x00-0xff
+hangs the bus or faults when read in this state. Patch 0072 limits `core` reads to a safe-register list.
+(The ChipCommon GPIO read before it returned the same values as runs 8-10: in 0x290e, out 0, outen 1.)
+
+Decoded shared memory (firmware build id `eeb18431`; all addresses TCM offsets, version 5, flags 0x5):
+
+| field | value |
+|---|---|
+| console address (+0x14) | 0x0023deb0 |
+| max_rxbufpost (+0x22) | 255 |
+| host-to-dev / dev-to-host mailbox data (+0x28 / +0x2c) | 0x0023aa7c / 0x0023aa80 |
+| ring info (+0x30) | 0x0023a60c |
+| scratch len / addr (+0x34 / +0x38) | 8 / 0xbffdf000 (what the host wrote) |
+| ring-update len / addr (+0x40 / +0x44) | 0x400 / 0xbffde000 (host-written) |
+| +0x50 | 0x001883f9 (looks like a Thumb code pointer; meaning unknown) |
+| ring info: ringmem, h2d w/r idx, d2h w/r idx | 0x23a644, 0x23a914, 0x23a9bc, 0x23aa64, 0x23aa70 (TCM index mode) |
+| max_flowrings | 0x2a |
+
+Common ring memory table at 0x23a644 (16-byte entries): max_item/len_item and base address are the host's values
+(e.g. entry 0: 0x0040 x 0x0028 at IOVA 0xbfffe000), and **word 0 (ring id u16 + ring type u8) is zero in all five
+entries**: the firmware does not fill it in and Linux does not write it.
+
+Apple's driver does write it. From `FUN_c05974` and the ring constructor (`FUN_c11eec` stores id at +0xb8, type at
++0xba; `FUN_c06b6c`/`c06ccc` write them into the table at +0 as a u16 and a u8): per Linux ring number
+(H2D ctrl, H2D rxpost, D2H ctrl, D2H tx, D2H rx) the ids are {0,1,0,1,2} (per-direction ring numbers) and the types are
+{0,2,1,4,3}. Hypothesis for the next run: the ROM msgbuf code identifies rings by these fields, so with all five
+reading id 0 / type 0 it does not wire up the control submit ring and never consumes it. Patch 0072
+(`brcmfmac.h1b_ring_ids=1`) writes Apple's words (type << 16 | id) after max_item/len_item.
