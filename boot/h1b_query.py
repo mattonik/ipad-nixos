@@ -4,7 +4,7 @@
 Usage: python3 boot/h1b_query.py PRIVATE_PAYLOAD_DIR [--default] [COMMAND ...]
 
 COMMAND is one of (quote it): "tcm 0x1000 256" | "core pcie2 0x0 256" | "core cc 0x58 32" | shared | rings | console
---default runs: shared, core cc 0x58 32 (GPIO block), core pcie2 0x48 8 (mailbox int/mask), console, rings.
+--default runs: shared, core cc 0x58 24 (GPIO block), core pcie2 0x48 8 (mailbox int/mask), console, rings.
 `core` reads are limited by the driver to a safe-register list (a PCIe2 sweep 0x0-0xff rebooted the iPad in run 12).
 `core` reads need the payload booted with brcmfmac.h1b_hold=1 (otherwise the driver answers with an error).
 
@@ -23,7 +23,7 @@ sys.path.insert(0, str(HERE))
 
 NUM = r"(?:0x[0-9a-fA-F]+|[0-9]+)"
 ALLOWED = (rf"tcm {NUM} {NUM}", rf"core (?:pcie2|cc) {NUM} {NUM}", r"shared", r"rings", r"console")
-DEFAULT = ("shared", "core cc 0x58 32", "core pcie2 0x48 8", "console", "rings")
+DEFAULT = ("shared", "core cc 0x58 24", "core pcie2 0x48 8", "console", "rings")
 DIR = "/sys/kernel/debug/brcmfmac-h1b"
 
 

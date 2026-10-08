@@ -314,3 +314,21 @@ Apple's driver does write it. From `FUN_c05974` and the ring constructor (`FUN_c
 {0,2,1,4,3}. Hypothesis for the next run: the ROM msgbuf code identifies rings by these fields, so with all five
 reading id 0 / type 0 it does not wire up the control submit ring and never consumes it. Patch 0072
 (`brcmfmac.h1b_ring_ids=1`) writes Apple's words (type << 16 | id) after max_item/len_item.
+
+## Run 13: R1 (Apple ring id/type words, hold, DEVICE_WAKE high)
+
+Payload `wifi-h1b-modelA-R1-ringids-hold-devwake-20261008T015746Z` (0072, `h1b_ring_ids=1`, `h1b_hold=1`, `device_wake=1`).
+The five id/type words were written (log) and read back from TCM through the query interface:
+`ringmem 0x23a644: 0x00000000, 0x00020001, 0x00010000, 0x00040001, 0x00030002` in word 0 of the five entries, with the
+host's max/len/base words unchanged. Result: the same stall (control query `cmd=262` timed out at 2 s, isr count 0, mailbox
+int 0x0, `h2d_mailbox_0` 0x1, d2h scratch 0). With `h1b_hold` the endpoint stayed bound and MSI stayed enabled (address
+0xbffff000, data 8). The query interface worked: `core pcie2 0x48 8` read mailbox int 0x00000000 and mask 0x00030300.
+
+Conclusion: the ring id/type hypothesis is refuted. The firmware's silence does not depend on those words.
+
+Query-tool notes: `core cc 0x58 32` was rejected by the safe-register list (0x70 is outside it); the default is now
+`core cc 0x58 24`. The `tcm` bound check compares the offset with `ramsize`, but the firmware's addresses are absolute
+ARM addresses (shared structure at 0x1dd6c8, ring memory at 0x23a644; RAM starts at 0x180000), so any `tcm` query above
+`ramsize` is rejected. The check should be `rambase <= off < rambase + ramsize`. This needs a one-line kernel fix before
+`tcm` queries of the live firmware state (ring indices at 0x23a914..0x23aa70, mailbox words 0x23aa7c.., console 0x23deb0)
+can be used.
