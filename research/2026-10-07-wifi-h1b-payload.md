@@ -303,3 +303,10 @@ Private payload D2 = this base + `h1b_defer_s=40` + `h1b_hold=1` + `device_wake=
 `apple_dart.pci_rebase=0|1` selects model B (raw) or A (rebased) at boot, replacing the device-tree choice; `idxbuf` is now logged. Test:
 `kernel/test_apple_dart_rebase_override_patch.py`; offline suite 58 passed, 0 failed, 7 skipped. Public base: `/nix/store/1fkg94j1lvgm4fq5whrpf4xwhsh7lvg3-ipad-air2-m1n1-hoolock-pcie-j81-wifi-h1b-base`.
 Private payloads (D2 settings: `h1b_defer_s=40`, `h1b_hold=1`, `device_wake=1`, test MAC): D3r0 = model B, D3r1 = model A. Not run yet.
+
+## Payload with a fast firmware-console poll (patch 0077)
+
+`brcmfmac.h1b_fast_poll_us=N` polls the firmware console every N us from a kernel thread for 3 s (read-only), replacing the 100 ms timer,
+to catch the firmware's own lines in the ~40 ms between the first doorbell and the reset (run 18). Test:
+`kernel/test_brcmfmac_h1b_fastpoll_patch.py`; offline suite 59 passed, 0 failed, 7 skipped. Public base: `/nix/store/0qh7l4pvg1clbb9xcfb3x9xrwj2vb4lf-ipad-air2-m1n1-hoolock-pcie-j81-wifi-h1b-base`.
+Private payload D4 = this base + `h1b_fast_poll_us=1000` + `h1b_defer_s=40` + `h1b_hold=1` + `device_wake=1` + the test MAC, default (device-tree) DMA model A. Not run yet.

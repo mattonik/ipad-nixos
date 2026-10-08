@@ -51,6 +51,7 @@ HOST_TESTS = (
     "kernel/test_wifi_h1b_payload_contract.py",
     "kernel/test_j81_base_contract.py",
     "kernel/test_apple_dart_rebase_override_patch.py",
+    "kernel/test_brcmfmac_h1b_fastpoll_patch.py",
     "boot/test_assemble_private_wifi_payload.py",
     "boot/test_h1b_run_record.py",
     "boot/test_h1b_query.py",

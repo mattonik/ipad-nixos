@@ -447,3 +447,13 @@ indexing, B: raw) has ever been exercised by a real device DMA (all earlier runs
 from static analysis only. The reset after the first doorbell points at the DMA path (a DART or PCIe fault escalating to a fatal
 exception/watchdog reset); a power event on the radio is the other candidate. Next experiment: boot argument `apple_dart.pci_rebase=0|1`
 (patch 0076) flips the model without a rebuild; run the same payload with model B and compare. The idxbuf mapping is now logged too.
+
+## Runs 19-20: D3r0 (DART IOVA model B via `apple_dart.pci_rebase=0`) hangs the boot, twice
+
+Payload `wifi-h1b-modelA-D3-rebase0-defer40-macaddr-hold-devwake-20261008T121128Z` (0076 kernel, otherwise the D2 settings). The photo of the iPad screen
+(user's IMG_4342) shows the kernel booting normally to `Run /init` (0.378 s) with the log line `t7000-h1b: pci iova model forced by boot argument: raw (B)`, and
+then the screen frozen on the postmarketOS initramfs line `Trying to mount subpartitions for 10 seconds...`. No restart; the Mac saw no USB network device
+and 172.16.42.1 never answered (120-240 s), twice, same screen. D2 (same payload with the device-tree default, model A) answered at about 20 s. The hang
+happens long before the 40 s deferred Wi-Fi start, so it is not the first doorbell. Either the model-B override breaks the boot (the raw PTE indexing of the
+0x80000000..0xbfffefff window is untested) or something in the 0076 kernel does; the next run (default model on the 0077 kernel) separates the two.
+Model B therefore remains untested at the device.
