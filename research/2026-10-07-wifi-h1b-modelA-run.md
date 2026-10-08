@@ -412,3 +412,24 @@ hides the last lines. With the test MAC in the NVRAM the machine resets there; w
 A power or brown-out reset when the Wi-Fi core attaches (radio/PHY power-up on an unconfigured PMIC rail), or a bus fault, are both
 possible; a kernel panic message is not visible. `boot/h1b_stream.py` now follows `/proc/kmsg` in real time (no polling lag) to catch the last
 lines; the same D1 payload can be rerun with it.
+
+## Run 17: D1 rerun with the real-time log follower: the macaddr fix works; the reset is my own diagnostic read
+
+`boot/h1b_stream.py` now follows `/proc/kmsg`, so nothing is lost to polling. D1 again (same payload, deferred start at 62.44 s). The log
+up to the reset shows the firmware doing what it never did before:
+
+- firmware console after start: `wl0: wlc_stf_txcore_shmem_write: No clock`, `wl0: wlc_channels_commit: no valid channel for "#n"`,
+  **`wl0: Broadcom BCM4350 802.11 Wireless Controller 7.15.114.157 (r504364)`**, `TCAM: 256 used`, two `reclaim section` lines.
+  The `wl` core attached: **the missing `macaddr` was the root cause** of the silent firmware (runs 1-14). (The `No clock` / `no valid
+  channel` lines are normal for a first attach without CLM/regulatory data and without the radio clock requested.)
+- `brcmf_pcie_init_ringbuffers: Using host memory indices` (it was "Using TCM indices" before): the firmware now advertises the DMA-index
+  feature (shared flags bit 16), another sign that `pciedev open()` ran.
+- Ring setup, scratch/ringupd buffers and `msi after request_irq` follow as usual (62.694 s); the log ends there.
+
+The next statement in the driver after that log line is `h1b_log_chipcommon_gpio("after request_irq")` (patch 0069), which reads
+ChipCommon `0xc40` and `0xe00` through the BAR0 window. With the firmware asleep (runs 8-14) those reads were fine; with the firmware
+running, `0xc40`/`0xe00` (not standard GPIO registers; I added them only because Apple's driver writes them, probably SECI/coexistence
+blocks that the firmware now clocks differently) reset the machine. So the resets in runs 15-17 were most likely **caused by my own
+diagnostic**, the same class of mistake as the PCIe2 sweep in run 12. Patch 0075 removes `0xc40`/`0xe00` from the snapshot and from the
+query safe-list and drops the snapshot call after `request_irq`; the standard GPIO block 0x58-0x6c stays (failure-time snapshot and queries).
+Not yet proven: the next run (same payload, new kernel) shows whether the machine now survives and whether the control query completes.
