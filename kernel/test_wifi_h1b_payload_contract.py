@@ -36,7 +36,7 @@ EXPECTED_TAIL = [
 def main():
     patches = re.findall(r'patch -d "\$out" -p1 < \$\{\./patches/([^}]+)\}', NIX)
     assert patches[-len(EXPECTED_TAIL):] == EXPECTED_TAIL, patches
-    for banned in ("0058", "0059", "0060", "0061", "0062", "0017", "0018"):  # 0065 (brcmfmac diagnostics) is wanted
+    for banned in ("0058", "0059", "0060", "0061", "0062", "0018"):  # 0065 (brcmfmac diagnostics) is wanted
         assert not any(p.startswith(banned + "-") for p in patches), f"{banned} must not be in the Wi-Fi H1B kernel"
     m = re.search(r"patchedHoolockPcieJ81WifiH1bConfig = .*?\n          '';", FLAKE, re.S)
     assert m, "config derivation missing"
@@ -52,14 +52,15 @@ def main():
     # Model B was built before 0067/0068 existed and is the plain comparison payload: no 0064, 0067, 0068, 0069.
     assert raw == [p for p in patches if not p.startswith(("0064-", "0067-", "0068-", "0069-", "0070-", "0071-", "0072-", "0073-"))], raw
     assert not any(p.startswith("0064-") for p in raw)
-    raw_pay = re.search(r"m1n1-hoolock-pcie-j81-wifi-h1b-base-raw = .*?\n        '';", FLAKE, re.S)
+    raw_pay = re.search(r"m1n1-hoolock-pcie-j81-wifi-h1b-base-raw = mkJ81BasePayload \{.*?\n        \};", FLAKE, re.S)
     assert raw_pay and "hoolockPcieJ81WifiH1bRawKernel" in raw_pay.group(0) and "brcmfmac.debug=0x001c0004" in raw_pay.group(0)
-    pay = re.search(r"m1n1-hoolock-pcie-j81-wifi-h1b-base = .*?\n        '';", FLAKE, re.S)
+    pay = re.search(r"m1n1-hoolock-pcie-j81-wifi-h1b-base = mkJ81BasePayload \{.*?\n        \};", FLAKE, re.S)
     assert pay, "payload missing"
     body = pay.group(0)
     assert "hoolockPcieJ81WifiH1bKernel" in body and "brcmfmac.debug=0x001c0004" in body
-    assert "firmware" not in body.lower().replace("brcmfmac", ""), "no firmware may be copied into the public payload"
-    assert "rdinit=/init" in body and 'deviceinfo_usb_rndis_function="ecm.usb0"' in body, "USB recovery must stay"
+    base = re.search(r"mkJ81BasePayload = .*?\n            '';\n", FLAKE, re.S).group(0)
+    assert "firmware" not in base.lower().replace("brcmfmac", ""), "no firmware may be copied into the public payload"
+    assert "rdinit=/init" in base and 'deviceinfo_usb_rndis_function="ecm.usb0"' in base, "USB recovery must stay"
     print("PASS: Wi-Fi H1B base contracts (model A and B: host path 0052-0057 + 0063 (+0064), 0065/0066 diagnostics, no 0060/probe drivers, brcmfmac PCIe, no firmware, USB recovery)")
 
 

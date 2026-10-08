@@ -34,6 +34,9 @@ let
     patch -d "$out" -p1 < ${./patches/0008-t7001-add-spi3-node.patch}
     patch -d "$out" -p1 < ${./patches/0009-t7001-air2-enable-spi3.patch}
     patch -d "$out" -p1 < ${./patches/0011-touchscreen-apple-z2-add-j81.patch}
+    # J81 base feature set (docs/plans/2026-10-08-j81-base-package.md): writable charger input current limit, needed by the
+    # boot-time charging policy that every payload carries. Enforced by kernel/test_j81_base_contract.py.
+    patch -d "$out" -p1 < ${./patches/0017-j81-d2207-charger-writable-input-current-limit.patch}
 
     # Build the known hardware-proven Stage 5F base, then replace its global
     # PMIC search with the J81-only board resource path. Do not stack 0050.

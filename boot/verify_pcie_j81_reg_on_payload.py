@@ -26,6 +26,39 @@ I2C_TOOLS = {"i2cget", "i2cset", "i2cdetect", "i2cdump", "i2ctransfer"}
 FORBIDDEN_BINARIES = I2C_TOOLS | {"btattach", "hciattach", "hciconfig", "hcitool"}
 
 
+J81_BASE_EXECUTABLES = ("usr/bin/charging-policy", "usr/bin/tablet-status", "usr/bin/tablet-dashboard",
+                        "etc/postmarketos-mkinitfs/hooks/20-debug-shell.sh")
+J81_BASE_BOOTARGS = ("console=tty0", "ignore_loglevel", "rdinit=/init", "PMOS_NO_OUTPUT_REDIRECT", "pd_ignore_unused",
+                     "clk_ignore_unused")
+
+
+def j81_base_problems(entries, image, bootargs):
+    """What every J81 payload must carry (docs/plans/2026-10-08-j81-base-package.md): charging policy plus the writable
+    charger in the kernel, telnet + key-only SSH, the debug console arguments and the tablet tools."""
+    problems = []
+    for name in J81_BASE_EXECUTABLES:
+        if name not in entries:
+            problems.append(f"J81 base: {name} missing from the initramfs")
+        elif not entries[name][0] & 0o111:
+            problems.append(f"J81 base: {name} is not executable")
+    hook = entries.get("etc/postmarketos-mkinitfs/hooks/20-debug-shell.sh", (0, b""))[1]
+    for needle in (b"telnetd", b"dropbear", b"/usr/bin/charging-policy", b"loop_forever"):
+        if needle not in hook:
+            problems.append(f"J81 base: the debug-shell hook lacks {needle.decode()!r}")
+    if b"@DROPBEAR@" in hook:
+        problems.append("J81 base: the hook still has the @DROPBEAR@ placeholder")
+    if "root/.ssh/authorized_keys" not in entries or not entries["root/.ssh/authorized_keys"][1].strip():
+        problems.append("J81 base: root/.ssh/authorized_keys missing or empty")
+    if not any(n.startswith("nix/store/") and n.endswith("/bin/dropbear") for n in entries):
+        problems.append("J81 base: the Dropbear binary is not in the initramfs")
+    if b"j81-d2207-charger" not in image:
+        problems.append("J81 base: the kernel lacks the J81 D2207 charger driver")
+    for token in J81_BASE_BOOTARGS:
+        if token not in bootargs:
+            problems.append(f"J81 base: bootargs lack {token!r}")
+    return problems
+
+
 def cpio_entries(data):
     """Read concatenated newc archives (same parser as boot/test_usb_diagnostic.py)."""
     result, offset = {}, 0
@@ -130,6 +163,9 @@ def main(argv):
         problems.append(f"forbidden binaries in initramfs: {present}")
     if "etc/deviceinfo" not in entries or b"ecm.usb0" not in entries["etc/deviceinfo"][1]:
         problems.append("ECM deviceinfo override missing")
+    if wifi_base:
+        problems += j81_base_problems(entries, gzip.decompress((payload / "Image.gz").read_bytes()),
+                                      (payload / "bootargs").read_text())
 
     # Kernel: board-gated strings present, test-stage REG_ON strings absent.
     image = gzip.decompress((payload / "Image.gz").read_bytes())

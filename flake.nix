@@ -953,6 +953,73 @@
               "LDFLAGS=-static"
             ];
           });
+
+          # J81 BASE PAYLOAD (docs/plans/2026-10-08-j81-base-package.md). Every payload that is meant to be run on the iPad
+          # should be built through this function, so these stay in every build without copy-paste drift:
+          #   1. charging: the kernel must carry patch 0017 (writable input_current_limit; enforced by
+          #      kernel/test_j81_base_contract.py) and /usr/bin/charging-policy is started by the boot hook;
+          #   2. telnet (recovery, 172.16.42.1:23) + key-only Dropbear SSH (172.16.42.1:22) over the USB ECM link;
+          #   3. the debug console: console=tty0, ignore_loglevel and the postmarketOS debug-shell flow;
+          #   4. the tablet tools /usr/bin/tablet-status and /usr/bin/tablet-dashboard;
+          #   5. the universal probe (stage B of the plan; its userland helper is added here once the kernel framework exists).
+          # No Bluetooth userland and no I2C tools are included (the Wi-Fi payload rules forbid them; charging uses sysfs only).
+          mkJ81BasePayload = { name, kernel, bootargsExtra ? "" }:
+            let
+              dropbearPkg = pkgsCrossMusl.dropbear;
+              dropbearClosure = pkgs.closureInfo { rootPaths = [ dropbearPkg ]; };
+            in pkgs.runCommand "ipad-air2-${name}" {
+              nativeBuildInputs = [ pkgs.gzip pkgs.dtc pkgs.cpio pkgs.findutils ];
+            } ''
+              mkdir -p "$out" overlay/etc/postmarketos-mkinitfs/hooks overlay/usr/bin
+              cp ${inputs.hoolockDocs}/binaries/Pongo.bin "$out/Pongo.bin"
+              cp ${inputs.hoolockM1n1}/m1n1.bin "$out/m1n1.bin"
+              gzip -n -c ${kernel}/Image > "$out/Image.gz"
+
+              dtc -I dtb -O dts ${kernel}/dtbs/apple/t7001-j81.dtb \
+                | sed -e '/^\tchosen {$/,/^\t};$/ s/framebuffer@0 {/framebuffer {/' \
+                | dtc -I dts -O dtb -p 0x10000 -o "$out/t7001-j81.dtb"
+
+              # Base debug initramfs (telnetd, fbdebug, evtest, debug-shell flow) plus one overlay archive.
+              gzip -dc ${inputs.linuxAppleResources}/debug_initrd.img > initramfs.cpio
+              mkdir -p original-etc
+              (cd original-etc && cpio -id --no-absolute-filenames etc/deviceinfo < ../initramfs.cpio)
+              cp original-etc/etc/deviceinfo overlay/etc/deviceinfo
+              printf '\ndeviceinfo_usb_rndis_function="ecm.usb0"\n' >> overlay/etc/deviceinfo
+
+              hook=etc/postmarketos-mkinitfs/hooks/20-debug-shell.sh
+              sed 's|@DROPBEAR@|${dropbearPkg}|' ${./boot/ssh-stage1.sh} \
+                | sed 's|^loop_forever$|/usr/bin/charging-policy >/var/log/charging-policy.log 2>\&1 \&\nloop_forever|' > "overlay/$hook"
+              chmod 755 "overlay/$hook"
+
+              mkdir -p overlay/root/.ssh overlay/var/empty overlay/var/run overlay/var/log
+              echo 'root:x:0:0:root:/root:/bin/sh' > overlay/etc/passwd
+              echo 'root:x:0:' > overlay/etc/group
+              cp ${./boot/ssh/authorized_keys} overlay/root/.ssh/authorized_keys
+              chmod 700 overlay/root overlay/root/.ssh
+              chmod 600 overlay/root/.ssh/authorized_keys
+              chmod 644 overlay/etc/passwd overlay/etc/group
+
+              cp ${./boot/tablet-status.sh} overlay/usr/bin/tablet-status
+              cp ${./boot/charging-policy.sh} overlay/usr/bin/charging-policy
+              cp ${./boot/tablet-dashboard.sh} overlay/usr/bin/tablet-dashboard
+              chmod 755 overlay/usr/bin/tablet-status overlay/usr/bin/charging-policy overlay/usr/bin/tablet-dashboard
+
+              # Dropbear runtime closure at its original store paths.
+              mkdir -p overlay/nix/store
+              while read -r p; do cp -a "$p" overlay/nix/store/; done < ${dropbearClosure}/store-paths
+              chmod -R u+w overlay/nix
+              find overlay -exec touch -h -d @1 {} +
+
+              (cd overlay; find . -mindepth 1 -print0 | sed -z 's|^\./||' | LC_ALL=C sort -z \
+                | cpio --null -o -H newc --owner=0:0 --reproducible) >> initramfs.cpio
+              gzip -n -c initramfs.cpio > "$out/initramfs.gz"
+
+              printf '%s\n' 'chosen.bootargs=console=tty0 loglevel=8 ignore_loglevel rdinit=/init PMOS_NO_OUTPUT_REDIRECT pd_ignore_unused clk_ignore_unused${if bootargsExtra == "" then "" else " " + bootargsExtra}' \
+                > "$out/bootargs"
+              cat "$out/m1n1.bin" "$out/bootargs" "$out/t7001-j81.dtb" \
+                "$out/Image.gz" "$out/initramfs.gz" > "$out/m1n1-linux.bin"
+              sha256sum "$out/Pongo.bin" "$out/m1n1.bin" "$out/m1n1-linux.bin" > "$out/SHA256SUMS"
+            '';
         in {
         # Linux kernel for iPad Air 2 (A8X)
         kernel = modernKernel;
@@ -3223,64 +3290,18 @@
 
         # TEST ONLY: DMA model B (0063 window, raw PTE indexing).
         # TEST ONLY: Wi-Fi H1B base (public): DMA model A + brcmfmac PCIe, NO firmware; private overlay is added locally.
-        m1n1-hoolock-pcie-j81-wifi-h1b-base = pkgs.runCommand "ipad-air2-m1n1-hoolock-pcie-j81-wifi-h1b-base" {
-          nativeBuildInputs = [ pkgs.gzip pkgs.dtc pkgs.cpio ];
-        } ''
-          mkdir -p "$out"
-          cp ${inputs.hoolockDocs}/binaries/Pongo.bin "$out/Pongo.bin"
-          cp ${inputs.hoolockM1n1}/m1n1.bin "$out/m1n1.bin"
-          gzip -n -c ${hoolockPcieJ81WifiH1bKernel}/Image > "$out/Image.gz"
-
-          dtc -I dtb -O dts ${hoolockPcieJ81WifiH1bKernel}/dtbs/apple/t7001-j81.dtb \
-            | sed -e '/^\tchosen {$/,/^\t};$/ s/framebuffer@0 {/framebuffer {/' \
-            | dtc -I dts -O dtb -p 0x10000 -o "$out/t7001-j81.dtb"
-
-          gzip -dc ${inputs.linuxAppleResources}/debug_initrd.img > initramfs.cpio
-          mkdir -p original-etc overlay/etc
-          (cd original-etc && cpio -id --no-absolute-filenames etc/deviceinfo < ../initramfs.cpio)
-          cp original-etc/etc/deviceinfo overlay/etc/deviceinfo
-          printf '\ndeviceinfo_usb_rndis_function="ecm.usb0"\n' >> overlay/etc/deviceinfo
-          touch -d @1 overlay/etc/deviceinfo
-          (cd overlay && printf '%s\0' "etc/deviceinfo" | cpio --null -o -H newc --owner=0:0 --reproducible) >> initramfs.cpio
-          gzip -n -c initramfs.cpio > "$out/initramfs.gz"
-
-          printf '%s\n' 'chosen.bootargs=console=tty0 loglevel=8 ignore_loglevel rdinit=/init PMOS_NO_OUTPUT_REDIRECT pd_ignore_unused clk_ignore_unused brcmfmac.debug=0x001c0004' \
-            > "$out/bootargs"
-          cat "$out/m1n1.bin" "$out/bootargs" "$out/t7001-j81.dtb" \
-            "$out/Image.gz" "$out/initramfs.gz" > "$out/m1n1-linux.bin"
-          sha256sum "$out/Pongo.bin" "$out/m1n1.bin" "$out/m1n1-linux.bin" \
-            > "$out/SHA256SUMS"
-        '';
+        m1n1-hoolock-pcie-j81-wifi-h1b-base = mkJ81BasePayload {
+          name = "m1n1-hoolock-pcie-j81-wifi-h1b-base";
+          kernel = hoolockPcieJ81WifiH1bKernel;
+          bootargsExtra = "brcmfmac.debug=0x001c0004";
+        };
 
         # TEST ONLY: Wi-Fi H1B base (public), DMA MODEL B (raw) + brcmfmac PCIe, NO firmware; private overlay is added locally.
-        m1n1-hoolock-pcie-j81-wifi-h1b-base-raw = pkgs.runCommand "ipad-air2-m1n1-hoolock-pcie-j81-wifi-h1b-base-raw" {
-          nativeBuildInputs = [ pkgs.gzip pkgs.dtc pkgs.cpio ];
-        } ''
-          mkdir -p "$out"
-          cp ${inputs.hoolockDocs}/binaries/Pongo.bin "$out/Pongo.bin"
-          cp ${inputs.hoolockM1n1}/m1n1.bin "$out/m1n1.bin"
-          gzip -n -c ${hoolockPcieJ81WifiH1bRawKernel}/Image > "$out/Image.gz"
-
-          dtc -I dtb -O dts ${hoolockPcieJ81WifiH1bRawKernel}/dtbs/apple/t7001-j81.dtb \
-            | sed -e '/^\tchosen {$/,/^\t};$/ s/framebuffer@0 {/framebuffer {/' \
-            | dtc -I dts -O dtb -p 0x10000 -o "$out/t7001-j81.dtb"
-
-          gzip -dc ${inputs.linuxAppleResources}/debug_initrd.img > initramfs.cpio
-          mkdir -p original-etc overlay/etc
-          (cd original-etc && cpio -id --no-absolute-filenames etc/deviceinfo < ../initramfs.cpio)
-          cp original-etc/etc/deviceinfo overlay/etc/deviceinfo
-          printf '\ndeviceinfo_usb_rndis_function="ecm.usb0"\n' >> overlay/etc/deviceinfo
-          touch -d @1 overlay/etc/deviceinfo
-          (cd overlay && printf '%s\0' "etc/deviceinfo" | cpio --null -o -H newc --owner=0:0 --reproducible) >> initramfs.cpio
-          gzip -n -c initramfs.cpio > "$out/initramfs.gz"
-
-          printf '%s\n' 'chosen.bootargs=console=tty0 loglevel=8 ignore_loglevel rdinit=/init PMOS_NO_OUTPUT_REDIRECT pd_ignore_unused clk_ignore_unused brcmfmac.debug=0x001c0004' \
-            > "$out/bootargs"
-          cat "$out/m1n1.bin" "$out/bootargs" "$out/t7001-j81.dtb" \
-            "$out/Image.gz" "$out/initramfs.gz" > "$out/m1n1-linux.bin"
-          sha256sum "$out/Pongo.bin" "$out/m1n1.bin" "$out/m1n1-linux.bin" \
-            > "$out/SHA256SUMS"
-        '';
+        m1n1-hoolock-pcie-j81-wifi-h1b-base-raw = mkJ81BasePayload {
+          name = "m1n1-hoolock-pcie-j81-wifi-h1b-base-raw";
+          kernel = hoolockPcieJ81WifiH1bRawKernel;
+          bootargsExtra = "brcmfmac.debug=0x001c0004";
+        };
 
         # TEST ONLY: DMA model B (0063 window, raw PTE indexing).
         m1n1-hoolock-pcie-j81-dma-raw = pkgs.runCommand "ipad-air2-m1n1-hoolock-pcie-j81-dma-raw" {

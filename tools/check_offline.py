@@ -49,6 +49,7 @@ HOST_TESTS = (
     "kernel/test_apple_dart_pci_window_patch.py",
     "kernel/test_brcmfmac_h1b_diag_patch.py",
     "kernel/test_wifi_h1b_payload_contract.py",
+    "kernel/test_j81_base_contract.py",
     "boot/test_assemble_private_wifi_payload.py",
     "boot/test_h1b_run_record.py",
     "boot/test_h1b_query.py",
