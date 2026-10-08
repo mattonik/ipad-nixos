@@ -360,3 +360,21 @@ routing) or the ROM's wait condition is not satisfied by something the host has 
 holds that logic. A gated ROM read path exists (`unlock rom`, then `rom OFF LEN`, `--allow-rom` on the host tool); it has not
 been used. The remaining unprobed registers that would show the device's interrupt masking are PCIe2 0x20 (IntStatus) and
 0x24 (IntMask); they are on the safe list but were never read before.
+
+## Run 14 follow-up: PCIe2 interrupt registers and the ROM dump
+
+Same T1 session, held device, safe-list reads only:
+- PCIe2 `0x140` (H2D mailbox 0) = 1 (still pending); `0x20` IntStatus = **0x00010000**; `0x24` IntMask = **0x00000000**.
+  Mailbox int `0x48` = 0, mask `0x4c` = 0x30300. So the PCIe2 core has a pending event (bit 16) and no interrupt enabled
+  in its device-side mask: the doorbell cannot interrupt the ARM. Whether the firmware is supposed to unmask it after
+  some trigger (host-ready, deep-sleep state, a capability handshake) is the open question.
+- Gated ROM path used for the first time: `unlock rom` reported BAR2 = 0x400000 bytes, RAM base 0x180000. `rom 0x0 16` and
+  larger reads worked; the low addresses are real ROM (1024 of 1024 words non-zero, only the first 9 equal the RAM image's vector
+  table). The ROM was dumped in 4 KiB reads from 0x0 up to 0xA0000 with no fault; one transient short read at 0x91000 was a
+  console-capture glitch. The read that crossed 0xA0000 (past the end of the ROM) killed the USB link and rebooted the iPad
+  again, so the ROM/RAM aperture ends at 0xA0000 for this chip and **reads past the mapped ROM reboot the device**. The last 4 KiB
+  chunk (0x9f000..0xa0000) is zero padding; every other chunk of the 0xA0000 bytes has data.
+- Private artifacts (ignored, not committed): `rom-live.bin` (0xA0000 bytes, base 0), `ram-0x180000-live.bin`,
+  `combined-rom-ram.bin` (ROM at 0, live RAM at 0x180000) in the T1 payload directory.
+- A sub-agent is mining the live RAM (and, now, the ROM) for the pciedev interrupt-mask logic; its note will be
+  `research/2026-10-08-live-ram-device-state-analysis.md`.
