@@ -395,3 +395,20 @@ Candidates, not yet separated:
 To separate them: run the public base payload with no private overlay (12.69 MB); if it boots, the base content is fine and the
 size/overlay is the issue. Size reduction is available: the kernel accepts xz/zstd initramfs (CONFIG_RD_XZ/RD_ZSTD=y); xz would
 shrink the initramfs from 3.2 MB to about 1.8 MB, and an xz kernel from 8.2 MB to about 5.9 MB if m1n1 accepts it.
+
+## Run 16: D1 (J81 base, deferred Wi-Fi start at 60 s, test MAC, hold, DEVICE_WAKE high): the reset happens inside the probe
+
+Runs with the M1 (no base package) and M2 (base package) payloads, both with the test MAC and no deferral, restarted the iPad to iOS
+within seconds of boot, before the USB network (about 12-20 s) came up, so no log existed. D1 (payload `wifi-h1b-modelA-D1-defer60-macaddr-hold-devwake-20261008T075723Z`, 13.0 MB,
+`h1b_defer_s=60`) booted with the full J81 base package: the iPad answered at 20 s, telnet worked, the polled kernel log shows
+`brcmfmac PCIe registration deferred by 60 s`, then at 62.44 s `deferred brcmfmac PCIe registration now`, the chip probe
+(BCM4350/5, ARM CR4 rev 6, PCIe2 rev 11, RAM base 0x180000 size 0xc0000, firmware request `brcmfmac4350c2-pcie`) and, at 62.546 s, the
+second `brcmf_chip_get_raminfo` of `brcmf_pcie_setup`; then the link was lost.
+
+Findings: (1) the J81 base payload (13 MB) boots and the base package works as a boot path, which clears size as the cause of the earlier resets.
+(2) The reset happens within about 0.3-0.5 s of the start of `brcmf_pcie_setup` (firmware download, ARM start, firmware init), in the
+window where T1 (no MAC) logged firmware download and start at +0.01 s and the firmware's console at +0.07 s. The 0.3 s polling interval
+hides the last lines. With the test MAC in the NVRAM the machine resets there; without it (T1) it did not.
+A power or brown-out reset when the Wi-Fi core attaches (radio/PHY power-up on an unconfigured PMIC rail), or a bus fault, are both
+possible; a kernel panic message is not visible. `boot/h1b_stream.py` now follows `/proc/kmsg` in real time (no polling lag) to catch the last
+lines; the same D1 payload can be rerun with it.
