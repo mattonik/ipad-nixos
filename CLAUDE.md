@@ -1765,3 +1765,31 @@ NixOS ThinkPad ──USB──► iPad Air 2
 - Be honest about blockers and difficulty
 - Cross-reference multiple sources before concluding anything
 - Focus on iPad Air 2 (A8X) specifically — don't generalize across all iPads
+
+# Fast hardware-debug build loop
+
+For short hardware experiments, treat the kernel build as the scarce resource.
+Do not rebuild the full Nix payload when the experiment can be selected by an
+existing runtime toggle.
+
+1. Build the H1B/base kernel once and keep its output under a persistent GC
+   root in `artifacts/live/`.
+2. Prefer changing boot arguments (`brcmfmac.*`, `apple_dart.*`,
+   `pcie_apple_t7000.*`) and re-running
+   `boot/assemble_private_wifi_payload.py`; private payload assembly is fast
+   and must remain outside Git/Nix store inputs.
+3. Only request a full `nix build` when kernel source, configuration, DTS,
+   patch ordering, or the public initramfs/base package changes.
+4. Keep the reproducible Nix build as the release/evidence path. A persistent
+   incremental `make`/kernel-output directory may be used by the development
+   agent for test-only C changes, but its result must be clearly labelled
+   incremental and must not replace the reproducible build record.
+5. Never delete the `artifacts/live/*` GC roots to save time. Never put
+   firmware, NVRAM, calibration, OTP, ROM/RAM dumps, device identifiers, or
+   session logs into Git or a Nix derivation.
+6. Before a hardware run, verify the private manifest and use the one-command
+   loader `boot/run_m1n1_debug.sh <payload-dir>`. Record the exact payload and
+   commit any result immediately after the run.
+
+This workflow is intended to turn repeated toggle-only experiments into
+minutes or seconds; source changes still require a kernel build.
