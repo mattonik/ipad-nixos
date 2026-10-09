@@ -573,3 +573,19 @@ config/MMIO access) hangs the CPU, and the same link-state mechanism could be wh
 `dma_map_single` calls (host-side DART mappings), ring item writes into host memory, the write pointer update (host-memory index), and one ring doorbell (MMIO write to PCIe2 0x140). So the reset is in the first ~tens of ms of
 the rx data fill (or in the sleep just before it, the host idle). This time the log is not lagging: the markers are 150 ms apart and the surrounding steps were all delivered. The boot-hang of
 D12 did not recur with ASPM off (n=1; not proven to be the cause). ASPM is ruled out for the reset.
+
+## Run 31 — D13-feed0 (ASPM off, sync markers, `h1b_feed=0`: no rx/event/ioctl-resp buffers posted)
+
+Result: iPad reset again. Log shows attach entered 25.821, ioctl buffer mapped
+25.976, `feed: mask 0x0` and `sync: before feeding` 26.139, netdev allocated
+26.296, `brcmf_msgbuf_query_dcmd cmd=262` 26.308, last line
+`sync: query ioctl about to be posted` 26.308, then reset (user: "restarted").
+
+Conclusion: rx-buffer posting is NOT required for the reset. With no buffers
+mapped the stack proceeds to the first host-to-device control submission
+(ioctl request ring item + write-pointer update + doorbell) and resets there.
+The common trigger is the first ring traffic the firmware must consume (DMA
+read of a host-memory ring/buffer, or doorbell with a non-empty ring), not
+the bulk rx mapping. `D13-rxpost1` is now lower value; next discriminator:
+post the ioctl but skip the doorbell (ring written, bell not rung), then ring
+with a ring in TCR-free host memory only.
