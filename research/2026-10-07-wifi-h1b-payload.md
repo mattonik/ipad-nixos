@@ -336,3 +336,8 @@ Private payload D7 = this base + `h1b_tcm_idx=1` + `h1b_bell_only=1` + `h1b_defe
 indexes by the full address or by address minus the window base. Test: `kernel/test_apple_dart_alias_patch.py`; offline suite 62 passed, 0 failed, 7 skipped. Public base: `/nix/store/r9ckdgfyz4bh6s4hsqkmlr0sw3g4q6bn-ipad-air2-m1n1-hoolock-pcie-j81-wifi-h1b-base`
 (GC root `artifacts/live/gcroot-h1b-base`). Private payload D9 = this base + `apple_dart.pci_alias=1` + `h1b_defer_s=25` + `h1b_hold=1` + `device_wake=1` + the test MAC, otherwise the stock flow
 (host-memory indices, normal ring feeding, the control query). Not run yet.
+
+## Payload with iOS-style DART entries (patch 0081)
+
+`apple_dart.ios_pte=1` makes the S5L8960X DART use Apple's entry format (valid bit 1, directory `| 3`, leaf `| 2`). Test: `kernel/test_apple_dart_ios_pte_patch.py`; offline suite 63 passed, 0 failed, 7 skipped.
+Public base: `/nix/store/9liqjqwq2fiqi6w19aclrfd732vc1byk-ipad-air2-m1n1-hoolock-pcie-j81-wifi-h1b-base` (GC root `artifacts/live/gcroot-h1b-base`). Private payload D10 = this base + `ios_pte=1` + `pci_alias=1` + `h1b_defer_s=25` + `h1b_hold=1` + `device_wake=1` + the test MAC, stock flow. Not run yet.
