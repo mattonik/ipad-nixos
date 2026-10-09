@@ -347,3 +347,9 @@ Public base: `/nix/store/9liqjqwq2fiqi6w19aclrfd732vc1byk-ipad-air2-m1n1-hoolock
 `brcmfmac.h1b_feed` (bit mask 1 data / 2 event / 4 ioctl-response buffers, default 7) and `brcmfmac.h1b_rxpost=N` split `brcmf_proto_msgbuf_attach`'s feeding; each stage logs `t7000-h1b: feed: ...`.
 Test: `kernel/test_brcmfmac_h1b_feed_patch.py`; offline suite 64 passed, 0 failed, 7 skipped. Public base: `/nix/store/fmgly2ap46ybd1bnnr96sb0rdslxy98y-ipad-air2-m1n1-hoolock-pcie-j81-wifi-h1b-base`. Private payloads (both with `ios_pte=1`, `pci_alias=1`, `h1b_defer_s=25`, `h1b_hold=1`,
 `device_wake=1`, test MAC): D11-feed0 (`h1b_feed=0`: no rx buffers at all) and D11-rxpost1 (`h1b_rxpost=1`: one rx data buffer plus the event/ioctl-response ones). Not run yet.
+
+## Payloads with sync sleeps in the attach path (patch 0083)
+
+`brcmfmac.h1b_sync_ms=N` logs a `t7000-h1b: sync: <step>` marker and sleeps N ms at each step of the msgbuf attach and before/after the first ioctl. Test: `kernel/test_brcmfmac_h1b_sync_patch.py`;
+offline suite 65 passed, 0 failed, 7 skipped. Public base: `/nix/store/gfcd5iasckc05nybzd8080mjvjpv6k0j-ipad-air2-m1n1-hoolock-pcie-j81-wifi-h1b-base`. Private payloads (`ios_pte=1`, `pci_alias=1`, `h1b_defer_s=25`, `h1b_hold=1`, `device_wake=1`, test MAC, `h1b_sync_ms=150`):
+D12-sync-feed0 (`h1b_feed=0`) and D12-sync-full (all buffers). Not run yet.

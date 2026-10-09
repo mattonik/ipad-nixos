@@ -550,3 +550,10 @@ registers at 25 s as before, and the log again ends at `brcmf_proto_msgbuf_attac
 indexing (run 26) nor the entry format (this run) is, on its own, what makes this step fatal. Every failed run (15-27) ends inside that step: it maps 271 receive buffers through the DART from the CPU side and rings the doorbell,
 while the doorbell with empty rings and no buffers survived 8 s (run 24). Patch 0082 splits the step (`brcmfmac.h1b_feed` mask for data/event/ioctl-response buffers, `brcmfmac.h1b_rxpost=N`) to separate
 host-side buffer mapping from the firmware's reaction to ring items.
+
+## Run 28: D11-feed0 (no rx buffers posted): the iPad still resets; the last received log line was cut off mid-word
+
+D11-feed0 (`...-D11-feed0-iospte-alias-defer25-...-20261009T173847Z`, `h1b_feed=0`): the stream ends at `[25.833131] ... t7000-h1b: t700` (a line cut off mid-word), with none of the new `feed:` lines. So the
+log lags the machine by an unknown amount and its last line is where the network transfer stopped, not where the reset happened; the "log ends at X" statements of runs 18-27 therefore only bound the
+crash time from below. The only run that proved the machine alive longer (D7/D8: a doorbell with empty rings, waits of 8-20 s) shows the firmware itself is harmless while idle. Patch 0083
+(`brcmfmac.h1b_sync_ms`) adds marker lines with sleeps at each step of the msgbuf attach and before/after the first ioctl, so that each line is delivered before the next step runs.
