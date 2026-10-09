@@ -53,6 +53,7 @@ HOST_TESTS = (
     "kernel/test_apple_dart_rebase_override_patch.py",
     "kernel/test_apple_dart_alias_patch.py",
     "kernel/test_apple_dart_ios_pte_patch.py",
+    "kernel/test_brcmfmac_h1b_feed_patch.py",
     "kernel/test_brcmfmac_h1b_fastpoll_patch.py",
     "kernel/test_brcmfmac_h1b_steps_patch.py",
     "kernel/test_brcmfmac_h1b_bellonly_patch.py",

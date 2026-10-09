@@ -341,3 +341,9 @@ indexes by the full address or by address minus the window base. Test: `kernel/t
 
 `apple_dart.ios_pte=1` makes the S5L8960X DART use Apple's entry format (valid bit 1, directory `| 3`, leaf `| 2`). Test: `kernel/test_apple_dart_ios_pte_patch.py`; offline suite 63 passed, 0 failed, 7 skipped.
 Public base: `/nix/store/9liqjqwq2fiqi6w19aclrfd732vc1byk-ipad-air2-m1n1-hoolock-pcie-j81-wifi-h1b-base` (GC root `artifacts/live/gcroot-h1b-base`). Private payload D10 = this base + `ios_pte=1` + `pci_alias=1` + `h1b_defer_s=25` + `h1b_hold=1` + `device_wake=1` + the test MAC, stock flow. Not run yet.
+
+## Payloads that split the buffer feeding (patch 0082)
+
+`brcmfmac.h1b_feed` (bit mask 1 data / 2 event / 4 ioctl-response buffers, default 7) and `brcmfmac.h1b_rxpost=N` split `brcmf_proto_msgbuf_attach`'s feeding; each stage logs `t7000-h1b: feed: ...`.
+Test: `kernel/test_brcmfmac_h1b_feed_patch.py`; offline suite 64 passed, 0 failed, 7 skipped. Public base: `/nix/store/fmgly2ap46ybd1bnnr96sb0rdslxy98y-ipad-air2-m1n1-hoolock-pcie-j81-wifi-h1b-base`. Private payloads (both with `ios_pte=1`, `pci_alias=1`, `h1b_defer_s=25`, `h1b_hold=1`,
+`device_wake=1`, test MAC): D11-feed0 (`h1b_feed=0`: no rx buffers at all) and D11-rxpost1 (`h1b_rxpost=1`: one rx data buffer plus the event/ioctl-response ones). Not run yet.

@@ -542,3 +542,11 @@ If the S5L8960X valid bit is bit 1 (as Apple writes it, `| 2` / `| 3`), Linux's 
 index model, and the leaf entries carry bits 51:40 the hardware does not define. That fits everything seen: the MSI path (PCIe controller decoder, not the DART) works; DMA read of ring items is
 the first translation the DART ever does for a device, and the SoC resets. Patch 0081 adds `apple_dart.ios_pte=1` (S5L8960X DART only; off by default): valid bit 1, directory `| 3`, leaf `| 2`, no subpage/protection fields.
 Not yet proven on hardware.
+
+## Run 27: D10 (iOS-style DART entries + alias mapping): still resets inside the buffer-feeding step
+
+D10 (`...-D10-iospte-alias-defer25-...-20261009T163950Z`): the log confirms `iOS-style S5L8960X DART entries (ios_pte)` and `pci window pages are also mapped at the raw index (pci_alias)` at 0.363 s, the Wi-Fi driver
+registers at 25 s as before, and the log again ends at `brcmf_proto_msgbuf_attach: Feeding buffers, rx data 255, rx event 8, rx ioctl resp 8` (25.848 s); the iPad resets. Neither the DART
+indexing (run 26) nor the entry format (this run) is, on its own, what makes this step fatal. Every failed run (15-27) ends inside that step: it maps 271 receive buffers through the DART from the CPU side and rings the doorbell,
+while the doorbell with empty rings and no buffers survived 8 s (run 24). Patch 0082 splits the step (`brcmfmac.h1b_feed` mask for data/event/ioctl-response buffers, `brcmfmac.h1b_rxpost=N`) to separate
+host-side buffer mapping from the firmware's reaction to ring items.
