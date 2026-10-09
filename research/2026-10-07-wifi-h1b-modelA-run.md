@@ -504,3 +504,21 @@ Conclusion: waking the firmware with a doorbell is harmless, and so is the firmw
 physical addresses (0x8_xxxx_xxxx); the only mapping the device has used before is the MSI doorbell page (a device write, verified earlier) at the same IOVA indexing. Not yet known: whether the
 fault is the DART translation of RAM pages, the PCIe inbound read path, or the firmware's response. D8 (same payload, 20 s pauses) lets `boot/h1b_window_probe.py` read the firmware state, IntMask/IntStatus
 and the DART/port registers in the pause before attach and right after the doorbell-only ring.
+
+## Run 25: D8 (doorbell-only, 20 s pauses, live window probes): the firmware's PCIe driver is fully open; the DART state is clean and its page-table roots suggest a hardware-indexing question
+
+D8 first hung at the start of userspace on its first attempt (photo: stuck at `### postmarketOS initramfs ### Configuring kernel firmware image search path`, with the default DMA model A: so the early-boot hangs
+of D3r0 and this one are intermittent and not specific to model B; roughly 2 of ~13 deferred-start boots). The second attempt ran and `boot/h1b_window_probe.py` captured both windows:
+
+- **Baseline (pause before attach, firmware running, no doorbell yet):** PCIe2 `IntStatus` 0x00000000, **`IntMask` 0x010303c0**, mailbox int 0/0, `0x140` = 0. Shared flags **0x00010005** (bit 16 set), ring info as before.
+  `IntMask` 0x010303c0 and flags 0x10005 are exactly what the live-RAM analysis (`2026-10-08-live-ram-device-state-analysis.md`) predicted for a firmware whose pciedev `open()` has run:
+  that analysis and the `macaddr` diagnosis are confirmed on hardware.
+- **Post-bell (1.5 s after the doorbell-only ring):** `IntStatus` 0, `IntMask` 0x010303c0 unchanged, `0x140` = 1 (latched, as always), no error anywhere. The RAM diff shows the firmware doing work in response
+  (heap objects initialised, a `txf` object and ring pointers 0x23a694/0x23a91c/0x23a9c4/0x23aa8c written): the firmware reacts to the doorbell.
+- **DART (`apple-dart-*/regs`, both windows):** `tcr` 0x80, `error` 0x00000100 with `error_addr` 0x01e0f000 unchanged (stale; no fault flag, no new error), TTBR stream 0 entries 0-3 =
+  0x80804232..0x80804235 (valid bit 31, four consecutive page-table roots), stream 1 = 0x80ffff80 (the null table). Port 1 registers unchanged too (event status 0x3000, msicfg 0x31, msibase 0x00080008).
+
+Key observation: the DART has **four** page-table roots (TTBR 0-3), one per GiB of the 32-bit device address space. Model A populates only the entries for the rebased IOVAs (window start 0x80000000 cleared, i.e. TTBR 0
+region). If the hardware indexes by the **full** device address (top bits select the TTBR), a device address such as 0xbfffd000 would resolve through TTBR 2, which holds no entry for it, and the first DMA read would
+fault. If it subtracts the window base first (Apple's rebase), model A is right. Neither has been tested: the MSI doorbell works through the PCIe controller's own MSI decoder (port `msibase`), never through the DART, so the earlier
+"device-originated MSI" success says nothing about the DART indexing. Patch 0080 (`apple_dart.pci_alias=1`) maps every page twice (rebased and raw index) so the translation succeeds under either hypothesis.
