@@ -329,3 +329,10 @@ across it (run 22: only the first doorbell kills the machine). Not run yet.
 `brcmfmac.h1b_tcm_idx=1` declines the firmware's host-memory (DMA) ring indices; `brcmfmac.h1b_bell_only=1` rings the doorbell once after the last setup phase with all rings empty and
 waits (8 s unless `h1b_step_s` is set). Test: `kernel/test_brcmfmac_h1b_bellonly_patch.py`; offline suite 61 passed, 0 failed, 7 skipped. Public base: `/nix/store/v922hxdb9xpr2hmw9y81brffigcl1m9q-ipad-air2-m1n1-hoolock-pcie-j81-wifi-h1b-base` (GC root `artifacts/live/gcroot-h1b-base`).
 Private payload D7 = this base + `h1b_tcm_idx=1` + `h1b_bell_only=1` + `h1b_defer_s=25` + `h1b_hold=1` + `device_wake=1` + the test MAC. Not run yet.
+
+## Payload with the DART raw-index alias mapping (patch 0080)
+
+`apple_dart.pci_alias=1` maps every PCI-window page a second time at the raw (IOVA) index in addition to the rebased index (model A), so a device address resolves whether the DART hardware
+indexes by the full address or by address minus the window base. Test: `kernel/test_apple_dart_alias_patch.py`; offline suite 62 passed, 0 failed, 7 skipped. Public base: `/nix/store/r9ckdgfyz4bh6s4hsqkmlr0sw3g4q6bn-ipad-air2-m1n1-hoolock-pcie-j81-wifi-h1b-base`
+(GC root `artifacts/live/gcroot-h1b-base`). Private payload D9 = this base + `apple_dart.pci_alias=1` + `h1b_defer_s=25` + `h1b_hold=1` + `device_wake=1` + the test MAC, otherwise the stock flow
+(host-memory indices, normal ring feeding, the control query). Not run yet.
