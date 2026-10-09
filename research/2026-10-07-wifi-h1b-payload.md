@@ -323,3 +323,9 @@ The public base store paths created by `nix build --no-link` were garbage-collec
 cached, so it was quick) with a persistent root: `artifacts/live/gcroot-h1b-base` (ignored by Git). Use `nix build ... -o artifacts/live/gcroot-...` for any base that private payloads are assembled from.
 Private payload D6 (same base `/nix/store/cya4zphgrgjcifr221k1xiram6vb94b7-ipad-air2-m1n1-hoolock-pcie-j81-wifi-h1b-base`) = `h1b_defer_s=25` + `h1b_hold=1` + `device_wake=1` + the test MAC, no pauses: the first doorbell comes about 25 s after boot, so the iPad's screen can be filmed
 across it (run 22: only the first doorbell kills the machine). Not run yet.
+
+## Payload with TCM indices and a doorbell-only test (patch 0079)
+
+`brcmfmac.h1b_tcm_idx=1` declines the firmware's host-memory (DMA) ring indices; `brcmfmac.h1b_bell_only=1` rings the doorbell once after the last setup phase with all rings empty and
+waits (8 s unless `h1b_step_s` is set). Test: `kernel/test_brcmfmac_h1b_bellonly_patch.py`; offline suite 61 passed, 0 failed, 7 skipped. Public base: `/nix/store/v922hxdb9xpr2hmw9y81brffigcl1m9q-ipad-air2-m1n1-hoolock-pcie-j81-wifi-h1b-base` (GC root `artifacts/live/gcroot-h1b-base`).
+Private payload D7 = this base + `h1b_tcm_idx=1` + `h1b_bell_only=1` + `h1b_defer_s=25` + `h1b_hold=1` + `device_wake=1` + the test MAC. Not run yet.

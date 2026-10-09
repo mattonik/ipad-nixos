@@ -482,3 +482,14 @@ first radio/PHY action). The MSI doorbell mapping at 0xbffff000 (model A page in
 memory pages are the first ordinary DMA mappings used by the device. Candidates: (1) a DMA read/write the DART/PCIe inbound path cannot serve (fatal fabric error instead of an AER/DART fault),
 (2) the radio/PHY power-up on the first command, (3) an interrupt/exception storm in the CPU. No panic text reached the host log. Next: film the iPad's own screen at the moment of the
 first doorbell: a kernel panic/SError trace on the framebuffer console would name the faulting access.
+
+## Run 23: D6 (deferred start at 25 s) filmed at 4K/120 fps: the machine resets in hardware, with no panic text
+
+The user's recording (IMG_4351.MOV, 39.6 s) shows: Apple logo, boot text from ~4 s, the kernel log scrolling to a full screen by ~10 s and staying there, then at ~36.19-36.26 s the
+display dims and goes black within about four frames (~30 ms) while the text on screen is unchanged, and the Apple logo returns about 3 s later. No oops, panic, SError or stack trace was ever
+displayed. The last text on screen is the firmware console banner (timestamps ~25.85 s); the framebuffer console lags the real log by tens of ms, so the last printed lines
+are the ones the streamer saw (`msi after request_irq`, `Feeding buffers`, 25.851 s). Conclusion: a hardware-level reset (SoC watchdog, PMU/D2207, a fabric-level fatal error or a brown-out),
+not a Linux panic with the CPU still running. Combined with run 22 (41 s of running firmware without any reset; the first doorbell is the trigger), the question is what the firmware does in
+response to the first doorbell that can reset the SoC.
+Builder note: the 0079 build failed twice for builder-side store trouble (auto-GC on the builder removed an input mid-build, then a transient 'path is not valid' copy error); the third attempt succeeded.
+Persistent GC roots now exist in `artifacts/live/`: `gcroot-h1b-base`, `gcroot-msi-source`.
