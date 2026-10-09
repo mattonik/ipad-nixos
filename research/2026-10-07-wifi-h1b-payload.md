@@ -316,3 +316,10 @@ Private payload D4 = this base + `h1b_fast_poll_us=1000` + `h1b_defer_s=40` + `h
 `brcmfmac.h1b_step_s=N` pauses N s after the firmware starts, after the ring buffers, after the scratch buffers, after the interrupt request and before attach, logging each step; the host touches
 nothing during a pause. Test: `kernel/test_brcmfmac_h1b_steps_patch.py`; offline suite 60 passed, 0 failed, 7 skipped. Public base: `/nix/store/cya4zphgrgjcifr221k1xiram6vb94b7-ipad-air2-m1n1-hoolock-pcie-j81-wifi-h1b-base`.
 Private payload D5 = this base + `h1b_step_s=8` + `h1b_defer_s=30` + `h1b_hold=1` + `device_wake=1` + the test MAC (default DMA model A). Not run yet.
+
+## Store note and payload D6
+
+The public base store paths created by `nix build --no-link` were garbage-collected between sessions (they have no GC root); the 0078 base was rebuilt (the builder still had the kernel
+cached, so it was quick) with a persistent root: `artifacts/live/gcroot-h1b-base` (ignored by Git). Use `nix build ... -o artifacts/live/gcroot-...` for any base that private payloads are assembled from.
+Private payload D6 (same base `/nix/store/cya4zphgrgjcifr221k1xiram6vb94b7-ipad-air2-m1n1-hoolock-pcie-j81-wifi-h1b-base`) = `h1b_defer_s=25` + `h1b_hold=1` + `device_wake=1` + the test MAC, no pauses: the first doorbell comes about 25 s after boot, so the iPad's screen can be filmed
+across it (run 22: only the first doorbell kills the machine). Not run yet.
