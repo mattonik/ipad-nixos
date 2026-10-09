@@ -493,3 +493,14 @@ not a Linux panic with the CPU still running. Combined with run 22 (41 s of runn
 response to the first doorbell that can reset the SoC.
 Builder note: the 0079 build failed twice for builder-side store trouble (auto-GC on the builder removed an input mid-build, then a transient 'path is not valid' copy error); the third attempt succeeded.
 Persistent GC roots now exist in `artifacts/live/`: `gcroot-h1b-base`, `gcroot-msi-source`.
+
+## Run 24: D7 (TCM indices + doorbell-only test): a doorbell with empty rings is harmless; the first real ring DMA kills the machine
+
+Payload `wifi-h1b-modelA-D7-bellonly-tcmidx-defer25-macaddr-hold-devwake-20261009T115537Z`. Log: `host-memory indices declined (h1b_tcm_idx), using TCM indices` (25.834 s),
+`bell-only test: ringing H2D mailbox 0 once with empty rings` (25.890 s), then **`bell-only test: survived, mailbox int 0x0 h2d_mailbox_0 0x1`** (34.272 s: the machine ran 8.4 s with the firmware awake after
+the doorbell), then `brcmf_proto_msgbuf_attach: Feeding buffers, rx data 255, rx event 8, rx ioctl resp 8` (34.275 s) and the link is lost.
+Conclusion: waking the firmware with a doorbell is harmless, and so is the firmware's own activity; the reset follows the host posting 271 rx-post items (8.7 KB in the rx-post ring at IOVA
+~0xbfff0000, TCM indices so no index DMA): the firmware's first DMA **read** of ring items through the DART. Checked: the DART PTE encoding (`APPLE_DART` v1, bits 35:12) can represent the RAM
+physical addresses (0x8_xxxx_xxxx); the only mapping the device has used before is the MSI doorbell page (a device write, verified earlier) at the same IOVA indexing. Not yet known: whether the
+fault is the DART translation of RAM pages, the PCIe inbound read path, or the firmware's response. D8 (same payload, 20 s pauses) lets `boot/h1b_window_probe.py` read the firmware state, IntMask/IntStatus
+and the DART/port registers in the pause before attach and right after the doorbell-only ring.
