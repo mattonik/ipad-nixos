@@ -564,3 +564,12 @@ D12-sync-feed0 never reached the network: the photo shows the kernel booting to 
 (the same early freeze as D3r0 twice and D8 once; all of them are deferred-start payloads, 4 of ~20 such boots, none of the earlier non-deferred Wi-Fi boots). The log shows `ASPM: default states L1` for
 the endpoint. Hypothesis: with the deferral the powered chip idles for 25 s without a driver, DEVICE_WAKE high; if its link enters L1 and does not wake, a later PCI access (early userspace scans sysfs, or any
 config/MMIO access) hangs the CPU, and the same link-state mechanism could be what resets the machine once the firmware is active. Test, no rebuild: `pcie_aspm=off` (already allowlisted) on the sync-full payload (D13).
+
+## Run 30: D13 (`pcie_aspm=off` + sync markers, host-memory indices, all buffers): ASPM is not the cause; the reset follows the "before feeding" marker
+
+`PCIe ASPM is disabled` (0.000 s) confirms the boot argument. The deferred registration fired at ~25.5 s and every host step up to the feed was delivered with 150 ms spacing, then:
+`[25.890] sync: msgbuf attach entered` -> `[26.048] sync: ioctl buffer mapped` (a DART-mapped coherent buffer, fine) -> `[26.1995] Feeding buffers, rx data 255, rx event 8, rx ioctl resp 8` ->
+`[26.2017] feed: mask 0x7, rx data 255` -> **`[26.2039] sync: before feeding`** (last delivered line) and the link is lost. The next statement after the 150 ms sleep is the rx data fill: 255 skb allocations and
+`dma_map_single` calls (host-side DART mappings), ring item writes into host memory, the write pointer update (host-memory index), and one ring doorbell (MMIO write to PCIe2 0x140). So the reset is in the first ~tens of ms of
+the rx data fill (or in the sleep just before it, the host idle). This time the log is not lagging: the markers are 150 ms apart and the surrounding steps were all delivered. The boot-hang of
+D12 did not recur with ASPM off (n=1; not proven to be the cause). ASPM is ruled out for the reset.
