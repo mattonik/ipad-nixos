@@ -589,3 +589,38 @@ read of a host-memory ring/buffer, or doorbell with a non-empty ring), not
 the bulk rx mapping. `D13-rxpost1` is now lower value; next discriminator:
 post the ioctl but skip the doorbell (ring written, bell not rung), then ring
 with a ring in TCR-free host memory only.
+
+## Run 32 — D14-nobell (D13-feed0 + `h1b_no_bell=1`, patch 0084: all H2D doorbell writes skipped)
+
+Result: NO reset. Machine stayed up (user: "didnt restart"). The first ioctl
+(`cur_etheraddr`, cmd=262) was written to ring 0 and the write pointer updated,
+but the firmware was never told, so the ioctl timed out (`Retrieving
+cur_etheraddr failed, -5`, `dongle is not responding`, `Firmware has halted or
+crashed` — the host's own verdict, firmware not actually crashed), the
+`h1b_hold` path kept the device for queries. Ring snapshot afterwards: ring 0
+host r/w 0/1, device r 0 w 1 (item posted, not consumed), first item present in
+host memory (msgtype 0x09, ioctl buffer iova 0xbffdd000), d2h scratch still 0,
+mailbox int 0, shared flags 0x00010005 unchanged.
+
+Conclusions (stronger than any earlier run):
+1. All host-side work is harmless: 271 DART mappings (earlier runs), ring item
+   write, write-pointer update (to TCM and DMA index memory) — the host does
+   not reset the iPad.
+2. The reset is triggered by the doorbell WHEN a ring item exists, i.e. by the
+   firmware consuming the item: its first PCIe DMA read of host memory
+   (ring 0 at iova 0xbfffd000, then the ioctl buffer) or its reaction to it.
+   The doorbell with empty rings (run 22 / bell-only) and a 41 s idle running
+   firmware are harmless, consistent with this.
+3. It is the first device-initiated DMA read through the PCIe controller/DART
+   path that kills the machine. MSI (device write through the port's own
+   decoder) is not a DMA proof; no device DMA read has ever succeeded here.
+
+Next experiments (each a separate go):
+- Make the first firmware DMA read land somewhere benign and observable:
+  DART in bypass/ identity or a deliberately unmapped IOVA (translation fault
+  path) — if an unmapped read also resets, the fault itself (error-reflector,
+  AXI abort -> SError escalating to system reset) is the killer, not the
+  translation. This points at DART `error-reflector`/`fetch-config`
+  /`diag-config` (research agent item 1: Apple write-first recovery sequence).
+- Ring the doorbell with a ring item whose buffer address is host-controlled
+  harmless but whose ring base is already known-good... (same as above).
