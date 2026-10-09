@@ -557,3 +557,10 @@ D11-feed0 (`...-D11-feed0-iospte-alias-defer25-...-20261009T173847Z`, `h1b_feed=
 log lags the machine by an unknown amount and its last line is where the network transfer stopped, not where the reset happened; the "log ends at X" statements of runs 18-27 therefore only bound the
 crash time from below. The only run that proved the machine alive longer (D7/D8: a doorbell with empty rings, waits of 8-20 s) shows the firmware itself is harmless while idle. Patch 0083
 (`brcmfmac.h1b_sync_ms`) adds marker lines with sleeps at each step of the msgbuf attach and before/after the first ioctl, so that each line is delivered before the next step runs.
+
+## Run 29: D12-sync-feed0: the boot hung again at the start of userspace (third deferred-start hang)
+
+D12-sync-feed0 never reached the network: the photo shows the kernel booting to `Run /init` and the screen frozen on `### postmarketOS initramfs ### ... Trying to mount subpartitions for 10 seconds...`
+(the same early freeze as D3r0 twice and D8 once; all of them are deferred-start payloads, 4 of ~20 such boots, none of the earlier non-deferred Wi-Fi boots). The log shows `ASPM: default states L1` for
+the endpoint. Hypothesis: with the deferral the powered chip idles for 25 s without a driver, DEVICE_WAKE high; if its link enters L1 and does not wake, a later PCI access (early userspace scans sysfs, or any
+config/MMIO access) hangs the CPU, and the same link-state mechanism could be what resets the machine once the firmware is active. Test, no rebuild: `pcie_aspm=off` (already allowlisted) on the sync-full payload (D13).

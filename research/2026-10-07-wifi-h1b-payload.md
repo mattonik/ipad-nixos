@@ -353,3 +353,7 @@ Test: `kernel/test_brcmfmac_h1b_feed_patch.py`; offline suite 64 passed, 0 faile
 `brcmfmac.h1b_sync_ms=N` logs a `t7000-h1b: sync: <step>` marker and sleeps N ms at each step of the msgbuf attach and before/after the first ioctl. Test: `kernel/test_brcmfmac_h1b_sync_patch.py`;
 offline suite 65 passed, 0 failed, 7 skipped. Public base: `/nix/store/gfcd5iasckc05nybzd8080mjvjpv6k0j-ipad-air2-m1n1-hoolock-pcie-j81-wifi-h1b-base`. Private payloads (`ios_pte=1`, `pci_alias=1`, `h1b_defer_s=25`, `h1b_hold=1`, `device_wake=1`, test MAC, `h1b_sync_ms=150`):
 D12-sync-feed0 (`h1b_feed=0`) and D12-sync-full (all buffers). Not run yet.
+
+## Payload D13: ASPM off with the sync markers
+
+D13 = the 0083 base (`/nix/store/gfcd5iasckc05nybzd8080mjvjpv6k0j-ipad-air2-m1n1-hoolock-pcie-j81-wifi-h1b-base`) + `pcie_aspm=off` + `h1b_sync_ms=150` + `ios_pte=1` + `pci_alias=1` + `h1b_defer_s=25` + `h1b_hold=1` + `device_wake=1` + the test MAC, all buffers fed (stock). Not run yet.
