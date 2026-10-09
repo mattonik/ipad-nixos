@@ -624,3 +624,23 @@ Next experiments (each a separate go):
   /`diag-config` (research agent item 1: Apple write-first recovery sequence).
 - Ring the doorbell with a ring item whose buffer address is host-controlled
   harmless but whose ring base is already known-good... (same as above).
+
+## Run 33 — D15-appleinit (D13-feed0 + `apple_dart.h1b_apple_init=1`, patch 0085)
+
+Boot log: `apple-dart 602002000.iommu: Apple DART start-up: error-reflector 0x0020ffff first`, then
+`fetch-config 0x000e0303 diag-config 0x00000100 written` (0.067 s, no problem).
+Same path as run 31 up to the first ioctl (`cmd=262`, wptr write, `RING !` doorbell 26.4666),
+but now NO silent hard reset: 3 ms after the doorbell the DART raised its interrupt and the
+STOCK handler crashed: `Unable to handle kernel NULL pointer dereference at 0x8`,
+`apple_dart_s5l8960x_irq+0xa8` (kworker/0:2, level-0 translation fault, `cfg->dma_min` with
+`cfg = dev_iommu_priv_get(dart->dev)` which is NULL for the DART's own device). The iPad then rebooted
+(oops -> reset), the log ends mid-oops.
+
+Conclusions:
+1. The firmware's first DMA read DOES reach the DART and the DART DOES flag an error (the
+   handler only runs for `ERROR_FLAG` set). The silent hard reset of runs 13-31 is the DART's
+   error NOT being reflected/handled: with `error-reflector` (+0x24) programmed (and fetch/diag-config)
+   the same event becomes an ordinary interrupt. Apple's write-first start-up order was the missing piece
+   for survival, not for the translation itself.
+2. So the next datum is the fault itself: status, code (READ FAULT / NO PTE / NO PMD / NO TTBR),
+   stream, and address. The stock handler cannot print it (NULL deref); patch 0086 makes it safe.
