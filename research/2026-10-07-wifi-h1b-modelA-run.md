@@ -467,3 +467,18 @@ from the firmware; the host logs ring and DMA setup (`dma idxbuf: size 360 iova 
 last captured host line comes a few ms earlier than in D2 (which reached the first `RING !`), i.e. the reset is not tied to one specific host statement. Together with D1 (reset
 right after `request_irq`) this fits "the machine resets about 100-200 ms after the firmware starts, whatever the host does at that moment", for example a clock/power or PCIe-link
 event of the device itself once the Wi-Fi core is attached, followed by a fatal host access. Patch 0078 (`brcmfmac.h1b_step_s`) pauses between the setup phases to test that.
+
+## Run 22: D5 (setup-phase pauses of 8 s): the iPad survives 41 s of running firmware; only the first doorbell kills it
+
+Payload `wifi-h1b-modelA-D5-steps8-defer30-macaddr-hold-devwake-20261008T143901Z` (pyusb had to be re-fetched for the loader, the old store path was garbage-collected:
+`/nix/store/d2lb4l3rswzqqvlh9v68glgk528riba1-python3.14-pyusb-1.3.1`). Timeline from the real-time log: deferred registration at 30.4 s, firmware download and start at 30.46 s, then pauses of
+8 s after each phase (firmware start, ring buffers, scratch buffers, interrupt request, before attach) with `step: ... pausing 8 s` / `pause ... over` lines at 38.88, 47.07, 55.26, 63.46 and
+71.65 s. The machine stays alive throughout, with the firmware's Wi-Fi core attached and running, MSI enabled and the interrupt requested. Then `msgbuf_attach: Feeding buffers` (71.653 s),
+`ring_mb_write_wptr W w_ptr 255 (0), ring 1` (71.658 s), `ring_mb_ring_bell RING !` (71.661 s), and the link is gone.
+
+Conclusion: the reset is not a time-based event of the device, and not caused by any host setup step (rings, scratch, request_irq, even with a running firmware). It is triggered by the
+**first doorbell** (or the host's activity immediately around it): the firmware's first reaction to the host (its first DMA through the DART with host-memory indices, or its
+first radio/PHY action). The MSI doorbell mapping at 0xbffff000 (model A page index) was verified by an earlier device-originated MSI, so model A indexing works for that mapping; ring
+memory pages are the first ordinary DMA mappings used by the device. Candidates: (1) a DMA read/write the DART/PCIe inbound path cannot serve (fatal fabric error instead of an AER/DART fault),
+(2) the radio/PHY power-up on the first command, (3) an interrupt/exception storm in the CPU. No panic text reached the host log. Next: film the iPad's own screen at the moment of the
+first doorbell: a kernel panic/SError trace on the framebuffer console would name the faulting access.
