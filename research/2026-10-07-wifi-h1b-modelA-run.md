@@ -522,3 +522,23 @@ Key observation: the DART has **four** page-table roots (TTBR 0-3), one per GiB 
 region). If the hardware indexes by the **full** device address (top bits select the TTBR), a device address such as 0xbfffd000 would resolve through TTBR 2, which holds no entry for it, and the first DMA read would
 fault. If it subtracts the window base first (Apple's rebase), model A is right. Neither has been tested: the MSI doorbell works through the PCIe controller's own MSI decoder (port `msibase`), never through the DART, so the earlier
 "device-originated MSI" success says nothing about the DART indexing. Patch 0080 (`apple_dart.pci_alias=1`) maps every page twice (rebased and raw index) so the translation succeeds under either hypothesis.
+
+## Run 26: D9 (DART alias mapping at both indices): the iPad still resets; the DART page-table entry format differs from Apple's
+
+D9 (`wifi-h1b-modelA-D9-alias-defer25-macaddr-hold-devwake-20261009T151621Z`, `apple_dart.pci_alias=1`): the alias was active (`pci window pages are also mapped at the raw index`, 0.362 s) and
+the iPad still reset at the same point (the log ends after `msi after request_irq`, before the first feed line reached the host). So the DART indexing model (rebased page 0 or raw page 0x80000) is not
+what makes the first ring DMA fail: an entry exists for the device address under both.
+
+Comparing the real iOS 8.1 `AppleS5L8960XDART` page-table code (decompile `/tmp/dart-full-derived.c`, functions at 0xffffff80026c4c88-0xffffff80026c5078) with Linux's `io-pgtable-dart.c`:
+
+| | iOS S5L8960X DART | Linux `APPLE_DART` format (as used for this DART) |
+|---|---|---|
+| TTBR | `(paddr >> 12) & 0xffffff \| 0x80000000` | same (observed 0x80804232 .. 0x80804235) |
+| Directory (L1) entry, 64-bit | `(paddr & 0xffffff000) \| 3` | `paddr \| 1` (valid bit 0 only) |
+| Leaf (L2) entry, 64-bit | `(pfn << 12) \| 2` (+ a flag in bit 0, the lookup returns it as `& 1`) | `paddr \| 1 \| 2 \| (0xfff << 40)` plus NO_READ/NO_WRITE bits |
+| Page-number split | TTBR `page >> 18 & 3`, L1 `page >> 9 & 0x1ff`, L2 `page & 0x1ff` | same split |
+
+If the S5L8960X valid bit is bit 1 (as Apple writes it, `| 2` / `| 3`), Linux's directory entries (bit 0 only) are **invalid** for this hardware, so any device DMA through the DART would fault regardless of the
+index model, and the leaf entries carry bits 51:40 the hardware does not define. That fits everything seen: the MSI path (PCIe controller decoder, not the DART) works; DMA read of ring items is
+the first translation the DART ever does for a device, and the SoC resets. Patch 0081 adds `apple_dart.ios_pte=1` (S5L8960X DART only; off by default): valid bit 1, directory `| 3`, leaf `| 2`, no subpage/protection fields.
+Not yet proven on hardware.
