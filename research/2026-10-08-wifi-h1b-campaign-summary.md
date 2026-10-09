@@ -1,5 +1,7 @@
 # Wi-Fi H1B campaign summary (2026-10-06 .. 2026-10-08)
 
+> Superseded for current state by [`2026-10-09-wifi-h1b-handoff.md`](2026-10-09-wifi-h1b-handoff.md) (runs 15-30, the `macaddr` fix, and the open hard-reset problem).
+
 Goal: get the BCM4350 (PCIe `14e4:43a3`, C2 stepping) to complete brcmfmac's first control exchange (`cur_etheraddr`
 query over the msgbuf rings, completed via MSI slot 8 / AIC 232) with the private C2 `rieslinga` firmware.
 
