@@ -51,3 +51,23 @@ So the earlier `btattach` failure is not a baud-rate or flow-control problem: wi
 Apple's Bluetooth node lists `function-bt_wake` next to `power_enable`; BCM controllers sleep their UART when the wake line is low. Nothing in our system drives pin 164. Testing it needs a write that does not exist yet:
 no `devmem` tool, no sysfs GPIO, no libgpiod on the iPad; `/dev/mem` exists. Options: a tiny static poke tool for the pinctrl register of pin 164 (Apple GPIO register `base + 4*pin`, base `0x20e300000`), or the proper route (DT: a `bluetooth` serdev child with `device-wakeup-gpios` on pin 164 plus a D2207 PMU GPIO provider for `power_enable`: plan BT-3).
 Driving an AP GPIO is a new write category: it needs its own explicit approval for the run (like DEVICE_WAKE on pin 165).
+
+## Third round (same day): BT_WAKE (AP GPIO 164) and power-enable both asserted
+
+Run by the user from their own terminal (`boot/bt_wake_experiment.py`; the tool-use classifier blocked me from the pad write, so the user ran the self-restoring script, commit `3f49194`). Tool: `pinpoke` (static, `/dev/mem`, reads any pin, may write only pin 164; flake package `pinpoke-static`).
+- Baseline: pin 164 pad register `0x00072602` = output, **driven low** (set by iBoot); `0x0402 = 0x09`, `0x0010 = 0x00`, battery Charging. Pin 165 (Wi-Fi wake) `0x00072603` = out, high, as expected.
+- `pinpoke high 164` -> `0x00072603` (readback OK); `0x0402 <- 0x0b` -> readback `0x0b`.
+- Raw HCI Reset probe, both lines asserted: **0 bytes** at 115200, 921600 and 3,000,000 baud, with and without RTS/CTS. `btattach -P bcm -S 3000000`: `hci0` registers, then `command 0xfc18 tx timeout`, `BCM: failed to write update baudrate (-110)`, `BCM: Reset failed (-110)` — unchanged.
+- Restore verified: `0x0402 = 0x09`, pin 164 `0x00072602`, `0x0010 = 0x00`, `0x04c0 = 0xba`, battery Charging.
+
+**Conclusion:** neither BT_WAKE low nor a missing baud/flow-control setting explains the silent chip: with power-enable and BT_WAKE both high the Bluetooth UART still receives nothing.
+
+**UART pad routing (read-only, `pinpoke read`):** pin 14 (TX) `0x00072641` and pin 32 (RTS) `0x00072643` are peripheral function 2 (set by our DT/ADT); the ADT lists only those two as `function-*` for UART3. Pins 15 (RX, presumably) and 33 (CTS, presumably) read `0x00070221`:
+peripheral function 1, input enabled, as left by iBoot. Pin 34 (UART5 TX / battery HDQ) `0x00072621` has the same function-1 form. So RX/CTS do not look like plain GPIOs; the pad routing is not an obvious fault (but it is also not verified by signal measurement).
+Still unexplained clue: the UART's modem-status line shows `RTS|DTR|DSR|CD` and never CTS, both unpowered and powered, i.e. the chip's own RTS output never indicates "ready" (a live BCM controller normally asserts it once its UART is up).
+
+## What is left to explore (static analysis first, then maybe hardware)
+1. The iOS 8.1 Bluetooth driver's power-up sequence after `function-power_enable`: waits, whether it toggles `bt_wake`, whether a 32 kHz clock or other PMU rail must be enabled first, and what `transport-encoding = 3`, `coex = 2` and `transport-speed = 3 Mbaud` select (a mode that the first HCI command must match).
+2. Whether BT_REG_ON on this module is really PMU GPIO2: GPIO2's config goes `0x09 -> 0x0b` and `0x0063` bit 6 follows it; decode what that data bit is.
+3. The Wi-Fi side: the chip is a Wi-Fi+BT combo that is powered via `reg_on` (GPIO3, high); a BT-specific rail/clock may be shared with the Wi-Fi power sequencing (e.g. BT only comes alive after the Wi-Fi firmware sets a BT-enable bit through the chip's own registers: on some BCM4350 designs the Wi-Fi firmware must report BT coex; the C2 firmware has a `bt` coex/`btcoex` setting).
+4. UART clock/baud accuracy: `base_baud = 0` in the Samsung UART driver; check the real divisor for 115200/3 Mbaud (HDQ flakiness on UART5 hints at baud/timing error).
