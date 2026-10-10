@@ -61,3 +61,34 @@ per-pin table. GPIO2 remains `0x0402`; the old `0x03e6` write was unrelated.
 
 The public binaries expose an initialization dependency, but they do not yet
 prove that missing defaults explain the Linux Bluetooth failure.
+
+## Exact iOS 8.1 decode
+
+The matching iPad5,3 12B410 kernelcache was re-extracted with `ipsw`'s public
+key lookup (SHA-256
+`19c277d60e0a1185b1e4a1b72cda4f1f550c0b0bf670791542234a6dbbcc28bf`). The
+standalone `AppleD2207PMU` image begins at `0xffffff8002b44000`.
+
+In `AppleD2207PMU::start` (`0xffffff8002b45254` onward), the target does the
+following through the provider's `getProperty` virtual call:
+
+```text
+gpio-activate-defaults  -> this + 0x168
+gpio-suspend-defaults   -> this + 0x170
+gpio-quiesce-defaults   -> this + 0x178
+gpio-pin-config         -> this + 0x180
+```
+
+It then checks `gpio-pin-config`'s byte length against `0x54` (84 bytes). If
+valid, it passes the activate-defaults buffer at `this + 0x168` to
+`0xffffff8002b45d8c`, which:
+
+1. reads 21 GPIO config bytes with `readGPIOConfig(0, ..., 21)`;
+2. merges 21 mask/value pairs;
+3. writes the 21-byte result with `writeGPIOConfig(0, ..., 21)`.
+
+This closes the property-path question. The complete J81 ADT contains none of
+these four properties, so this default-table path is skipped for J81. The
+Bluetooth `function-power_enable` descriptor remains a separate later
+`AppleARMFunction` call; the missing defaults do not explain the failed GPIO2
+write by themselves.
