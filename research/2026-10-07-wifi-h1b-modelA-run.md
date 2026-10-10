@@ -780,3 +780,18 @@ The slowness was the debug logging (each message is formatted and printed to the
 50/38 Mbit/s is plausible for one busybox TCP stream on a single-chain-limited 2.4 GHz 20 MHz link; the AP offers 2.4 GHz only for this SSID, so 5 GHz/VHT rates were not tested. Not yet measured: 5 GHz,
 multi-stream, CPU-bound limit (loadavg 1.9 during the download on 2 busy cores).
 Consequence: the production kernel/payload (`m1n1-hoolock-wifi`, no `brcmfmac.debug`, diagnostics compiled out) should be the normal Wi-Fi payload; the test payloads keep the debug bootarg for diagnosis.
+
+## Run 44 — 5 GHz throughput (D22, runtime debug off), 2026-10-10
+
+The user supplied a 5 GHz variant of the test network (hidden SSID: not in the scan results by name, found by a directed probe with `scan_ssid=1`; same passphrase, temporary config pushed to the iPad's RAM only).
+Association on 5240 MHz (channel 48) took 3 s, DHCP bound the same lease, signal -58/-59 dBm. Local-network tests against the Mac, one TCP stream, busybox `wget` / `dd | nc`, brcmfmac debug and console flood off:
+
+| | 2.4 GHz (run 43) | 5 GHz |
+|---|---|---|
+| download | 50 MB in 8 s, ~50 Mbit/s | **200 MB in 9 s, ~178 Mbit/s** |
+| upload | 50 MB in 11 s, ~38 Mbit/s | **100 MB in 8 s, ~105 Mbit/s** |
+| PHY rate rx/tx | 130-144 / 78 Mbit/s | **702-780 / 292 Mbit/s** (VHT, 2 streams, wide channel) |
+| tx failed | ~0 | 0 |
+
+So the radio and the host path (DART DMA, msgbuf rings, firmware) are fast; the first measurement's 7.6 Mbit/s was the debug logging. Single busybox streams on a ~1.5 GHz CPU are likely the remaining limit above ~180 Mbit/s; not probed further.
+Hidden-SSID 5 GHz networks need `scan_ssid=1` in the supplicant config (the production flow's credentials file should carry it for hidden networks).
