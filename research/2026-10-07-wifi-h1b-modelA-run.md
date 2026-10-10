@@ -644,3 +644,15 @@ Conclusions:
    for survival, not for the translation itself.
 2. So the next datum is the fault itself: status, code (READ FAULT / NO PTE / NO PMD / NO TTBR),
    stream, and address. The stock handler cannot print it (NULL deref); patch 0086 makes it safe.
+
+## Run 34 — D16-appleinit-irqfix (D15 + patch 0086: DART fault handler NULL-safe)
+
+No reset. The DART flagged the firmware's first DMA read and the fixed handler printed it:
+`apple-dart 602002000.iommu: translation fault: status:0x80000104 stream:0 code:0x4 (NO PTE FOR IOVA) at 0x3fffe000 (raw error address 0x3fffe000)`
+3 µs after the doorbell (26.5273). Then the usual 2.2 s ioctl timeout, `cur_etheraddr failed -5`,
+`brcmf_fw_crashed` (host verdict), device held. The machine stayed up.
+
+0x3fffe000 + the 0x80000000 rebase = host iova 0xbfffe000 = the DMA index buffer (`dma idxbuf size 360 iova 0xbfffe000`),
+the last page of the domain aperture (`0x80000000..0xbfffefff`), which the host did map. The hardware's walk for
+stream 0 finds no valid leaf for page 0x3fffe even though TTBR/L1 exist (code 4 = NO PTE, not NO TTBR/NO PMD).
+Patch 0087 prints the TTBRs and the L1/L2 entries the hardware sees for that page and its neighbours.
