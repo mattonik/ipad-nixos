@@ -92,3 +92,31 @@ these four properties, so this default-table path is skipped for J81. The
 Bluetooth `function-power_enable` descriptor remains a separate later
 `AppleARMFunction` call; the missing defaults do not explain the failed GPIO2
 write by themselves.
+
+## Exact iOS 8.1 AppleBluetooth startup sequence
+
+The embedded `AppleBluetooth` Mach-O was extracted from the same decoded
+kernelcache (load address `0xffffff8002c4b000`, SHA-256 above) and disassembled
+directly. The `BTReset::start(IOService *)` body begins at
+`0xffffff8002c4b930`.
+
+The relevant order is:
+
+```text
+0x2c4b948  lookup("function-bt_reset")
+0x2c4b97c  lookup("function-bt_wake")
+0x2c4b9b0  lookup("function-power_enable")
+0x2c4b9c8  call the returned power-enable function
+0x2c4b9e4  register the btreset/btwake/btpoweroff character devices
+0x2c4bb74  call the superclass start path
+```
+
+There is no delay, second rail/clock lookup, UART configuration, transport
+encoding handling, or reset/wake assertion in this startup body. The reset and
+wake function handles are only used by the character-device callbacks; on J81
+the reset handle is absent. The power callback is the only automatic radio
+enable action at driver start.
+
+This closes the highest-value static question: `transport-encoding = 3`,
+3-Mbaud setup, and any HCI-side sequencing are outside this GPIO helper (in the
+Bluetooth transport/userland path), not hidden in `AppleBluetooth.kext`.
