@@ -137,6 +137,31 @@ def main():
         for badmac in ("00:11:22:33:44:55", "03:6a:38:70:00:01", "02:6a:38:70:00", "zz:6a:38:70:00:01", "02:00:00:00:00:00"):
             expect_exit(lambda b=badmac: A.assemble(pub, assets, work / ("badmac" + str(abs(hash(b)) % 1000)), check_hashes=False, nvram_macaddr=b), "nvram-macaddr")
         # Bad inputs refuse before anything is written.
+        # Wi-Fi userland: static tools + private credentials go together, land in the overlay with the right modes, and the passphrase never reaches the manifest.
+        ul = tmp / "userland" / "bin"
+        ul.mkdir(parents=True)
+        for n in A.WIFI_TOOLS:
+            (ul / n).write_bytes(b"\x7fELF" + n.encode() * 8)
+        cred = tmp / "cred.conf"
+        cred.write_text('ctrl_interface=/var/run/wpa_supplicant\nnetwork={\n\tssid="TestNet"\n\tpsk="s3cret-pass-phrase"\n\tkey_mgmt=WPA-PSK\n}\n')
+        expect_exit(lambda: A.assemble(pub, assets, work / "w0", check_hashes=False, wifi_userland=tmp / "userland"), "go together")
+        expect_exit(lambda: A.assemble(pub, assets, work / "w1", check_hashes=False, wifi_credentials=cred), "go together")
+        mw = A.assemble(pub, assets, work / "wifi", check_hashes=False, wifi_userland=tmp / "userland", wifi_credentials=cred)
+        pw, _ = A.verify(work / "wifi")
+        assert not pw, pw
+        ents = cpio_entries(gzip.decompress((work / "wifi" / "initramfs.gz").read_bytes()))
+        for n in ("usr/bin/iw", "usr/bin/wpa_supplicant", "usr/bin/wpa_cli", "usr/bin/wifi-up", "usr/share/wifi/udhcpc.script", "etc/wpa_supplicant.conf"):
+            assert n in ents and ents[n][1], n
+        assert ents["etc/wpa_supplicant.conf"][0] & 0o777 == 0o600 and ents["usr/bin/wpa_supplicant"][0] & 0o777 == 0o755
+        assert b"s3cret-pass-phrase" in ents["etc/wpa_supplicant.conf"][1]
+        manifest_text = (work / "wifi" / "PRIVATE_MANIFEST.json").read_text()
+        assert "s3cret-pass-phrase" not in manifest_text and "TestNet" not in manifest_text and sha(cred.read_bytes()) not in manifest_text
+        assert mw["wifi_userland"]["credentials_present"] is True and set(mw["wifi_userland"]["tools_sha256"]) == set(A.WIFI_TOOLS)
+        # a payload without the userland still refuses stray Wi-Fi tools
+        assert A.assemble(pub, assets, work / "plain", check_hashes=False)["wifi_userland"] is None
+        bad_cred = tmp / "bad.conf"
+        bad_cred.write_text("hello\n")
+        expect_exit(lambda: A.assemble(pub, assets, work / "w2", check_hashes=False, wifi_userland=tmp / "userland", wifi_credentials=bad_cred), "not a wpa_supplicant configuration")
         (assets / A.NVRAM_NAME).write_bytes(b"")
         expect_exit(lambda: A.assemble(pub, assets, work / "x2", check_hashes=False), "empty")
         assert not (work / "x2").exists()

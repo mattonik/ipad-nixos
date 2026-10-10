@@ -118,10 +118,20 @@ def newc_entry(name, mode, data=b"", nlink=1):
     return out
 
 
-def build_overlay(files):
-    parts = [newc_entry(d, 0o040755, nlink=2) for d in ("lib", "lib/firmware", FW_DIR)]
+def build_overlay(files, extra=()):
+    """`files` are firmware files under FW_DIR; `extra` are (path, mode, data) entries anywhere (the Wi-Fi userland, see wifi_userland_entries)."""
+    dirs = ["lib", "lib/firmware", FW_DIR]
+    for path, _mode, _data in extra:
+        parent = ""
+        for part in path.split("/")[:-1]:
+            parent = f"{parent}/{part}" if parent else part
+            if parent not in dirs:
+                dirs.append(parent)
+    parts = [newc_entry(d, 0o040755, nlink=2) for d in dirs]
     for name, data in files:
         parts.append(newc_entry(f"{FW_DIR}/{name}", 0o100644, data))
+    for path, mode, data in extra:
+        parts.append(newc_entry(path, mode, data))
     parts.append(newc_entry("TRAILER!!!", 0))
     return b"".join(parts)
 
@@ -167,7 +177,34 @@ def write_private(path, data):
         f.write(data)
 
 
-def assemble(public, assets, out, nvram_name=NVRAM_NAME, check_hashes=True, token=None, extra_bootargs=(), nvram_macaddr=None):
+WIFI_TOOLS = ("iw", "wpa_supplicant", "wpa_cli")
+WIFI_SCRIPT_SRC = Path(__file__).with_name("wifi-up.sh")
+WIFI_UDHCPC_SRC = Path(__file__).with_name("wifi-udhcpc.script")
+
+
+def wifi_userland_entries(userland_dir, credentials_file):
+    """The Wi-Fi userland of a private payload: static iw/wpa_supplicant/wpa_cli, the boot script, the udhcpc script and the private
+    wpa_supplicant.conf. The credentials file is read here and only ever written into the private payload (mode 0600); the manifest records
+    that it is present, never its content or hash."""
+    userland_dir, credentials_file = Path(userland_dir), Path(credentials_file)
+    entries, tools = [], {}
+    for name in WIFI_TOOLS:
+        data = (userland_dir / "bin" / name).read_bytes() if (userland_dir / "bin" / name).is_file() else (userland_dir / name).read_bytes()
+        if data[:4] != b"\x7fELF":
+            raise SystemExit(f"{name} is not an ELF binary")
+        entries.append((f"usr/bin/{name}", 0o100755, data))
+        tools[name] = sha256(data)
+    entries.append(("usr/bin/wifi-up", 0o100755, WIFI_SCRIPT_SRC.read_bytes()))
+    entries.append(("usr/share/wifi/udhcpc.script", 0o100755, WIFI_UDHCPC_SRC.read_bytes()))
+    conf = credentials_file.read_bytes()
+    if b"ssid=" not in conf or b"psk=" not in conf and b"key_mgmt=NONE" not in conf:
+        raise SystemExit("the credentials file is not a wpa_supplicant configuration with an ssid and a psk")
+    entries.append(("etc/wpa_supplicant.conf", 0o100600, conf))
+    return entries, tools
+
+
+def assemble(public, assets, out, nvram_name=NVRAM_NAME, check_hashes=True, token=None, extra_bootargs=(), nvram_macaddr=None,
+             wifi_userland=None, wifi_credentials=None):
     out = private_out_dir(out)
     if out.exists() and any(out.iterdir()):
         raise SystemExit(f"{out} already exists and is not empty")
@@ -195,8 +232,13 @@ def assemble(public, assets, out, nvram_name=NVRAM_NAME, check_hashes=True, toke
     manifest_assets.append({"source": nvram_name, "staged": NVRAM_STAGED, "size": len(staged), "sha256": sha256(staged),
                             "source_sha256": sha256(raw), "key_value_lines": npairs, "normalised": True,
                             "macaddr_added": bool(macaddr), **({"macaddr": macaddr} if macaddr else {})})
+    extra_entries, wifi_tools = [], None
+    if bool(wifi_userland) != bool(wifi_credentials):
+        raise SystemExit("--wifi-userland and --wifi-credentials go together")
+    if wifi_userland:
+        extra_entries, wifi_tools = wifi_userland_entries(wifi_userland, wifi_credentials)
     token = token or secrets.token_hex(16)
-    final_parts, blob = compose(parts, names, build_overlay(files), token, tuple(extra_bootargs))
+    final_parts, blob = compose(parts, names, build_overlay(files, extra_entries), token, tuple(extra_bootargs))
     out.mkdir(parents=True, exist_ok=True)
     os.chmod(out, 0o700)
     write_private(out / "m1n1-linux.bin", blob)
@@ -208,6 +250,8 @@ def assemble(public, assets, out, nvram_name=NVRAM_NAME, check_hashes=True, toke
         "public_parts_sha256": {n: sha256(parts[n]) for n in names},
         "final_m1n1_linux_sha256": sha256(blob), "final_size": len(blob),
         "bootargs": final_parts["bootargs"].decode().strip(), "extra_bootargs": list(extra_bootargs), "assets": manifest_assets,
+        "wifi_userland": ({"tools_sha256": wifi_tools, "credentials_present": True, "autostart": "/usr/bin/wifi-up from the boot hook"}
+                          if wifi_tools else None),
         "selection": "explicit: C2 rieslinga set + tuple-selected NVRAM staged under canonical brcmfmac4350c2-pcie names",
     }
     write_private(out / "PRIVATE_MANIFEST.json", (json.dumps(manifest, indent=2) + "\n").encode())
@@ -248,8 +292,20 @@ def verify(out):
                    {a["staged"] for a in manifest["assets"]})
     if extra:
         problems.append(f"unexpected extra firmware files: {extra}")
+    userland = manifest.get("wifi_userland")
     tools = sorted(n for n in entries if n.rsplit("/", 1)[-1] in FORBIDDEN_WIFI_TOOLS)
-    if tools:
+    if userland:
+        want = {f"usr/bin/{n}" for n in WIFI_TOOLS}
+        if set(tools) != want:
+            problems.append(f"Wi-Fi tools differ from the recorded userland: {tools}")
+        for n, h in userland["tools_sha256"].items():
+            e = entries.get(f"usr/bin/{n}")
+            if e is None or sha256(e[1]) != h:
+                problems.append(f"{n} differs from the manifest")
+        for n in ("usr/bin/wifi-up", "usr/share/wifi/udhcpc.script", "etc/wpa_supplicant.conf"):
+            if n not in entries or not entries[n][1]:
+                problems.append(f"{n} missing from the initramfs")
+    elif tools:
         problems.append(f"Wi-Fi client/scan tools present: {tools}")
     if "etc/deviceinfo" not in entries or b"ecm.usb0" not in entries["etc/deviceinfo"][1]:
         problems.append("USB recovery (ECM deviceinfo) is not intact")
@@ -267,6 +323,8 @@ def main():
     ap.add_argument("--nvram", default=NVRAM_NAME)
     ap.add_argument("--extra-bootarg", action="append", default=[], help="test toggle: pcie_apple_t7000.device_wake=1 | brcmfmac.h1b_ds_ack=0|1|2")
     ap.add_argument("--nvram-macaddr", help="append macaddr=<MAC> to the staged NVRAM (the firmware needs the key to attach its Wi-Fi core); unicast, locally administered, e.g. 02:6a:38:70:00:01")
+    ap.add_argument("--wifi-userland", type=Path, help="directory with static iw, wpa_supplicant, wpa_cli (flake package wifi-userland-static; bin/ is accepted); starts Wi-Fi at boot with --wifi-credentials")
+    ap.add_argument("--wifi-credentials", type=Path, help="private wpa_supplicant.conf (ssid/psk); installed only into the private payload, mode 0600, never recorded in the manifest")
     ap.add_argument("--no-hash-check", action="store_true", help="test fixtures only (synthetic assets)")
     args = ap.parse_args()
     if args.verify:
@@ -282,7 +340,8 @@ def main():
     if not (args.public and args.assets and args.out):
         ap.error("--public, --assets and --out are required")
     manifest = assemble(args.public, args.assets, args.out, args.nvram, check_hashes=not args.no_hash_check,
-                        extra_bootargs=args.extra_bootarg, nvram_macaddr=args.nvram_macaddr)
+                        extra_bootargs=args.extra_bootarg, nvram_macaddr=args.nvram_macaddr,
+                        wifi_userland=args.wifi_userland, wifi_credentials=args.wifi_credentials)
     problems, _ = verify(args.out)
     if problems:
         print("FAIL after assembly:", problems)

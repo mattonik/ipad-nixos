@@ -998,7 +998,7 @@
 
               hook=etc/postmarketos-mkinitfs/hooks/20-debug-shell.sh
               sed 's|@DROPBEAR@|${dropbearPkg}|' ${./boot/ssh-stage1.sh} \
-                | sed 's|^loop_forever$|/usr/bin/charging-policy >/var/log/charging-policy.log 2>\&1 \&\nloop_forever|' > "overlay/$hook"
+                | sed 's|^loop_forever$|/usr/bin/charging-policy >/var/log/charging-policy.log 2>\&1 \&\n[ -x /usr/bin/wifi-up ] \&\& /usr/bin/wifi-up >/dev/null 2>\&1 \&\nloop_forever|' > "overlay/$hook"
               chmod 755 "overlay/$hook"
 
               mkdir -p overlay/root/.ssh overlay/var/empty overlay/var/run overlay/var/log
