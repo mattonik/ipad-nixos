@@ -805,3 +805,14 @@ Cold boot: the iPad answered on USB at ~16 s, the firmware came up at 0.59 s, `w
 -58 dBm, PHY 526 rx / 234 tx Mbit/s. brcmfmac debug mask 0 (quiet). Ping to an internet host 3/3 (avg 19 ms). Kernel log clean (the only grep hit was `printk: debug: ignoring loglevel`).
 Throughput (Mac on the same LAN, one TCP stream, busybox): download 200 MB in 7 s ≈ **228 Mbit/s**, upload 100 MB in 9 s ≈ **93 Mbit/s**, 0 tx failures at -60 dBm.
 Known cosmetic items: `wifi-up` starts at ~17 s although `wlan0` exists at ~0.6 s (hook ordering); a few unconditional `t7000-h1b: feed:` log lines from msgbuf.c (patch 0082/0083 code outside the diagnostic option).
+
+## Run 46 — P2: the J81 base package with Wi-Fi bundled, full hardware pass, 2026-10-10
+
+Public base `m1n1-hoolock-wifi` with `wifi = true` (store path `/nix/store/4k4n3xs634zz2rcxhwjgk0q0hgcgfrdg-ipad-air2-m1n1-hoolock-wifi`, GC root `artifacts/live/gcroot-wifi-production2`; the generic Wi-Fi userland is in the public image) + private overlay with
+firmware/NVRAM and the credentials file only (`--production --wifi-credentials`; no `--wifi-userland`). Cold boot:
+- Wi-Fi: `wlan0` present, `associated (attempt 1, 3s)` at 20.3 s, DHCP bound at 20.4 s, 5 GHz (5240 MHz), -62 dBm, rx 650 / tx 175 Mbit/s, address from DHCP — no manual step.
+- Charging (base item 1): `tablet-status` shows `status: Charging` (79 %), `input_current_limit: 2400 mA`, battery 4122 mV.
+- Telnet + SSH (item 2): `ssh (dropbear): running`, `telnet recovery: running`; debug console on screen (item 3).
+- Tablet tools (item 4): `tablet-status` has the new `== wifi (wlan0) ==` section (state, SSID, frequency, signal, rx/tx bitrate, address); `tablet-dashboard --once` lists `wifi (wpa_supplicant): running` and `charging policy: running`.
+- Tools present in the base: `iw`, `wpa_supplicant`, `wpa_cli`, `wifi-up`.
+Remaining for the base package: the universal probe (item 5, stage B designed only) and the cosmetic items (late `wifi-up` start, a few unconditional `feed:` log lines).

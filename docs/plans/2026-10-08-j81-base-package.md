@@ -60,3 +60,7 @@ To bundle into the base (mkJ81BasePayload) as the sixth always-present item:
 4. Show the Wi-Fi state (SSID, signal, address) in `tablet-status`/`tablet-dashboard`, and let the universal probe query it.
 5. Tests: contract test that the base carries the tools and the hook line, a test that a base without credentials boots and does not start wpa_supplicant, and a hardware pass with the full base (charging + telnet/SSH + console + dashboard + Wi-Fi).
 Open: whether the base should also carry a regulatory database, and the default behaviour for several remembered networks (current private file: 5 GHz hidden network first, 2.4 GHz fallback).
+
+### Status of item 6 (2026-10-10)
+Implemented and hardware-verified (run 46): steps 1-3 and 5's hardware pass, plus the Wi-Fi section of tablet-status/dashboard (step 4, display part). `mkJ81BasePayload` has a `wifi` argument; `m1n1-hoolock-wifi` is the base with Wi-Fi.
+Still open: letting the universal probe query the Wi-Fi state (needs stage B), the 17 s `wifi-up` start (hook ordering), the regulatory database, and the multi-network policy beyond "5 GHz hidden first, 2.4 GHz fallback" (private credentials file).
