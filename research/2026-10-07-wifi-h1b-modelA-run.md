@@ -667,3 +667,14 @@ Neighbours: 0x3fffd leaf 0x807530002 (ring 0), 0x3ffff leaf 0 (unmapped, apertur
 Hardware still reports NO PTE (not NO PMD): it accepts the directory entry `|3` but not the leaf `|2`.
 Hypothesis: the leaf valid/permission bits differ from the iOS decompile reading (e.g. bit 0 must be set, or protection bits).
 Test D18: `ios_pte` off (Linux native leaf: valid bit 0 + subpage fields), Apple DART init on, no build.
+
+## Run 36 — D18 (D17 with `ios_pte` off: Linux native entry format, Apple DART init on)
+
+(The first D18 boot froze in the initramfs, no network: the known intermittent early-boot freeze, n+1; a second boot of the same payload was fine.)
+Result: the fault changes to `translation fault: status:0x80000102 stream:0 code:0x2 (NO PMD FOR IOVA) at 0x3fffe000`. The walk shows a
+Linux-format directory entry `0x8044b5001` (bit 0 only) and, because the walker only follows `|3` directories, no leaf.
+
+Together with run 35 this fixes the format of the directory entry: the hardware does NOT accept bit 0 alone (NO PMD) and DOES accept `|3` (iOS), reaching the leaf level.
+With `|3` directories and `|2` leaves the hardware reports NO PTE (leaf rejected). Remaining candidates for the leaf: the "flag in bit 0" the iOS lookup returns as `& 1`
+(leaf `|3`), or other low bits. Patch 0088 adds `io_pgtable_dart.ios_leaf_bits=N` (ORed into every iOS-format leaf; default 0) so these can be tried from the boot
+arguments without more builds (D19: `ios_pte=1 ios_leaf_bits=1`).
