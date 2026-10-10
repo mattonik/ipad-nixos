@@ -989,6 +989,14 @@
             cp ${pkgsCrossMusl.pkgsStatic.iw}/bin/iw "$out/bin/iw"
           '';
 
+          # pinpoke: read any pin's pad register and drive ONE allow-listed pin (AP GPIO 164, BT_WAKE) through /dev/mem; run-time bring-up tool only (boot/pinpoke.c).
+          pinpokePkg = pkgsCrossMusl.stdenv.mkDerivation {
+            name = "pinpoke";
+            dontUnpack = true;
+            buildPhase = "$CC -static -O2 -Wall -o pinpoke ${./boot/pinpoke.c}";
+            installPhase = "mkdir -p $out/bin && cp pinpoke $out/bin/pinpoke";
+          };
+
           # Bluetooth bring-up tools, pushed to the iPad at run time (never part of a payload): static btattach and i2c-tools (docs/plans/2026-10-08-j81-bluetooth-battery-adt.md).
           btUserlandPkg = pkgs.runCommand "ipad-air2-bt-userland" {} ''
             mkdir -p "$out/bin"
@@ -1250,6 +1258,7 @@
         hoolock-wifi-kernel = hoolockWifiKernel;
         wifi-userland-static = wifiUserlandPkg;
         bt-userland-static = btUserlandPkg;
+        pinpoke-static = pinpokePkg;
         hoolock-pcie-j81-wifi-h1b-raw-kernel = hoolockPcieJ81WifiH1bRawKernel;
         hoolock-pcie-gate-aux-ref-test-kernel = hoolockPcieGateAuxRefTestKernel;
         hoolock-pcie-gate-register-test-kernel = hoolockPcieGateRegisterTestKernel;
