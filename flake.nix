@@ -814,6 +814,9 @@
             echo 'CONFIG_BRCMFMAC_PCIE=y' >> "$out"
             echo 'CONFIG_BRCMDBG=y' >> "$out"
             echo 'CONFIG_PCIE_APPLE_T7000_DEVICE_WAKE_TEST=y' >> "$out"
+            # 16x32 console font (selected with fbcon=font:TER16x32): the 1536x2048 screen is unreadable at the default 8x16.
+            echo 'CONFIG_FONTS=y' >> "$out"
+            echo 'CONFIG_FONT_TER16x32=y' >> "$out"
             echo 'CONFIG_FW_LOADER_USER_HELPER_FALLBACK=n' >> "$out"
             echo 'CONFIG_FW_LOADER_USER_HELPER=n' >> "$out"
           '';
@@ -995,7 +998,7 @@
           #   4. the tablet tools /usr/bin/tablet-status and /usr/bin/tablet-dashboard;
           #   5. the universal probe (stage B of the plan; its userland helper is added here once the kernel framework exists).
           # No Bluetooth userland and no I2C tools are included (the Wi-Fi payload rules forbid them; charging uses sysfs only).
-          mkJ81BasePayload = { name, kernel, bootargsExtra ? "", wifi ? false }:
+          mkJ81BasePayload = { name, kernel, bootargsExtra ? "", wifi ? false, dashboard ? false }:
             let
               dropbearPkg = pkgsCrossMusl.dropbear;
               dropbearClosure = pkgs.closureInfo { rootPaths = [ dropbearPkg ]; };
@@ -1020,7 +1023,7 @@
 
               hook=etc/postmarketos-mkinitfs/hooks/20-debug-shell.sh
               sed 's|@DROPBEAR@|${dropbearPkg}|' ${./boot/ssh-stage1.sh} \
-                | sed 's|^loop_forever$|/usr/bin/charging-policy >/var/log/charging-policy.log 2>\&1 \&\n[ -x /usr/bin/wifi-up ] \&\& /usr/bin/wifi-up >/dev/null 2>\&1 \&\nloop_forever|' > "overlay/$hook"
+                | sed 's|^loop_forever$|/usr/bin/charging-policy >/var/log/charging-policy.log 2>\&1 \&\n[ -x /usr/bin/wifi-up ] \&\& /usr/bin/wifi-up >/dev/null 2>\&1 \&\n[ -x /usr/bin/tablet-dashboard-screen ] \&\& /usr/bin/tablet-dashboard-screen >/dev/null 2>\&1 \&\nloop_forever|' > "overlay/$hook"
               chmod 755 "overlay/$hook"
 
               mkdir -p overlay/root/.ssh overlay/var/empty overlay/var/run overlay/var/log
@@ -1036,9 +1039,17 @@
               # credentials) stays in the private overlay (boot/assemble_private_wifi_payload.py); with no network configured wifi-up logs and exits.
               mkdir -p overlay/usr/share/wifi
               cp ${wifiUserlandPkg}/bin/iw ${wifiUserlandPkg}/bin/wpa_supplicant ${wifiUserlandPkg}/bin/wpa_cli overlay/usr/bin/
+              # Regulatory database (public, generic): removes the kernel's 'Direct load for regulatory.db failed' and lets a country be selected.
+              mkdir -p overlay/lib/firmware
+              cp ${pkgs.wireless-regdb}/lib/firmware/regulatory.db ${pkgs.wireless-regdb}/lib/firmware/regulatory.db.p7s overlay/lib/firmware/
               cp ${./boot/wifi-up.sh} overlay/usr/bin/wifi-up
               cp ${./boot/wifi-udhcpc.script} overlay/usr/share/wifi/udhcpc.script
               chmod 755 overlay/usr/bin/iw overlay/usr/bin/wpa_supplicant overlay/usr/bin/wpa_cli overlay/usr/bin/wifi-up overlay/usr/share/wifi/udhcpc.script
+              '' else ""}
+              ${if dashboard then ''
+              # The tablet dashboard on the iPad's own screen (tty0) by default; j81.dashboard=0 on the kernel command line turns it off.
+              cp ${./boot/tablet-dashboard-screen.sh} overlay/usr/bin/tablet-dashboard-screen
+              chmod 755 overlay/usr/bin/tablet-dashboard-screen
               '' else ""}
               cp ${./boot/tablet-status.sh} overlay/usr/bin/tablet-status
               cp ${./boot/charging-policy.sh} overlay/usr/bin/charging-policy
@@ -3346,8 +3357,9 @@
         m1n1-hoolock-wifi = mkJ81BasePayload {
           name = "m1n1-hoolock-wifi";
           wifi = true;
+          dashboard = true;
           kernel = hoolockWifiKernel;
-          bootargsExtra = "pcie_aspm=off pcie_apple_t7000.device_wake=1";
+          bootargsExtra = "pcie_aspm=off pcie_apple_t7000.device_wake=1 fbcon=font:TER16x32";
         };
 
         # TEST ONLY: Wi-Fi H1B base (public), DMA MODEL B (raw) + brcmfmac PCIe, NO firmware; private overlay is added locally.

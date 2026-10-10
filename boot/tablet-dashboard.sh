@@ -5,7 +5,8 @@
 #
 #   tablet-dashboard [--once] [--interval SECONDS]     Ctrl-C quits
 #
-# Overridable for tests: TABLET_STATUS (command), POLICY_LOG, DROPBEAR_PID.
+# Overridable for tests: TABLET_STATUS (command), POLICY_LOG, DROPBEAR_PID. DASH_COLS cuts every line to that many columns (the iPad screen at the
+# 16x32 console font is 96 columns wide; a longer line would wrap and push the top off the screen).
 TABLET_STATUS=${TABLET_STATUS:-tablet-status}
 POLICY_LOG=${POLICY_LOG:-/var/log/charging-policy.log}
 DROPBEAR_PID=${DROPBEAR_PID:-/var/run/dropbear.pid}
@@ -68,14 +69,14 @@ render() {
 }
 
 if [ -n "$ONCE" ]; then
-	render
+	render | cut -c1-"${DASH_COLS:-1000}"
 	exit 0
 fi
 
 trap 'printf "\033[?25h\n"; exit 0' INT TERM
 printf '\033[?25l'
 while :; do
-	frame=$(render)
+	frame=$(render | cut -c1-"${DASH_COLS:-1000}")
 	# Cursor home + clear, then the whole frame at once to limit flicker.
 	printf '\033[H\033[2J%s\n' "$frame"
 	sleep "$INTERVAL"

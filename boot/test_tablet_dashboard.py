@@ -101,5 +101,26 @@ class DashboardTests(unittest.TestCase):
         self.assertNotIn("tablet-dashboard", hook)
 
 
+class DashColsTest(unittest.TestCase):
+    def test_lines_are_cut_to_dash_cols(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            build_tree(root)
+            wide = run(root, "--once").stdout
+            self.assertGreater(max(len(l) for l in wide.splitlines()), 40)
+            cut = run(root, "--once", DASH_COLS="40").stdout
+            self.assertLessEqual(max(len(l) for l in cut.splitlines()), 40)
+            self.assertEqual(len(cut.splitlines()), len(wide.splitlines()))
+
+
+class ScreenWrapperTest(unittest.TestCase):
+    def test_wrapper_contract(self):
+        text = (HERE / "tablet-dashboard-screen.sh").read_text()
+        for needle in ("j81.dashboard=0", "/dev/tty0", "DASH_COLS", "tablet-dashboard --interval", "printk"):
+            self.assertIn(needle, text)
+        for forbidden in ("i2cset", "i2ctransfer", "charging-policy", "> /sys/class", ">/sys/class"):
+            self.assertNotIn(forbidden, text)
+
+
 if __name__ == "__main__":
     unittest.main()
