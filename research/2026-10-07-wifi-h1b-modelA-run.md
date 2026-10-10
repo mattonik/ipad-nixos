@@ -691,3 +691,30 @@ Cause of the whole DMA failure (runs 13-33): the S5L8960X DART needs bit 0 set i
 start-up so a fault becomes an interrupt instead of a silent SoC reset. Page 0x3fffe was never unmapped; the hardware just ignored `|2` leaves.
 
 Error 9 is most likely because this payload used `h1b_feed=0` (no ioctl-response buffers posted): the firmware has nowhere to put the answer. Next D20: default feeding.
+
+## Run 38 — D20 (D19 with default buffer feeding): BCM4350 BRINGUP COMPLETE, `wlan0` registered
+
+(First D20 boot froze in the initramfs at the mount step with no network — the known intermittent freeze, n+2; the second boot was clean.)
+With 255 rx data + 8 event + 8 ioctl-response buffers posted (the case that reset the iPad in every run before the DART fixes), the machine stays up and the full brcmfmac
+control path works: every ioctl gets `IOCTLPTR_REQ_ACK` + `IOCTL_CMPLT`.
+
+```
+26.994 first ioctl (cmd=262 cur_etheraddr) completes
+30.399 brcmf_c_preinit_dcmds: Firmware: BCM4350/5 wl0: Sep 23 2014 17:28:14 version 7.15.114.157 (r504364) FWID 01-eeb18431
+30.711 CLM version = API 12.2 Data 7.15.1 ... ; TxCap blob loaded
+33.247 firmware capabilities (ap sta wme 802.11d/h ampdu vht-prop-rates stbc p2p ...), features MBSS P2P DOT11H PNO MFP FWSUP
+37.431 brcmf_cfg80211_attach; 38.735 brcmf_setup_wiphybands nmode=1 vhtmode=1 bw_cap=(1,7), nchain=2
+54.676 brcmf_net_attach wlan0: Broadcom Dongle Host Driver
+```
+
+No scan, association or intentional TX was performed (standing rule), only the driver's own probe-time ioctls.
+
+Root cause chain of the whole 13-run DMA/reset campaign (runs 13-37), all four needed together:
+1. NVRAM `macaddr` (run 1-12 era): firmware `wl` attach.
+2. DART entries in Apple's format: directory `|3` AND leaf `|3` (bit 0 AND bit 1; leaf `|2` alone = NO PTE). iOS notes show a bit-0 flag the lookup returns as `& 1`: that is the leaf valid/enable bit.
+3. Apple's DART start-up order (error-reflector written first, fetch-config 0x000e0303, diag-config 0x100): otherwise a DART fault is a silent SoC reset instead of an interrupt.
+4. Linux's DART fault handler dereferenced a NULL `cfg` (stock bug, patch 0086) — a debugging aid, not strictly needed once DMA works.
+Model A (rebased index) + `pci_alias` raw mapping are still on; which of those is strictly required is not yet isolated.
+
+Next: turn the toggles into permanent behaviour (leaf `|3`, Apple init for the PCIe DART, null-cfg fix), find the minimal set (alias? ios_pte? apple_init?), provision the MAC properly,
+and remove the test toggles/hold.
