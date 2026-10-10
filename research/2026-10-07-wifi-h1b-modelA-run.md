@@ -757,3 +757,12 @@ Payload D22 = permanent kernel (patches 0001-0090) + base with the conditional `
 Boot timeline from the stream: `wlan0` registered 2.88 s, `wifi-up` started at 18.3 s (initramfs hook), `associated (attempt 1, 3s)` at 22.5 s, `udhcpc: bound` at 28.6 s;
 afterwards ping 3/3 (0% loss, ~41 ms avg) to an internet host, signal -54 dBm. The connection needs no operator action; the credentials never leave the private payload.
 Open: `wifi-up` starts late because the hook runs after the initramfs stage (could start earlier), `regulatory.db`, reconnect-on-loss behaviour, Bluetooth coexistence, toggle clean-up.
+
+## Run 42 — D22 resilience: reconnect and soak, 2026-10-10
+
+On the D22 payload (Wi-Fi at boot), no new build:
+- `ifconfig wlan0 down; sleep 3; ifconfig wlan0 up` (twice, plus a supplicant reassociate): wpa_supplicant re-associated by itself each time (`CTRL-EVENT-DISCONNECTED reason=3 locally_generated=1` then `CTRL-EVENT-CONNECTED`), the IPv4 lease and default route were kept, ping to the router resumed (0% loss).
+- `iw dev wlan0 disconnect` is refused (`Operation not permitted`) while the supplicant manages the interface — expected, not a fault.
+- 5-minute soak: `ping -c 300 -i 1` to the router: 300/300 received, 0% loss, 1.3/12.0/50.9 ms min/avg/max, signal -53 dBm.
+- Kernel log: no firmware halt, DART fault, oops or warning during any of it.
+- `wpa_cli` (static build) cannot reach the supplicant's socket in this initramfs (`/run/wpa_supplicant/client: No such file or directory` even with `-p /var/run/wpa_supplicant` and the directory created) — a path quirk of the static build, not needed: `wpa.log` and `iw dev wlan0 link` give the state.
