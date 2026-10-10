@@ -204,7 +204,7 @@ def wifi_userland_entries(userland_dir, credentials_file):
 
 
 def assemble(public, assets, out, nvram_name=NVRAM_NAME, check_hashes=True, token=None, extra_bootargs=(), nvram_macaddr=None,
-             wifi_userland=None, wifi_credentials=None):
+             wifi_userland=None, wifi_credentials=None, production=False):
     out = private_out_dir(out)
     if out.exists() and any(out.iterdir()):
         raise SystemExit(f"{out} already exists and is not empty")
@@ -250,6 +250,7 @@ def assemble(public, assets, out, nvram_name=NVRAM_NAME, check_hashes=True, toke
         "public_parts_sha256": {n: sha256(parts[n]) for n in names},
         "final_m1n1_linux_sha256": sha256(blob), "final_size": len(blob),
         "bootargs": final_parts["bootargs"].decode().strip(), "extra_bootargs": list(extra_bootargs), "assets": manifest_assets,
+        "production": bool(production),
         "wifi_userland": ({"tools_sha256": wifi_tools, "credentials_present": True, "autostart": "/usr/bin/wifi-up from the boot hook"}
                           if wifi_tools else None),
         "selection": "explicit: C2 rieslinga set + tuple-selected NVRAM staged under canonical brcmfmac4350c2-pcie names",
@@ -274,7 +275,7 @@ def verify(out):
     token = manifest["run_id"]
     if f"j81.run_id={token}" not in bootargs.decode():
         problems.append("run token missing from the bootargs")
-    if "brcmfmac.debug=" not in bootargs.decode():
+    if "brcmfmac.debug=" not in bootargs.decode() and not manifest.get("production"):
         problems.append("bootargs lack brcmfmac.debug")
     entries = cpio_entries(gzip.decompress(initramfs))
     for a in manifest["assets"]:
@@ -325,6 +326,7 @@ def main():
     ap.add_argument("--nvram-macaddr", help="append macaddr=<MAC> to the staged NVRAM (the firmware needs the key to attach its Wi-Fi core); unicast, locally administered, e.g. 02:6a:38:70:00:01")
     ap.add_argument("--wifi-userland", type=Path, help="directory with static iw, wpa_supplicant, wpa_cli (flake package wifi-userland-static; bin/ is accepted); starts Wi-Fi at boot with --wifi-credentials")
     ap.add_argument("--wifi-credentials", type=Path, help="private wpa_supplicant.conf (ssid/psk); installed only into the private payload, mode 0600, never recorded in the manifest")
+    ap.add_argument("--production", action="store_true", help="payload of the production kernel (m1n1-hoolock-wifi): quiet brcmfmac logging, so the brcmfmac.debug bootarg is not required")
     ap.add_argument("--no-hash-check", action="store_true", help="test fixtures only (synthetic assets)")
     args = ap.parse_args()
     if args.verify:
@@ -341,7 +343,7 @@ def main():
         ap.error("--public, --assets and --out are required")
     manifest = assemble(args.public, args.assets, args.out, args.nvram, check_hashes=not args.no_hash_check,
                         extra_bootargs=args.extra_bootarg, nvram_macaddr=args.nvram_macaddr,
-                        wifi_userland=args.wifi_userland, wifi_credentials=args.wifi_credentials)
+                        wifi_userland=args.wifi_userland, wifi_credentials=args.wifi_credentials, production=args.production)
     problems, _ = verify(args.out)
     if problems:
         print("FAIL after assembly:", problems)

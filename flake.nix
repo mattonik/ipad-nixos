@@ -799,6 +799,24 @@
             echo 'CONFIG_FW_LOADER_USER_HELPER_FALLBACK=n' >> "$out"
             echo 'CONFIG_FW_LOADER_USER_HELPER=n' >> "$out"
           '';
+          # PRODUCTION Wi-Fi kernel config: the same patches as the H1B test kernel (the DMA/DART/MAC fixes of 0089/0090 are device-tree driven), but the
+          # diagnostic code (CONFIG_*_DIAG: ring/DART/console diagnostics, debugfs register dumps, query interface) is compiled out. CONFIG_PCIE_APPLE_T7000_DEVICE_WAKE_TEST
+          # stays: it carries the device_wake=1 boot argument the Wi-Fi payload uses (research/2026-10-10-wifi-bringup-root-cause-and-permanent-fix.md section 4).
+          patchedHoolockWifiConfig = pkgs.runCommand "ipad-t7001-hoolock-wifi-defconfig-4k" {} ''
+            cat ${patchedHoolockPcieJ81RegOnConfig} > "$out"
+            echo 'CONFIG_WIRELESS=y' >> "$out"
+            echo 'CONFIG_CFG80211=y' >> "$out"
+            echo 'CONFIG_CFG80211_REQUIRE_SIGNED_REGDB=n' >> "$out"
+            echo 'CONFIG_WLAN=y' >> "$out"
+            echo 'CONFIG_WLAN_VENDOR_BROADCOM=y' >> "$out"
+            echo 'CONFIG_BRCMUTIL=y' >> "$out"
+            echo 'CONFIG_BRCMFMAC=y' >> "$out"
+            echo 'CONFIG_BRCMFMAC_PCIE=y' >> "$out"
+            echo 'CONFIG_BRCMDBG=y' >> "$out"
+            echo 'CONFIG_PCIE_APPLE_T7000_DEVICE_WAKE_TEST=y' >> "$out"
+            echo 'CONFIG_FW_LOADER_USER_HELPER_FALLBACK=n' >> "$out"
+            echo 'CONFIG_FW_LOADER_USER_HELPER=n' >> "$out"
+          '';
           # Model B keeps the configuration it was built with (before the 0067 toggles); same derivation name and content.
           patchedHoolockPcieJ81WifiH1bRawConfig = pkgs.runCommand "ipad-t7001-hoolock-pcie-j81-wifi-h1b-defconfig-4k" {} ''
             cat ${patchedHoolockPcieJ81RegOnConfig} > "$out"
@@ -820,6 +838,10 @@
           hoolockPcieJ81WifiH1bKernel = pkgsCross.callPackage ./kernel/hoolock-pcie-j81-wifi-h1b.nix {
             source = inputs.hoolockLinux;
             hoolockConfig = patchedHoolockPcieJ81WifiH1bConfig;
+          };
+          hoolockWifiKernel = pkgsCross.callPackage ./kernel/hoolock-pcie-j81-wifi-h1b.nix {
+            source = inputs.hoolockLinux;
+            hoolockConfig = patchedHoolockWifiConfig;
           };
           # Same, DMA model B (raw PTE indexing): no 0064.
           hoolockPcieJ81WifiH1bRawKernel = pkgsCross.callPackage ./kernel/hoolock-pcie-j81-wifi-h1b-raw.nix {
@@ -1189,6 +1211,7 @@
         hoolock-pcie-j81-dma-rebase-kernel = hoolockPcieJ81DmaRebaseKernel;
         hoolock-pcie-j81-dma-raw-kernel = hoolockPcieJ81DmaRawKernel;
         hoolock-pcie-j81-wifi-h1b-kernel = hoolockPcieJ81WifiH1bKernel;
+        hoolock-wifi-kernel = hoolockWifiKernel;
         wifi-userland-static = wifiUserlandPkg;
         hoolock-pcie-j81-wifi-h1b-raw-kernel = hoolockPcieJ81WifiH1bRawKernel;
         hoolock-pcie-gate-aux-ref-test-kernel = hoolockPcieGateAuxRefTestKernel;
@@ -3307,6 +3330,14 @@
           # pcie_aspm=off and device_wake=1 are the proven J81 Wi-Fi link settings (research/2026-10-07-wifi-h1b-modelA-run.md run 38); the DART
           # options and the Wi-Fi endpoint node (MAC) now come from the device tree (patches 0089/0090).
           bootargsExtra = "brcmfmac.debug=0x001c0004 pcie_aspm=off pcie_apple_t7000.device_wake=1";
+        };
+
+        # Wi-Fi base (public), PRODUCTION: the permanent configuration without the diagnostic code and with quiet brcmfmac logging; the private
+        # overlay (firmware, NVRAM, Wi-Fi userland, credentials) is added locally by boot/assemble_private_wifi_payload.py --production.
+        m1n1-hoolock-wifi = mkJ81BasePayload {
+          name = "m1n1-hoolock-wifi";
+          kernel = hoolockWifiKernel;
+          bootargsExtra = "pcie_aspm=off pcie_apple_t7000.device_wake=1";
         };
 
         # TEST ONLY: Wi-Fi H1B base (public), DMA MODEL B (raw) + brcmfmac PCIe, NO firmware; private overlay is added locally.

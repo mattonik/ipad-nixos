@@ -766,3 +766,17 @@ On the D22 payload (Wi-Fi at boot), no new build:
 - 5-minute soak: `ping -c 300 -i 1` to the router: 300/300 received, 0% loss, 1.3/12.0/50.9 ms min/avg/max, signal -53 dBm.
 - Kernel log: no firmware halt, DART fault, oops or warning during any of it.
 - `wpa_cli` (static build) cannot reach the supplicant's socket in this initramfs (`/run/wpa_supplicant/client: No such file or directory` even with `-p /var/run/wpa_supplicant` and the directory created) — a path quirk of the static build, not needed: `wpa.log` and `iw dev wlan0 link` give the state.
+
+## Run 43 — Wi-Fi throughput probe on the running iPad (D22), 2026-10-10
+
+Question (user): the link feels slow. Local-network tests against the Mac (192.168.0 LAN; busybox `wget` download / `dd | nc` upload; one TCP stream; link on 2.4 GHz channel 5 at -53 dBm, PHY rates 78 Mbit/s tx and 130-144 Mbit/s rx, 0 tx failures to speak of):
+
+| Condition | Download 50 MB | Upload 50 MB |
+|---|---|---|
+| D22 as booted: `brcmfmac.debug=0x001c0004` (every ring op logged) and console loglevel 8 | 55 s ≈ **7.6 Mbit/s** | not measured |
+| `echo 0 > /sys/module/brcmfmac/parameters/debug`, `printk` 3 3 1 3 (runtime, no reboot) | 8 s ≈ **50 Mbit/s** | 11 s ≈ **38 Mbit/s** |
+
+The slowness was the debug logging (each message is formatted and printed to the framebuffer console / kmsg path), not the radio or the DMA: a 7x gain from two sysfs/proc writes.
+50/38 Mbit/s is plausible for one busybox TCP stream on a single-chain-limited 2.4 GHz 20 MHz link; the AP offers 2.4 GHz only for this SSID, so 5 GHz/VHT rates were not tested. Not yet measured: 5 GHz,
+multi-stream, CPU-bound limit (loadavg 1.9 during the download on 2 busy cores).
+Consequence: the production kernel/payload (`m1n1-hoolock-wifi`, no `brcmfmac.debug`, diagnostics compiled out) should be the normal Wi-Fi payload; the test payloads keep the debug bootarg for diagnosis.
