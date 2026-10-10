@@ -749,3 +749,11 @@ scan/association for a test network. Control channel: `boot/ipad_telnet_run.py` 
 Notes: the first `wget` host returned 403 (user-agent), a second host worked. `wpa_cli` could not connect (`/run/wpa_supplicant/client: No such file or directory`: its client socket
 directory `/run` does not exist in the initramfs; the supplicant's own socket is `/var/run/wpa_supplicant/wlan0`), so `wpa.log` and `iw dev wlan0 link` were used instead; `mkdir /run` would fix it.
 The iPad Air 2 now has working Wi-Fi under Linux. Remaining work: put the tools/credentials into the permanent payload flow, auto-start, `regulatory.db`, then toggle clean-up.
+
+## Run 41 — D22: Wi-Fi connects by itself at boot (permanent flow), 2026-10-10
+
+Payload D22 = permanent kernel (patches 0001-0090) + base with the conditional `/usr/bin/wifi-up` hook line + private overlay (static iw/wpa_supplicant/wpa_cli, `boot/wifi-up.sh`,
+`boot/wifi-udhcpc.script`, `/etc/wpa_supplicant.conf` mode 0600 from the private credentials file; manifest records only that credentials are present). No test boot arguments.
+Boot timeline from the stream: `wlan0` registered 2.88 s, `wifi-up` started at 18.3 s (initramfs hook), `associated (attempt 1, 3s)` at 22.5 s, `udhcpc: bound` at 28.6 s;
+afterwards ping 3/3 (0% loss, ~41 ms avg) to an internet host, signal -54 dBm. The connection needs no operator action; the credentials never leave the private payload.
+Open: `wifi-up` starts late because the hook runs after the initramfs stage (could start earlier), `regulatory.db`, reconnect-on-loss behaviour, Bluetooth coexistence, toggle clean-up.
