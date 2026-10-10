@@ -795,3 +795,13 @@ Association on 5240 MHz (channel 48) took 3 s, DHCP bound the same lease, signal
 
 So the radio and the host path (DART DMA, msgbuf rings, firmware) are fast; the first measurement's 7.6 Mbit/s was the debug logging. Single busybox streams on a ~1.5 GHz CPU are likely the remaining limit above ~180 Mbit/s; not probed further.
 Hidden-SSID 5 GHz networks need `scan_ssid=1` in the supplicant config (the production flow's credentials file should carry it for hidden networks).
+
+## Run 45 — P1: production Wi-Fi payload, cold boot, 2026-10-10
+
+Payload `m1n1-hoolock-wifi` (store path `/nix/store/4vggikcrihyxn1m1cffcq0z3f9q4vrm0-ipad-air2-m1n1-hoolock-wifi`, GC root `artifacts/live/gcroot-wifi-production`): the permanent kernel (patches 0001-0090) with the diagnostic
+code compiled out (`CONFIG_*_DIAG` off, `DEVICE_WAKE_TEST` kept for `device_wake=1`), bootargs `pcie_aspm=off pcie_apple_t7000.device_wake=1`, no `brcmfmac.debug`; private overlay with firmware/NVRAM, the static
+Wi-Fi tools, `wifi-up`, and a two-network credentials file (5 GHz hidden SSID first with `scan_ssid=1`, 2.4 GHz second). Assembled with `--production`; no test toggles.
+Cold boot: the iPad answered on USB at ~16 s, the firmware came up at 0.59 s, `wifi-up` found `wlan0` at 17.1 s (the initramfs hook starts late), `associated (attempt 1, 3s)`, DHCP bound at 20.4 s, **on 5 GHz channel 48 by itself**,
+-58 dBm, PHY 526 rx / 234 tx Mbit/s. brcmfmac debug mask 0 (quiet). Ping to an internet host 3/3 (avg 19 ms). Kernel log clean (the only grep hit was `printk: debug: ignoring loglevel`).
+Throughput (Mac on the same LAN, one TCP stream, busybox): download 200 MB in 7 s ≈ **228 Mbit/s**, upload 100 MB in 9 s ≈ **93 Mbit/s**, 0 tx failures at -60 dBm.
+Known cosmetic items: `wifi-up` starts at ~17 s although `wlan0` exists at ~0.6 s (hook ordering); a few unconditional `t7000-h1b: feed:` log lines from msgbuf.c (patch 0082/0083 code outside the diagnostic option).
