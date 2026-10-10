@@ -397,6 +397,34 @@ Source cross-check: Linux `drivers/bluetooth/hci_bcm.c` and
 `drivers/bluetooth/btbcm.c`, v6.12 upstream. No repository code or hardware was
 changed.
 
+### BCM firmware protocol pass, 2026-10-10
+
+The upstream protocol implementation supplies the missing wire-level envelope
+even without Apple's private HCD bytes:
+
+```text
+HCI Reset 0x0c03
+Read Local Version / controller info
+Download Minidrv 0xfc2e, no payload
+wait 50 ms
+for each little-endian HCI command in the HCD:
+    send opcode + one-byte payload length + payload
+    require a command-complete response
+wait 250 ms after the final Launch RAM command
+```
+
+The baud transition is separate: after the controller has answered version
+queries, the host sends Broadcom `0xfc18` with a 16-bit zero followed by a
+32-bit little-endian target rate, then changes the host UART rate. A controller
+clock command (`0xfc45`) is only used above 3 Mbaud. Therefore the J81 3-Mbaud
+board value does not require that extra command, while the current measured
+UART ceiling (~1.5 Mbaud) remains a host-side limitation.
+
+This narrows the protocol question: there is no plausible firmware-only action
+before the first HCI response. The private HCD is needed only after Reset and
+version succeed; recovering it would enable patch validation, but cannot explain
+the current silent controller.
+
 ## Source anchors
 
 - Pinned Hoolock kernel used by this project:
