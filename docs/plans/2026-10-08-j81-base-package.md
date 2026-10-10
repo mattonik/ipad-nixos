@@ -64,3 +64,8 @@ Open: whether the base should also carry a regulatory database, and the default 
 ### Status of item 6 (2026-10-10)
 Implemented and hardware-verified (run 46): steps 1-3 and 5's hardware pass, plus the Wi-Fi section of tablet-status/dashboard (step 4, display part). `mkJ81BasePayload` has a `wifi` argument; `m1n1-hoolock-wifi` is the base with Wi-Fi.
 Still open: letting the universal probe query the Wi-Fi state (needs stage B), the 17 s `wifi-up` start (hook ordering), the regulatory database, and the multi-network policy beyond "5 GHz hidden first, 2.4 GHz fallback" (private credentials file).
+
+### Decision and status, 2026-10-10 (later)
+- `tablet-dashboard` starts on the screen by default in the production base (`dashboard = true`, console font 16x32, `j81.dashboard=0` disables it). Verified on hardware and by the user (run 47): readable, fits the 96x64 console.
+  This answers the open decision about the dashboard autostart; the probe's raw-MMIO question is still open.
+- The Wi-Fi groundwork of the base package is finished. Tag `j81-base-wifi-dashboard-p4`. Next task: Bluetooth (docs/project-status.md).
