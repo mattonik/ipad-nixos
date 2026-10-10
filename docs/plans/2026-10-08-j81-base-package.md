@@ -46,3 +46,17 @@ Stage A (items 1-4 for the Wi-Fi payloads, tests, verifier) implemented 2026-10-
 Base payload (Wi-Fi H1B model A, kernel with 0017): `/nix/store/nvp2sdsxvpidnscfkm05mjcnknsv90g1-ipad-air2-m1n1-hoolock-pcie-j81-wifi-h1b-base`, `m1n1-linux.bin` 12,689,385 bytes (the existing tablet payload is 12,706,466).
 Payload verifier (`--wifi-h1b-base`, now including `j81_base_problems`) passes; offline suite 54 passed, 0 failed, 7 skipped.
 Private test payload M2 = this base + `h1b_hold=1` + `device_wake=1` + the test MAC (supersedes M1, which lacked the base package).
+
+## Item 6: Wi-Fi (added 2026-10-10, to do once the production Wi-Fi payload is established and tested)
+Request from Martin (2026-10-10): once the base is established and tested, revisit this base package with all the working pieces already in, and bundle in the Wi-Fi.
+State on 2026-10-10 (research/2026-10-10-wifi-bringup-root-cause-and-permanent-fix.md, runs 38-44 in research/2026-10-07-wifi-h1b-modelA-run.md):
+- Working and device-tree driven: brcmfmac PCIe, the DART options (`apple,ios-pte`, `apple,pci-alias`, error-reflector/fetch/diag-config), the `wifi0` endpoint node whose MAC m1n1 fills, link bootargs `pcie_aspm=off pcie_apple_t7000.device_wake=1`.
+- Working userland: static `iw`/`wpa_supplicant`/`wpa_cli` (flake `wifi-userland-static`), `boot/wifi-up.sh` (association with retries, then DHCP; started by the public boot hook when `/usr/bin/wifi-up` exists), `boot/wifi-udhcpc.script`; 5 GHz ~178 Mbit/s down, 2.4 GHz ~50 Mbit/s.
+- Production kernel/payload `m1n1-hoolock-wifi` (diagnostic code compiled out, quiet logs) built through `mkJ81BasePayload`.
+To bundle into the base (mkJ81BasePayload) as the sixth always-present item:
+1. Make the production Wi-Fi kernel the base kernel (it must keep patch 0017 for charging; `kernel/test_j81_base_contract.py` enforces that) and move `pcie_aspm=off pcie_apple_t7000.device_wake=1` into the base bootargs.
+2. Put the public, generic Wi-Fi userland (iw, wpa_supplicant, wpa_cli, `wifi-up`, `udhcpc.script`) into the public base overlay; relax the assembler's "no Wi-Fi client tools" rule to "tools identical to the flake package".
+3. Keep private: firmware/CLM/TxCap/NVRAM (overlay by the assembler, as today) and the credentials file (`--wifi-credentials`, mode 0600, never recorded). A base without credentials simply does not connect; `wifi-up` logs that and exits.
+4. Show the Wi-Fi state (SSID, signal, address) in `tablet-status`/`tablet-dashboard`, and let the universal probe query it.
+5. Tests: contract test that the base carries the tools and the hook line, a test that a base without credentials boots and does not start wpa_supplicant, and a hardware pass with the full base (charging + telnet/SSH + console + dashboard + Wi-Fi).
+Open: whether the base should also carry a regulatory database, and the default behaviour for several remembered networks (current private file: 5 GHz hidden network first, 2.4 GHz fallback).
