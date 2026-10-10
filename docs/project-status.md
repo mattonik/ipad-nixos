@@ -2649,3 +2649,7 @@ file from that payload's own bundled copy the same way.
 The brcmfmac control path works end to end on the iPad Air 2 (firmware 7.15.114.157 running, all probe-time ioctls complete, `wlan0` registered; no scan/association/TX performed). See `research/2026-10-07-wifi-h1b-modelA-run.md` runs 36-38 for the root-cause chain (macaddr; DART leaf/directory `|3`; Apple DART start-up order; fault handler NULL fix). Remaining: make the fixes permanent defaults, minimise the toggle set, proper MAC provisioning, remove the test hold.
 
 Permanent fix and MAC provisioning (patches 0089/0090, DT-driven DART options, `wifi0` endpoint node): `research/2026-10-10-wifi-bringup-root-cause-and-permanent-fix.md`.
+
+## 2026-10-10 - Wi-Fi works on the iPad Air 2
+
+Scan, WPA2 association, DHCP, ping (0% loss) and HTTP download all succeed on the BCM4350 under Linux (run 40 in `research/2026-10-07-wifi-h1b-modelA-run.md`; method in `docs/plans/2026-10-10-j81-wifi-userland.md`). Tag `wifi-bringup-d21` marks the verified kernel/payload. Next: permanent tools and credentials flow, auto-start, `regulatory.db`, toggle clean-up.

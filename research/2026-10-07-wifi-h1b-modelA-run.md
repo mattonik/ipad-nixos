@@ -727,3 +727,25 @@ assembled with no `apple_dart.*` / `io_pgtable_dart.*` / `brcmfmac.h1b_*` argume
 firmware `wl0` up (0.68), full brcmfmac bring-up, `Firmware: BCM4350/5 wl0 ... 7.15.114.157`, `brcmf_net_attach wlan0: Broadcom Dongle Host Driver` at 2.86 s. No DART fault, no oops.
 The firmware cannot attach without `macaddr`, so the MAC came from the device tree through m1n1 (proper provisioning works). The iPad ended in the normal telnet recovery shell.
 Details and the remaining bisection list: `research/2026-10-10-wifi-bringup-root-cause-and-permanent-fix.md`.
+
+## Run 40 — WORKING WI-FI on the iPad Air 2 (scan, WPA2 association, DHCP, traffic), 2026-10-10
+
+On the running D21 payload (permanent configuration, run 39), with static `iw`/`wpa_supplicant`/`wpa_cli` (flake package `wifi-userland-static`) and the credentials
+file pushed over the USB link at run time (nothing secret in any payload, Git or the Nix store; details `docs/plans/2026-10-10-j81-wifi-userland.md`). The user authorised
+scan/association for a test network. Control channel: `boot/ipad_telnet_run.py` over the telnet recovery shell.
+
+| Step | Result |
+|---|---|
+| `ifconfig wlan0 up` | ok; interface carries the device-tree MAC (not the test address); phy reports 2.4 and 5 GHz bands, HT/VHT, CCMP/TKIP, AP and P2P modes |
+| `iw dev wlan0 scan` | exit 0, **19 BSS** on 2.4 and 5 GHz (first radio transmit: probe requests), signal levels -43 to -93 dBm |
+| association | AP offers WPA2-PSK + WPA3-SAE, CCMP, MFP-capable; `key_mgmt=WPA-PSK`. `Associated on 2432 MHz`, `State: ASSOCIATED -> COMPLETED`, `CTRL-EVENT-CONNECTED`, `EAPOL authentication completed - result=SUCCESS`. The 4-way handshake runs in the firmware (supplicant installs the PMK). |
+| IPv6 | SLAAC address from the router advertisement before DHCP (packets arriving) |
+| DHCP (busybox `udhcpc` + `boot/wifi-udhcpc.script`) | lease, default route, DNS |
+| ping | router 4/4 (15-36 ms), internet host 4/4 (33-70 ms), 0% loss |
+| DNS / HTTP | `nslookup` resolves, `wget http://example.com` returns the page |
+| throughput | 10 MB HTTP download in 15 s (~5.6 Mbit/s single busybox wget stream); radio link 115-130 Mbit/s rx, 39 Mbit/s tx at -57 dBm |
+| kernel log | no firmware halt, DART fault, oops or warning during the whole session |
+
+Notes: the first `wget` host returned 403 (user-agent), a second host worked. `wpa_cli` could not connect (`/run/wpa_supplicant/client: No such file or directory`: its client socket
+directory `/run` does not exist in the initramfs; the supplicant's own socket is `/var/run/wpa_supplicant/wlan0`), so `wpa.log` and `iw dev wlan0 link` were used instead; `mkdir /run` would fix it.
+The iPad Air 2 now has working Wi-Fi under Linux. Remaining work: put the tools/credentials into the permanent payload flow, auto-start, `regulatory.db`, then toggle clean-up.

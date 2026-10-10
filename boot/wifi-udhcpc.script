@@ -1,0 +1,18 @@
+#!/bin/sh
+# udhcpc event script for the iPad's Wi-Fi interface (copied to the iPad at run time; busybox sh). No secrets.
+case "$1" in
+	bound|renew)
+		ifconfig "$interface" "$ip" netmask "${subnet:-255.255.255.0}"
+		if [ -n "$router" ]; then
+			while route del default gw 0.0.0.0 dev "$interface" 2>/dev/null; do :; done
+			for r in $router; do route add default gw "$r" dev "$interface"; done
+		fi
+		: >/etc/resolv.conf
+		for d in $dns; do echo "nameserver $d" >>/etc/resolv.conf; done
+		echo "udhcpc: $1 $interface $ip router=$router dns=$dns" >/dev/kmsg 2>/dev/null
+		;;
+	deconfig)
+		ifconfig "$interface" 0.0.0.0
+		;;
+esac
+exit 0

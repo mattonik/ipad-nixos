@@ -954,6 +954,16 @@
             ];
           });
 
+          # Wi-Fi userland for the J81 BCM4350 (docs/plans/2026-10-10-j81-wifi-userland.md): static iw and wpa_supplicant (musl, aarch64). Public and
+          # generic; the network name and passphrase never enter the Nix store or Git, they are supplied only by the private payload assembler
+          # (boot/assemble_private_wifi_payload.py --wifi-userland ...). busybox in the debug initramfs already provides udhcpc, ifconfig, route, ping.
+          wifiUserlandPkg = pkgs.runCommand "ipad-air2-wifi-userland" {} ''
+            mkdir -p "$out/bin"
+            cp ${pkgsCrossMusl.pkgsStatic.wpa_supplicant}/bin/wpa_supplicant "$out/bin/wpa_supplicant"
+            cp ${pkgsCrossMusl.pkgsStatic.wpa_supplicant}/bin/wpa_cli "$out/bin/wpa_cli"
+            cp ${pkgsCrossMusl.pkgsStatic.iw}/bin/iw "$out/bin/iw"
+          '';
+
           # J81 BASE PAYLOAD (docs/plans/2026-10-08-j81-base-package.md). Every payload that is meant to be run on the iPad
           # should be built through this function, so these stay in every build without copy-paste drift:
           #   1. charging: the kernel must carry patch 0017 (writable input_current_limit; enforced by
@@ -1179,6 +1189,7 @@
         hoolock-pcie-j81-dma-rebase-kernel = hoolockPcieJ81DmaRebaseKernel;
         hoolock-pcie-j81-dma-raw-kernel = hoolockPcieJ81DmaRawKernel;
         hoolock-pcie-j81-wifi-h1b-kernel = hoolockPcieJ81WifiH1bKernel;
+        wifi-userland-static = wifiUserlandPkg;
         hoolock-pcie-j81-wifi-h1b-raw-kernel = hoolockPcieJ81WifiH1bRawKernel;
         hoolock-pcie-gate-aux-ref-test-kernel = hoolockPcieGateAuxRefTestKernel;
         hoolock-pcie-gate-register-test-kernel = hoolockPcieGateRegisterTestKernel;
