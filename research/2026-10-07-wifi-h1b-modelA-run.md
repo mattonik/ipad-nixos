@@ -656,3 +656,14 @@ No reset. The DART flagged the firmware's first DMA read and the fixed handler p
 the last page of the domain aperture (`0x80000000..0xbfffefff`), which the host did map. The hardware's walk for
 stream 0 finds no valid leaf for page 0x3fffe even though TTBR/L1 exist (code 4 = NO PTE, not NO TTBR/NO PMD).
 Patch 0087 prints the TTBRs and the L1/L2 entries the hardware sees for that page and its neighbours.
+
+## Run 35 — D17-walk (D16 + patch 0087 fault-time page walk)
+
+Same fault: `NO PTE FOR IOVA at 0x3fffe000`, stream 0, 26.5256. The walk (software, from the TTBR registers):
+TTBR[0..3] = 0x80804249..0x8080424c (valid, consecutive). Page 0x3fffe: TTBR[0], l1[0x1ff] = 0x0000000807426003 (directory, `|3`),
+l2[0x1fe] = 0x00000008052d9002; the same leaf at the raw index (page 0xbfffe via TTBR[2], alias). This run's idxbuf phys is
+exactly 0x8052d9000 (log: `dma idxbuf iova 0xbfffe000 -> phys 0x8052d9000`), so the entry is the intended mapping.
+Neighbours: 0x3fffd leaf 0x807530002 (ring 0), 0x3ffff leaf 0 (unmapped, aperture end).
+Hardware still reports NO PTE (not NO PMD): it accepts the directory entry `|3` but not the leaf `|2`.
+Hypothesis: the leaf valid/permission bits differ from the iOS decompile reading (e.g. bit 0 must be set, or protection bits).
+Test D18: `ios_pte` off (Linux native leaf: valid bit 0 + subpage fields), Apple DART init on, no build.
