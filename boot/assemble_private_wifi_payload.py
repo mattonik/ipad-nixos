@@ -232,11 +232,26 @@ def assemble(public, assets, out, nvram_name=NVRAM_NAME, check_hashes=True, toke
     manifest_assets.append({"source": nvram_name, "staged": NVRAM_STAGED, "size": len(staged), "sha256": sha256(staged),
                             "source_sha256": sha256(raw), "key_value_lines": npairs, "normalised": True,
                             "macaddr_added": bool(macaddr), **({"macaddr": macaddr} if macaddr else {})})
-    extra_entries, wifi_tools = [], None
-    if bool(wifi_userland) != bool(wifi_credentials):
-        raise SystemExit("--wifi-userland and --wifi-credentials go together")
-    if wifi_userland:
-        extra_entries, wifi_tools = wifi_userland_entries(wifi_userland, wifi_credentials)
+    extra_entries, wifi_tools, wifi_source = [], None, None
+    public_entries = cpio_entries(gzip.decompress(parts["initramfs.gz"]))
+    public_has_wifi = all(f"usr/bin/{n}" in public_entries for n in WIFI_TOOLS + ("wifi-up",))
+    if public_has_wifi:
+        # The base package already carries the generic Wi-Fi userland (mkJ81BasePayload wifi = true): only the private credentials are added.
+        if wifi_userland:
+            raise SystemExit("the public base already carries the Wi-Fi userland; give --wifi-credentials only")
+        if wifi_credentials:
+            conf = Path(wifi_credentials).read_bytes()
+            if b"ssid=" not in conf or b"psk=" not in conf and b"key_mgmt=NONE" not in conf:
+                raise SystemExit("the credentials file is not a wpa_supplicant configuration with an ssid and a psk")
+            extra_entries = [("etc/wpa_supplicant.conf", 0o100600, conf)]
+        wifi_tools = {n: sha256(public_entries[f"usr/bin/{n}"][1]) for n in WIFI_TOOLS}
+        wifi_source = "public base"
+    else:
+        if bool(wifi_userland) != bool(wifi_credentials):
+            raise SystemExit("--wifi-userland and --wifi-credentials go together")
+        if wifi_userland:
+            extra_entries, wifi_tools = wifi_userland_entries(wifi_userland, wifi_credentials)
+            wifi_source = "private overlay"
     token = token or secrets.token_hex(16)
     final_parts, blob = compose(parts, names, build_overlay(files, extra_entries), token, tuple(extra_bootargs))
     out.mkdir(parents=True, exist_ok=True)
@@ -251,7 +266,8 @@ def assemble(public, assets, out, nvram_name=NVRAM_NAME, check_hashes=True, toke
         "final_m1n1_linux_sha256": sha256(blob), "final_size": len(blob),
         "bootargs": final_parts["bootargs"].decode().strip(), "extra_bootargs": list(extra_bootargs), "assets": manifest_assets,
         "production": bool(production),
-        "wifi_userland": ({"tools_sha256": wifi_tools, "credentials_present": True, "autostart": "/usr/bin/wifi-up from the boot hook"}
+        "wifi_userland": ({"tools_sha256": wifi_tools, "source": wifi_source, "credentials_present": bool(wifi_credentials),
+                           "autostart": "/usr/bin/wifi-up from the boot hook"}
                           if wifi_tools else None),
         "selection": "explicit: C2 rieslinga set + tuple-selected NVRAM staged under canonical brcmfmac4350c2-pcie names",
     }
@@ -303,9 +319,12 @@ def verify(out):
             e = entries.get(f"usr/bin/{n}")
             if e is None or sha256(e[1]) != h:
                 problems.append(f"{n} differs from the manifest")
-        for n in ("usr/bin/wifi-up", "usr/share/wifi/udhcpc.script", "etc/wpa_supplicant.conf"):
+        required = ["usr/bin/wifi-up", "usr/share/wifi/udhcpc.script"] + (["etc/wpa_supplicant.conf"] if userland.get("credentials_present") else [])
+        for n in required:
             if n not in entries or not entries[n][1]:
                 problems.append(f"{n} missing from the initramfs")
+        if "etc/wpa_supplicant.conf" in entries and (entries["etc/wpa_supplicant.conf"][0] & 0o777) != 0o600:
+            problems.append("etc/wpa_supplicant.conf is not mode 0600")
     elif tools:
         problems.append(f"Wi-Fi client/scan tools present: {tools}")
     if "etc/deviceinfo" not in entries or b"ecm.usb0" not in entries["etc/deviceinfo"][1]:

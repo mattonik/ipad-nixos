@@ -4,6 +4,8 @@
 SYSFS=${SYSFS:-/sys}
 PROCFS=${PROCFS:-/proc}
 NETDEV=${NETDEV:-usb0}
+WIFIDEV=${WIFIDEV:-wlan0}
+IW=${IW:-iw}
 BAT=$SYSFS/class/power_supply/bq27545-battery
 CHG=$SYSFS/class/power_supply/j81-d2207-charger
 
@@ -46,6 +48,25 @@ echo "online: $(rd "$CHG/online")"
 echo "== usb network ($NETDEV) =="
 echo "address: $(ip -4 addr show "$NETDEV" 2>/dev/null | sed -n 's/^ *inet \([^ ]*\).*/\1/p' | head -n 1)"
 echo "carrier: $(rd "$SYSFS/class/net/$NETDEV/carrier")"
+
+echo "== wifi ($WIFIDEV) =="
+if [ -e "$SYSFS/class/net/$WIFIDEV" ]; then
+	echo "state: $(rd "$SYSFS/class/net/$WIFIDEV/operstate")"
+	link=$($IW dev "$WIFIDEV" link 2>/dev/null)
+	case $link in
+	*"Not connected"* | "") echo "ssid: not connected" ;;
+	*)
+		echo "ssid: $(echo "$link" | sed -n 's/^[[:space:]]*SSID: //p' | head -n 1)"
+		echo "frequency: $(echo "$link" | sed -n 's/^[[:space:]]*freq: \([0-9.]*\).*/\1/p' | head -n 1) MHz"
+		echo "signal: $(echo "$link" | sed -n 's/^[[:space:]]*signal: //p' | head -n 1)"
+		echo "rx bitrate: $(echo "$link" | sed -n 's/^[[:space:]]*rx bitrate: //p' | head -n 1)"
+		echo "tx bitrate: $(echo "$link" | sed -n 's/^[[:space:]]*tx bitrate: //p' | head -n 1)"
+		;;
+	esac
+	echo "address: $(ip -4 addr show "$WIFIDEV" 2>/dev/null | sed -n 's/^ *inet \([^ ]*\).*/\1/p' | head -n 1)"
+else
+	echo "state: no $WIFIDEV"
+fi
 
 echo "== system =="
 echo "uptime: $(cut -d' ' -f1 "$PROCFS/uptime" 2>/dev/null || echo n/a) s"

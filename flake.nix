@@ -995,7 +995,7 @@
           #   4. the tablet tools /usr/bin/tablet-status and /usr/bin/tablet-dashboard;
           #   5. the universal probe (stage B of the plan; its userland helper is added here once the kernel framework exists).
           # No Bluetooth userland and no I2C tools are included (the Wi-Fi payload rules forbid them; charging uses sysfs only).
-          mkJ81BasePayload = { name, kernel, bootargsExtra ? "" }:
+          mkJ81BasePayload = { name, kernel, bootargsExtra ? "", wifi ? false }:
             let
               dropbearPkg = pkgsCrossMusl.dropbear;
               dropbearClosure = pkgs.closureInfo { rootPaths = [ dropbearPkg ]; };
@@ -1031,6 +1031,15 @@
               chmod 600 overlay/root/.ssh/authorized_keys
               chmod 644 overlay/etc/passwd overlay/etc/group
 
+              ${if wifi then ''
+              # Wi-Fi userland (item 6 of the base package): public, generic tools only. Everything private (chip files and network
+              # credentials) stays in the private overlay (boot/assemble_private_wifi_payload.py); with no network configured wifi-up logs and exits.
+              mkdir -p overlay/usr/share/wifi
+              cp ${wifiUserlandPkg}/bin/iw ${wifiUserlandPkg}/bin/wpa_supplicant ${wifiUserlandPkg}/bin/wpa_cli overlay/usr/bin/
+              cp ${./boot/wifi-up.sh} overlay/usr/bin/wifi-up
+              cp ${./boot/wifi-udhcpc.script} overlay/usr/share/wifi/udhcpc.script
+              chmod 755 overlay/usr/bin/iw overlay/usr/bin/wpa_supplicant overlay/usr/bin/wpa_cli overlay/usr/bin/wifi-up overlay/usr/share/wifi/udhcpc.script
+              '' else ""}
               cp ${./boot/tablet-status.sh} overlay/usr/bin/tablet-status
               cp ${./boot/charging-policy.sh} overlay/usr/bin/charging-policy
               cp ${./boot/tablet-dashboard.sh} overlay/usr/bin/tablet-dashboard
@@ -3336,6 +3345,7 @@
         # overlay (firmware, NVRAM, Wi-Fi userland, credentials) is added locally by boot/assemble_private_wifi_payload.py --production.
         m1n1-hoolock-wifi = mkJ81BasePayload {
           name = "m1n1-hoolock-wifi";
+          wifi = true;
           kernel = hoolockWifiKernel;
           bootargsExtra = "pcie_aspm=off pcie_apple_t7000.device_wake=1";
         };

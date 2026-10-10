@@ -157,6 +157,25 @@ def main():
         manifest_text = (work / "wifi" / "PRIVATE_MANIFEST.json").read_text()
         assert "s3cret-pass-phrase" not in manifest_text and "TestNet" not in manifest_text and sha(cred.read_bytes()) not in manifest_text
         assert mw["wifi_userland"]["credentials_present"] is True and set(mw["wifi_userland"]["tools_sha256"]) == set(A.WIFI_TOOLS)
+        # A public base that already carries the Wi-Fi userland (mkJ81BasePayload wifi = true): credentials only; the userland option is refused.
+        pub_wifi = make_public(tmp / "pw", extra=[("usr", 0o040755, b""), ("usr/bin", 0o040755, b"")] +
+                               [(f"usr/bin/{n}", 0o100755, b"\x7fELF" + n.encode()) for n in A.WIFI_TOOLS + ("wifi-up",)] +
+                               [("usr/share", 0o040755, b""), ("usr/share/wifi", 0o040755, b""), ("usr/share/wifi/udhcpc.script", 0o100755, b"#!/bin/sh\n")]) \
+            if (tmp / "pw").mkdir() is None else None
+        expect_exit(lambda: A.assemble(pub_wifi, assets, work / "pw1", check_hashes=False, wifi_userland=tmp / "userland", wifi_credentials=cred), "already carries")
+        mp = A.assemble(pub_wifi, assets, work / "pw2", check_hashes=False, wifi_credentials=cred)
+        assert mp["wifi_userland"]["source"] == "public base" and mp["wifi_userland"]["credentials_present"] is True
+        pp, _ = A.verify(work / "pw2")
+        assert not pp, pp
+        ents2 = cpio_entries(gzip.decompress((work / "pw2" / "initramfs.gz").read_bytes()))
+        assert ents2["etc/wpa_supplicant.conf"][0] & 0o777 == 0o600
+        assert "s3cret-pass-phrase" not in (work / "pw2" / "PRIVATE_MANIFEST.json").read_text()
+        # without credentials the base-with-userland assembles and simply has no configuration
+        mn = A.assemble(pub_wifi, assets, work / "pw3", check_hashes=False)
+        assert mn["wifi_userland"]["credentials_present"] is False
+        pn, _ = A.verify(work / "pw3")
+        assert not pn, pn
+        assert "etc/wpa_supplicant.conf" not in cpio_entries(gzip.decompress((work / "pw3" / "initramfs.gz").read_bytes()))
         # a payload without the userland still refuses stray Wi-Fi tools
         assert A.assemble(pub, assets, work / "plain", check_hashes=False)["wifi_userland"] is None
         bad_cred = tmp / "bad.conf"

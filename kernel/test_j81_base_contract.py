@@ -43,8 +43,15 @@ def check_flake():
                    "console=tty0", "ignore_loglevel", "rdinit=/init", "PMOS_NO_OUTPUT_REDIRECT", "pd_ignore_unused",
                    "clk_ignore_unused", "20-debug-shell.sh"):
         assert needle in body, f"mkJ81BasePayload lacks {needle}"
-    for banned in ("btattach", "i2cTools", "wpa_supplicant"):
+    for banned in ("btattach", "i2cTools"):
         assert banned not in body, f"mkJ81BasePayload must not include {banned}"
+    # Item 6 (Wi-Fi): the generic userland is part of the base when `wifi` is set, and comes only from the flake package (never the credentials).
+    assert "wifi ? false" in body, "mkJ81BasePayload needs the optional wifi argument"
+    for needle in ("wifiUserlandPkg", "wifi-up.sh", "wifi-udhcpc.script", "/usr/bin/wifi-up", "[ -x /usr/bin/wifi-up ]"):
+        assert needle in body, f"mkJ81BasePayload lacks the Wi-Fi piece {needle}"
+    for secret in ("wpa_supplicant.conf", "wifi-credentials", "psk="):
+        assert secret not in body, f"mkJ81BasePayload must not carry {secret}"
+    assert re.search(r"m1n1-hoolock-wifi = mkJ81BasePayload \{[^}]*wifi = true;", FLAKE, re.S), "m1n1-hoolock-wifi must be the base with wifi = true"
     for name in BASE_PAYLOADS:
         assert re.search(rf"\n        {re.escape(name)} = mkJ81BasePayload \{{", FLAKE), f"{name} is not built through mkJ81BasePayload"
 

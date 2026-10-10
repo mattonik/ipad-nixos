@@ -39,6 +39,26 @@ class TabletStatusTest(unittest.TestCase):
                 self.assertIn(line, out)
             self.assertEqual(before, sorted(p.relative_to(root) for p in root.rglob("*")))
 
+    def test_wifi_section(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            (root / "class/net/wlan0").mkdir(parents=True)
+            (root / "class/net/wlan0/operstate").write_text("up\n")
+            fake = root / "fake-iw"
+            fake.write_text("#!/bin/sh\ncat <<'EOF'\nConnected to aa:bb:cc:dd:ee:ff (on wlan0)\n\tSSID: TestNet\n\tfreq: 5240.0\n"
+                            "\tsignal: -58 dBm\n\trx bitrate: 526.5 MBit/s\n\ttx bitrate: 234.0 MBit/s\nEOF\n")
+            fake.chmod(0o755)
+            env = dict(os.environ, SYSFS=str(root), PROCFS=str(root), IW=str(fake))
+            out = subprocess.run(["sh", str(SCRIPT)], env=env, capture_output=True, text=True, check=True).stdout
+            for line in ("== wifi (wlan0) ==", "state: up", "ssid: TestNet", "frequency: 5240.0 MHz", "signal: -58 dBm", "rx bitrate: 526.5 MBit/s"):
+                self.assertIn(line, out)
+            # not connected, and no interface at all
+            fake.write_text("#!/bin/sh\necho 'Not connected.'\n")
+            out = subprocess.run(["sh", str(SCRIPT)], env=env, capture_output=True, text=True, check=True).stdout
+            self.assertIn("ssid: not connected", out)
+        with tempfile.TemporaryDirectory() as d:
+            self.assertIn("state: no wlan0", run(Path(d)))
+
     def test_missing_tree_is_all_na(self):
         with tempfile.TemporaryDirectory() as d:
             out = run(Path(d))

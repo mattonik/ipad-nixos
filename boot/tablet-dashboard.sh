@@ -48,6 +48,11 @@ render() {
 	else
 		echo "telnet recovery: not running"
 	fi
+	if ps 2>/dev/null | grep -q '[w]pa_supplicant'; then
+		echo "wifi (wpa_supplicant): running"
+	else
+		echo "wifi (wpa_supplicant): not running"
+	fi
 	if ps 2>/dev/null | grep -q '[c]harging-policy'; then
 		echo "charging policy: running"
 	else
