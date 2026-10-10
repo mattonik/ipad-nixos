@@ -89,7 +89,7 @@ Chain, all of it built in or already present:
 4. The firmware's bmac attach finds it and attaches `wl0`.
 
 So the public image carries no MAC (a zero placeholder), the private assembler needs no `--nvram-macaddr`, and a device without a MAC still
-falls back to a `macaddr` line in its NVRAM. **Status: implemented, hardware verification is run 39 (section 6).**
+falls back to a `macaddr` line in its NVRAM. **Status: hardware-verified in run 39 (section 6).**
 
 ## 6. Verification plan
 
@@ -98,6 +98,14 @@ Run 39 (`wifi-h1b-modelA-D21-permanent-...`): the kernel built from patches 0001
 pci-alias 1 apple-init 1` at boot, the full brcmfmac bring-up of run 38, and an interface address that is the device's own (not the test
 address). If the device-tree MAC does not arrive (m1n1 does not fill the node), the firmware fails to attach exactly as in runs 1-12 and the
 fallback is the private assembler's `--nvram-macaddr`.
+
+Run 39 result (D21, 2026-10-10): **passed.** The payload had no `apple_dart.*`, `io_pgtable_dart.*` or `brcmfmac.h1b_*` argument and no NVRAM `macaddr`
+(private manifest: `macaddr_added: false`). Boot log: `apple-dart 602002000.iommu: J81 PCIe DART options: ios-pte 1 pci-alias 1 apple-init 1` at 0.066 s; the firmware
+attached `wl0` (0.68 s) and brcmfmac completed the full bring-up by 2.86 s: `Firmware: BCM4350/5 wl0 ... version 7.15.114.157`, `brcmf_cfg80211_attach`,
+`brcmf_net_attach wlan0: Broadcom Dongle Host Driver`. No DART fault, no oops, no hold. Since the firmware cannot attach without a `macaddr` and the NVRAM had none,
+the address necessarily came from the device tree: m1n1 filled the `wifi0` node from the ADT and brcmfmac wrote it into the NVRAM. (Only a boolean was checked;
+the address itself was not recorded.) Cosmetic log lines present before and after: `pci 0000:00:01.0: retraining failed`, `of_irq_parse_pci: failed with rc=-22`
+(MSI is used anyway), `regulatory.db` missing.
 
 ## 7. Not yet done / not isolated
 

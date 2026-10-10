@@ -718,3 +718,12 @@ Model A (rebased index) + `pci_alias` raw mapping are still on; which of those i
 
 Next: turn the toggles into permanent behaviour (leaf `|3`, Apple init for the PCIe DART, null-cfg fix), find the minimal set (alias? ios_pte? apple_init?), provision the MAC properly,
 and remove the test toggles/hold.
+
+
+## Run 39 — D21 (permanent configuration, no test toggles, no NVRAM macaddr): PASSED
+
+Kernel with patches 0001-0090 (DART options and the `wifi0` endpoint node from the device tree), base bootargs `pcie_aspm=off pcie_apple_t7000.device_wake=1`,
+assembled with no `apple_dart.*` / `io_pgtable_dart.*` / `brcmfmac.h1b_*` arguments and `macaddr_added: false`. Log: `J81 PCIe DART options: ios-pte 1 pci-alias 1 apple-init 1` (0.066),
+firmware `wl0` up (0.68), full brcmfmac bring-up, `Firmware: BCM4350/5 wl0 ... 7.15.114.157`, `brcmf_net_attach wlan0: Broadcom Dongle Host Driver` at 2.86 s. No DART fault, no oops.
+The firmware cannot attach without `macaddr`, so the MAC came from the device tree through m1n1 (proper provisioning works). The iPad ended in the normal telnet recovery shell.
+Details and the remaining bisection list: `research/2026-10-10-wifi-bringup-root-cause-and-permanent-fix.md`.
