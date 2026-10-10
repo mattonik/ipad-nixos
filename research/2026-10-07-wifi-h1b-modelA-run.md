@@ -678,3 +678,16 @@ Together with run 35 this fixes the format of the directory entry: the hardware 
 With `|3` directories and `|2` leaves the hardware reports NO PTE (leaf rejected). Remaining candidates for the leaf: the "flag in bit 0" the iOS lookup returns as `& 1`
 (leaf `|3`), or other low bits. Patch 0088 adds `io_pgtable_dart.ios_leaf_bits=N` (ORed into every iOS-format leaf; default 0) so these can be tried from the boot
 arguments without more builds (D19: `ios_pte=1 ios_leaf_bits=1`).
+
+## Run 37 — D19 (D17 + `io_pgtable_dart.ios_leaf_bits=1`: iOS leaf entries `|3`) — FIRST WORKING DEVICE DMA
+
+No DART fault. The full round trip happened for the first time on this machine:
+- doorbell `RING !` 26.4652; ring 0 `device r 1 w 1` (firmware read the request item through the DART);
+- the firmware wrote to the control-complete ring (ring 2: host r/w 1/1, device r 1 w 1) and raised the MSI 0.2 ms later (`isr #1 irq 56 mailbox status 0x10000`);
+- `d2h scratch (device-written via DMA): b400000200000000` (was 0 in every earlier run): the firmware WROTE host memory through the DART too;
+- the host processed `MSGBUF_TYPE_GEN_STATUS`: `Firmware reported general error: 9`, then the ioctl timed out (no ioctl response).
+
+Cause of the whole DMA failure (runs 13-33): the S5L8960X DART needs bit 0 set in leaf entries as well as bit 1 (`|3`), directory `|3`, and the Apple error-reflector
+start-up so a fault becomes an interrupt instead of a silent SoC reset. Page 0x3fffe was never unmapped; the hardware just ignored `|2` leaves.
+
+Error 9 is most likely because this payload used `h1b_feed=0` (no ioctl-response buffers posted): the firmware has nowhere to put the answer. Next D20: default feeding.
