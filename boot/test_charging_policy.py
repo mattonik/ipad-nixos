@@ -29,8 +29,8 @@ class Env:
         (self.bat / "uevent").write_text(text)
 
     def run(self, **extra):
-        env = dict(os.environ, CHG=str(self.chg), BAT=str(self.bat), ONCE="1",
-                   WAIT_SECS="1", **extra)
+        env = dict(os.environ, CHG=str(self.chg), BAT=str(self.bat), ONCE="1", WAIT_SECS="1")
+        env.update(extra)
         proc = subprocess.run(["sh", str(SCRIPT)], env=env, capture_output=True, text=True)
         return proc
 
@@ -161,6 +161,28 @@ printf 'POWER_SUPPLY_CAPACITY=%s\\nPOWER_SUPPLY_TEMP=313\\n' "$next" > {e.bat}/u
         before = {p.name for p in Path(e.dir.name).rglob("*")}
         e.run()
         self.assertEqual(before, {p.name for p in Path(e.dir.name).rglob("*")})
+
+
+class GaugeReprobeTests(unittest.TestCase):
+    def test_missing_battery_triggers_reprobe(self):
+        e = Env()
+        (e.bat / "uevent").unlink()
+        drv = Path(e.dir.name) / "drv"
+        drv.mkdir()
+        proc = e.run(HDQ_DRV=str(drv), HDQ_DEV="serial0-0", WAIT_SECS="6")
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("re-probing serial0-0", proc.stdout)
+        self.assertEqual((drv / "unbind").read_text().strip(), "serial0-0")
+        self.assertEqual((drv / "bind").read_text().strip(), "serial0-0")
+        self.assertEqual(e.limit(), "100000")  # never raised without a battery reading
+
+    def test_present_battery_is_not_reprobed(self):
+        e = Env("313")
+        drv = Path(e.dir.name) / "drv"
+        drv.mkdir()
+        e.run(HDQ_DRV=str(drv))
+        self.assertFalse((drv / "bind").exists())
+        self.assertEqual(e.limit(), "2400000")
 
 
 if __name__ == "__main__":

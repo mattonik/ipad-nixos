@@ -12,7 +12,11 @@ HOT_DECI=${HOT_DECI:-420}         # >= 42.0 C: back off
 COOL_DECI=${COOL_DECI:-380}       # <= 38.0 C: resume
 MAX_CAPACITY=${MAX_CAPACITY:-80}  # >= 80%: back off
 INTERVAL=${INTERVAL:-30}
-WAIT_SECS=${WAIT_SECS:-60}
+WAIT_SECS=${WAIT_SECS:-120}
+# The battery gauge (HDQ over UART5) sometimes fails its one identification at boot (a marginal pulse: "matched 15/16 bytes"); the driver never
+# retries, so no battery is registered and this policy would have nothing to read. While the gauge is missing, re-probe it every 5 s.
+HDQ_DRV=${HDQ_DRV:-/sys/bus/serial/drivers/bq27xxx-hdq-uart}
+HDQ_DEV=${HDQ_DEV:-serial0-0}
 LIMIT=$CHG/input_current_limit
 
 log() { echo "charging-policy: $*"; }
@@ -22,6 +26,11 @@ while [ ! -w "$LIMIT" ] || [ ! -r "$BAT/uevent" ]; do
 	if [ "$waited" -ge "$WAIT_SECS" ]; then
 		log "sysfs not available after ${WAIT_SECS}s; leaving limit unchanged"
 		exit 1
+	fi
+	if [ ! -r "$BAT/uevent" ] && [ -d "$HDQ_DRV" ] && [ $((waited % 5)) -eq 4 ]; then
+		log "battery gauge not registered after ${waited}s; re-probing $HDQ_DEV"
+		echo "$HDQ_DEV" > "$HDQ_DRV/unbind" 2>/dev/null
+		echo "$HDQ_DEV" > "$HDQ_DRV/bind" 2>/dev/null
 	fi
 	sleep 1
 	waited=$((waited + 1))

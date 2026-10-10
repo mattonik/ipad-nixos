@@ -29,3 +29,10 @@ Add new entries at the end; strike an entry through when it is done.
 ## 5. `wpa_cli` cannot reach the supplicant socket (recorded 2026-10-10)
 - **What:** the static `wpa_cli` reports `/run/wpa_supplicant/client: No such file or directory`; `wpa.log` and `iw dev wlan0 link` are used instead.
 - **Fix:** build `wpa_cli` with the control directory `/var/run/wpa_supplicant`, or create `/run/wpa_supplicant` in `wifi-up`.
+
+## 6. Battery gauge (HDQ over UART5) sometimes fails its one identification at boot (recorded 2026-10-10)
+- **What:** on one production boot (run 47 payload) `bq27xxx-hdq-uart` logged `HDQ transact timeout: matched 15/16 bytes` and `HDQ device identification failed`, then never retried. No `bq27545-battery`
+  power supply, so `charging-policy` gave up and the charge limit stayed at the 100 mA default (the dashboard showed the policy as not running). Re-binding the driver at run time identified it on the first try (`HDQ DEVICE_TYPE = 0x0545`):
+  the read is intermittently marginal, not broken.
+- **Workaround in place:** `boot/charging-policy.sh` now re-probes the gauge (`unbind`/`bind` of `serial0-0` on the driver) every 5 s while the battery is missing and waits up to 120 s (was 60 s, no retry). Tested in `boot/test_charging_policy.py`.
+- **Proper fix:** retry the identification inside the driver (`kernel/patches/0004`, `bq27xxx_battery_hdq_uart.c`: a few attempts with a short delay before failing probe), and look at why a pulse is marginal (the `>= 0xf0` threshold vs observed `0xe0`/`0xc0` bytes).

@@ -989,6 +989,13 @@
             cp ${pkgsCrossMusl.pkgsStatic.iw}/bin/iw "$out/bin/iw"
           '';
 
+          # Bluetooth bring-up tools, pushed to the iPad at run time (never part of a payload): static btattach and i2c-tools (docs/plans/2026-10-08-j81-bluetooth-battery-adt.md).
+          btUserlandPkg = pkgs.runCommand "ipad-air2-bt-userland" {} ''
+            mkdir -p "$out/bin"
+            cp ${btattachPkg}/bin/btattach "$out/bin/btattach"
+            for f in ${i2cToolsPkg}/bin/*; do cp "$f" "$out/bin/"; done
+          '';
+
           # J81 BASE PAYLOAD (docs/plans/2026-10-08-j81-base-package.md). Every payload that is meant to be run on the iPad
           # should be built through this function, so these stay in every build without copy-paste drift:
           #   1. charging: the kernel must carry patch 0017 (writable input_current_limit; enforced by
@@ -1233,6 +1240,7 @@
         hoolock-pcie-j81-wifi-h1b-kernel = hoolockPcieJ81WifiH1bKernel;
         hoolock-wifi-kernel = hoolockWifiKernel;
         wifi-userland-static = wifiUserlandPkg;
+        bt-userland-static = btUserlandPkg;
         hoolock-pcie-j81-wifi-h1b-raw-kernel = hoolockPcieJ81WifiH1bRawKernel;
         hoolock-pcie-gate-aux-ref-test-kernel = hoolockPcieGateAuxRefTestKernel;
         hoolock-pcie-gate-register-test-kernel = hoolockPcieGateRegisterTestKernel;
