@@ -374,6 +374,29 @@ PMIC write; the cold-iPadOS bus capture remains the next evidence gate.
 | The rejected D2207 write is caused by runtime ownership/lock state. | Inference after framing and one candidate master-enable were ruled out. |
 | Cold boot is the right passive-capture window. | Strong inference from AppleBluetooth asserting power-enable in `start()`. |
 
+### Linux BCM transport cross-check, 2026-10-10
+
+As a bounded software comparison, Linux v6.12 `hci_bcm`/`btbcm` was reviewed
+against the J81 failure point. Its setup order is:
+
+1. enable optional regulators and the 32.768-kHz LPO/TCXO clocks;
+2. assert shutdown/power and device-wakeup;
+3. wait 100--120 ms;
+4. send HCI Reset (`0x0c03`), then read local version/info;
+5. only after a responding controller is identified, request the board HCD and
+   perform baud-rate/patch setup.
+
+This is useful negative evidence: a missing HCD cannot cause the current
+zero-byte result, because firmware lookup is strictly after HCI Reset and
+version responses. It also identifies the two Linux resources that the J81
+serdev description still cannot provide: a real `power-enable` callback for
+PMU GPIO2 and any controller LPO/TCXO clock. Existing tests waited longer than
+120 ms and asserted BT_WAKE, so timing alone is not a credible explanation.
+
+Source cross-check: Linux `drivers/bluetooth/hci_bcm.c` and
+`drivers/bluetooth/btbcm.c`, v6.12 upstream. No repository code or hardware was
+changed.
+
 ## Source anchors
 
 - Pinned Hoolock kernel used by this project:
