@@ -3293,7 +3293,9 @@
         m1n1-hoolock-pcie-j81-wifi-h1b-base = mkJ81BasePayload {
           name = "m1n1-hoolock-pcie-j81-wifi-h1b-base";
           kernel = hoolockPcieJ81WifiH1bKernel;
-          bootargsExtra = "brcmfmac.debug=0x001c0004";
+          # pcie_aspm=off and device_wake=1 are the proven J81 Wi-Fi link settings (research/2026-10-07-wifi-h1b-modelA-run.md run 38); the DART
+          # options and the Wi-Fi endpoint node (MAC) now come from the device tree (patches 0089/0090).
+          bootargsExtra = "brcmfmac.debug=0x001c0004 pcie_aspm=off pcie_apple_t7000.device_wake=1";
         };
 
         # TEST ONLY: Wi-Fi H1B base (public), DMA MODEL B (raw) + brcmfmac PCIe, NO firmware; private overlay is added locally.

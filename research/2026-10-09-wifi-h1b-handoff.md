@@ -1,3 +1,5 @@
+> **SUPERSEDED 2026-10-10:** the blocker described here was solved (runs 33-38). Read `research/2026-10-10-wifi-bringup-root-cause-and-permanent-fix.md` first; this file is kept as the record of the investigation state before the fix.
+
 # Wi-Fi H1B handoff (2026-10-09): firmware is up; the first ring buffers reset the iPad
 
 Everything below is verified on hardware unless marked "static" or "hypothesis". Detail per run: `2026-10-07-wifi-h1b-modelA-run.md` (runs 1-30); campaign overview:
