@@ -71,3 +71,27 @@ Still unexplained clue: the UART's modem-status line shows `RTS|DTR|DSR|CD` and 
 2. Whether BT_REG_ON on this module is really PMU GPIO2: GPIO2's config goes `0x09 -> 0x0b` and `0x0063` bit 6 follows it; decode what that data bit is.
 3. The Wi-Fi side: the chip is a Wi-Fi+BT combo that is powered via `reg_on` (GPIO3, high); a BT-specific rail/clock may be shared with the Wi-Fi power sequencing (e.g. BT only comes alive after the Wi-Fi firmware sets a BT-enable bit through the chip's own registers: on some BCM4350 designs the Wi-Fi firmware must report BT coex; the C2 firmware has a `bt` coex/`btcoex` setting).
 4. UART clock/baud accuracy: `base_baud = 0` in the Samsung UART driver; check the real divisor for 115200/3 Mbaud (HDQ flakiness on UART5 hints at baud/timing error).
+
+## Fourth round (same day): items 3 and 4 (read-only), done by the assistant
+
+### Item 4: real UART3 (`ttySAC1`) baud rates, measured on the running iPad
+Method: with the chip unpowered, no flow control, raw mode, `dd if=/dev/zero of=/dev/ttySAC1` of N bytes (the close waits for the transmit FIFO to drain), timed with `/proc/uptime`; a correct baud rate takes N*10/baud seconds.
+
+| requested baud | bytes | expected | measured | actual baud |
+|---|---:|---:|---:|---:|
+| 115200 | 30,000 | 2.604 s | 2.62 s | ~115,000 (+0.6 %, fine) |
+| 921600 | 200,000 | 2.170 s | 2.69 s | ~743,000 (-19 %) |
+| 1,500,000 | 300,000 | 2.000 s | 2.05 s | ~1,460,000 (-2.5 %) |
+| 3,000,000 | 600,000 | 2.000 s | 4.08 s | **~1,470,000 (half the request)** |
+
+The Samsung/S5L UART here divides its clock by 16 x (UBRDIV+1); with a ~24 MHz clock the fastest rate is ~1.5 Mbaud, and 3 Mbaud (Apple's `transport-speed` 0x2dc6c0) silently runs at ~1.5 Mbaud (and 921600 rounds to ~750k).
+Consequences: (1) the earlier `btattach -S 3000000` used a speed the hardware cannot do (the chip, at its power-up default, would not hear it anyway); (2) the raw probes at 115200 were accurate, so the silent chip is NOT a baud problem at the initial speed;
+(3) later, to run the controller at its operating speed, the UART needs a higher input clock or an 8x-oversampling mode (the driver only knows /16): a to-do for after the chip responds (`docs/technical-debt.md` entry 7).
+
+### Item 3: does the Bluetooth UART depend on the Wi-Fi firmware? (private NVRAM and firmware strings, host-side)
+- NVRAM keys: `btc_mode=1` (Wi-Fi/BT coexistence enabled), `host_wake_opt=0`, **`uart_wake_gpio=2`** (a chip-internal GPIO used as the UART wake pin), `xtalfreq=37400` (37.4 MHz crystal), `boardtype=0x0713`.
+- Firmware strings: `btc_mode`, `btc_params%d`, `btc_flags`, `btc_select_profile`, `bt_regs_read`, `host_wake_opt`, `uarttrapenab`: the Wi-Fi firmware has coexistence logic and can read Bluetooth-core registers over the chip backplane, but nothing indicates the Bluetooth UART needs the Wi-Fi firmware to be running to answer HCI Reset
+  (on UART-attached BCM combos the BT controller boots from its own ROM after BT_REG_ON, and the host loads patch RAM over HCI).
+- `uart_wake_gpio=2` points at the wake path: chip GPIO 2 wakes the BT UART; if it is wired to the AP's BT_WAKE (AP GPIO 164) it was asserted in round 3 (no effect). An earlier ChipCommon snapshot (`in 0x290e`: bit 2 already set while BT_WAKE was low) suggests chip GPIO 2 is not simply BT_WAKE or is pulled up; not verified.
+
+Verdict: no evidence of a Wi-Fi-firmware dependency; the Bluetooth silence stays unexplained. Highest-value next steps are the iOS 8.1 driver's exact power-up sequence (static analysis) and, on hardware, anything that observes the chip side: a ChipCommon GPIO snapshot while BT_WAKE/power-enable toggle (needs the diagnostic kernel; read-only), or checking whether the BT core responds through the backplane (`bt_regs_read` territory; risky, not attempted).

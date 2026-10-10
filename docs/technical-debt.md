@@ -36,3 +36,8 @@ Add new entries at the end; strike an entry through when it is done.
   the read is intermittently marginal, not broken.
 - **Workaround in place:** `boot/charging-policy.sh` now re-probes the gauge (`unbind`/`bind` of `serial0-0` on the driver) every 5 s while the battery is missing and waits up to 120 s (was 60 s, no retry). Tested in `boot/test_charging_policy.py`.
 - **Proper fix:** retry the identification inside the driver (`kernel/patches/0004`, `bq27xxx_battery_hdq_uart.c`: a few attempts with a short delay before failing probe), and look at why a pulse is marginal (the `>= 0xf0` threshold vs observed `0xe0`/`0xc0` bytes).
+
+## 7. Bluetooth UART cannot run at the controller's operating speed (recorded 2026-10-10)
+- **What:** Apple's ADT asks for 3 Mbaud (`transport-speed` 0x2dc6c0) but the Samsung/S5L UART divides a ~24 MHz clock by 16, so the maximum is ~1.5 Mbaud and a 3 Mbaud request silently runs at half speed (measured, `research/2026-10-10-bluetooth-gpio2-hardware-test.md`, fourth round).
+- **Why left:** Bluetooth does not answer HCI at all yet, so the operating speed is not reachable. The initial speed (115200) is accurate.
+- **Fix:** give UART3 a faster input clock (check the PMGR/clock-ids for UART3) or add 8x-oversampling support to the driver; pick the speed the firmware supports (1.5 Mbaud is a common alternative).
