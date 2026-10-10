@@ -2653,3 +2653,9 @@ Permanent fix and MAC provisioning (patches 0089/0090, DT-driven DART options, `
 ## 2026-10-10 - Wi-Fi works on the iPad Air 2
 
 Scan, WPA2 association, DHCP, ping (0% loss) and HTTP download all succeed on the BCM4350 under Linux (run 40 in `research/2026-10-07-wifi-h1b-modelA-run.md`; method in `docs/plans/2026-10-10-j81-wifi-userland.md`). Tag `wifi-bringup-d21` marks the verified kernel/payload. Next: permanent tools and credentials flow, auto-start, `regulatory.db`, toggle clean-up.
+
+## Next task after the Wi-Fi groundwork: Bluetooth (decided 2026-10-10)
+The research agent decoded the iOS 8.1 `AppleD2207PMU::start` GPIO path (`research/2026-10-10-d2207-public-static-analysis.md`, commit `c535a45`): the J81 ADT has none of the
+`gpio-*-defaults` / `gpio-pin-config` properties, so there is no hidden default table or unlock step before Bluetooth power-on; the remaining action is the separate
+`function-power_enable` call for GPIO2 (register `0x0402`). The agent's proposed hardware test: read `0x0402`, apply the Apple-style `0x09 -> 0x0b` transition, verify readback.
+Standing rules still apply: that register write needs its own explicit approval for the run (not given yet), one controlled change, immediate readback, no default-table or unlock write.
