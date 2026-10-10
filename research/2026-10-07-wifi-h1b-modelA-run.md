@@ -816,3 +816,11 @@ firmware/NVRAM and the credentials file only (`--production --wifi-credentials`;
 - Tablet tools (item 4): `tablet-status` has the new `== wifi (wlan0) ==` section (state, SSID, frequency, signal, rx/tx bitrate, address); `tablet-dashboard --once` lists `wifi (wpa_supplicant): running` and `charging policy: running`.
 - Tools present in the base: `iw`, `wpa_supplicant`, `wpa_cli`, `wifi-up`.
 Remaining for the base package: the universal probe (item 5, stage B designed only) and the cosmetic items (late `wifi-up` start, a few unconditional `feed:` log lines).
+
+## Run 47 — P4: regulatory.db, 16x32 console font, dashboard on the screen by default, 2026-10-10
+
+Production base (`/nix/store/gn56x2bdcyfii10qw5rj0829anlrq94z-ipad-air2-m1n1-hoolock-wifi`, GC root `artifacts/live/gcroot-wifi-production4`) + private overlay (firmware/NVRAM, credentials only). Cold boot:
+- Console: `Console: switching to colour frame buffer device 96x64` (was 192x128 at the 8x16 font): `fbcon=font:TER16x32` with `CONFIG_FONT_TER16x32`.
+- Regulatory database: `/lib/firmware/regulatory.db` and `.p7s` present (6.3 kB, 1 kB), no `Direct firmware load for regulatory.db failed`; `iw reg get` shows the global domain from the chip's own data (country DE, DFS-ETSI). No country was forced.
+- Wi-Fi: `associated (attempt 1, 3s)`, 5 GHz (5240 MHz) at -58 dBm, DHCP bound, as in run 46.
+- Dashboard: `tablet-dashboard-screen` started from the boot hook (one `tablet-dashboard` process), kernel console level `1 1 1 1`. Visual check of font size and layout by the user pending.
