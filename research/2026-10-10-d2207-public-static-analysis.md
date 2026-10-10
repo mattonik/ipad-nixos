@@ -38,6 +38,13 @@ The J81 ADT dump contains the Bluetooth `function-power_enable` descriptor
 the next static question is whether those properties are stored in a different
 ADT node, synthesized by an earlier Apple driver, or absent on this board.
 
+A complete-text search of the captured J81 ADT confirms that absence: the dump
+contains `function-power_enable`, the `pmu,d2207` node, and the GPIO controller
+metadata, but no `gpio-activate-defaults`, `gpio-suspend-defaults`,
+`gpio-quiesce-defaults`, or `gpio-pin-config` property. This makes a hidden
+42-byte table in the captured ADT unlikely, though it cannot rule out a table
+created by an earlier boot-stage component.
+
 This does **not** justify a whole-bank write from Linux. The target iOS 8.1
 kernelcache still needs to be checked for the exact property lookup and the
 per-pin table. GPIO2 remains `0x0402`; the old `0x03e6` write was unrelated.
