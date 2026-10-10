@@ -1005,7 +1005,7 @@
           #   4. the tablet tools /usr/bin/tablet-status and /usr/bin/tablet-dashboard;
           #   5. the universal probe (stage B of the plan; its userland helper is added here once the kernel framework exists).
           # No Bluetooth userland and no I2C tools are included (the Wi-Fi payload rules forbid them; charging uses sysfs only).
-          mkJ81BasePayload = { name, kernel, bootargsExtra ? "", wifi ? false, dashboard ? false }:
+          mkJ81BasePayload = { name, kernel, bootargsExtra ? "", wifi ? false, dashboard ? false, btWakeHog ? false }:
             let
               dropbearPkg = pkgsCrossMusl.dropbear;
               dropbearClosure = pkgs.closureInfo { rootPaths = [ dropbearPkg ]; };
@@ -1020,6 +1020,15 @@
               dtc -I dtb -O dts ${kernel}/dtbs/apple/t7001-j81.dtb \
                 | sed -e '/^\tchosen {$/,/^\t};$/ s/framebuffer@0 {/framebuffer {/' \
                 | dtc -I dts -O dtb -p 0x10000 -o "$out/t7001-j81.dtb"
+              ${if btWakeHog then ''
+              # TEST ONLY (docs/plans/2026-10-08-j81-bluetooth-battery-adt.md): a gpio-hog that the kernel's own pinctrl driver applies at boot, driving AP GPIO 164
+              # (ADT bluetooth `function-bt_wake`) high. No /dev/mem poking; the production payloads never set btWakeHog.
+              fdtput -c "$out/t7001-j81.dtb" /soc/pinctrl@20e300000/bt-wake-hog
+              fdtput -t x "$out/t7001-j81.dtb" /soc/pinctrl@20e300000/bt-wake-hog gpios 0xa4 0x0
+              fdtput -t s "$out/t7001-j81.dtb" /soc/pinctrl@20e300000/bt-wake-hog line-name bt_wake
+              fdtput -t x "$out/t7001-j81.dtb" /soc/pinctrl@20e300000/bt-wake-hog gpio-hog
+              fdtput -t x "$out/t7001-j81.dtb" /soc/pinctrl@20e300000/bt-wake-hog output-high
+              '' else ""}
 
               # Base debug initramfs (telnetd, fbdebug, evtest, debug-shell flow) plus one overlay archive.
               gzip -dc ${inputs.linuxAppleResources}/debug_initrd.img > initramfs.cpio
@@ -3366,6 +3375,17 @@
           name = "m1n1-hoolock-wifi";
           wifi = true;
           dashboard = true;
+          kernel = hoolockWifiKernel;
+          bootargsExtra = "pcie_aspm=off pcie_apple_t7000.device_wake=1 fbcon=font:TER16x32";
+        };
+
+        # TEST ONLY: the production Wi-Fi base plus a boot-time gpio-hog driving AP GPIO 164 (Bluetooth BT_WAKE) high, for the Bluetooth bring-up
+        # (research/2026-10-10-bluetooth-gpio2-hardware-test.md). Same kernel as m1n1-hoolock-wifi; only the DTB differs.
+        m1n1-hoolock-wifi-btwake = mkJ81BasePayload {
+          name = "m1n1-hoolock-wifi-btwake";
+          wifi = true;
+          dashboard = true;
+          btWakeHog = true;
           kernel = hoolockWifiKernel;
           bootargsExtra = "pcie_aspm=off pcie_apple_t7000.device_wake=1 fbcon=font:TER16x32";
         };

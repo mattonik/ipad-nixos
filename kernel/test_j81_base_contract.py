@@ -56,6 +56,9 @@ def check_flake():
     prod = re.search(r"m1n1-hoolock-wifi = mkJ81BasePayload \{.*?\n        \};", FLAKE, re.S).group(0)
     assert "dashboard = true;" in prod and "fbcon=font:TER16x32" in prod, "the production base must start the dashboard on a 16x32 console font"
     assert "CONFIG_FONT_TER16x32=y" in FLAKE
+    assert "btWakeHog = true" not in prod, "the production base must never drive BT_WAKE (test-only gpio-hog)"
+    bt = re.search(r"m1n1-hoolock-wifi-btwake = mkJ81BasePayload \{.*?\n        \};", FLAKE, re.S)
+    assert bt and "btWakeHog = true;" in bt.group(0) and "hoolockWifiKernel" in bt.group(0)
     assert re.search(r"m1n1-hoolock-wifi = mkJ81BasePayload \{[^}]*wifi = true;", FLAKE, re.S), "m1n1-hoolock-wifi must be the base with wifi = true"
     for name in BASE_PAYLOADS:
         assert re.search(rf"\n        {re.escape(name)} = mkJ81BasePayload \{{", FLAKE), f"{name} is not built through mkJ81BasePayload"
