@@ -58,3 +58,8 @@ Next (needs a go-ahead): the same detect-only run with `--spi-mode 0`.
 
 **First valid communication with the touch ROM.** Detect frame reply: `1f 01` x 8, both checked words known, `DETECT PASS`. The wake, short and long ATN frames all return `1f 01` as well. Mode 0 removed the one-bit shift seen in mode 2. The root cause of the whole "idle pattern" saga is confirmed: wrong SPI bit order (MSB-first) and mode. Unwind clean.
 Next (needs a go-ahead): the firmware upload with `--spi-mode 0` (LSB-first default), expecting `4b c1`; the ACK query reply decoded with the same settings.
+
+## Eighth run: firmware upload, LSB-first, mode 0, 1.984 MHz (user-approved)
+
+Detect PASS (`1f 01` x 8). One 59,288-byte message (completed without error), then six `1a a1` queries over ~1.3 s: every reply `1f 01` (the idle word), never `4b c1`. Unwind clean. So the link is now valid, but the ROM does not take the packet as a firmware download.
+Differences from Apple's recovered sequence still present (research/2026-10-11-touch-no-ack-analysis.md): (1) Apple's SPI clock is ~8 MHz with a 5 us inter-word delay and 10 us CS setup/hold; we send back-to-back bytes at 1.984 MHz with no word delay (the Linux S5L driver writes WORD_DELAY 0); (2) Apple sends the 2-byte wake `19 c1` first, power-before-clock with 5 ms/15 ms sleeps, and starts bootloadDevice >= 15 ms after the detect; we send the packet immediately after the detect; (3) Apple's firmware transfer is transmit-only (rx NULL), ours is full duplex; (4) the packet+query pair is retried by Apple up to five times (we only repeat the query). 
