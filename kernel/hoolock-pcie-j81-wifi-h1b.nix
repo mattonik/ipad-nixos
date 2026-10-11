@@ -83,6 +83,11 @@ let
     patch -d "$out" -p1 < ${./patches/0088-io-pgtable-dart-ios-leaf-bits.patch}
     patch -d "$out" -p1 < ${./patches/0089-apple-dart-j81-options-from-device-tree.patch}
     patch -d "$out" -p1 < ${./patches/0090-t7001-air2-pcie-dart-options-and-wifi-node.patch}
+    patch -d "$out" -p1 < ${./patches/0091-bq27xxx-hdq-uart-retry-identification.patch}
+    patch -d "$out" -p1 < ${./patches/0092-samsung-tty-apple-s5l-sampling-factor-baud.patch}
+    patch -d "$out" -p1 < ${./patches/0093-t7001-air2-serial3-baud-factor-select.patch}
+    patch -d "$out" -p1 < ${./patches/0094-brcmfmac-msgbuf-h1b-toggles-only-with-diag.patch}
+    patch -d "$out" -p1 < ${./patches/0095-t7001-air2-spi3-touch-spidev-child-disabled.patch}
   '';
   buildArgs = builtins.removeAttrs args [ "source" "hoolockConfig" "runCommand" ];
 in

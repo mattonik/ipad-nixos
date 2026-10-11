@@ -819,6 +819,15 @@
             echo 'CONFIG_FONT_TER16x32=y' >> "$out"
             echo 'CONFIG_FW_LOADER_USER_HELPER_FALLBACK=n' >> "$out"
             echo 'CONFIG_FW_LOADER_USER_HELPER=n' >> "$out"
+            # NixOS-in-RAM (docs/plans/2026-10-11-nixos-in-ram.md) and the touch spidev experiment.
+            echo 'CONFIG_SQUASHFS=y' >> "$out"
+            echo 'CONFIG_SQUASHFS_ZSTD=y' >> "$out"
+            echo 'CONFIG_SQUASHFS_XZ=y' >> "$out"
+            echo 'CONFIG_OVERLAY_FS=y' >> "$out"
+            echo 'CONFIG_EROFS_FS=y' >> "$out"
+            echo 'CONFIG_CGROUP_BPF=y' >> "$out"
+            echo 'CONFIG_FUSE_FS=y' >> "$out"
+            echo 'CONFIG_SPI_SPIDEV=y' >> "$out"
           '';
           # Model B keeps the configuration it was built with (before the 0067 toggles); same derivation name and content.
           patchedHoolockPcieJ81WifiH1bRawConfig = pkgs.runCommand "ipad-t7001-hoolock-pcie-j81-wifi-h1b-defconfig-4k" {} ''
