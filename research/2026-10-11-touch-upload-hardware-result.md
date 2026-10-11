@@ -53,3 +53,8 @@ Conclusion: neither a 4x slower clock nor shorter PIO runs inside one chip-selec
 
 Every reply is now a regular stream instead of the old `f8 80`/`f1 01` pattern: `0f 80 8f 80 8f 80 ...`. Read as a bit stream this is the ROM idle word `1f 01` repeated, delayed by exactly one bit (drop the first bit and it regroups into `1f 01 1f 01 ...`). So the bit-order diagnosis (research/2026-10-11-touch-no-ack-analysis.md) holds: the ROM answers with its valid idle word and our data lines up except for a one-bit shift, which points at the SPI clock phase/polarity (mode 2 here; Apple's decoded mode is 0). The detect check printed FAIL because of the shift; the handshake frames got the same shifted stream. No firmware was sent; unwind clean.
 Next (needs a go-ahead): the same detect-only run with `--spi-mode 0`.
+
+## Seventh run: detect-only, LSB-first, MODE 0, 1.984 MHz (user-approved, no firmware)
+
+**First valid communication with the touch ROM.** Detect frame reply: `1f 01` x 8, both checked words known, `DETECT PASS`. The wake, short and long ATN frames all return `1f 01` as well. Mode 0 removed the one-bit shift seen in mode 2. The root cause of the whole "idle pattern" saga is confirmed: wrong SPI bit order (MSB-first) and mode. Unwind clean.
+Next (needs a go-ahead): the firmware upload with `--spi-mode 0` (LSB-first default), expecting `4b c1`; the ACK query reply decoded with the same settings.
