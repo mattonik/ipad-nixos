@@ -8,7 +8,7 @@ assert "#define UART3_BASE 0x20a0cc000ULL" in c
 assert len(re.findall(r"r\[REG_BAUD\d / 4\] = ", c)) == 3, "exactly the three baud registers are written"
 assert len(re.findall(r"r\[REG_UFCON / 4\] = ", c)) == 1 and "v & ~0x1ffu" in c, "UFCON (+0x08) written once, limited to 9 bits"
 assert len(re.findall(r"r\[REG_UCON / 4\] = ", c)) == 1 and "(v & 0x7200u)" in c and "(v & 0x85u) != 0x85u" in c, "UCON written once, interrupt-enable bits refused"
-assert "(v & ~0x10ffffu)" in c, "UCON: only bit 20 allowed above bit 15"
+assert "(v & ~0x12ffffu)" in c, "UCON: only bits 17 and 20 allowed above bit 15"
 assert "REG_BAUD0 0x28" in c and "REG_BAUD1 0x34" in c and "REG_BAUD2 0x38" in c
 p = Path(__file__).with_name("uart3_baud_experiment.py").read_text()
 assert "finally:" in p and p.index("finally:") < p.index("--- RESTORE")

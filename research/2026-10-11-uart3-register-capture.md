@@ -82,3 +82,9 @@ iOS sets UCON bit 20 (`0x00100000`) only when `uart-version != 0` (`research/202
 
 Control (bit 20 off) 28=0: 1.478 M. So bit 20 is a real baud-mode switch, but with zero slot words the gain is **~sqrt(2)** (effective divider ~11.3 = 16/sqrt(2)), not the 2x of a clean divide-by-8 mode and not yet iOS's 3 M. iOS always writes computed slot words (`0x55555555` for the table's 115.2 k, 1.5 M and 3 M rows); in the legacy mode those words only slow the rate (x15/16),
 so in the new mode they may supply the remaining correction. Round 5 applies iOS's complete register triples with bit 20 set.
+
+## Round 5 (bit 20 + iOS slot words, run by the user)
+With UCON `0x100085`: `28=0x19` + slots 5555/5555 -> 76.9 k (nominal 115.2 k); `28=1` + slots -> 997 k (nominal 1.5 M); `28=0` + slots -> 1.935 M (nominal 3.0 M); `28=2`, slots 0 -> 706 k (table: ~1.0 M); `28=0`, only `+0x34` -> 1.94 M, only `+0x38` -> 2.05 M.
+Compared with round 4 (bit 20, zero slot words: 81.5 k / 1.056 M / 2.06 M) the slot words again only slow the rate by ~15/16 (0.94): they behave the same in both modes. **Bit 20's gain is a constant ~x1.41 on every row** (effective divider ~11.3 instead of 16), but iOS's table needs divider 8 (x2). Missing: another ~x1.41.
+(Ambiguity: the gain is within 0.5-1 % of both sqrt(2) = 1.4142 and 10/7 = 1.4286; the ADT clock table has 342,857,142 Hz = 2.4 GHz/7, whose tenth, 34.29 MHz, is exactly 24 MHz x 10/7. Not resolved.)
+Round 6 (committed tooling, to be run): bit 20 combined with UCON bits 10 and 17 (iOS's baseline `old | 0x405` and a helper at `0x2d76a58`) and UFCON `0x131`/`0x1c1`, all at `28=0x19`, plus the full combination at `28=0`.
