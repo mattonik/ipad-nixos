@@ -6,6 +6,7 @@ import re
 c = Path(__file__).with_name("uartpoke.c").read_text()
 assert "#define UART3_BASE 0x20a0cc000ULL" in c
 assert len(re.findall(r"r\[REG_BAUD\d / 4\] = ", c)) == 3, "exactly the three baud registers are written"
+assert len(re.findall(r"r\[REG_UFCON / 4\] = ", c)) == 1 and "v & ~0x1ffu" in c, "UFCON (+0x08) written once, limited to 9 bits"
 assert "REG_BAUD0 0x28" in c and "REG_BAUD1 0x34" in c and "REG_BAUD2 0x38" in c
 p = Path(__file__).with_name("uart3_baud_experiment.py").read_text()
 assert "finally:" in p and p.index("finally:") < p.index("--- RESTORE")
