@@ -997,6 +997,22 @@
             installPhase = "mkdir -p $out/bin && cp pinpoke $out/bin/pinpoke";
           };
 
+          # uartpoke: read/write ONLY the three baud registers of the Bluetooth UART3 (boot/uartpoke.c); run-time tool for the Apple baud-register study.
+          uartpokePkg = pkgsCrossMusl.stdenv.mkDerivation {
+            name = "uartpoke";
+            dontUnpack = true;
+            buildPhase = "$CC -static -O2 -Wall -o uartpoke ${./boot/uartpoke.c}";
+            installPhase = "mkdir -p $out/bin && cp uartpoke $out/bin/uartpoke";
+          };
+
+          # uartpeek: READ-ONLY dump of UART3/UART5 registers 0x00..0x3c (boot/uartpeek.c) for the Bluetooth baud-register investigation; run-time tool only.
+          uartpeekPkg = pkgsCrossMusl.stdenv.mkDerivation {
+            name = "uartpeek";
+            dontUnpack = true;
+            buildPhase = "$CC -static -O2 -Wall -o uartpeek ${./boot/uartpeek.c}";
+            installPhase = "mkdir -p $out/bin && cp uartpeek $out/bin/uartpeek";
+          };
+
           # Bluetooth bring-up tools, pushed to the iPad at run time (never part of a payload): static btattach and i2c-tools (docs/plans/2026-10-08-j81-bluetooth-battery-adt.md).
           btUserlandPkg = pkgs.runCommand "ipad-air2-bt-userland" {} ''
             mkdir -p "$out/bin"
@@ -1259,6 +1275,8 @@
         wifi-userland-static = wifiUserlandPkg;
         bt-userland-static = btUserlandPkg;
         pinpoke-static = pinpokePkg;
+        uartpeek-static = uartpeekPkg;
+        uartpoke-static = uartpokePkg;
         hoolock-pcie-j81-wifi-h1b-raw-kernel = hoolockPcieJ81WifiH1bRawKernel;
         hoolock-pcie-gate-aux-ref-test-kernel = hoolockPcieGateAuxRefTestKernel;
         hoolock-pcie-gate-register-test-kernel = hoolockPcieGateRegisterTestKernel;
