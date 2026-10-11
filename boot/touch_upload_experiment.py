@@ -30,6 +30,9 @@ def main():
     ap.add_argument("--ack-tries", type=int, default=6, help="repeat the ACK query up to N times (1..10) on a 0/2/10/50/200/1000 ms schedule; the packet is never resent")
     ap.add_argument("--spi-hz", type=int, default=1984000, help="SPI clock for the whole run (10000..8000000); the first two runs used 1984000")
     ap.add_argument("--chunk", type=int, default=0, help="cut the packet into transfers of this many bytes inside ONE message (chip select stays asserted); 0 = one transfer")
+    ap.add_argument("--spi-msb", action="store_true", help="old spidev default (MSB first) for comparison; Apple uses LSB first, which is now the default")
+    ap.add_argument("--spi-mode", type=int, default=2, help="SPI mode 0..3 (touch-diag's old default 2; Apple's decoded mode is 0)")
+    ap.add_argument("--detect-only", action="store_true", help="power up and send only the detect/handshake frames, NO firmware (no --upload-fw)")
     ap.add_argument("--tool", default=str(HERE.parent / "artifacts/live/gcroot-touch-diag/bin/touch-diag"))
     ap.add_argument("--packets", default=str(HERE.parent / "firmware/j81-12B410/touch/upload-packets"))
     a = ap.parse_args()
@@ -53,11 +56,12 @@ def main():
         if "FETCHFAIL" in out[0]:
             sys.exit("download to the iPad failed; aborting")
         dev = "/dev/spidev0.0"
-        print(run(f"cd /tmp/t && ./touch-diag spi-check --spi-dev {dev} --spi-hz {a.spi_hz}", timeout=60)[0])
+        print(run(f"cd /tmp/t && ./touch-diag spi-check --spi-dev {dev} --spi-hz {a.spi_hz} --spi-mode {a.spi_mode} {'--spi-msb' if a.spi_msb else ''}", timeout=60)[0])
         if not a.go:
             print("dry run finished; add --go to power the controller and send the firmware packet")
             return
-        print(run(f"cd /tmp/t && ./touch-diag run --execute --approve-pmu-write --spi-dev {dev} --spi-hz {a.spi_hz} --chunk {a.chunk} --upload-fw fw.bin --upload-ack ack.bin --ack-tries {a.ack_tries} --approve-firmware-upload; "
+        upload = "" if a.detect_only else f"--chunk {a.chunk} --upload-fw fw.bin --upload-ack ack.bin --ack-tries {a.ack_tries} --approve-firmware-upload"
+        print(run(f"cd /tmp/t && ./touch-diag run --execute --approve-pmu-write --spi-dev {dev} --spi-hz {a.spi_hz} --spi-mode {a.spi_mode} {'--spi-msb' if a.spi_msb else ''} {upload}; "
                   "echo EXIT=$?; rm -f fw.bin", timeout=180)[0])
     finally:
         srv.shutdown()

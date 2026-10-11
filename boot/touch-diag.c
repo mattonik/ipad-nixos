@@ -96,6 +96,9 @@ static volatile sig_atomic_t g_signal;
  * Both can be overridden per run with --spi-mode and --spi-hz.
  */
 static const char *g_spi_dev;
+/* Apple's J81 touch SPI configuration is LSB-first (research/2026-10-11-touch-no-ack-analysis.md); --spi-msb restores the old spidev default for comparison. */
+static int g_spi_lsb = 1;
+static int g_detect_ok;
 static unsigned int g_spi_mode = 2;		/* CPOL=1, CPHA=0: Apple's decoded default */
 static unsigned int g_spi_hz = 1984000;		/* 124 * 16 kHz */
 static int g_spi = -1;
@@ -319,7 +322,7 @@ static void unwind(void)
 
 static int spi_open(void)
 {
-	uint8_t mode = g_spi_mode & 3, bits = 8, rbits = 0, rmode = 0;
+	uint8_t mode = (g_spi_mode & 3) | (g_spi_lsb ? SPI_LSB_FIRST : 0), bits = 8, rbits = 0, rmode = 0;
 	uint32_t hz = g_spi_hz, rhz = 0;
 
 	if (!g_spi_dev) {
@@ -343,10 +346,18 @@ static int spi_open(void)
 		perror("spidev readback");
 		return -1;
 	}
-	say("spidev %s: mode %u (CPOL %u CPHA %u), %u bits, %u Hz\n", g_spi_dev, rmode & 3,
-	    !!(rmode & SPI_CPOL), !!(rmode & SPI_CPHA), rbits, rhz);
-	return (rmode & 3) == mode && rbits == bits && rhz == hz ? 0 : -1;
+	say("spidev %s: mode %u (CPOL %u CPHA %u), %s, %u bits, %u Hz\n", g_spi_dev, rmode & 3,
+	    !!(rmode & SPI_CPOL), !!(rmode & SPI_CPHA), (rmode & SPI_LSB_FIRST) ? "LSB first" : "MSB first", rbits, rhz);
+	return (rmode & (3 | SPI_LSB_FIRST)) == mode && rbits == bits && rhz == hz ? 0 : -1;
 }
+
+/* The seven words Apple's HBPP detect accepts (research/2026-10-11-touch-no-ack-analysis.md). */
+static int known_word(unsigned int w)
+{
+	return w == 0x18e1 || w == 0x1aa1 || w == 0x1f01 || w == 0x4879 || w == 0x4969 || w == 0x4ad1 || w == 0x4bc1;
+}
+
+static int g_last_known[2];
 
 static void hexline(const char *label, const uint8_t *tx, const uint8_t *rx, unsigned int n)
 {
@@ -356,7 +367,9 @@ static void hexline(const char *label, const uint8_t *tx, const uint8_t *rx, uns
 	say("\n  %-10s rx", "");
 	for (unsigned int i = 0; i < n; i++)
 		say(" %02x", rx[i]);
-	say("\n");
+	g_last_known[0] = n >= 2 && known_word(rx[0] << 8 | rx[1]);
+	g_last_known[1] = n >= 4 && known_word(rx[2] << 8 | rx[3]);
+	say("   [known words: first %s, second %s]\n", g_last_known[0] ? "yes" : "no", g_last_known[1] ? "yes" : "no");
 }
 
 /* One full-duplex transfer = one chip-select interval. */
@@ -689,11 +702,22 @@ static int run(void)
 	}
 	level_after = get_line(g_irq_fd);
 	CHECK_ABORT();
-	if (g_spi_dev && got_edge && g_fw_file) {
+	if (g_spi_dev) {
+		/* Apple's HBPP detect: after reset release plus 15 ms + 15 ms, the 16-byte frame must come back with two known words. */
+		msleep(30);
+		say("step 6b: detect frame (Apple: both reply words must be known)\n");
+		if (spi_frame("detect", F_DUMMY, sizeof(F_DUMMY)))
+			goto out;
+		g_detect_ok = g_last_known[0] && g_last_known[1];
+		say("DETECT %s\n", g_detect_ok ? "PASS" : "FAIL");
+	}
+	if (g_spi_dev && g_fw_file && !g_detect_ok) {
+		say("step 7 skipped: detect frame failed, not sending firmware\n");
+	} else if (g_spi_dev && g_fw_file) {
 		say("step 7: firmware upload experiment\n");
 		if (upload_firmware())
 			goto out;
-	} else if (g_spi_dev && got_edge) {
+	} else if (g_spi_dev && (got_edge || g_detect_ok)) {
 		say("step 7: minimal frames (handshake only: no firmware, no register write)\n");
 		if (spi_frame("wake", F_WAKE, sizeof(F_WAKE)) ||
 		    spi_frame("atn-short", F_ATN_SHORT, sizeof(F_ATN_SHORT)) ||
@@ -721,6 +745,9 @@ int main(int argc, char **argv)
 	}
 	if (!strcmp(cmd, "status"))
 		return status();
+	for (int i = 2; i < argc; i++)
+		if (!strcmp(argv[i], "--spi-msb"))
+			g_spi_lsb = 0;
 	for (int i = 2; i + 1 < argc; i++) {
 		if (!strcmp(argv[i], "--spi-dev"))
 			g_spi_dev = argv[i + 1];
