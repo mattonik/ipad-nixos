@@ -1,0 +1,15 @@
+# Follow-up 3 for the research agent: where does the UART's 48 MHz (2 x nclk) come from?
+
+Read: `research/2026-10-11-uart3-register-capture.md` (rounds 1-3 and the PMGR gate capture). Summary of what hardware showed on the running iPad (UART3, chip unpowered, true-drain timing):
+the UART block's own registers cannot produce the rates in your worked table. In every combination of UCON (incl. the CLKSEL bits 10/11), UFCON (`+0x08` = 0x31/0x131/0x1c1/0xc1), `+0x28`, `+0x34`, `+0x38` the rate is `24 MHz / (16 x (+0x28 + 1))`, slowed by the slot registers (0x55555555 in both: x15/16).
+Your table fits the hardware **if the UART's input clock is 48 MHz** (`0x19` -> 115.4 k, `1` -> 1.5 M, `0` -> 3 M): i.e. iOS's UART runs from 2 x `nclk`. Linux's UART3 sees 24 MHz (measured). So the missing piece is the clock, not the UART registers.
+
+PMGR facts (read-only capture): the UART clock-gate registers (gate id x 8 + 0x20000 from the PMGR base `0x20e000000`) read 0x1f0000ff (UART3), 0x1f0001ff (UART5), 0x1f0002ff (UART6), 0x0f000300 (UART8/9), 0xff (UART1/4/7); bits 9:8 differ per UART. All UART ADT nodes: `uart-version` 1, `clock-ids = {0x115, 0x4}`, `clock-gates` = 0x50..0x58.
+
+## Questions (static only; same constraints)
+1. **What is `nclk` in `AppleSamsungSerial`?** Is it the property named `nclk`, or a named clock obtained from the platform clock framework by the ADT `clock-ids` (0x115, 0x4)? What does clock id 0x115 (and 0x4) resolve to in the T7000/T7001 platform (AppleT7000 / AppleARMPlatform clock tables): which PLL/ref, what divider, what rate (24 MHz? 48 MHz?)?
+2. **Does iOS configure the UART's clock when it opens/starts it?** Look for the PMGR/clock calls made by `AppleSamsungSerial` start/open (`enableDeviceClock`, `setClockFrequency`, a divider or mux write) and by `AppleBluetooth`/`BTServer` paths for UART3. If it requests a specific frequency, which and how is it applied (gate register field, a PMGR "clock config" register elsewhere)?
+3. **PMGR gate register layout on T7000/T7001.** Decode the fields of the per-gate 32-bit register (`0x20e000000 + 0x20000 + gate*8`): target/actual state bits 3:0 / 7:4 (ours), bits 9:8, bits 28:24, bit 28 as the enable. Is bits 9:8 a clock source / divider select for the UART baud clock, and what do the values 00/01/10/11 mean (UART3 = 00, UART5 = 01, UART6 = 10, UART8/9 = 11)? Compare with Hoolock's pmgr driver and `apple-pmgr-pwrstate` field names if any covers these bits.
+4. **Is there a separate baud-clock gate or divider** (e.g. `clk_uart_baud0` in our device tree is just a placeholder `clkref`): which PMGR register actually feeds the UART's baud generator and at what rate it is set by iBoot for UART3 (24 MHz, as measured)?
+
+Deliver `research/2026-10-11-uart-clock-source.md`: the clock id decode, the exact register(s) and bit field(s) that give the UART a 48 MHz (or other) input in iOS, whether iBoot already leaves UART3 on the faster setting (we measure 24 MHz, so presumably not), and the smallest safe Linux change (device-tree clock + PMGR write) with the read-only checks that should precede any write.

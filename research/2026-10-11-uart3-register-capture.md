@@ -37,3 +37,28 @@ Caveat found afterwards: with the port held open the last ~4 KB stays in the tty
 
 **Conclusion:** in the current mode every row fits the legacy model `baud = 24 MHz / (16 * (UBRDIV + 1))`, slowed by the slot registers: `0x34` and `0x38` behave as fractional slot patterns that only slow the rate (both set to `0x55555555`: x 15/16). The agent's reading of `+0x28` as a "doubled" divisor
 (`0x19` = 115,200, `0` = 3 M) is **not** what the hardware does with the power-on `+0x08` (UFCON = `0x31`). So the version-1 divider mode is selected by something the baud registers do not carry. Leading candidate: the FIFO/control word iOS writes first, `+0x08 = 0x1c1` (version 1) / `0xc1` (version 0), i.e. bit 8 (Linux has `0x31`). Round 2 tests this.
+
+## Rounds 2 and 3 (run by the user) and a PMGR gate capture (read-only, by the assistant)
+
+**Round 2** (true-drain timing via the UART's transmitted-byte counter): the FIFO/control word `+0x08` has no effect on the rate. Candidates `0x131`, `0x1c1`, `0xc1` all stayed legacy: `+0x28 = 0` -> ~1.49 M, `+0x28 = 1` -> 744 k, `+0x28 = 0x19` -> 57.4 k (legacy 24 MHz/(16*26) = 57.7 k). With `0x55555555` in both slot registers: -6 % (15/16).
+**Round 3** (UCON): bits 8, 10, 11 (clock select 1, 2, 3, the Samsung CLKSEL field) and 15 change nothing: 28=0 -> 1.46-1.48 M, 28=1 -> 743-746 k in every case. (Interrupt-enable bits 9, 12, 13, 14 were deliberately not tested.)
+**Conclusion:** the UART block's own registers (UCON, UFCON, +0x28, +0x34, +0x38) cannot raise the rate; in every combination it is 24 MHz / (16 x (+0x28 + 1)) minus the slot slowdown. The agent's table is consistent with a **48 MHz** input clock (`0x19` -> 48e6/(16*26) = 115.4 k, `1` -> 1.5 M, `0` -> 3 M, `2` -> 1.0 M), i.e. 2 x `nclk`:
+whatever iOS does, the 3 Mbaud comes from a faster clock into the UART, not from a register mode inside it.
+
+**PMGR clock-gate registers of the UARTs** (`uartpeek pmgr`, read-only window `0x20e020280..0x20e0202cf`; the UART ADT nodes all have `uart-version = 1`, identical `clock-ids = {0x115, 0x4}` and gates `0x50..0x58`):
+
+| gate | UART | register (word 0; word 1 is 0 everywhere) |
+|---|---|---|
+| 0x50 | UART0 | 0x00000200 |
+| 0x51 | UART1 | 0x000000ff |
+| 0x52 | UART2 | 0x1f0000ff |
+| 0x53 | UART3 (Bluetooth) | 0x1f0000ff |
+| 0x54 | UART4 | 0x000000ff |
+| 0x55 | UART5 (battery) | 0x1f0001ff |
+| 0x56 | UART6 | 0x1f0002ff |
+| 0x57 | UART7 | 0x000000ff |
+| 0x58 | UART8 | 0x0f000300 |
+| 0x59 | UART9 | 0x0f000300 |
+
+Low byte `0xff` reads as power-state target/actual both ON (UART0 `0x200` is off). **Bits 9:8 differ per UART: 00 (UART2/3/4/7/1), 01 (UART5), 10 (UART6), 11 (UART8/9)**, and bits 28:24 vary (`0x1f` on the active ones, `0x0f` on UART8/9).
+Whether bits 9:8 (or 28:24) are a clock mux/divider select, an instance index, or status is unknown; nothing has been written. A PMGR write is a new write category and would need the user's explicit approval.

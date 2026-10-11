@@ -4,8 +4,9 @@
  *
  *   uartpeek 3     UART3 at 0x20a0cc000 (Bluetooth, Linux ttySAC1)
  *   uartpeek 5     UART5 at 0x20a0d4000 (battery gauge HDQ, Linux ttySAC2)
+ *   uartpeek pmgr  the PMGR clock-gate registers of gates 0x50..0x59 (UART0..UART9): 0x20e020000 + 0x20000 + gate*8 = 0x20e020280..0x20e0202cf, 8 bytes each
  *
- * Only these two bases are accepted; reading any other address is refused (a read of an unmapped or powered-down block can hang the SoC).
+ * Only these windows are accepted; reading any other address is refused (a read of an unmapped or powered-down block can hang the SoC).
  */
 #include <fcntl.h>
 #include <stdint.h>
@@ -23,8 +24,24 @@ int main(int argc, char **argv)
 	volatile uint32_t *r;
 
 	if (argc != 2) {
-		fprintf(stderr, "usage: %s 3|5\n", argv[0]);
+		fprintf(stderr, "usage: %s 3|5|pmgr\n", argv[0]);
 		return 1;
+	}
+	if (strcmp(argv[1], "pmgr") == 0) {
+		fd = open("/dev/mem", O_RDONLY | O_SYNC);
+		if (fd < 0) {
+			perror("open /dev/mem");
+			return 2;
+		}
+		m = mmap(NULL, 0x1000, PROT_READ, MAP_SHARED, fd, 0x20e020000ULL);
+		if (m == MAP_FAILED) {
+			perror("mmap");
+			return 2;
+		}
+		r = (volatile uint32_t *)m;
+		for (i = 0x50; i <= 0x59; i++)
+			printf("gate 0x%02x (UART%d) @0x20e02%04x: 0x%08x 0x%08x\n", i, i - 0x50, 0x0 + i * 8, r[(i * 8) / 4], r[(i * 8) / 4 + 1]);
+		return 0;
 	}
 	if (strcmp(argv[1], "3") == 0)
 		base = 0x20a0cc000ULL;
