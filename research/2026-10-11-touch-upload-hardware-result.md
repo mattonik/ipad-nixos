@@ -67,3 +67,7 @@ Differences from Apple's recovered sequence still present (research/2026-10-11-t
 ## Ninth run: Apple order + transmit-only packet + pair retries (`--apple`, mode 0, LSB-first, 1.984 MHz; user-approved)
 
 Power order LDO14, GPIO95, 5 ms, clock, 15 ms, wake `19 c1` (reply `00 00`), 10 ms, dummy, reset release, detect PASS (`1f 01` x 8), 30 ms, then five packet+query pairs, each packet transmit-only and the query immediately after: every ACK reply `1f 01`, never `4b c1`. Unwind clean. The remaining unmatched differences from Apple: the ~8 MHz clock with 5 us inter-word delay and 10 us CS hold (the Linux S5L controller writes WORD_DELAY 0), the display_sync enable before the reset release, and unknowns (exact SPI source clock, personality values). Next candidates: emulate the word delay (needs a spi-apple change for the 59 KB packet), try ~8 MHz, and re-read the Apple code for any frame between the detect and the firmware.
+
+## Tenth run: Apple order + display_sync pinmux (GPIO55 PERIPH=1), user-approved
+
+Same as the ninth run plus the GPIO55 pinmux (saved 0x00072a82, wrote 0x00072aa2, readback 0x00072aa3, restored exactly on unwind). Detect PASS, five packet+query pairs, every ACK reply `1f 01`, never `4b c1`. Unwind clean (GPIO55 word restored). The display_sync enable is therefore not what the ROM was waiting for. Remaining unmatched: Apple's ~8 MHz clock with the 5 us inter-word delay and 10 us CS hold (WORD_DELAY is written as 0 by the Linux S5L driver), plus the unknown personality values and the SPI source clock.
