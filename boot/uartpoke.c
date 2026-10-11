@@ -6,7 +6,7 @@
  *   uartpoke get                      print +0x04 (UCON) +0x08 (FIFO control) +0x28 +0x34 +0x38
  *   uartpoke set R28 R34 R38          write the three baud registers (hex or decimal), then print them
  *   uartpoke ufcon VALUE              write +0x08 (VALUE must fit in 9 bits), then print the registers
- *   uartpoke ucon VALUE               write +0x04 (UCON) only if the fixed bits 0, 2, 7 stay set, no interrupt-enable bit (9, 12, 13, 14) is set and nothing above bit 15 except bits 17 and 20 (iOS's UCON helper bit and its uart-version-1 bit) is set
+ *   uartpoke ucon VALUE               write +0x04 (UCON) only if the fixed bits 0, 2, 7 stay set, no interrupt-enable bit (9, 12, 13, 14) is set and none of the refused bits 4 (send break) and 9, 11, 12, 13 (interrupt enables) is set
  */
 #include <fcntl.h>
 #include <stdint.h>
@@ -48,8 +48,8 @@ int main(int argc, char **argv)
 	if (strcmp(argv[1], "ucon") == 0) {
 		uint32_t v = (uint32_t)strtoul(argv[2], NULL, 0);
 
-		if ((v & 0x85u) != 0x85u || (v & 0x7200u) || (v & ~0x12ffffu)) {
-			fprintf(stderr, "UCON value refused (fixed bits 0,2,7 must stay set; no interrupt-enable bits 9,12,13,14; only bits 17 and 20 allowed above bit 15)\n");
+		if ((v & 0x85u) != 0x85u || (v & 0x3a10u)) {
+			fprintf(stderr, "UCON value refused (fixed bits 0,2,7 must stay set; no break bit 4 and no interrupt-enable bits 9,11,12,13; bit 4 (send break) and bits 9,11,12,13 (interrupt enables) are refused)\n");
 			return 1;
 		}
 		r[REG_UCON / 4] = v;
