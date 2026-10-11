@@ -108,7 +108,7 @@ class DisplaySyncPinmuxTests(unittest.TestCase):
     def test_no_new_frames_or_levels_were_added(self):
         for name in ("F_DUMMY", "F_WAKE", "F_ATN_SHORT", "F_ATN_LONG"):
             self.assertIn(name, SOURCE)
-        self.assertEqual(len(re.findall(r"static const uint8_t F_", SOURCE)), 4)
+        self.assertEqual(len(re.findall(r"static const uint8_t F_", SOURCE)), 5)  # 4 handshake frames + the 2-byte wake 19 c1 of --apple-order
         self.assertIn("NOT a\n *                       GPIO-high write", SOURCE)
 
 

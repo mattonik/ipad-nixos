@@ -399,6 +399,7 @@ static int spi_frame(const char *label, const uint8_t *tx, unsigned int n)
  */
 static const char *g_fw_file, *g_ack_file;
 static unsigned int g_ack_tries = 1, g_chunk;
+static int g_apple_upload, g_apple_order;
 
 static uint8_t *slurp(const char *path, unsigned int max, unsigned int *len)
 {
@@ -441,6 +442,44 @@ static int upload_firmware(void)
 		goto out;
 	if (fn < 2 || fw[0] != 0x18 || fw[1] != 0xe1 || (fn & 3) || an != 2 || ack[0] != 0x1a || ack[1] != 0xa1) {
 		fprintf(stderr, "packet sanity check failed (need 18 e1 header, 4-byte aligned length, ack 1a a1)\n");
+		goto out;
+	}
+	if (g_apple_upload) {
+		/*
+		 * Apple's order (research/2026-10-11-touch-no-ack-analysis.md): the firmware is ONE transmit-only transfer (no rx buffer), the 2-byte ATN/ACK query follows
+		 * immediately, and the packet + query pair is retried up to five times (g_ack_tries, capped at 5). No other delay, no IRQ watching.
+		 */
+		for (unsigned int k = 0; k < g_ack_tries && k < 5; k++) {
+			memset(&t, 0, sizeof(t));
+			t.tx_buf = (uintptr_t)fw;
+			t.len = fn;
+			t.speed_hz = g_spi_hz;
+			t.bits_per_word = 8;
+			say("upload: pair %u: sending %u bytes transmit-only, one transfer, %u Hz\n", k + 1, fn, g_spi_hz);
+			if (ioctl(g_spi, SPI_IOC_MESSAGE(1), &t) < 0) {
+				perror("firmware transfer");
+				goto out;
+			}
+			memset(&t, 0, sizeof(t));
+			memset(arx, 0, sizeof(arx));
+			t.tx_buf = (uintptr_t)ack;
+			t.rx_buf = (uintptr_t)arx;
+			t.len = an;
+			t.speed_hz = g_spi_hz;
+			t.bits_per_word = 8;
+			if (ioctl(g_spi, SPI_IOC_MESSAGE(1), &t) < 0) {
+				perror("ack query");
+				goto out;
+			}
+			say("upload: pair %u ack reply %02x %02x (expected 4b c1)\n", k + 1, arx[0], arx[1]);
+			if (arx[0] == 0x4b && arx[1] == 0xc1) {
+				rc = 0;
+				break;
+			}
+			if (g_signal)
+				break;
+		}
+		say("upload: %s\n", rc ? "NOT ACKNOWLEDGED after the pair retries" : "ACKNOWLEDGED");
 		goto out;
 	}
 	rx = calloc(1, fn);
@@ -581,6 +620,45 @@ static void plan(void)
 
 #define CHECK_ABORT() do { if (g_signal) { say("signal %d: unwinding\n", (int)g_signal); rc = 3; goto out; } } while (0)
 
+static int step_clock(void)
+{
+	say("step 2: touch clock enable\n");
+	g_st.clock_changed = 1;
+	if (clock_enable()) {
+		say("abort: clock busy bit did not clear\n");
+		return -1;
+	}
+	say("        clock register now 0x%08x\n", *g_clk);
+	return 0;
+}
+
+static int step_ldo(uint8_t *v)
+{
+	say("step 3: LDO14 enable\n");
+	g_st.ldo_changed = 1;
+	if (pmu_write(REG_LDO14_ENABLE, g_st.ldo_orig | LDO14_ENABLE_BIT) ||
+	    pmu_read(REG_LDO14_ENABLE, v) || !(*v & LDO14_ENABLE_BIT)) {
+		say("abort: LDO14 enable did not read back (0x%02x)\n", *v);
+		return -1;
+	}
+	say("        LDO14 enable reads 0x%02x\n", *v);
+	return 0;
+}
+
+static int step_power(void)
+{
+	say("step 4: GPIO%d high\n", GPIO_POWER);
+	g_power_fd = request_line(GPIO_POWER, GPIO_V2_LINE_FLAG_OUTPUT, 0, "touch-diag-power");
+	if (g_power_fd < 0)
+		return -1;
+	if (set_line(g_power_fd, 1)) {
+		perror("power set");
+		return -1;
+	}
+	g_st.power_on = 1;
+	return 0;
+}
+
 static int run(void)
 {
 	int rc = 1, level_before = -1, level_after = -1, got_edge = 0;
@@ -618,36 +696,37 @@ static int run(void)
 	level_before = get_line(g_irq_fd);
 	CHECK_ABORT();
 
-	say("step 2: touch clock enable\n");
-	g_st.clock_changed = 1;
-	if (clock_enable()) {
-		say("abort: clock busy bit did not clear\n");
-		goto out;
-	}
-	say("        clock register now 0x%08x\n", *g_clk);
-	CHECK_ABORT();
+	if (!g_apple_order) {
+		if (step_clock())
+			goto out;
+		CHECK_ABORT();
+		if (step_ldo(&v))
+			goto out;
+		CHECK_ABORT();
+		if (step_power())
+			goto out;
+		msleep(RAIL_DELAY_MS);
+		CHECK_ABORT();
+	} else {
+		/* Apple's order: LDO14, GPIO95 (no delay), 5 ms, clock, 15 ms, the 2-byte wake 19 c1 (reply ignored) with reset still asserted, 10 ms. */
+		static const uint8_t F_WAKE2[2] = { 0x19, 0xc1 };
 
-	say("step 3: LDO14 enable\n");
-	g_st.ldo_changed = 1;
-	if (pmu_write(REG_LDO14_ENABLE, g_st.ldo_orig | LDO14_ENABLE_BIT) ||
-	    pmu_read(REG_LDO14_ENABLE, &v) || !(v & LDO14_ENABLE_BIT)) {
-		say("abort: LDO14 enable did not read back (0x%02x)\n", v);
-		goto out;
+		if (step_ldo(&v) || step_power())
+			goto out;
+		CHECK_ABORT();
+		msleep(5);
+		if (step_clock())
+			goto out;
+		msleep(15);
+		CHECK_ABORT();
+		if (g_spi_dev) {
+			say("step 4a: 2-byte wake 19 c1 (reset still asserted)\n");
+			if (spi_frame("wake19c1", F_WAKE2, sizeof(F_WAKE2)))
+				goto out;
+			msleep(10);
+		}
+		CHECK_ABORT();
 	}
-	say("        LDO14 enable reads 0x%02x\n", v);
-	CHECK_ABORT();
-
-	say("step 4: GPIO%d high\n", GPIO_POWER);
-	g_power_fd = request_line(GPIO_POWER, GPIO_V2_LINE_FLAG_OUTPUT, 0, "touch-diag-power");
-	if (g_power_fd < 0)
-		goto out;
-	if (set_line(g_power_fd, 1)) {
-		perror("power set");
-		goto out;
-	}
-	g_st.power_on = 1;
-	msleep(RAIL_DELAY_MS);
-	CHECK_ABORT();
 
 	if (g_ds_pinmux) {
 		uint32_t saved = g_gpio[GPIO_DISPLAY_SYNC], want, rb;
@@ -714,6 +793,8 @@ static int run(void)
 	if (g_spi_dev && g_fw_file && !g_detect_ok) {
 		say("step 7 skipped: detect frame failed, not sending firmware\n");
 	} else if (g_spi_dev && g_fw_file) {
+		if (g_apple_order)
+			msleep(30);	/* Apple starts bootloadDevice at least 15 ms after the detect */
 		say("step 7: firmware upload experiment\n");
 		if (upload_firmware())
 			goto out;
@@ -745,9 +826,14 @@ int main(int argc, char **argv)
 	}
 	if (!strcmp(cmd, "status"))
 		return status();
-	for (int i = 2; i < argc; i++)
+	for (int i = 2; i < argc; i++) {
 		if (!strcmp(argv[i], "--spi-msb"))
 			g_spi_lsb = 0;
+		else if (!strcmp(argv[i], "--apple-upload"))
+			g_apple_upload = 1;
+		else if (!strcmp(argv[i], "--apple-order"))
+			g_apple_order = 1;
+	}
 	for (int i = 2; i + 1 < argc; i++) {
 		if (!strcmp(argv[i], "--spi-dev"))
 			g_spi_dev = argv[i + 1];

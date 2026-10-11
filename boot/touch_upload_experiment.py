@@ -33,6 +33,7 @@ def main():
     ap.add_argument("--spi-msb", action="store_true", help="old spidev default (MSB first) for comparison; Apple uses LSB first, which is now the default")
     ap.add_argument("--spi-mode", type=int, default=2, help="SPI mode 0..3 (touch-diag's old default 2; Apple's decoded mode is 0)")
     ap.add_argument("--detect-only", action="store_true", help="power up and send only the detect/handshake frames, NO firmware (no --upload-fw)")
+    ap.add_argument("--apple", action="store_true", help="follow Apple's recovered order: LDO14, GPIO95, 5 ms, clock, 15 ms, wake 19 c1, ..., a 30 ms wait after the detect, then a transmit-only packet immediately followed by the ACK query, the pair retried up to 5 times")
     ap.add_argument("--tool", default=str(HERE.parent / "artifacts/live/gcroot-touch-diag/bin/touch-diag"))
     ap.add_argument("--packets", default=str(HERE.parent / "firmware/j81-12B410/touch/upload-packets"))
     a = ap.parse_args()
@@ -60,8 +61,9 @@ def main():
         if not a.go:
             print("dry run finished; add --go to power the controller and send the firmware packet")
             return
-        upload = "" if a.detect_only else f"--chunk {a.chunk} --upload-fw fw.bin --upload-ack ack.bin --ack-tries {a.ack_tries} --approve-firmware-upload"
-        print(run(f"cd /tmp/t && ./touch-diag run --execute --approve-pmu-write --spi-dev {dev} --spi-hz {a.spi_hz} --spi-mode {a.spi_mode} {'--spi-msb' if a.spi_msb else ''} {upload}; "
+        apple = "--apple-order --apple-upload" if a.apple else ""
+        upload = "" if a.detect_only else f"--chunk {a.chunk} --upload-fw fw.bin --upload-ack ack.bin --ack-tries {5 if a.apple else a.ack_tries} --approve-firmware-upload"
+        print(run(f"cd /tmp/t && ./touch-diag run --execute --approve-pmu-write --spi-dev {dev} --spi-hz {a.spi_hz} --spi-mode {a.spi_mode} {'--spi-msb' if a.spi_msb else ''} {apple} {upload}; "
                   "echo EXIT=$?; rm -f fw.bin", timeout=180)[0])
     finally:
         srv.shutdown()
