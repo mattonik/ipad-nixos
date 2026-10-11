@@ -62,3 +62,10 @@ whatever iOS does, the 3 Mbaud comes from a faster clock into the UART, not from
 
 Low byte `0xff` reads as power-state target/actual both ON (UART0 `0x200` is off). **Bits 9:8 differ per UART: 00 (UART2/3/4/7/1), 01 (UART5), 10 (UART6), 11 (UART8/9)**, and bits 28:24 vary (`0x1f` on the active ones, `0x0f` on UART8/9).
 Whether bits 9:8 (or 28:24) are a clock mux/divider select, an instance index, or status is unknown; nothing has been written. A PMGR write is a new write category and would need the user's explicit approval.
+
+## ADT clock table decode (static, by the assistant, 2026-10-11): the UART's baud clock is 24 MHz
+The `arm-io,t7001` node carries `clock-frequencies`, a 96-entry table of little-endian 32-bit frequencies indexed by clock id (entries 0, 1, 3 = 24 MHz, 2 = 798 MHz, 4 = 100 MHz, 17 = 48 MHz, 21 = 24 MHz, ...).
+The UART nodes' `clock-ids = {0x115, 0x4}`: low byte 0x15 = index 21 = **24,000,000 Hz** (the functional/baud clock, "nclk") and index 4 = **100,000,000 Hz** (the peripheral clock). `nclk-div` (value 1) is a property of the `dwi` display-interface node, not of the UARTs.
+So iOS's `nclk` for UART3 is the same 24 MHz we measure; the clock is not the missing piece, contrary to the "48 MHz input" reading of the worked table. Instead the table's register values (`0x19` = 115,200, `1` = 1.5 M, `0` = 3 M at 24 MHz) fit
+`baud = 24 MHz / (8 x (+0x28 + 1))`, a divide-by-8 base mode (with the 14/15/16 "factor" refinement), whereas the power-on mode (and every register combination tested in rounds 1-3: UCON bits 8/10/11/15, UFCON 0x131/0x1c1/0xc1, `+0x34`/`+0x38`) is divide-by-16.
+The switch for the /8 mode is therefore a bit or field that the baud routine does not write and we have not toggled: candidates are ULCON (+0x00; Linux sets 0x03) and the UCON bits the line-control/interrupt routines own (notably 3, 5, 6 and the upper half), tested only partially so far (not tested: UCON 3/5/6/9/12/13/14/16-31, ULCON 3..7).
