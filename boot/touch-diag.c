@@ -402,6 +402,7 @@ static int spi_frame(const char *label, const uint8_t *tx, unsigned int n)
 static const char *g_fw_file, *g_ack_file;
 static unsigned int g_ack_tries = 1, g_chunk;
 static int g_apple_upload, g_apple_order, g_upload_rx;
+static const char *g_probe_sizes;	/* comma-separated byte counts for the transfer-size probe */
 
 static uint8_t *slurp(const char *path, unsigned int max, unsigned int *len)
 {
@@ -607,6 +608,65 @@ out:
 	free(fw);
 	free(ack);
 	free(rx);
+	return rc;
+}
+
+/*
+ * Transfer-size probe (no firmware): after the detect frame, send ATN frames `1a a1` + `18 e1` words (words the ROM already accepts) of each requested size as ONE full-duplex
+ * transfer, time each one, and summarise the reply. Finds where the SPI controller's PIO path breaks (transfers larger than its 16-byte FIFO hung in the T3 run).
+ * Stops at the first failed transfer.
+ */
+static int probe_sizes(void)
+{
+	char *list = strdup(g_probe_sizes), *tok, *save = NULL;
+	int rc = 0;
+
+	for (tok = strtok_r(list, ",", &save); tok && !rc; tok = strtok_r(NULL, ",", &save)) {
+		unsigned int n = strtoul(tok, NULL, 0), i, ok = 0;
+		uint8_t *tx, *rx;
+		struct spi_ioc_transfer t;
+		struct timespec t0, t1;
+		double ms;
+
+		if (n < 2 || n > 8192 || (n & 1)) {
+			say("probe: skipping bad size %s\n", tok);
+			continue;
+		}
+		tx = malloc(n);
+		rx = calloc(1, n);
+		if (!tx || !rx) {
+			rc = -1;
+			break;
+		}
+		tx[0] = 0x1a;
+		tx[1] = 0xa1;
+		for (i = 2; i + 1 < n; i += 2) {
+			tx[i] = 0x18;
+			tx[i + 1] = 0xe1;
+		}
+		memset(&t, 0, sizeof(t));
+		t.tx_buf = (uintptr_t)tx;
+		t.rx_buf = (uintptr_t)rx;
+		t.len = n;
+		t.speed_hz = g_spi_hz;
+		t.bits_per_word = 8;
+		t.word_delay_usecs = g_word_delay_us;
+		clock_gettime(CLOCK_MONOTONIC, &t0);
+		if (ioctl(g_spi, SPI_IOC_MESSAGE(1), &t) < 0) {
+			say("probe %u bytes: FAILED (%s)\n", n, strerror(errno));
+			rc = -1;
+		} else {
+			clock_gettime(CLOCK_MONOTONIC, &t1);
+			ms = (t1.tv_sec - t0.tv_sec) * 1000.0 + (t1.tv_nsec - t0.tv_nsec) / 1e6;
+			for (i = 0; i + 1 < n; i += 2)
+				ok += (rx[i] << 8 | rx[i + 1]) == 0x1f01;
+			say("probe %u bytes: %.2f ms (%.2f us/byte; clock alone %.2f), reply words 1f01: %u of %u, first bytes %02x %02x %02x %02x\n", n, ms, ms * 1000.0 / n,
+			    8e6 / g_spi_hz, ok, n / 2, rx[0], rx[1], rx[2], rx[3]);
+		}
+		free(tx);
+		free(rx);
+	}
+	free(list);
 	return rc;
 }
 
@@ -825,7 +885,15 @@ static int run(void)
 		g_detect_ok = g_last_known[0] && g_last_known[1];
 		say("DETECT %s\n", g_detect_ok ? "PASS" : "FAIL");
 	}
-	if (g_spi_dev && g_fw_file && !g_detect_ok) {
+	if (g_spi_dev && g_probe_sizes) {
+		if (g_detect_ok) {
+			say("step 7: transfer-size probe (no firmware)\n");
+			if (probe_sizes())
+				goto out;
+		} else {
+			say("step 7 skipped: detect frame failed, not probing\n");
+		}
+	} else if (g_spi_dev && g_fw_file && !g_detect_ok) {
 		say("step 7 skipped: detect frame failed, not sending firmware\n");
 	} else if (g_spi_dev && g_fw_file) {
 		if (g_apple_order)
@@ -880,6 +948,8 @@ int main(int argc, char **argv)
 			g_spi_hz = strtoul(argv[i + 1], NULL, 0);
 		else if (!strcmp(argv[i], "--upload-fw"))
 			g_fw_file = argv[i + 1];
+		else if (!strcmp(argv[i], "--probe-sizes"))
+			g_probe_sizes = argv[i + 1];
 		else if (!strcmp(argv[i], "--chunk"))
 			g_chunk = strtoul(argv[i + 1], NULL, 0);
 		else if (!strcmp(argv[i], "--word-delay-us"))
