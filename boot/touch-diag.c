@@ -401,7 +401,7 @@ static int spi_frame(const char *label, const uint8_t *tx, unsigned int n)
  */
 static const char *g_fw_file, *g_ack_file;
 static unsigned int g_ack_tries = 1, g_chunk;
-static int g_apple_upload, g_apple_order;
+static int g_apple_upload, g_apple_order, g_upload_rx;
 
 static uint8_t *slurp(const char *path, unsigned int max, unsigned int *len)
 {
@@ -452,16 +452,44 @@ static int upload_firmware(void)
 		 * immediately, and the packet + query pair is retried up to five times (g_ack_tries, capped at 5). No other delay, no IRQ watching.
 		 */
 		for (unsigned int k = 0; k < g_ack_tries && k < 5; k++) {
+			struct timespec t0, t1;
+			double ms;
+
 			memset(&t, 0, sizeof(t));
 			t.tx_buf = (uintptr_t)fw;
+			if (g_upload_rx) {
+				if (!rx)
+					rx = calloc(1, fn);
+				if (!rx)
+					goto out;
+				memset(rx, 0, fn);
+				t.rx_buf = (uintptr_t)rx;
+			}
 			t.len = fn;
 			t.speed_hz = g_spi_hz;
 			t.bits_per_word = 8;
 			t.word_delay_usecs = g_word_delay_us;
-			say("upload: pair %u: sending %u bytes transmit-only, one transfer, %u Hz\n", k + 1, fn, g_spi_hz);
+			say("upload: pair %u: sending %u bytes %s, one transfer, %u Hz, word delay %u us\n", k + 1, fn, g_upload_rx ? "full duplex (reply captured)" : "transmit-only",
+			    g_spi_hz, g_word_delay_us);
+			clock_gettime(CLOCK_MONOTONIC, &t0);
 			if (ioctl(g_spi, SPI_IOC_MESSAGE(1), &t) < 0) {
 				perror("firmware transfer");
 				goto out;
+			}
+			clock_gettime(CLOCK_MONOTONIC, &t1);
+			ms = (t1.tv_sec - t0.tv_sec) * 1000.0 + (t1.tv_nsec - t0.tv_nsec) / 1e6;
+			say("upload: transfer took %.1f ms (%.2f us per byte; bare clock alone would be %.2f us per byte)\n", ms, ms * 1000.0 / fn, 8e6 / g_spi_hz);
+			if (g_upload_rx) {
+				/* Only the ROM's reply is summarised, never the packet. */
+				unsigned int same = 0, i;
+				uint16_t first = rx[0] << 8 | rx[1];
+
+				for (i = 0; i + 1 < fn; i += 2)
+					same += (uint16_t)(rx[i] << 8 | rx[i + 1]) == first;
+				say("upload: reply during transfer: first bytes");
+				for (i = 0; i < 16; i++)
+					say(" %02x", rx[i]);
+				say("; %u of %u words equal the first word\n", same, fn / 2);
 			}
 			memset(&t, 0, sizeof(t));
 			memset(arx, 0, sizeof(arx));
@@ -840,6 +868,8 @@ int main(int argc, char **argv)
 			g_apple_upload = 1;
 		else if (!strcmp(argv[i], "--apple-order"))
 			g_apple_order = 1;
+		else if (!strcmp(argv[i], "--upload-rx"))
+			g_upload_rx = 1;
 	}
 	for (int i = 2; i + 1 < argc; i++) {
 		if (!strcmp(argv[i], "--spi-dev"))
