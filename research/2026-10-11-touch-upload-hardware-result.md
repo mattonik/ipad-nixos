@@ -48,3 +48,8 @@ Same power-up, same 59,288 bytes, same six-query repeat, each run unwound cleanl
 | 5 | 1.984 MHz | 116 x 512 | six queries all `f0 01`, NOT acknowledged |
 
 Conclusion: neither a 4x slower clock nor shorter PIO runs inside one chip-select interval changes the ROM's reply, so FIFO-refill clock pauses in the SPI controller are very unlikely to be why the packet is not accepted. (Not excluded: chip-select breaks between transfers behaving differently than the core assumes; nothing was measured on the wire.) Remaining hypotheses: a wake/handshake or ATN/IRQ-timed step before the data packet, a different SPI mode for the bootloader, or the ROM requiring the constructed packet in a different framing than we send. Next step is evidence, not another blind variation: re-read the Apple driver path for the exact IRQ/ATN handling between reset release and the first packet.
+
+## Sixth run: detect-only, LSB-first, mode 2, 1.984 MHz (after the Apple-driver analysis; no firmware sent)
+
+Every reply is now a regular stream instead of the old `f8 80`/`f1 01` pattern: `0f 80 8f 80 8f 80 ...`. Read as a bit stream this is the ROM idle word `1f 01` repeated, delayed by exactly one bit (drop the first bit and it regroups into `1f 01 1f 01 ...`). So the bit-order diagnosis (research/2026-10-11-touch-no-ack-analysis.md) holds: the ROM answers with its valid idle word and our data lines up except for a one-bit shift, which points at the SPI clock phase/polarity (mode 2 here; Apple's decoded mode is 0). The detect check printed FAIL because of the shift; the handshake frames got the same shifted stream. No firmware was sent; unwind clean.
+Next (needs a go-ahead): the same detect-only run with `--spi-mode 0`.
