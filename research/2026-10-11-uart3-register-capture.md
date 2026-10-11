@@ -88,3 +88,37 @@ With UCON `0x100085`: `28=0x19` + slots 5555/5555 -> 76.9 k (nominal 115.2 k); `
 Compared with round 4 (bit 20, zero slot words: 81.5 k / 1.056 M / 2.06 M) the slot words again only slow the rate by ~15/16 (0.94): they behave the same in both modes. **Bit 20's gain is a constant ~x1.41 on every row** (effective divider ~11.3 instead of 16), but iOS's table needs divider 8 (x2). Missing: another ~x1.41.
 (Ambiguity: the gain is within 0.5-1 % of both sqrt(2) = 1.4142 and 10/7 = 1.4286; the ADT clock table has 342,857,142 Hz = 2.4 GHz/7, whose tenth, 34.29 MHz, is exactly 24 MHz x 10/7. Not resolved.)
 Round 6 (committed tooling, to be run): bit 20 combined with UCON bits 10 and 17 (iOS's baseline `old | 0x405` and a helper at `0x2d76a58`) and UFCON `0x131`/`0x1c1`, all at `28=0x19`, plus the full combination at `28=0`.
+
+## Rounds 6-9 and the true-baud discovery (run by the assistant on the live iPad at the user's request while they were away)
+
+**Round 6** (bit 20 + UCON bits 10/17 + UFCON 0x131/0x1c1): no change beyond bit 20 itself. **Round 7** (bit 20 + each of UCON bits 3, 5, 6, 8, 10, 14-19, 21-31 alone; 4 = send break and 9/11/12/13 = interrupt enables were refused by the tool): identical 81.5-81.7 k everywhere.
+Corrected with the control row's own -0.76 % timing bias, bit 20 gave x1.428 = 10/7.
+
+**Frame-length experiment (`boot/uart3_frame_experiment.py`)**: time per byte vs frame length n = 7..12 (5N1 .. 8E2). Legacy mode: time per byte is linear in n, slope = 17.37 us/bit = **57,566 baud (nominal 57,692), overhead 0.05 bit-times**: the method is valid.
+**With UCON bit 20 the time per byte is constant (122.5 us at `+0x28 = 0x19`, 9.45 us at 1, 4.9 us at 0) whatever the frame length**, i.e. a fixed ~7.07 bit-times per byte: bit 20 is NOT a baud switch (it changes the transmitter's behaviour, identity unknown); the 10/7 gain and all of rounds 4-7 are therefore not line-baud evidence.
+
+**Round 8 (the real finding):** with UCON untouched, writing a non-zero UPPER HALF of `+0x28` changes the line rate by exactly `16 / (16 - i)`: i = 1: x1.067, 2: x1.14, 3: x1.229, 4: x1.332 (at div 25, 1 and 0).
+**Round 9:** `+0x28 = (i << 16) | div` gives `baud = 24 MHz / ((16 - i) x (div + 1))` for i up to 12 (sampling factor 16 down to 4):
+
+| `+0x28` | factor | div | measured | expected |
+|---|---:|---:|---:|---:|
+| 0x50019 | 11 | 25 | 83.0 k | 83.9 k |
+| 0x80019 | 8 | 25 | 114.3 k | 115.4 k |
+| 0xc0019 | 4 | 25 | 224.7 k | 230.8 k |
+| 0x80003 | 8 | 3 | 739 k | 750 k |
+| 0xa0003 | 6 | 3 | 980 k | 1.0 M |
+| 0xc0003 | 4 | 3 | 1.456 M | 1.5 M |
+| **0x80000** | **8** | **0** | **2.79 M** | **3.0 M** |
+| 0xa0000 | 6 | 0 | 3.73 M | 4.0 M |
+| 0xc0000 | 4 | 0 | 5.50 M | 6.0 M |
+
+Rows at 3 M and above read ~7-8 % low (per-byte overhead at those speeds; the low-rate rows are accurate to ~1 %). So **a true 3 Mbaud is reachable with `+0x28 = 0x80000` (factor 8, divisor 0) on the existing 24 MHz clock, with UCON, UFCON and the slot registers untouched**: no PMGR change, no new clock.
+This matches the agent's reconstruction in kind (the candidate index in the upper half of `+0x28`; factors 16/15/14 in version 1) but the hardware supports the whole range down to 4; `+0x34`/`+0x38` (slot words) only slow the rate by ~15/16 in either mode and are not needed. Linux patch outline: for the Apple S5L UART3, pick (factor f in 4..16, div d >= 0) minimising |24e6/(f x (d+1)) - baud| (ties: larger f), write `((16 - f) << 16) | d` to UBRDIV; opt in with a device-tree property on `serial3`.
+
+**Bluetooth probe at true rates (`boot/bt_3m_probe.py`, run by the assistant; same approved registers as before: PMU 0x0402 0x09 -> 0x0b, AP GPIO 164 high, UART3 baud registers; all restored and verified each time, battery Charging/80 % cap):** with power-enable and BT_WAKE both asserted and a raw HCI Reset (`01 03 0c 00`):
+3,000,000 (`0x80000`), 2,000,000 (`0x40000`), 4,000,000 (`0xa0000`), 1,500,000, 923 k (`0x30001`), 750 k and 115,200 baud, each with and without RTS/CTS flow control, and frame formats 8N1, 8E1, 8O1, 8N2 at 3 M, 1.5 M and 115.2 k: **0 bytes received in every case**.
+So the controller stays silent even at the exact rate iOS uses (3 Mbaud, the ADT `transport-speed`), so a baud-rate mismatch is not the cause. (The earlier suspicion that transport-encoding 3 might mean a parity/stop-bit variant is also not supported: 8E1/8O1/8N2 are silent too.)
+
+**UART pad check (read-only):** the pads follow TX, RX, RTS, CTS in sequence for UARTs 1, 2, 4 (RTS = TX + 2; UART3's ADT pins are split: TX 14, RTS 32, so RX 15, CTS 33 by the same pattern). UART3's RX/CTS pads (15, 33) read `0x00070221` = peripheral function 1 with input enabled, identical to the working console UART0's RX/CTS (129, 131) and to UART4's (77, 79): the receive pads look correctly configured.
+
+**Remaining hypotheses for the silent controller:** a missing 32.768 kHz low-power clock for the Bluetooth core (the agent found no iOS enable path); a power-up reset/timing requirement (`BT_REG_ON` low long enough then high, with the Wi-Fi side in a particular state); the PMU GPIO6 input that follows the power-enable write (`0x0063` bit 6, appears to be a power-good or related status); and a Wi-Fi-firmware-side dependency (BT core enabled through the chip's own registers, e.g. coexistence handshake). None tested yet.

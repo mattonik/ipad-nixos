@@ -4,7 +4,7 @@
 For each candidate (+0x08 UFCON, +0x28, +0x34, +0x38) the script writes the registers (boot/uartpoke.c, UART3 only), transmits a known number of zero bytes with the port held open
 (so the tty layer does not reprogram the divider), waits until the UART's own transmitted-byte counter (/proc/tty/driver) has advanced by that many bytes (a true drain time, no
 tty-buffer error), and prints the achieved baud rate (bytes*10/seconds). Round 1 (2026-10-11) showed the baud registers alone behave as legacy /16 plus fractional slots and cannot give 3 Mbaud;
-round 2 showed the FIFO/control word (+0x08 = 0xc1 / 0x1c1) does not change the rate (all legacy /16 from 24 MHz). The agent's table is consistent with a 48 MHz input clock (2 x nclk), so round 3 showed UCON bits 8/10/11/15 change nothing; round 4 showed UCON bit 20 (iOS's uart-version-1 bit) raises the rate by ~sqrt(2) with zero slot words; round 5 showed slot words only slow it by 15/16; round 6 combines bit 20 with UCON bits 10/17 and UFCON 0x1c1.
+round 2 showed the FIFO/control word (+0x08 = 0xc1 / 0x1c1) does not change the rate (all legacy /16 from 24 MHz). The agent's table is consistent with a 48 MHz input clock (2 x nclk), so round 3 showed UCON bits 8/10/11/15 change nothing; round 4 showed UCON bit 20 (iOS's uart-version-1 bit) raises the rate by ~sqrt(2) with zero slot words; round 5 showed slot words only slow it by 15/16; round 6 combined bit 20 with UCON bits 10/17 and UFCON (no further gain); round 7 scans each remaining UCON bit on top of bit 20.
 The original register values are restored at the end in a finally block. The Bluetooth chip is not powered during this test; nothing else is touched.
 
   boot/uart3_baud_experiment.py
@@ -20,21 +20,14 @@ from ipad_telnet_run import run  # noqa: E402
 
 TTY = "/dev/ttySAC1"
 # (label, UCON or None, UFCON or None, +0x28, +0x34 or None, +0x38 or None, bytes); None = keep the original value.
-# Round 4: UCON bit 20 (iOS's uart-version-1 bit) multiplies the rate by ~1.41 with zero slot words. Round 5: slot words only slow it by 15/16, as in legacy mode.
-# iOS's target (24 MHz / (8 x (+0x28 + 1)): 0x19 -> 115.2 k) needs another ~1.41 on top. Round 6 combines bit 20 with the other bits iOS writes for version 1:
-# UCON bit 10 (iOS baseline 0x405), UCON bit 17 (a helper at 0x2d76a58) and UFCON 0x1c1/0x131; reference with bit 20 alone at 28=0x19: ~81.5 k (nominal legacy 57.7 k, iOS target 115.2 k).
-B20 = 0x100085
-CANDIDATES = [
-    ("control: nothing changed, 28=0x19 (legacy 57.7 k)", None, None, 0x19, None, None, 30_000),
-    ("bit20 alone, 28=0x19 (round 4: ~81.5 k)", B20, None, 0x19, None, None, 30_000),
-    ("bit20 + bit10 (0x100485), 28=0x19", 0x100485, None, 0x19, None, None, 30_000),
-    ("bit20 + bit17 (0x120085), 28=0x19", 0x120085, None, 0x19, None, None, 30_000),
-    ("bit20 + bit10 + bit17 (0x120485), 28=0x19", 0x120485, None, 0x19, None, None, 30_000),
-    ("bit20 + UFCON 0x131, 28=0x19", B20, 0x131, 0x19, None, None, 30_000),
-    ("bit20 + UFCON 0x1c1 (iOS v1), 28=0x19", B20, 0x1C1, 0x19, None, None, 30_000),
-    ("all: 0x120485 + UFCON 0x1c1, 28=0x19", 0x120485, 0x1C1, 0x19, None, None, 30_000),
-    ("all: 0x120485 + UFCON 0x1c1, 28=0 (iOS 3M without slots)", 0x120485, 0x1C1, 0x0, None, None, 600_000),
-]
+# Round 8 (2026-10-11): the UPPER HALF of +0x28 is a sampling-factor field: with UCON untouched, 8N1, baud = 24 MHz / ((16 - i) x (div + 1)) for i = 0..4 (measured x16/(16-i) exactly).
+# Round 9: extend i upward; i = 8 with div 0 should be 3.0 M (24 MHz / 8). At div 0x19 each i gives 57.7 k x 16/(16-i); the div-0x19 rows are CPU-safe line-rate checks.
+CANDIDATES = [("control: 28=0x19 (legacy 57.7 k)", None, None, 0x19, None, None, 20_000)]
+for _i in (5, 6, 7, 8, 9, 10, 11, 12):
+    CANDIDATES.append((f"28=0x{(_i << 16) | 0x19:x} (i={_i}, factor {16 - _i}, div 25: expect {24e6 / ((16 - _i) * 26):,.0f})", None, None, (_i << 16) | 0x19, None, None, 20_000))
+for _i in (8, 10, 12):
+    CANDIDATES.append((f"28=0x{(_i << 16) | 0x03:x} (i={_i}, factor {16 - _i}, div 3: expect {24e6 / ((16 - _i) * 4):,.0f})", None, None, (_i << 16) | 0x03, None, None, 300_000))
+    CANDIDATES.append((f"28=0x{(_i << 16) | 0x00:x} (i={_i}, factor {16 - _i}, div 0: expect {24e6 / (16 - _i):,.0f})", None, None, (_i << 16) | 0x00, None, None, 600_000))
 
 
 def sh(cmd, timeout=60):
