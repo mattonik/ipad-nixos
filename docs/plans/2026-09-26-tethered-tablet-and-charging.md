@@ -493,3 +493,8 @@ the logic-analyser evidence.
 - The actual archived base initrd audited here is pinned by
   `linuxAppleResources` in `flake.nix`; its `20-debug-shell.sh` hook supplies
   the current telnet shell.
+
+#### `power-diag` (2026-10-11): read-only snapshot and A/B logger, no rebuild needed
+
+`boot/power-diag.sh` (push it and a static `i2ctransfer` to the running iPad; BusyBox ash) prints battery status/capacity/voltage/current/temperature, the charger's `input_current_limit` and `constant_charge_current_max`, the raw PMIC values behind them (`0x04c0`, `0x04cf`, `0x0010` suspend bit, status block `0x0060..` with the USB-power-limited bit in `0x0062` bit 5), the charging policy's stateless choice plus its last log line, and context (load, backlight, wlan). `power-diag log -i SEC -n N -l LABEL -o FILE` appends CSV rows for controlled A/B tests (change LABEL between phases). It makes only forced i2c *reads* (a 2-byte address write followed by a read; a host test checks this). **VBUS current and voltage are still "n/a"**: Apple's ADC path writes the ADC control registers and waits for an interrupt, so it is not a read-only access and belongs in the kernel PMIC driver.
+First reading on the T3 payload (Wi-Fi associated, charging, 79 %): input limit 2400 mA, battery current swinging 46-233 mA, and the PMIC status block's **USB-power-limited bit (0x0062 bit 5) set**, where an earlier data-host boot showed it clear: the PMIC itself reports the source as limiting.
