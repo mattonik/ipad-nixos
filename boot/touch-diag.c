@@ -385,6 +385,7 @@ static int spi_frame(const char *label, const uint8_t *tx, unsigned int n)
  * Needs spidev.bufsiz >= the packet size (the default 4096 would reject it). Only the reply length and the ACK bytes are printed; the packet content is never logged.
  */
 static const char *g_fw_file, *g_ack_file;
+static unsigned int g_ack_tries = 1;
 
 static uint8_t *slurp(const char *path, unsigned int max, unsigned int *len)
 {
@@ -444,19 +445,50 @@ static int upload_firmware(void)
 		goto out;
 	}
 	say("upload: transfer completed\n");
-	memset(&t, 0, sizeof(t));
-	t.tx_buf = (uintptr_t)ack;
-	t.rx_buf = (uintptr_t)arx;
-	t.len = an;
-	t.speed_hz = g_spi_hz;
-	t.bits_per_word = 8;
-	if (ioctl(g_spi, SPI_IOC_MESSAGE(1), &t) < 0) {
-		perror("ack query");
-		goto out;
+	/*
+	 * Repeat-query experiment: the packet is NOT resent. The ATN/ACK query is repeated up to g_ack_tries times on a growing delay schedule; during each wait the IRQ line is
+	 * watched (falling-edge events counted, level logged) so the log shows whether the controller reacts to the transfer at all. Stops at the first 4b c1.
+	 */
+	{
+		static const unsigned int wait_ms[] = { 0, 2, 10, 50, 200, 1000, 1000, 1000, 1000, 1000 };
+
+		for (unsigned int k = 0; k < g_ack_tries; k++) {
+			struct pollfd pf = { .fd = g_irq_fd, .events = POLLIN };
+			int edges = 0;
+			struct gpio_v2_line_event ev;
+
+			if (wait_ms[k]) {
+				int left = wait_ms[k];
+
+				while (left > 0 && poll(&pf, 1, left) > 0 && (pf.revents & POLLIN)) {
+					if (read(g_irq_fd, &ev, sizeof(ev)) == (ssize_t)sizeof(ev))
+						edges++;
+					left = 0;	/* count the first edge; the level below shows the rest */
+				}
+			}
+			memset(&t, 0, sizeof(t));
+			memset(arx, 0, sizeof(arx));
+			t.tx_buf = (uintptr_t)ack;
+			t.rx_buf = (uintptr_t)arx;
+			t.len = an;
+			t.speed_hz = g_spi_hz;
+			t.bits_per_word = 8;
+			if (ioctl(g_spi, SPI_IOC_MESSAGE(1), &t) < 0) {
+				perror("ack query");
+				goto out;
+			}
+			say("upload: query %u after wait %u ms: irq edges %d, irq level %d, reply %02x %02x\n", k + 1, wait_ms[k], edges, get_line(g_irq_fd), arx[0], arx[1]);
+			if (arx[0] == 0x4b && arx[1] == 0xc1) {
+				rc = 0;
+				break;
+			}
+			if (g_signal) {
+				say("interrupted\n");
+				break;
+			}
+		}
 	}
-	say("upload: ack reply %02x %02x (expected 4b c1)\n", arx[0], arx[1]);
-	rc = (arx[0] == 0x4b && arx[1] == 0xc1) ? 0 : -1;
-	say("upload: %s\n", rc ? "NOT ACKNOWLEDGED, aborting (no retry)" : "ACKNOWLEDGED");
+	say("upload: %s\n", rc ? "NOT ACKNOWLEDGED, aborting (the packet is not resent)" : "ACKNOWLEDGED");
 out:
 	free(fw);
 	free(ack);
@@ -671,8 +703,14 @@ int main(int argc, char **argv)
 			g_spi_hz = strtoul(argv[i + 1], NULL, 0);
 		else if (!strcmp(argv[i], "--upload-fw"))
 			g_fw_file = argv[i + 1];
+		else if (!strcmp(argv[i], "--ack-tries"))
+			g_ack_tries = strtoul(argv[i + 1], NULL, 0);
 		else if (!strcmp(argv[i], "--upload-ack"))
 			g_ack_file = argv[i + 1];
+	}
+	if (g_ack_tries < 1 || g_ack_tries > 10) {
+		fprintf(stderr, "--ack-tries must be 1..10\n");
+		return 2;
 	}
 	if (g_spi_mode > 3 || g_spi_hz < 10000 || g_spi_hz > 8000000) {
 		fprintf(stderr, "--spi-mode must be 0..3 and --spi-hz 10000..8000000\n");

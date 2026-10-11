@@ -27,6 +27,7 @@ HOST = "172.16.42.2"
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--go", action="store_true", help="actually power the controller and send the firmware packet")
+    ap.add_argument("--ack-tries", type=int, default=6, help="repeat the ACK query up to N times (1..10) on a 0/2/10/50/200/1000 ms schedule; the packet is never resent")
     ap.add_argument("--tool", default=str(HERE.parent / "artifacts/live/gcroot-touch-diag/bin/touch-diag"))
     ap.add_argument("--packets", default=str(HERE.parent / "firmware/j81-12B410/touch/upload-packets"))
     a = ap.parse_args()
@@ -54,7 +55,7 @@ def main():
         if not a.go:
             print("dry run finished; add --go to power the controller and send the firmware packet")
             return
-        print(run(f"cd /tmp/t && ./touch-diag run --execute --approve-pmu-write --spi-dev {dev} --upload-fw fw.bin --upload-ack ack.bin --approve-firmware-upload; "
+        print(run(f"cd /tmp/t && ./touch-diag run --execute --approve-pmu-write --spi-dev {dev} --upload-fw fw.bin --upload-ack ack.bin --ack-tries {a.ack_tries} --approve-firmware-upload; "
                   "echo EXIT=$?; rm -f fw.bin", timeout=180)[0])
     finally:
         srv.shutdown()
