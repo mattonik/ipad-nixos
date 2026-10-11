@@ -2659,3 +2659,18 @@ The research agent decoded the iOS 8.1 `AppleD2207PMU::start` GPIO path (`resear
 `gpio-*-defaults` / `gpio-pin-config` properties, so there is no hidden default table or unlock step before Bluetooth power-on; the remaining action is the separate
 `function-power_enable` call for GPIO2 (register `0x0402`). The agent's proposed hardware test: read `0x0402`, apply the Apple-style `0x09 -> 0x0b` transition, verify readback.
 Standing rules still apply: that register write needs its own explicit approval for the run (not given yet), one controlled change, immediate readback, no default-table or unlock write.
+
+## State at 2026-10-11 (supersedes the older table rows above for Wi-Fi, Bluetooth, touch and charging)
+
+| Area | State | Where to read more |
+|---|---|---|
+| Wi-Fi (BCM4350) | **Working.** Boots by itself onto the 5 GHz network, ~228 Mbit/s down; MAC from the device tree via m1n1; regulatory database, reconnect and 5-minute soak verified. Production payload `m1n1-hoolock-wifi` (tag `j81-base-wifi-dashboard-p4`). | `research/2026-10-10-wifi-bringup-root-cause-and-permanent-fix.md`, runs 38-47 in `research/2026-10-07-wifi-h1b-modelA-run.md` |
+| Base package | Charging, telnet + SSH, debug console, tablet dashboard (on screen, 16x32 font) and Wi-Fi are all in the production base. Universal probe (stage B) designed only. | `docs/plans/2026-10-08-j81-base-package.md` |
+| Charging | Works (2400 mA tier, 80 % cap). The battery gauge sometimes fails its one identification at boot; the policy now re-probes it (in payload P5, not yet booted). | `docs/technical-debt.md` entry 6 |
+| Bluetooth | **Parked.** Everything software-side was tested; the controller never returns a byte (every baud rate incl. a true 3 Mbaud, four frame formats, power-up listening, chip GPIO watch). Found on the way: the UART's sampling-factor field (`+0x28` upper half) gives a true 3 Mbaud. | `research/2026-10-10-bluetooth-gpio2-hardware-test.md`, `research/2026-10-11-uart3-register-capture.md`, memory note `bluetooth-status` |
+| Touch | All non-firmware preconditions tried; controller ROM idle. The firmware upload sequence is now specified, the private asset is staged (hash-verified) and the packets are exported offline. **Not run on hardware.** Needs `spidev.bufsiz=65536`, a send script, a DFU cycle and the user's approval. | `research/2026-10-11-touch-firmware-upload-spec.md`, `research/2026-10-11-touch-upload-review.md` |
+| NixOS userland | Design + measurements done (userland ~626 MiB, squashfs ~150-200 MiB, USB link 11 MB/s). Plan: stage 1 fetches a NixOS squashfs over the USB link. Needs kernel squashfs/overlayfs. **Not built or booted.** | `docs/plans/2026-10-11-nixos-in-ram.md` |
+| Technical debt | 7 entries (late `wifi-up`, test toggles in patches, Wi-Fi settings not bisected, intermittent initramfs freeze, `wpa_cli` socket, gauge flakiness, UART speed). | `docs/technical-debt.md` |
+
+Running on the iPad now: the diagnostic Wi-Fi payload Q1 (from the ChipCommon test). Next boot should use the production payload P5 (`artifacts/live/private/wifi-production-P5-*`).
+Suggested order: (1) one clean kernel build bundling squashfs/overlayfs, the gauge retry and the toggle clean-up; (2) the touch single-transfer experiment once approved; (3) the NixOS stage-1 hook and first boot.
