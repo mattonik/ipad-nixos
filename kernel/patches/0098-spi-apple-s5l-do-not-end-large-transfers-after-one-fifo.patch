@@ -9,30 +9,45 @@ diff --git a/drivers/spi/spi-apple.c b/drivers/spi/spi-apple.c
  #include <linux/interrupt.h>
  #include <linux/io.h>
  #include <linux/module.h>
-@@ -647,12 +648,35 @@
- 		/* Stop waiting on transfer halves once they complete */
- 		if (spi->type == APPLE_SPI_TYPE_MC)
- 			xfer_flags &= ~reg_read(spi, APPLE_SPI_IF_XFER);
--		else if (spi->type == APPLE_SPI_TYPE_S5L)
--			xfer_flags &= ~out_status;
+@@ -621,6 +622,33 @@
  
- 		/* Transmit and receive everything we can */
- 		apple_spi_tx(spi, &tx_ptr, &remaining_tx, bytes_per_word);
- 		apple_spi_rx(spi, &rx_ptr, &remaining_rx, bytes_per_word);
+ 	/* TX again since a few words get popped off immediately */
+ 	apple_spi_tx(spi, &tx_ptr, &remaining_tx, bytes_per_word);
 +
-+		/*
-+		 * S5L: one TXRXTHRESH event only means the 16-word FIFO needs service. Stopping at the first one ended every transfer longer than the FIFO
-+		 * after a few dozen bytes ("transfer completed with N words left to transmit") while still returning success, so the touch controller's
-+		 * 59,288-byte firmware packet was never sent (research/2026-10-11-touch-upload-hardware-result.md). Keep servicing until everything is queued
-+		 * (and, for receive, until at most one FIFO's worth is left to collect below).
-+		 */
-+		if (spi->type == APPLE_SPI_TYPE_S5L &&
-+		    !((xfer_flags & APPLE_SPI_STATUS_TXRXTHRESH) &&
-+		      (remaining_tx || remaining_rx > APPLE_SPI_FIFO_DEPTH)))
-+			xfer_flags &= ~out_status;
++	/*
++	 * S5L, transfers longer than the 16-word FIFO: serve the FIFOs by polling their levels instead of waiting for TXRXTHRESH events. On the J81 the
++	 * threshold status never reports a draining transmit FIFO: the old loop ended after the first event with almost everything unsent ("transfer completed
++	 * with N words left to transmit", success returned), and waiting for further events hung until the 200 ms timeout (HUNG status, FIFO stuck full), so no
++	 * transfer above 32 bytes ever completed (research/2026-10-11-touch-upload-hardware-result.md). Levels in STATUS are reliable; the loop below keeps both
++	 * FIFOs serviced, bounded by the expected wire time plus the usual timeout.
++	 */
++	if (spi->type == APPLE_SPI_TYPE_S5L &&
++	    (remaining_tx > APPLE_SPI_FIFO_DEPTH || remaining_rx > APPLE_SPI_FIFO_DEPTH)) {
++		u64 word_ns = spi_delay_to_ns(&t->word_delay, t);
++		u64 wire_us = (u64)t->len * (t->bits_per_word * 1000000ULL / t->speed_hz + word_ns / 1000 + 1);
++		unsigned long end = jiffies + usecs_to_jiffies(wire_us) + msecs_to_jiffies(APPLE_SPI_TIMEOUT_MS);
++
++		while (remaining_tx || remaining_rx) {
++			apple_spi_tx(spi, &tx_ptr, &remaining_tx, bytes_per_word);
++			apple_spi_rx(spi, &rx_ptr, &remaining_rx, bytes_per_word);
++			if (time_after(jiffies, end)) {
++				ret = -ETIMEDOUT;
++				dev_err(&ctlr->dev, "polled transfer timed out (remaining %d tx, %d rx), status=0x%x\n",
++					remaining_tx, remaining_rx, reg_read(spi, APPLE_SPI_STATUS));
++				goto err;
++			}
++			cpu_relax();
++		}
++		xfer_flags = 0;
 +	}
-+
-+	if (spi->type == APPLE_SPI_TYPE_S5L && !ret) {
+ 
+ 	while (xfer_flags) {
+ 		fifo_flags = 0;
+@@ -655,6 +683,20 @@
+ 		apple_spi_rx(spi, &rx_ptr, &remaining_rx, bytes_per_word);
+ 	}
+ 
++	if (spi->type == APPLE_SPI_TYPE_S5L) {
 +		unsigned long end = jiffies + msecs_to_jiffies(APPLE_SPI_TIMEOUT_MS);
 +		u64 word_ns = spi_delay_to_ns(&t->word_delay, t);
 +
@@ -44,6 +59,8 @@ diff --git a/drivers/spi/spi-apple.c b/drivers/spi/spi-apple.c
 +		}
 +		/* The last word is still shifting out of the shift register. */
 +		udelay(DIV_ROUND_UP(t->bits_per_word * 1000000UL, t->speed_hz) + DIV_ROUND_UP_ULL(word_ns, 1000) + 2);
- 	}
- 
++	}
++
  	/*
+ 	 * Sometimes the transfer completes before the last word is in the RX FIFO.
+ 	 * Normally one retry is all it takes to get the last word out.

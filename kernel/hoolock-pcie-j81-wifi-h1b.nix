@@ -91,6 +91,7 @@ let
     patch -d "$out" -p1 < ${./patches/0096-spi-apple-s5l-word-delay.patch}
     patch -d "$out" -p1 < ${./patches/0097-t7001-air2-touch-diag-cs-delays.patch}
     patch -d "$out" -p1 < ${./patches/0098-spi-apple-s5l-do-not-end-large-transfers-after-one-fifo.patch}
+    patch -d "$out" -p1 < ${./patches/0099-j81-d2207-charger-vbus-adc-measurement.patch}
   '';
   buildArgs = builtins.removeAttrs args [ "source" "hoolockConfig" "runCommand" ];
 in

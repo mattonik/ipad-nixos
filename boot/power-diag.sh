@@ -1,8 +1,8 @@
 #!/bin/sh
 # power-diag: READ-ONLY power diagnostic for the iPad (BusyBox ash). Prints one snapshot or logs CSV rows for controlled A/B tests.
 #
-#   power-diag                      one human-readable snapshot
-#   power-diag log [-i SEC] [-n COUNT] [-l LABEL] [-o FILE]
+#   power-diag [--vbus]             one human-readable snapshot
+#   power-diag log [--vbus] [-i SEC] [-n COUNT] [-l LABEL] [-o FILE]
 #                                   CSV rows every SEC seconds (default 5), COUNT rows (default: until interrupted), LABEL tags every row (change it between
 #                                   test phases, e.g. wifi-off / wifi-on), appended to FILE (default: stdout)
 #   power-diag --help
@@ -12,10 +12,10 @@
 # cap (50 mA/count), 0x04cf[5:0] configured charge-current ceiling (50 mA/count), 0x0010 (bit 2 = USB input suspend),
 # the status block 0x0060..0x006c (0x0062 bit 5 = USB power limited).
 #
-# VBUS current and voltage are NOT shown: Apple reads them from the PMIC ADC (channels 9 and 19), which starts a conversion by WRITING the ADC control registers
-# and waits for an interrupt, so it is not a read-only access and belongs in the kernel PMIC driver (docs/plans/2026-09-26-tethered-tablet-and-charging.md, "Recovered
-# D2207 VBUS ADC interface"). Until that exists the VBUS columns read "n/a" and input power cannot be separated from system load; compare battery power with a
-# physical USB power meter.
+# VBUS current and voltage (D2207 ADC channels 9 and 19) are shown ONLY with --vbus (or VBUS=1) and only if the kernel exposes the charger's current_now / voltage_now
+# (patch 0099). Each such sysfs read makes the kernel run one ADC conversion, which writes the PMIC ADC control register 0x0500 and the event mask 0x007b and restores
+# both, so --vbus is NOT read-only: without it the VBUS columns read "n/a" and nothing is written. With VBUS data the script also prints input power (VBUS mV x mA)
+# and an estimate of system power (input power minus battery power; sign convention: gauge current positive = charging).
 #
 # Overridable for tests: CHG, BAT, I2CTRANSFER, BACKLIGHT, WLAN, POLICY_LOG, UPTIME_FILE, LOADAVG_FILE.
 CHG=${CHG:-/sys/class/power_supply/j81-d2207-charger}
@@ -28,6 +28,7 @@ LOADAVG_FILE=${LOADAVG_FILE:-/proc/loadavg}
 PMU_BUS=${PMU_BUS:-0}
 PMU_ADDR=${PMU_ADDR:-0x3c}
 # Same numbers as charging-policy.sh, used only to report what the policy would choose.
+VBUS=${VBUS:-0}
 TARGET_UA=${TARGET_UA:-2400000}
 SAFE_UA=${SAFE_UA:-500000}
 HOT_DECI=${HOT_DECI:-420}
@@ -97,6 +98,14 @@ collect() {
 	suspend=""; plimit=""
 	[ -n "$r0010" ] && suspend=$(( ($(hex2dec "$r0010") >> 2) & 1 ))
 	[ -n "$r0062" ] && plimit=$(( ($(hex2dec "$r0062") >> 5) & 1 ))
+	vbus_ma=n/a; vbus_mv=n/a; vbus_mw=n/a; sys_mw=n/a
+	if [ "$VBUS" = 1 ] && [ -r "$CHG/current_now" ] && [ -r "$CHG/voltage_now" ]; then
+		vi=$(num "$(chgprop current_now)"); vv=$(num "$(chgprop voltage_now)")
+		if [ -n "$vi" ] && [ -n "$vv" ]; then
+			vbus_ma=$((vi / 1000)); vbus_mv=$((vv / 1000)); vbus_mw=$((vv / 1000 * vi / 1000000))
+			[ -n "$pbat_mw" ] && sys_mw=$((vbus_mw - pbat_mw))
+		fi
+	fi
 	load1=$(cut -d' ' -f1 "$LOADAVG_FILE" 2>/dev/null)
 	bl=""
 	for b in "$BACKLIGHT"/*/brightness; do [ -r "$b" ] && bl=$(cat "$b") && break; done
@@ -113,25 +122,29 @@ snapshot() {
 	echo "max charge curr   ${imax_ma:-?} mA (sysfs; PMIC 0x04cf = ${r04cf:-?}, ceiling ${ceil_ma:-?} mA)"
 	echo "charge programmed ${prog_ma:-?} mA (PMIC 0x04c6 = ${r04c6:-?}, 50 mA/count); hardware cap ${cap_ma:-?} mA (0x04c7 = ${r04c7:-?})"
 	echo "PMIC status       0x0060.. ${blk:-n/a}; USB power limited bit ${plimit:-?}"
-	echo "VBUS current      n/a (needs the PMIC ADC, not a read-only access; see the header of this script)"
-	echo "VBUS voltage      n/a"
+	if [ "$vbus_ma" = n/a ]; then
+		echo "VBUS              n/a (run with --vbus on a kernel with patch 0099; that performs ADC conversions, i.e. PMIC writes that are restored)"
+	else
+		echo "VBUS              ${vbus_mv} mV, ${vbus_ma} mA = ${vbus_mw} mW input power; system power estimate ${sys_mw} mW (input minus battery)"
+	fi
 	echo "charging policy   would choose $(policy_view); last log: $(policy_last)"
 	echo "context           load ${load1:-?}, backlight ${bl:-?}, wlan0 ${wlan}"
 	[ -n "$I2CTRANSFER" ] || echo "note              no i2ctransfer found: PMIC register values are unavailable (set I2CTRANSFER or push it to /tmp/power/)"
 }
 
 csv_header() {
-	echo "uptime_s,label,status,capacity_pct,vbat_mv,ibat_ma,pbat_mw,temp_deci_c,input_limit_ma,max_charge_ma,pmic_04c0,pmic_04c6,pmic_04c7,pmic_04cf,pmic_0010,charge_programmed_ma,charge_cap_ma,usb_suspend,usb_power_limited,vbus_ma,vbus_mv,load1,backlight,wlan,policy_view,policy_last"
+	echo "uptime_s,label,status,capacity_pct,vbat_mv,ibat_ma,pbat_mw,temp_deci_c,input_limit_ma,max_charge_ma,pmic_04c0,pmic_04c6,pmic_04c7,pmic_04cf,pmic_0010,charge_programmed_ma,charge_cap_ma,usb_suspend,usb_power_limited,vbus_ma,vbus_mv,vbus_mw,sys_power_est_mw,load1,backlight,wlan,policy_view,policy_last"
 }
 
 csv_row() {
 	collect
 	pv=$(policy_view | tr ',' ';'); pl=$(policy_last | tr ',' ';')
-	echo "${up},${label},${status},${cap},${vbat_mv},${ibat_ma},${pbat_mw},${tmp},${ilim_ma},${imax_ma},${r04c0},${r04c6},${r04c7},${r04cf},${r0010},${prog_ma},${cap_ma},${suspend},${plimit},n/a,n/a,${load1},${bl},${wlan},${pv},${pl}"
+	echo "${up},${label},${status},${cap},${vbat_mv},${ibat_ma},${pbat_mw},${tmp},${ilim_ma},${imax_ma},${r04c0},${r04c6},${r04c7},${r04cf},${r0010},${prog_ma},${cap_ma},${suspend},${plimit},${vbus_ma},${vbus_mv},${vbus_mw},${sys_mw},${load1},${bl},${wlan},${pv},${pl}"
 }
 
 usage() { sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'; }
 
+[ "$1" = "--vbus" ] && { VBUS=1; shift; }
 case "$1" in
 	--help|-h) usage; exit 0 ;;
 	log)
@@ -139,6 +152,7 @@ case "$1" in
 		interval=5; count=0; label=""; out=""
 		while [ $# -gt 0 ]; do
 			case "$1" in
+				--vbus) VBUS=1; shift ;;
 				-i) interval=$2; shift 2 ;;
 				-n) count=$2; shift 2 ;;
 				-l) label=$2; shift 2 ;;

@@ -63,7 +63,7 @@ class PowerDiagTests(unittest.TestCase):
             self.assertEqual(r.returncode, 0, r.stderr)
             out = r.stdout
             for needle in ("Charging, 79 %, 4122 mV, 231 mA", "battery power     952 mW", "input limit       2400 mA (PMIC 0x04c0 = 0x4a; USB input suspend bit 1)",
-                           "max charge curr   3000 mA (sysfs; PMIC 0x04cf = 0x3c, ceiling 3000 mA)", "charge programmed 3000 mA (PMIC 0x04c6 = 0x3c, 50 mA/count); hardware cap 3150 mA (0x04c7 = 0x3f)", "USB power limited bit 1", "VBUS current      n/a", "would choose target (2400 mA)",
+                           "max charge curr   3000 mA (sysfs; PMIC 0x04cf = 0x3c, ceiling 3000 mA)", "charge programmed 3000 mA (PMIC 0x04c6 = 0x3c, 50 mA/count); hardware cap 3150 mA (0x04c7 = 0x3f)", "USB power limited bit 1", "VBUS              n/a (run with --vbus", "would choose target (2400 mA)",
                            "last log: charging-policy: limit 2400000 uA", "load 0.57, backlight 100, wlan0 up"):
                 self.assertIn(needle, out)
 
@@ -75,6 +75,17 @@ class PowerDiagTests(unittest.TestCase):
             self.assertTrue(calls)
             for c in calls:
                 self.assertRegex(c, r"^-f -y 0 w2@0x3c 0x[0-9a-f]{2} 0x[0-9a-f]{2} r\d+@0x3c$")  # one 2-byte address write, then a read: never a data write
+
+    def test_vbus_only_with_the_flag(self):
+        with tempfile.TemporaryDirectory() as d:
+            env = make_tree(pathlib.Path(d))
+            (pathlib.Path(env["CHG"]) / "current_now").write_text("1056000\n")
+            (pathlib.Path(env["CHG"]) / "voltage_now").write_text("5016000\n")
+            self.assertIn("VBUS              n/a", run(env).stdout)                      # reading these files would run ADC conversions: off by default
+            out = run(env, "--vbus").stdout
+            self.assertIn("VBUS              5016 mV, 1056 mA = 5296 mW input power; system power estimate 4344 mW", out)
+            rows = run(env, "log", "--vbus", "-i", "0", "-n", "1").stdout.splitlines()
+            self.assertIn("1056,5016,5296,4344", rows[1])
 
     def test_policy_view_backoff(self):
         with tempfile.TemporaryDirectory() as d:
