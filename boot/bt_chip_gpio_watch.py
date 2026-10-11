@@ -30,7 +30,8 @@ def sh(cmd, timeout=60):
 
 def snapshot():
     text = sh(f'mountpoint -q /sys/kernel/debug || mount -t debugfs none /sys/kernel/debug; echo "core cc 0x58 24" > {DIR}/query && cat {DIR}/result')
-    words = [int(w, 16) for w in re.findall(r"\b([0-9a-f]{8})\b", text)]
+    # result lines look like "cc 00000058: 00000000 00000002 0000290e 00000000": take only the words after the address colon
+    words = [int(w, 16) for line in text.splitlines() if ":" in line for w in re.findall(r"\b([0-9a-f]{8})\b", line.split(":", 1)[1])]
     return text, words[:6] if len(words) >= 6 else None
 
 

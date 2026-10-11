@@ -18,4 +18,9 @@ m = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(m)
 assert m.diff([1, 2, 3, 4, 5, 6], [1, 2, 3, 4, 5, 6]) == ["no change"]
 assert "gpioin: 00000003 -> 00000007" in m.diff([0, 0, 3, 0, 0, 0], [0, 0, 7, 0, 0, 0])[0]
+# parser: the address column must not be mistaken for a register value (a bug caught on 2026-10-11)
+import unittest.mock as mock
+with mock.patch.object(m, "sh", return_value="cc 00000058: 00000000 00000002 0000290e 00000000\ncc 00000068: 00000001 00000000"):
+    _, words = m.snapshot()
+assert words == [0, 2, 0x290E, 0, 1, 0], words
 print("PASS")
