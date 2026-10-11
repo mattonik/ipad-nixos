@@ -1014,6 +1014,14 @@
             installPhase = "mkdir -p $out/bin && cp uartpoke $out/bin/uartpoke";
           };
 
+          # touch-diag (boot/touch-diag.c, with the firmware-upload experiment mode), pushed to the running iPad at run time.
+          touchDiagStaticPkg = pkgsCrossMusl.stdenv.mkDerivation {
+            name = "touch-diag";
+            dontUnpack = true;
+            buildPhase = "$CC -static -O2 -Wall -Wextra -Werror -o touch-diag ${./boot/touch-diag.c}";
+            installPhase = "mkdir -p $out/bin && cp touch-diag $out/bin/touch-diag";
+          };
+
           # uartpeek: READ-ONLY dump of UART3/UART5 registers 0x00..0x3c (boot/uartpeek.c) for the Bluetooth baud-register investigation; run-time tool only.
           uartpeekPkg = pkgsCrossMusl.stdenv.mkDerivation {
             name = "uartpeek";
@@ -1038,7 +1046,7 @@
           #   4. the tablet tools /usr/bin/tablet-status and /usr/bin/tablet-dashboard;
           #   5. the universal probe (stage B of the plan; its userland helper is added here once the kernel framework exists).
           # No Bluetooth userland and no I2C tools are included (the Wi-Fi payload rules forbid them; charging uses sysfs only).
-          mkJ81BasePayload = { name, kernel, bootargsExtra ? "", wifi ? false, dashboard ? false, btWakeHog ? false }:
+          mkJ81BasePayload = { name, kernel, bootargsExtra ? "", wifi ? false, dashboard ? false, btWakeHog ? false, touchSpidev ? false }:
             let
               dropbearPkg = pkgsCrossMusl.dropbear;
               dropbearClosure = pkgs.closureInfo { rootPaths = [ dropbearPkg ]; };
@@ -1053,6 +1061,10 @@
               dtc -I dtb -O dts ${kernel}/dtbs/apple/t7001-j81.dtb \
                 | sed -e '/^\tchosen {$/,/^\t};$/ s/framebuffer@0 {/framebuffer {/' \
                 | dtc -I dts -O dtb -p 0x10000 -o "$out/t7001-j81.dtb"
+              ${if touchSpidev then ''
+              # TEST ONLY (research/2026-10-11-touch-firmware-upload-spec.md): turn on the disabled spidev child on SPI3 (patch 0095) for the touch experiment.
+              fdtput -t s "$out/t7001-j81.dtb" /soc/spi@20a08c000/touch-diag@0 status okay
+              '' else ""}
               ${if btWakeHog then ''
               # TEST ONLY (docs/plans/2026-10-08-j81-bluetooth-battery-adt.md): a gpio-hog that the kernel's own pinctrl driver applies at boot, driving AP GPIO 164
               # (ADT bluetooth `function-bt_wake`) high. No /dev/mem poking; the production payloads never set btWakeHog.
@@ -1285,6 +1297,7 @@
         bt-userland-static = btUserlandPkg;
         pinpoke-static = pinpokePkg;
         uartpeek-static = uartpeekPkg;
+        touch-diag-static = touchDiagStaticPkg;
         uartpoke-static = uartpokePkg;
         hoolock-pcie-j81-wifi-h1b-raw-kernel = hoolockPcieJ81WifiH1bRawKernel;
         hoolock-pcie-gate-aux-ref-test-kernel = hoolockPcieGateAuxRefTestKernel;
@@ -3424,6 +3437,17 @@
           btWakeHog = true;
           kernel = hoolockWifiKernel;
           bootargsExtra = "pcie_aspm=off pcie_apple_t7000.device_wake=1 fbcon=font:TER16x32";
+        };
+
+        # TEST ONLY: the production Wi-Fi base with the SPI3 spidev test child enabled and a 64 KiB spidev buffer, for the touch firmware-upload experiment.
+        # Same kernel as m1n1-hoolock-wifi; only the DTB and one bootarg differ. Assemble privately like the production payload.
+        m1n1-hoolock-wifi-touch = mkJ81BasePayload {
+          name = "m1n1-hoolock-wifi-touch";
+          wifi = true;
+          dashboard = true;
+          touchSpidev = true;
+          kernel = hoolockWifiKernel;
+          bootargsExtra = "pcie_aspm=off pcie_apple_t7000.device_wake=1 fbcon=font:TER16x32 spidev.bufsiz=65536";
         };
 
         # TEST ONLY: Wi-Fi H1B base (public), DMA MODEL B (raw) + brcmfmac PCIe, NO firmware; private overlay is added locally.

@@ -5,8 +5,7 @@
  * Sequence and values come from Apple's iPad5,3 iOS 8.1 AppleMultitouchSPI
  * (research/j81-touch-clock-kclt-a8x.md, j81-touch-gpio-polarity-a8x.md,
  * j81-z2-n1-transport-framing.md). By default it makes NO SPI transfer; with
- * --spi-dev it sends only the four handshake frames described below. It never
- * uploads firmware and never writes the D2207 voltage register. It answers:
+ * --spi-dev it sends only the four handshake frames described below. It uploads firmware only with --upload-fw/--upload-ack/--approve-firmware-upload (see upload_firmware()) and never writes the D2207 voltage register. It answers:
  * "after Apple's power order and one reset release, does the controller
  * raise its boot interrupt on GPIO84?" Then it unwinds in reverse order.
  *
@@ -380,6 +379,91 @@ static int spi_frame(const char *label, const uint8_t *tx, unsigned int n)
 	return 0;
 }
 
+/*
+ * Firmware-upload experiment (research/2026-10-11-touch-firmware-upload-spec.md): ONE full-duplex message with the 59,288-byte constructed packet exported by
+ * boot/touch_fw_packets.py, then the 2-byte ATN/ACK query; the only accepted reply is 4b c1. No retry, no calibration, no execute command.
+ * Needs spidev.bufsiz >= the packet size (the default 4096 would reject it). Only the reply length and the ACK bytes are printed; the packet content is never logged.
+ */
+static const char *g_fw_file, *g_ack_file;
+
+static uint8_t *slurp(const char *path, unsigned int max, unsigned int *len)
+{
+	FILE *f = fopen(path, "rb");
+	uint8_t *b;
+	long n;
+
+	if (!f) {
+		perror(path);
+		return NULL;
+	}
+	fseek(f, 0, SEEK_END);
+	n = ftell(f);
+	rewind(f);
+	if (n <= 0 || (unsigned long)n > max) {
+		fprintf(stderr, "%s: bad size %ld\n", path, n);
+		fclose(f);
+		return NULL;
+	}
+	b = malloc(n);
+	if (!b || fread(b, 1, n, f) != (size_t)n) {
+		fclose(f);
+		free(b);
+		return NULL;
+	}
+	fclose(f);
+	*len = n;
+	return b;
+}
+
+static int upload_firmware(void)
+{
+	unsigned int fn = 0, an = 0;
+	uint8_t *fw = slurp(g_fw_file, 0x10000, &fn), *ack = slurp(g_ack_file, 16, &an);
+	uint8_t *rx = NULL, arx[16] = { 0 };
+	struct spi_ioc_transfer t;
+	int rc = -1;
+
+	if (!fw || !ack)
+		goto out;
+	if (fn < 2 || fw[0] != 0x18 || fw[1] != 0xe1 || (fn & 3) || an != 2 || ack[0] != 0x1a || ack[1] != 0xa1) {
+		fprintf(stderr, "packet sanity check failed (need 18 e1 header, 4-byte aligned length, ack 1a a1)\n");
+		goto out;
+	}
+	rx = calloc(1, fn);
+	if (!rx)
+		goto out;
+	memset(&t, 0, sizeof(t));
+	t.tx_buf = (uintptr_t)fw;
+	t.rx_buf = (uintptr_t)rx;
+	t.len = fn;
+	t.speed_hz = g_spi_hz;
+	t.bits_per_word = 8;
+	say("upload: sending %u bytes as one message\n", fn);
+	if (ioctl(g_spi, SPI_IOC_MESSAGE(1), &t) < 0) {
+		perror("firmware transfer");
+		goto out;
+	}
+	say("upload: transfer completed\n");
+	memset(&t, 0, sizeof(t));
+	t.tx_buf = (uintptr_t)ack;
+	t.rx_buf = (uintptr_t)arx;
+	t.len = an;
+	t.speed_hz = g_spi_hz;
+	t.bits_per_word = 8;
+	if (ioctl(g_spi, SPI_IOC_MESSAGE(1), &t) < 0) {
+		perror("ack query");
+		goto out;
+	}
+	say("upload: ack reply %02x %02x (expected 4b c1)\n", arx[0], arx[1]);
+	rc = (arx[0] == 0x4b && arx[1] == 0xc1) ? 0 : -1;
+	say("upload: %s\n", rc ? "NOT ACKNOWLEDGED, aborting (no retry)" : "ACKNOWLEDGED");
+out:
+	free(fw);
+	free(ack);
+	free(rx);
+	return rc;
+}
+
 static int status(void)
 {
 	uint8_t v;
@@ -546,7 +630,11 @@ static int run(void)
 	}
 	level_after = get_line(g_irq_fd);
 	CHECK_ABORT();
-	if (g_spi_dev && got_edge) {
+	if (g_spi_dev && got_edge && g_fw_file) {
+		say("step 7: firmware upload experiment\n");
+		if (upload_firmware())
+			goto out;
+	} else if (g_spi_dev && got_edge) {
 		say("step 7: minimal frames (handshake only: no firmware, no register write)\n");
 		if (spi_frame("wake", F_WAKE, sizeof(F_WAKE)) ||
 		    spi_frame("atn-short", F_ATN_SHORT, sizeof(F_ATN_SHORT)) ||
@@ -581,6 +669,10 @@ int main(int argc, char **argv)
 			g_spi_mode = strtoul(argv[i + 1], NULL, 0);
 		else if (!strcmp(argv[i], "--spi-hz"))
 			g_spi_hz = strtoul(argv[i + 1], NULL, 0);
+		else if (!strcmp(argv[i], "--upload-fw"))
+			g_fw_file = argv[i + 1];
+		else if (!strcmp(argv[i], "--upload-ack"))
+			g_ack_file = argv[i + 1];
 	}
 	if (g_spi_mode > 3 || g_spi_hz < 10000 || g_spi_hz > 8000000) {
 		fprintf(stderr, "--spi-mode must be 0..3 and --spi-hz 10000..8000000\n");
@@ -609,6 +701,16 @@ int main(int argc, char **argv)
 		if (ds_flag && !g_spi_dev) {
 			fprintf(stderr, "--display-sync-pinmux requires --spi-dev: it is only meaningful with the SPI frames\n");
 			return 2;
+		}
+		if (g_fw_file || g_ack_file) {
+			int up = 0;
+
+			for (int i = 2; i < argc; i++)
+				up |= !strcmp(argv[i], "--approve-firmware-upload");
+			if (!g_fw_file || !g_ack_file || !g_spi_dev || !up) {
+				fprintf(stderr, "firmware upload needs --spi-dev, --upload-fw, --upload-ack and --approve-firmware-upload\n");
+				return 2;
+			}
 		}
 		g_ds_pinmux = ds_flag;
 		{
