@@ -41,3 +41,6 @@ Add new entries at the end; strike an entry through when it is done.
 - **What:** Apple's ADT asks for 3 Mbaud (`transport-speed` 0x2dc6c0) but the Samsung/S5L UART divides a ~24 MHz clock by 16, so the maximum is ~1.5 Mbaud and a 3 Mbaud request silently runs at half speed (measured, `research/2026-10-10-bluetooth-gpio2-hardware-test.md`, fourth round).
 - **Why left:** Bluetooth does not answer HCI at all yet, so the operating speed is not reachable. The initial speed (115200) is accurate.
 - **Fix:** give UART3 a faster input clock (check the PMGR/clock-ids for UART3) or add 8x-oversampling support to the driver; pick the speed the firmware supports (1.5 Mbaud is a common alternative).
+
+(Update 2026-10-11 to entry 7: the research agent found the cause. iOS's `AppleSamsungSerial` (`0xffffff8002d76bb8`) reads `nclk` and `uart-version`, and for version 1 searches an alternate divider mode down to a sampling factor of 4, writing `0x28`, `0x34` and `0x38`; Linux's `TYPE_APPLE_S5L` is a single fixed-/16 clock writing only `UBRDIV`. 3 Mbaud = 24 MHz / (4 x 2).
+The fix is an Apple `uart-version=1` baud path in `samsung_tty.c`, not a faster clock; it is now the first Bluetooth gate rather than later debt. Notes: `research/2026-10-11-uart-3mbaud-static-analysis.md`, follow-up brief `research/2026-10-11-research-agent-brief-uart-baud-registers.md`.)
