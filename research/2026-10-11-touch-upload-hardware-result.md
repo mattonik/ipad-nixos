@@ -36,3 +36,15 @@ Reading:
 - The IRQ line sits low after the boot edge and a single edge shows during queries 2-5 (most likely each query pulses it, not a reaction to the packet; not proven).
 - Together with the first run, the ROM answers the same idle pattern before and after the packet, as if the packet were never recognised as a firmware download.
 - Remaining hypotheses: ROM needs a wake/handshake frame or specific ATN/IRQ timing before the data packet (the all-zero dummy reply suggests the first frames are not even clocked in); chip-select or clock breaks inside the 59 KB message (S5L PIO FIFO refill) corrupting it; different SPI mode or rate for the bootloader; or the data packet must be sent with the IRQ line in a specific state. Next experiments need a separate go-ahead.
+
+## Third to fifth runs: slower rate and chunked transfers (same boot, user-approved)
+
+Same power-up, same 59,288 bytes, same six-query repeat, each run unwound cleanly (LDO14 off, clock register restored):
+
+| run | SPI rate | transfers (one message, CS held) | result |
+|---|---|---|---|
+| 3 | 500 kHz | 1 x 59,288 | six queries all `f0 01`, NOT acknowledged |
+| 4 | 500 kHz | 58 x 1024 | six queries all `f0 01`, NOT acknowledged |
+| 5 | 1.984 MHz | 116 x 512 | six queries all `f0 01`, NOT acknowledged |
+
+Conclusion: neither a 4x slower clock nor shorter PIO runs inside one chip-select interval changes the ROM's reply, so FIFO-refill clock pauses in the SPI controller are very unlikely to be why the packet is not accepted. (Not excluded: chip-select breaks between transfers behaving differently than the core assumes; nothing was measured on the wire.) Remaining hypotheses: a wake/handshake or ATN/IRQ-timed step before the data packet, a different SPI mode for the bootloader, or the ROM requiring the constructed packet in a different framing than we send. Next step is evidence, not another blind variation: re-read the Apple driver path for the exact IRQ/ATN handling between reset release and the first packet.
