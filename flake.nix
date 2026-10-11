@@ -3894,6 +3894,11 @@
 
       packages.aarch64-darwin.gaster = darwinGaster;
 
+      # NixOS that lives entirely in RAM (feasibility; docs/plans/2026-10-11-nixos-in-ram.md).
+      nixosConfigurations.ipad-air2-ram = nixpkgs.lib.nixosSystem {
+        modules = [ ./nixos/ipad-air2-ram.nix ];
+      };
+
       # macOS remote Linux builder used for every x86_64-linux/aarch64-linux
       # build in this flake (aarch64-darwin cannot build Linux derivations
       # directly). See docs/build-infrastructure.md for the full story of
