@@ -98,6 +98,7 @@ static volatile sig_atomic_t g_signal;
 static const char *g_spi_dev;
 /* Apple's J81 touch SPI configuration is LSB-first (research/2026-10-11-touch-no-ack-analysis.md); --spi-msb restores the old spidev default for comparison. */
 static int g_spi_lsb = 1;
+static unsigned int g_word_delay_us;	/* spidev word_delay_usecs (needs patch 0096); Apple uses 5 */
 static int g_detect_ok;
 static unsigned int g_spi_mode = 2;		/* CPOL=1, CPHA=0: Apple's decoded default */
 static unsigned int g_spi_hz = 1984000;		/* 124 * 16 kHz */
@@ -384,6 +385,7 @@ static int spi_frame(const char *label, const uint8_t *tx, unsigned int n)
 	t.len = n;
 	t.speed_hz = g_spi_hz;
 	t.bits_per_word = 8;
+	t.word_delay_usecs = g_word_delay_us;
 	if (ioctl(g_spi, SPI_IOC_MESSAGE(1), &t) < 0) {
 		perror("spi transfer");
 		return -1;
@@ -455,6 +457,7 @@ static int upload_firmware(void)
 			t.len = fn;
 			t.speed_hz = g_spi_hz;
 			t.bits_per_word = 8;
+			t.word_delay_usecs = g_word_delay_us;
 			say("upload: pair %u: sending %u bytes transmit-only, one transfer, %u Hz\n", k + 1, fn, g_spi_hz);
 			if (ioctl(g_spi, SPI_IOC_MESSAGE(1), &t) < 0) {
 				perror("firmware transfer");
@@ -467,6 +470,7 @@ static int upload_firmware(void)
 			t.len = an;
 			t.speed_hz = g_spi_hz;
 			t.bits_per_word = 8;
+			t.word_delay_usecs = g_word_delay_us;
 			if (ioctl(g_spi, SPI_IOC_MESSAGE(1), &t) < 0) {
 				perror("ack query");
 				goto out;
@@ -492,6 +496,7 @@ static int upload_firmware(void)
 		t.len = fn;
 		t.speed_hz = g_spi_hz;
 		t.bits_per_word = 8;
+		t.word_delay_usecs = g_word_delay_us;
 		say("upload: sending %u bytes as one message, one transfer, %u Hz\n", fn, g_spi_hz);
 		if (ioctl(g_spi, SPI_IOC_MESSAGE(1), &t) < 0) {
 			perror("firmware transfer");
@@ -514,6 +519,7 @@ static int upload_firmware(void)
 			xs[i].len = len;
 			xs[i].speed_hz = g_spi_hz;
 			xs[i].bits_per_word = 8;
+			xs[i].word_delay_usecs = g_word_delay_us;
 		}
 		say("upload: sending %u bytes as one message, %u transfers of %u bytes, %u Hz\n", fn, nx, g_chunk, g_spi_hz);
 		r = ioctl(g_spi, SPI_IOC_MESSAGE(nx), xs);
@@ -552,6 +558,7 @@ static int upload_firmware(void)
 			t.len = an;
 			t.speed_hz = g_spi_hz;
 			t.bits_per_word = 8;
+			t.word_delay_usecs = g_word_delay_us;
 			if (ioctl(g_spi, SPI_IOC_MESSAGE(1), &t) < 0) {
 				perror("ack query");
 				goto out;
@@ -845,6 +852,8 @@ int main(int argc, char **argv)
 			g_fw_file = argv[i + 1];
 		else if (!strcmp(argv[i], "--chunk"))
 			g_chunk = strtoul(argv[i + 1], NULL, 0);
+		else if (!strcmp(argv[i], "--word-delay-us"))
+			g_word_delay_us = strtoul(argv[i + 1], NULL, 0);
 		else if (!strcmp(argv[i], "--ack-tries"))
 			g_ack_tries = strtoul(argv[i + 1], NULL, 0);
 		else if (!strcmp(argv[i], "--upload-ack"))

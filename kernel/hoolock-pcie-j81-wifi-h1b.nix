@@ -88,6 +88,8 @@ let
     patch -d "$out" -p1 < ${./patches/0093-t7001-air2-serial3-baud-factor-select.patch}
     patch -d "$out" -p1 < ${./patches/0094-brcmfmac-msgbuf-h1b-toggles-only-with-diag.patch}
     patch -d "$out" -p1 < ${./patches/0095-t7001-air2-spi3-touch-spidev-child-disabled.patch}
+    patch -d "$out" -p1 < ${./patches/0096-spi-apple-s5l-word-delay.patch}
+    patch -d "$out" -p1 < ${./patches/0097-t7001-air2-touch-diag-cs-delays.patch}
   '';
   buildArgs = builtins.removeAttrs args [ "source" "hoolockConfig" "runCommand" ];
 in
