@@ -1062,7 +1062,7 @@
                 | sed -e '/^\tchosen {$/,/^\t};$/ s/framebuffer@0 {/framebuffer {/' \
                 | dtc -I dts -O dtb -p 0x10000 -o "$out/t7001-j81.dtb"
               ${if touchSpidev then ''
-              # TEST ONLY (research/2026-10-11-touch-firmware-upload-spec.md): turn on the disabled spidev child on SPI3 (patch 0095) for the touch experiment.
+              # TEST ONLY (research/2026-10-11-touch-upload notes): turn on the disabled spidev child on SPI3 (patch 0095) for the touch experiment.
               fdtput -t s "$out/t7001-j81.dtb" /soc/spi@20a08c000/touch-diag@0 status okay
               '' else ""}
               ${if btWakeHog then ''
