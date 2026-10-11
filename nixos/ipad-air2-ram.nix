@@ -31,5 +31,12 @@
   services.udisks2.enable = false;
   security.polkit.enable = lib.mkForce false;
   fonts.fontconfig.enable = false;
+  # Round 2 of the size trim (2026-10-11): perl comes from switch-to-configuration (a RAM-only system is never switched), groff from man pages, file from nano.
+  system.switch.enable = false;
+  documentation.man.enable = false;
+  documentation.nixos.enable = false;
+  programs.nano.enable = lib.mkForce false;
+  services.lvm.enable = false;
+  boot.swraid.enable = lib.mkForce false;
   system.stateVersion = "25.11";
 }

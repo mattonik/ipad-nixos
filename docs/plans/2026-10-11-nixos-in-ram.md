@@ -24,25 +24,32 @@ now working, the next milestone toward a usable tethered tablet is a real NixOS 
 | Kernel needs | squashfs, overlayfs (small config change) | squashfs or a big tmpfs; networking in stage 1 | NAND write support: **blocked by policy** |
 | Risk | upload time/size limit; NixOS stage-1 on a monolithic kernel | more moving parts at boot | high; explicitly out of scope |
 
-**Recommendation: A first**, because it is self-contained (the iPad boots NixOS with only USB attached, the same flow as every boot today), then reconsider B if the payload turns out too large to upload comfortably. C is excluded.
+**Recommendation (revised after the measurements below): a hybrid, "B-prime".** Keep the small initramfs as stage 1; after USB networking is up it **fetches a squashfs of the NixOS system from the Mac over the USB link into RAM**, loop-mounts it, adds a tmpfs overlay and `switch_root`s into the NixOS stage 2.
+Reason: the payload stays ~17 MB (PongoOS upload is the slow channel), while the USB Ethernet link is fast (11 MB/s measured), so the multi-hundred-MB root does not have to ride through PongoOS. A change to the NixOS system needs only a rebuild and a new file on the Mac's HTTP server plus the normal boot cycle, no payload re-assembly.
+Option A (everything in the initrd) remains possible for a self-contained image; C is excluded.
 
 ## Plan
-1. **Measure** (started): minimal NixOS closure size and its squashfs size (`system.build.toplevel`, `system.build.squashfsStore` of `nixosConfigurations.ipad-air2-ram`). Also time and check the limit of uploading a payload of that size through PongoOS.
-2. **Kernel config additions** in the production kernel (one rebuild, bundled with the other pending kernel work: the gauge retry, toggle clean-up): `CONFIG_SQUASHFS=y`, `SQUASHFS_ZSTD=y`, `SQUASHFS_XZ=y`, `OVERLAY_FS=y`, optionally `EROFS_FS=y`, `CGROUP_BPF=y`.
-3. **NixOS configuration** (`nixos/ipad-air2-ram.nix`): netboot module for the RAM root; OpenSSH key-only (the repo's public `boot/ssh/authorized_keys`); the existing pieces as NixOS modules/systemd units:
-   - USB gadget networking (ECM at 172.16.42.1, DHCP for the Mac) as a oneshot service replacing the postmarketOS `setup_usb_network`;
-   - Wi-Fi: `wpa_supplicant` (our config from a private file copied from the initramfs at stage 1), `hardware.wirelessRegulatoryDatabase = true`, DHCP via `systemd-networkd` or `dhcpcd`;
+1. **Measure** (done, below).
+2. **Kernel config additions** in the production kernel (one rebuild, bundled with the other pending kernel work: the gauge retry, toggle clean-up, optionally the UART 3 Mbaud change): `CONFIG_SQUASHFS=y`, `SQUASHFS_ZSTD=y`, `SQUASHFS_XZ=y`, `OVERLAY_FS=y`, optionally `EROFS_FS=y`, `CGROUP_BPF=y`.
+3. **NixOS configuration** (`nixos/ipad-air2-ram.nix`): a RAM-resident system whose toplevel `init` is the stage-2 entry; OpenSSH key-only (`boot/ssh/authorized_keys`); our existing pieces as systemd units:
+   - USB gadget networking is already up from stage 1 (keep the interface configuration, 172.16.42.1, DHCP for the Mac);
+   - Wi-Fi: `wpa_supplicant` with a private config copied from the initramfs, `hardware.wirelessRegulatoryDatabase = true`, DHCP via `systemd-networkd`;
    - charging policy (`boot/charging-policy.sh`) as a service, including the gauge re-probe;
    - the tablet dashboard on tty1 (replacing the getty) with the 16x32 console font;
-   - firmware: the private BCM4350 files placed under `/lib/firmware` from the private overlay before the driver probes.
-4. **Stage-1 secrets and firmware:** extra cpio overlays appended to the initrd by the assembler already work for the busybox initramfs; for NixOS stage-1, copy `/lib/firmware` and the private config into the real root in a `postMountCommands` hook (the netboot initrd switches root, so anything left in the initramfs root disappears).
-5. **Assemble and test:** a payload = Hoolock Image + DTB + NixOS netboot initrd (+ private overlay); one DFU run; success = SSH login over USB, Wi-Fi up, dashboard on screen, charging policy running.
-6. **Then:** declarative touch/audio/UI work becomes ordinary NixOS module work.
+   - firmware: the private BCM4350 files stay in `/lib/firmware`, copied into the new root before the switch.
+4. **Stage-1 hook** (in the public base initramfs): after `setup_usb_network`, if a kernel argument `j81.nixos=http://172.16.42.2:8000/` is present: wait for the server, `wget` `root.squashfs` into a tmpfs, `losetup`/`mount -t squashfs`, overlay (lowerdir = squashfs, upperdir = tmpfs), bind-mount `/nix/store`, copy the private overlay files, then `exec switch_root /newroot $(cat /newroot/toplevel-path)/init`. **On any failure it falls back to today's telnet/SSH recovery shell**, so the current debugging flow is never lost.
+5. **Host side:** a build script that builds the toplevel, makes the squashfs (`mksquashfs ... -comp zstd`), and serves it (`python3 -m http.server --bind 172.16.42.2`); the private overlay and credentials stay in the private payload as today.
+6. **Assemble and test:** one DFU run; success = NixOS stage 2 reached, SSH login over USB, Wi-Fi up, dashboard on screen, charging policy running.
+7. **Then:** declarative touch/audio/UI work becomes ordinary NixOS module work.
 
 ## Open questions
 - Upload size/time limit of PongoOS for a payload of 100-300 MB (not yet measured).
 - Whether NixOS stage-1 (scripted or systemd) works with a monolithic kernel that was not built by nixpkgs (`boot.kernelPackages`, module tree, `system.requiredKernelConfig`): the netboot initrd normally embeds the NixOS kernel's modules; we ship our own kernel, so stage-1 must not insist on loading modules.
 - RAM budget: squashfs pages are decompressed on demand, the tmpfs overlay and tmpfs `/run`, `/tmp` grow with use: set sensible tmpfs limits so DMA/Wi-Fi buffers keep their memory.
 
-## Feasibility measurement
-(filled in when the build finishes)
+## Feasibility measurements (2026-10-11)
+- **Closure of the minimal NixOS (`nixosConfigurations.ipad-air2-ram`, aarch64-linux, built on the aarch64 builder):** first variant 968 MiB, trimmed variant 937 MiB, of which the stock NixOS kernel (187 MiB), its modules (114 MiB) and initrd (11 MiB) are not shipped (the Hoolock J81 kernel comes from the payload): **~626 MiB userland**. Biggest remaining parts: systemd 70 MiB (+27 minimal), perl 57 MiB, glibc 40 MiB, ICU 38 MiB, boost 16 MiB, glib 16 MiB, util-linux ~38 MiB, hwdb 13 MiB, coreutils 12 MiB.
+  perl comes from the user-management/activation scripts (replace with `services.userborn`), boost/ICU from the `nix` package that the netboot module's `postBootCommands` uses (`nix-store --load-db`; unnecessary here and removable). Removing those should bring the userland to roughly 450 MiB.
+- **Squashfs of the first variant: 291 MiB** (zstd/xz class compression, ratio ~3.3x incl. the 300 MiB kernel); the userland alone should be roughly 150-200 MiB.
+- **Transfer speed:** USB Ethernet (usb0, high-speed ECM) to the running iPad: **100 MB in 9 s (~11 MB/s)**; so ~200 MB takes ~20 s. Wi-Fi measured earlier at ~228 Mbit/s down (5 GHz) is an alternative channel. PongoOS upload speed for the 17 MB payload has not been timed yet (to be timed on the next load).
+- **RAM:** the iPad reports 1927 MiB total and ~1850 MiB free on a production-style boot; a ~200 MB squashfs file in tmpfs plus a modest writable overlay fits comfortably.
