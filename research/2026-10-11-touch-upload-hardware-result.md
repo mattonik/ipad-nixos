@@ -71,3 +71,7 @@ Power order LDO14, GPIO95, 5 ms, clock, 15 ms, wake `19 c1` (reply `00 00`), 10 
 ## Tenth run: Apple order + display_sync pinmux (GPIO55 PERIPH=1), user-approved
 
 Same as the ninth run plus the GPIO55 pinmux (saved 0x00072a82, wrote 0x00072aa2, readback 0x00072aa3, restored exactly on unwind). Detect PASS, five packet+query pairs, every ACK reply `1f 01`, never `4b c1`. Unwind clean (GPIO55 word restored). The display_sync enable is therefore not what the ROM was waiting for. Remaining unmatched: Apple's ~8 MHz clock with the 5 us inter-word delay and 10 us CS hold (WORD_DELAY is written as 0 by the Linux S5L driver), plus the unknown personality values and the SPI source clock.
+
+## Eleventh run (T2 kernel: 0096 word delay, 0097 CS delays): Apple order, mode 0, LSB-first, `--word-delay-us 5`
+
+Detect-only first: DETECT PASS with the delays on (`1f 01` x 8). Then the upload: five transmit-only packet+query pairs, every ACK reply `1f 01`, never `4b c1`. Unwind clean. The 5 us word delay (and the 10 us CS setup/hold from the DT) did not change the outcome. Not verified: that the delay really lengthens the transfer on the wire (the transfer duration was not timed). Still unmatched: ~8 MHz clock, and whatever else is unknown in Apple's sequence (SPI source clock, personality values), plus the possibility that the exported packet itself differs from what the ROM expects.
