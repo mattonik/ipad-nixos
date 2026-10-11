@@ -4,7 +4,7 @@
 For each candidate (+0x08 UFCON, +0x28, +0x34, +0x38) the script writes the registers (boot/uartpoke.c, UART3 only), transmits a known number of zero bytes with the port held open
 (so the tty layer does not reprogram the divider), waits until the UART's own transmitted-byte counter (/proc/tty/driver) has advanced by that many bytes (a true drain time, no
 tty-buffer error), and prints the achieved baud rate (bytes*10/seconds). Round 1 (2026-10-11) showed the baud registers alone behave as legacy /16 plus fractional slots and cannot give 3 Mbaud;
-round 2 showed the FIFO/control word (+0x08 = 0xc1 / 0x1c1) does not change the rate (all legacy /16 from 24 MHz). The agent's table is consistent with a 48 MHz input clock (2 x nclk), so round 3 showed UCON bits 8/10/11/15 change nothing; round 4 tests UCON bit 20, which iOS sets for uart-version 1.
+round 2 showed the FIFO/control word (+0x08 = 0xc1 / 0x1c1) does not change the rate (all legacy /16 from 24 MHz). The agent's table is consistent with a 48 MHz input clock (2 x nclk), so round 3 showed UCON bits 8/10/11/15 change nothing; round 4 showed UCON bit 20 (iOS's uart-version-1 bit) raises the rate by ~sqrt(2) with zero slot words; round 5 combines bit 20 with iOS's slot words.
 The original register values are restored at the end in a finally block. The Bluetooth chip is not powered during this test; nothing else is touched.
 
   boot/uart3_baud_experiment.py
@@ -19,15 +19,19 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from ipad_telnet_run import run  # noqa: E402
 
 TTY = "/dev/ttySAC1"
-# (label, UCON or None to keep, +0x28, bytes to send); UFCON, +0x34 and +0x38 stay at their original values.
-# Round 4 (2026-10-11): the research agent found that iOS sets UCON bit 20 (0x100000) only when uart-version != 0 (research/2026-10-11-uart-oversample-bit.md).
-# If bit 20 enables the divide-by-8 base mode, baud = 24 MHz / (8 x (+0x28 + 1)): 28=0 -> 3.0 M, 28=1 -> 1.5 M, 28=0x0c -> 230.8 k, 28=0x19 -> 115.4 k (legacy /16: 1.5 M, 750 k, 115 k, 57.7 k).
+# (label, UCON or None to keep, +0x28, +0x34 or None to keep, +0x38 or None to keep, bytes to send); UFCON stays at its original value.
+# Round 4 (2026-10-11) result: with UCON bit 20 (0x100000, iOS's uart-version-1 bit) and zero slot words the rate is ~sqrt(2) x the legacy /16 rate
+# (effective divider ~11.3 instead of 16). Round 5 applies iOS's complete register triples from research/2026-10-11-uart-baud-register-semantics.md with bit 20 set.
+SL = 0x55555555
+B20 = 0x100085
 CANDIDATES = [
-    ("control: UCON kept, 28=0 (legacy /16 -> 1.5 M)", None, 0x0, 300_000),
-    ("UCON 0x100085 (bit 20), 28=0x19 (/8 -> 115.4 k; /16 -> 57.7 k)", 0x100085, 0x19, 30_000),
-    ("UCON 0x100085, 28=0x0c (/8 -> 230.8 k; /16 -> 115.4 k)", 0x100085, 0x0C, 60_000),
-    ("UCON 0x100085, 28=1 (/8 -> 1.5 M; /16 -> 750 k)", 0x100085, 0x1, 300_000),
-    ("UCON 0x100085, 28=0 (/8 -> 3.0 M; /16 -> 1.5 M)", 0x100085, 0x0, 600_000),
+    ("control: UCON kept, 28=0 (legacy /16 -> 1.5 M)", None, 0x0, None, None, 300_000),
+    ("bit20 + iOS 115200: 28=0x19, slots 5555/5555 (nominal 115.2 k)", B20, 0x19, SL, SL, 30_000),
+    ("bit20 + iOS 1.5M:   28=1,    slots 5555/5555 (nominal 1.5 M)", B20, 0x1, SL, SL, 300_000),
+    ("bit20 + iOS 3M:     28=0,    slots 5555/5555 (nominal 3.0 M)", B20, 0x0, SL, SL, 600_000),
+    ("bit20 + iOS 921600: 28=2,    slots 0/0      (nominal 1.0 M by the table)", B20, 0x2, 0x0, 0x0, 300_000),
+    ("bit20, 28=0, only +0x34 = 5555", B20, 0x0, SL, 0x0, 600_000),
+    ("bit20, 28=0, only +0x38 = 5555", B20, 0x0, 0x0, SL, 600_000),
 ]
 
 
@@ -48,12 +52,12 @@ def main():
     o04, o08, o28, o34, o38 = m.groups()
     print(f"original: {orig}")
     try:
-        for label, ucon, r28, nbytes in CANDIDATES:
+        for label, ucon, r28, r34, r38, nbytes in CANDIDATES:
             pre = f"./uartpoke ucon 0x{ucon:x} >/dev/null; " if ucon is not None else ""
             cmd = (
                 f"cd /tmp/bt; exec 3<{TTY}; stty -F {TTY} raw -echo -crtscts clocal 115200; "
                 "tx() { grep '^1:' /proc/tty/driver/s3c2410_serial | sed 's/.*tx:\\([0-9]*\\).*/\\1/'; }; "
-                f"{pre}./uartpoke set 0x{r28:x} {o34} {o38} >/dev/null; "
+                f"{pre}./uartpoke set 0x{r28:x} {('0x%x' % r34) if r34 is not None else o34} {('0x%x' % r38) if r38 is not None else o38} >/dev/null; "
                 "c0=$(tx); t0=$(cut -d' ' -f1 /proc/uptime); "
                 f"dd if=/dev/zero of={TTY} bs=1000 count={nbytes // 1000} 2>/dev/null; "
                 f"s0=${{t0%.*}}; while [ $(( $(tx) - c0 )) -lt {nbytes} ]; do "

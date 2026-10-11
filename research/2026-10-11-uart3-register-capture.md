@@ -69,3 +69,16 @@ The UART nodes' `clock-ids = {0x115, 0x4}`: low byte 0x15 = index 21 = **24,000,
 So iOS's `nclk` for UART3 is the same 24 MHz we measure; the clock is not the missing piece, contrary to the "48 MHz input" reading of the worked table. Instead the table's register values (`0x19` = 115,200, `1` = 1.5 M, `0` = 3 M at 24 MHz) fit
 `baud = 24 MHz / (8 x (+0x28 + 1))`, a divide-by-8 base mode (with the 14/15/16 "factor" refinement), whereas the power-on mode (and every register combination tested in rounds 1-3: UCON bits 8/10/11/15, UFCON 0x131/0x1c1/0xc1, `+0x34`/`+0x38`) is divide-by-16.
 The switch for the /8 mode is therefore a bit or field that the baud routine does not write and we have not toggled: candidates are ULCON (+0x00; Linux sets 0x03) and the UCON bits the line-control/interrupt routines own (notably 3, 5, 6 and the upper half), tested only partially so far (not tested: UCON 3/5/6/9/12/13/14/16-31, ULCON 3..7).
+
+## Round 4 (UCON bit 20, run by the user): the first switch that changes the rate
+iOS sets UCON bit 20 (`0x00100000`) only when `uart-version != 0` (`research/2026-10-11-uart-oversample-bit.md`, `9eed16d`). `UCON = 0x100085`, slot words 0, true-drain timing:
+
+| `+0x28` | legacy /16 rate | measured with bit 20 | ratio |
+|---|---:|---:|---:|
+| 0x19 | 57.7 k | 81.5 k | 1.41 |
+| 0x0c | 115.4 k | 163.5 k | 1.42 |
+| 0x01 | 750 k | 1.056 M | 1.41 |
+| 0x00 | 1.5 M | 2.06 M | 1.37 |
+
+Control (bit 20 off) 28=0: 1.478 M. So bit 20 is a real baud-mode switch, but with zero slot words the gain is **~sqrt(2)** (effective divider ~11.3 = 16/sqrt(2)), not the 2x of a clean divide-by-8 mode and not yet iOS's 3 M. iOS always writes computed slot words (`0x55555555` for the table's 115.2 k, 1.5 M and 3 M rows); in the legacy mode those words only slow the rate (x15/16),
+so in the new mode they may supply the remaining correction. Round 5 applies iOS's complete register triples with bit 20 set.
