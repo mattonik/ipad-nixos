@@ -1,7 +1,15 @@
 diff --git a/drivers/spi/spi-apple.c b/drivers/spi/spi-apple.c
 --- a/drivers/spi/spi-apple.c
 +++ b/drivers/spi/spi-apple.c
-@@ -647,14 +647,37 @@
+@@ -9,6 +9,7 @@
+ #include <linux/bitfield.h>
+ #include <linux/bits.h>
+ #include <linux/clk.h>
++#include <linux/delay.h>
+ #include <linux/interrupt.h>
+ #include <linux/io.h>
+ #include <linux/module.h>
+@@ -647,12 +648,35 @@
  		/* Stop waiting on transfer halves once they complete */
  		if (spi->type == APPLE_SPI_TYPE_MC)
  			xfer_flags &= ~reg_read(spi, APPLE_SPI_IF_XFER);
@@ -22,8 +30,8 @@ diff --git a/drivers/spi/spi-apple.c b/drivers/spi/spi-apple.c
 +		    !((xfer_flags & APPLE_SPI_STATUS_TXRXTHRESH) &&
 +		      (remaining_tx || remaining_rx > APPLE_SPI_FIFO_DEPTH)))
 +			xfer_flags &= ~out_status;
- 	}
- 
++	}
++
 +	if (spi->type == APPLE_SPI_TYPE_S5L && !ret) {
 +		unsigned long end = jiffies + msecs_to_jiffies(APPLE_SPI_TIMEOUT_MS);
 +		u64 word_ns = spi_delay_to_ns(&t->word_delay, t);
@@ -36,8 +44,6 @@ diff --git a/drivers/spi/spi-apple.c b/drivers/spi/spi-apple.c
 +		}
 +		/* The last word is still shifting out of the shift register. */
 +		udelay(DIV_ROUND_UP(t->bits_per_word * 1000000UL, t->speed_hz) + DIV_ROUND_UP_ULL(word_ns, 1000) + 2);
-+	}
-+
+ 	}
+ 
  	/*
- 	 * Sometimes the transfer completes before the last word is in the RX FIFO.
- 	 * Normally one retry is all it takes to get the last word out.
