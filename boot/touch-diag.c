@@ -385,7 +385,7 @@ static int spi_frame(const char *label, const uint8_t *tx, unsigned int n)
  * Needs spidev.bufsiz >= the packet size (the default 4096 would reject it). Only the reply length and the ACK bytes are printed; the packet content is never logged.
  */
 static const char *g_fw_file, *g_ack_file;
-static unsigned int g_ack_tries = 1;
+static unsigned int g_ack_tries = 1, g_chunk;
 
 static uint8_t *slurp(const char *path, unsigned int max, unsigned int *len)
 {
@@ -433,16 +433,43 @@ static int upload_firmware(void)
 	rx = calloc(1, fn);
 	if (!rx)
 		goto out;
-	memset(&t, 0, sizeof(t));
-	t.tx_buf = (uintptr_t)fw;
-	t.rx_buf = (uintptr_t)rx;
-	t.len = fn;
-	t.speed_hz = g_spi_hz;
-	t.bits_per_word = 8;
-	say("upload: sending %u bytes as one message\n", fn);
-	if (ioctl(g_spi, SPI_IOC_MESSAGE(1), &t) < 0) {
-		perror("firmware transfer");
-		goto out;
+	if (!g_chunk || g_chunk >= fn) {
+		memset(&t, 0, sizeof(t));
+		t.tx_buf = (uintptr_t)fw;
+		t.rx_buf = (uintptr_t)rx;
+		t.len = fn;
+		t.speed_hz = g_spi_hz;
+		t.bits_per_word = 8;
+		say("upload: sending %u bytes as one message, one transfer, %u Hz\n", fn, g_spi_hz);
+		if (ioctl(g_spi, SPI_IOC_MESSAGE(1), &t) < 0) {
+			perror("firmware transfer");
+			goto out;
+		}
+	} else {
+		/* Same bytes, same single message (chip select stays asserted: cs_change = 0 on every transfer), but cut into g_chunk-byte transfers so the controller
+		 * driver handles short PIO runs instead of one 59 KB run. The byte stream on the wire is unchanged. */
+		unsigned int nx = (fn + g_chunk - 1) / g_chunk;
+		struct spi_ioc_transfer *xs = calloc(nx, sizeof(*xs));
+		int r;
+
+		if (!xs)
+			goto out;
+		for (unsigned int i = 0; i < nx; i++) {
+			unsigned int off = i * g_chunk, len = fn - off < g_chunk ? fn - off : g_chunk;
+
+			xs[i].tx_buf = (uintptr_t)(fw + off);
+			xs[i].rx_buf = (uintptr_t)(rx + off);
+			xs[i].len = len;
+			xs[i].speed_hz = g_spi_hz;
+			xs[i].bits_per_word = 8;
+		}
+		say("upload: sending %u bytes as one message, %u transfers of %u bytes, %u Hz\n", fn, nx, g_chunk, g_spi_hz);
+		r = ioctl(g_spi, SPI_IOC_MESSAGE(nx), xs);
+		free(xs);
+		if (r < 0) {
+			perror("firmware transfer (chunked)");
+			goto out;
+		}
 	}
 	say("upload: transfer completed\n");
 	/*
@@ -703,10 +730,16 @@ int main(int argc, char **argv)
 			g_spi_hz = strtoul(argv[i + 1], NULL, 0);
 		else if (!strcmp(argv[i], "--upload-fw"))
 			g_fw_file = argv[i + 1];
+		else if (!strcmp(argv[i], "--chunk"))
+			g_chunk = strtoul(argv[i + 1], NULL, 0);
 		else if (!strcmp(argv[i], "--ack-tries"))
 			g_ack_tries = strtoul(argv[i + 1], NULL, 0);
 		else if (!strcmp(argv[i], "--upload-ack"))
 			g_ack_file = argv[i + 1];
+	}
+	if (g_chunk && (g_chunk < 128 || g_chunk > 32768 || (g_chunk & 3))) {
+		fprintf(stderr, "--chunk must be 128..32768 and a multiple of 4\n");
+		return 2;
 	}
 	if (g_ack_tries < 1 || g_ack_tries > 10) {
 		fprintf(stderr, "--ack-tries must be 1..10\n");
