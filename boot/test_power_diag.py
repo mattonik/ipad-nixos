@@ -14,6 +14,8 @@ echo "$@" >> "$I2C_LOG"
 case "$5$6" in
   0x040xc0) echo 0x4a ;;
   0x040xcf) echo 0x3c ;;
+  0x040xc6) echo 0x3c ;;
+  0x040xc7) echo 0x3f ;;
   0x000x10) echo 0x04 ;;
   0x000x60) echo 0x0f 0x03 0x62 0x20 0x7e 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x03 ;;
   *) echo 0x00 ;;
@@ -61,7 +63,7 @@ class PowerDiagTests(unittest.TestCase):
             self.assertEqual(r.returncode, 0, r.stderr)
             out = r.stdout
             for needle in ("Charging, 79 %, 4122 mV, 231 mA", "battery power     952 mW", "input limit       2400 mA (PMIC 0x04c0 = 0x4a; USB input suspend bit 1)",
-                           "max charge curr   3000 mA (PMIC 0x04cf = 0x3c)", "USB power limited bit 1", "VBUS current      n/a", "would choose target (2400 mA)",
+                           "max charge curr   3000 mA (sysfs; PMIC 0x04cf = 0x3c, ceiling 3000 mA)", "charge programmed 3000 mA (PMIC 0x04c6 = 0x3c, 50 mA/count); hardware cap 3150 mA (0x04c7 = 0x3f)", "USB power limited bit 1", "VBUS current      n/a", "would choose target (2400 mA)",
                            "last log: charging-policy: limit 2400000 uA", "load 0.57, backlight 100, wlan0 up"):
                 self.assertIn(needle, out)
 

@@ -8,7 +8,8 @@
 #   power-diag --help
 #
 # Sources, all read-only: the battery gauge and charger in sysfs, and plain PMIC register READS through a forced i2c read transaction
-# (the same read the earlier charger observer made): 0x04c0 input current limit, 0x04cf max charge current, 0x0010 (bit 2 = USB input suspend),
+# (the same read the earlier charger observer made): 0x04c0 input current limit, 0x04c6 programmed charge current (50 mA/count), 0x04c7[5:0] hardware charge-current
+# cap (50 mA/count), 0x04cf[5:0] configured charge-current ceiling (50 mA/count), 0x0010 (bit 2 = USB input suspend),
 # the status block 0x0060..0x006c (0x0062 bit 5 = USB power limited).
 #
 # VBUS current and voltage are NOT shown: Apple reads them from the PMIC ADC (channels 9 and 19), which starts a conversion by WRITING the ADC control registers
@@ -86,7 +87,11 @@ collect() {
 	[ -n "$vbat_uv" ] && [ -n "$ibat_ua" ] && pbat_mw=$((vbat_uv / 1000 * ibat_ua / 1000000))
 	[ -n "$ilim_ua" ] && ilim_ma=$((ilim_ua / 1000))
 	[ -n "$imax_ua" ] && imax_ma=$((imax_ua / 1000))
-	r04c0=$(pmic 0x04 0xc0); r04cf=$(pmic 0x04 0xcf); r0010=$(pmic 0x00 0x10)
+	r04c0=$(pmic 0x04 0xc0); r04cf=$(pmic 0x04 0xcf); r0010=$(pmic 0x00 0x10); r04c6=$(pmic 0x04 0xc6); r04c7=$(pmic 0x04 0xc7)
+	prog_ma=""; cap_ma=""; ceil_ma=""
+	[ -n "$r04c6" ] && prog_ma=$(( $(hex2dec "$r04c6") * 50 ))
+	[ -n "$r04c7" ] && cap_ma=$(( ($(hex2dec "$r04c7") & 63) * 50 ))
+	[ -n "$r04cf" ] && ceil_ma=$(( ($(hex2dec "$r04cf") & 63) * 50 ))
 	blk=$(pmic 0x00 0x60 13)
 	r0062=$(echo "$blk" | cut -d' ' -f3)
 	suspend=""; plimit=""
@@ -105,7 +110,8 @@ snapshot() {
 	echo "battery           ${status:-?}, ${cap:-?} %, ${vbat_mv:-?} mV, ${ibat_ma:-?} mA (gauge sign: + charging), temp ${tmp:-?} (0.1 C), average power ${pavg_uw:-?} uW"
 	echo "battery power     ${pbat_mw:-?} mW (voltage x current)"
 	echo "input limit       ${ilim_ma:-?} mA (PMIC 0x04c0 = ${r04c0:-?}; USB input suspend bit ${suspend:-?})"
-	echo "max charge curr   ${imax_ma:-?} mA (PMIC 0x04cf = ${r04cf:-?})"
+	echo "max charge curr   ${imax_ma:-?} mA (sysfs; PMIC 0x04cf = ${r04cf:-?}, ceiling ${ceil_ma:-?} mA)"
+	echo "charge programmed ${prog_ma:-?} mA (PMIC 0x04c6 = ${r04c6:-?}, 50 mA/count); hardware cap ${cap_ma:-?} mA (0x04c7 = ${r04c7:-?})"
 	echo "PMIC status       0x0060.. ${blk:-n/a}; USB power limited bit ${plimit:-?}"
 	echo "VBUS current      n/a (needs the PMIC ADC, not a read-only access; see the header of this script)"
 	echo "VBUS voltage      n/a"
@@ -115,13 +121,13 @@ snapshot() {
 }
 
 csv_header() {
-	echo "uptime_s,label,status,capacity_pct,vbat_mv,ibat_ma,pbat_mw,temp_deci_c,input_limit_ma,max_charge_ma,pmic_04c0,pmic_04cf,pmic_0010,usb_suspend,usb_power_limited,vbus_ma,vbus_mv,load1,backlight,wlan,policy_view,policy_last"
+	echo "uptime_s,label,status,capacity_pct,vbat_mv,ibat_ma,pbat_mw,temp_deci_c,input_limit_ma,max_charge_ma,pmic_04c0,pmic_04c6,pmic_04c7,pmic_04cf,pmic_0010,charge_programmed_ma,charge_cap_ma,usb_suspend,usb_power_limited,vbus_ma,vbus_mv,load1,backlight,wlan,policy_view,policy_last"
 }
 
 csv_row() {
 	collect
 	pv=$(policy_view | tr ',' ';'); pl=$(policy_last | tr ',' ';')
-	echo "${up},${label},${status},${cap},${vbat_mv},${ibat_ma},${pbat_mw},${tmp},${ilim_ma},${imax_ma},${r04c0},${r04cf},${r0010},${suspend},${plimit},n/a,n/a,${load1},${bl},${wlan},${pv},${pl}"
+	echo "${up},${label},${status},${cap},${vbat_mv},${ibat_ma},${pbat_mw},${tmp},${ilim_ma},${imax_ma},${r04c0},${r04c6},${r04c7},${r04cf},${r0010},${prog_ma},${cap_ma},${suspend},${plimit},n/a,n/a,${load1},${bl},${wlan},${pv},${pl}"
 }
 
 usage() { sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'; }
