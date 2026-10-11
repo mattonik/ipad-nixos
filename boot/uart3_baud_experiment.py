@@ -4,7 +4,7 @@
 For each candidate (+0x08 UFCON, +0x28, +0x34, +0x38) the script writes the registers (boot/uartpoke.c, UART3 only), transmits a known number of zero bytes with the port held open
 (so the tty layer does not reprogram the divider), waits until the UART's own transmitted-byte counter (/proc/tty/driver) has advanced by that many bytes (a true drain time, no
 tty-buffer error), and prints the achieved baud rate (bytes*10/seconds). Round 1 (2026-10-11) showed the baud registers alone behave as legacy /16 plus fractional slots and cannot give 3 Mbaud;
-round 2 tests whether the FIFO/control word iOS writes first (+0x08 = 0xc1 / 0x1c1, bit 8 set for uart-version 1; Linux has 0x31) switches the divider mode.
+round 2 showed the FIFO/control word (+0x08 = 0xc1 / 0x1c1) does not change the rate (all legacy /16 from 24 MHz). The agent's table is consistent with a 48 MHz input clock (2 x nclk), so round 3 tests the UCON clock-select bits (10, 11) and the other non-interrupt bits (8, 15).
 The original register values are restored at the end in a finally block. The Bluetooth chip is not powered during this test; nothing else is touched.
 
   boot/uart3_baud_experiment.py
@@ -19,16 +19,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from ipad_telnet_run import run  # noqa: E402
 
 TTY = "/dev/ttySAC1"
-# (label, UFCON or None to keep, +0x28, +0x34, +0x38, bytes to send)
+# (label, UCON or None to keep, +0x28, bytes to send); UFCON, +0x34 and +0x38 stay at their original values
 CANDIDATES = [
-    ("control: UFCON kept, 28=0", None, 0x0, 0x0, 0x0, 300_000),
-    ("UFCON 0x131 (Linux 0x31 + bit 8), 28=0", 0x131, 0x0, 0x0, 0x0, 300_000),
-    ("UFCON 0x131, 28=1", 0x131, 0x1, 0x0, 0x0, 300_000),
-    ("UFCON 0x1c1 (iOS version 1), 28=0", 0x1C1, 0x0, 0x0, 0x0, 300_000),
-    ("UFCON 0x1c1, 28=1", 0x1C1, 0x1, 0x0, 0x0, 300_000),
-    ("UFCON 0x1c1, 28=0x19 (115200 in the table)", 0x1C1, 0x19, 0x0, 0x0, 30_000),
-    ("UFCON 0xc1 (iOS version 0), 28=0", 0xC1, 0x0, 0x0, 0x0, 300_000),
-    ("UFCON 0x1c1, 28=0, slots 0x55555555 both", 0x1C1, 0x0, 0x55555555, 0x55555555, 300_000),
+    ("control: UCON kept, 28=0", None, 0x0, 300_000),
+    ("UCON 0x185 (bit 8), 28=0", 0x185, 0x0, 300_000),
+    ("UCON 0x485 (bit 10 = clock select 1), 28=0", 0x485, 0x0, 300_000),
+    ("UCON 0x885 (bit 11 = clock select 2, as UART5), 28=0", 0x885, 0x0, 300_000),
+    ("UCON 0xc85 (bits 10+11 = clock select 3), 28=0", 0xC85, 0x0, 300_000),
+    ("UCON 0x8085 (bit 15), 28=0", 0x8085, 0x0, 300_000),
+    ("UCON 0x485, 28=1", 0x485, 0x1, 300_000),
+    ("UCON 0x885, 28=1", 0x885, 0x1, 300_000),
+    ("UCON 0xc85, 28=1", 0xC85, 0x1, 300_000),
 ]
 
 
@@ -43,18 +44,18 @@ def main():
     if sh("ls /sys/class/bluetooth 2>&1 | head -1; ps | grep -c '[b]tattach'").splitlines()[-1] != "0":
         sys.exit("btattach is running; stop it first")
     orig = sh("cd /tmp/bt; ./uartpoke get")
-    m = re.search(r"\+0x08=(0x\w+) \+0x28=(0x\w+) \+0x34=(0x\w+) \+0x38=(0x\w+)", orig)
+    m = re.search(r"\+0x04=(0x\w+) \+0x08=(0x\w+) \+0x28=(0x\w+) \+0x34=(0x\w+) \+0x38=(0x\w+)", orig)
     if not m:
         sys.exit(f"cannot read the registers (is the new uartpoke on the iPad?): {orig}")
-    o08, o28, o34, o38 = m.groups()
+    o04, o08, o28, o34, o38 = m.groups()
     print(f"original: {orig}")
     try:
-        for label, ufcon, r28, r34, r38, nbytes in CANDIDATES:
-            pre = f"./uartpoke ufcon 0x{ufcon:x} >/dev/null; " if ufcon is not None else ""
+        for label, ucon, r28, nbytes in CANDIDATES:
+            pre = f"./uartpoke ucon 0x{ucon:x} >/dev/null; " if ucon is not None else ""
             cmd = (
                 f"cd /tmp/bt; exec 3<{TTY}; stty -F {TTY} raw -echo -crtscts clocal 115200; "
                 "tx() { grep '^1:' /proc/tty/driver/s3c2410_serial | sed 's/.*tx:\\([0-9]*\\).*/\\1/'; }; "
-                f"{pre}./uartpoke set 0x{r28:x} 0x{r34:x} 0x{r38:x} >/dev/null; "
+                f"{pre}./uartpoke set 0x{r28:x} {o34} {o38} >/dev/null; "
                 "c0=$(tx); t0=$(cut -d' ' -f1 /proc/uptime); "
                 f"dd if=/dev/zero of={TTY} bs=1000 count={nbytes // 1000} 2>/dev/null; "
                 f"s0=${{t0%.*}}; while [ $(( $(tx) - c0 )) -lt {nbytes} ]; do "
@@ -75,7 +76,7 @@ def main():
             print(f"{label}: {nbytes} bytes drained in {dt:.2f} s -> ~{baud:,.0f} baud", flush=True)
     finally:
         print("--- RESTORE")
-        print(sh(f"cd /tmp/bt; exec 3<{TTY}; ./uartpoke ufcon {o08} >/dev/null; ./uartpoke set {o28} {o34} {o38}; exec 3<&-"))
+        print(sh(f"cd /tmp/bt; exec 3<{TTY}; ./uartpoke ucon {o04} >/dev/null; ./uartpoke ufcon {o08} >/dev/null; ./uartpoke set {o28} {o34} {o38}; exec 3<&-"))
         print(sh("cd /tmp/bt; ./uartpoke get"))
 
 
