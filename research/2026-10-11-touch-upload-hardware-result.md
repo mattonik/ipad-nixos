@@ -15,3 +15,24 @@ What this does and does not show:
 - No evidence of any harm.
 
 Next candidates (each needs a separate go-ahead): repeat the query a few times and watch the IRQ line after the transfer; try a slower rate (e.g. 500 kHz) or smaller messages only if the spec supports them; study how Apple waits for the IRQ between packet and query.
+
+## Second run: repeat-query (same boot, same payload, user-run)
+
+Same power-up and the same single 59,288-byte transfer (completed, no SPI error), then the `1a a1` query repeated six times on a 0/2/10/50/200/1000 ms schedule while the IRQ line was watched (packet not resent):
+
+| query | wait | IRQ edges during wait | IRQ level | reply |
+|---|---|---|---|---|
+| 1 | 0 ms | 0 | 0 | `f0 01` |
+| 2 | 2 ms | 1 | 0 | `f0 01` |
+| 3 | 10 ms | 1 | 0 | `f0 01` |
+| 4 | 50 ms | 1 | 0 | `f0 01` |
+| 5 | 200 ms | 1 | 0 | `f0 01` |
+| 6 | 1000 ms | 0 | 0 | `f0 01` |
+
+Unwind clean again (clock register back to its pre-run value, LDO14 off, GPIO95 low).
+
+Reading:
+- The reply never changes: no delayed ACK, so "the ACK just comes late" is ruled out for up to ~1.3 s.
+- The IRQ line sits low after the boot edge and a single edge shows during queries 2-5 (most likely each query pulses it, not a reaction to the packet; not proven).
+- Together with the first run, the ROM answers the same idle pattern before and after the packet, as if the packet were never recognised as a firmware download.
+- Remaining hypotheses: ROM needs a wake/handshake frame or specific ATN/IRQ timing before the data packet (the all-zero dummy reply suggests the first frames are not even clocked in); chip-select or clock breaks inside the 59 KB message (S5L PIO FIFO refill) corrupting it; different SPI mode or rate for the bootloader; or the data packet must be sent with the IRQ line in a specific state. Next experiments need a separate go-ahead.
