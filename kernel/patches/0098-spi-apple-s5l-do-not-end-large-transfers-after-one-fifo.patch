@@ -1,0 +1,43 @@
+diff --git a/drivers/spi/spi-apple.c b/drivers/spi/spi-apple.c
+--- a/drivers/spi/spi-apple.c
++++ b/drivers/spi/spi-apple.c
+@@ -647,14 +647,37 @@
+ 		/* Stop waiting on transfer halves once they complete */
+ 		if (spi->type == APPLE_SPI_TYPE_MC)
+ 			xfer_flags &= ~reg_read(spi, APPLE_SPI_IF_XFER);
+-		else if (spi->type == APPLE_SPI_TYPE_S5L)
+-			xfer_flags &= ~out_status;
+ 
+ 		/* Transmit and receive everything we can */
+ 		apple_spi_tx(spi, &tx_ptr, &remaining_tx, bytes_per_word);
+ 		apple_spi_rx(spi, &rx_ptr, &remaining_rx, bytes_per_word);
++
++		/*
++		 * S5L: one TXRXTHRESH event only means the 16-word FIFO needs service. Stopping at the first one ended every transfer longer than the FIFO
++		 * after a few dozen bytes ("transfer completed with N words left to transmit") while still returning success, so the touch controller's
++		 * 59,288-byte firmware packet was never sent (research/2026-10-11-touch-upload-hardware-result.md). Keep servicing until everything is queued
++		 * (and, for receive, until at most one FIFO's worth is left to collect below).
++		 */
++		if (spi->type == APPLE_SPI_TYPE_S5L &&
++		    !((xfer_flags & APPLE_SPI_STATUS_TXRXTHRESH) &&
++		      (remaining_tx || remaining_rx > APPLE_SPI_FIFO_DEPTH)))
++			xfer_flags &= ~out_status;
+ 	}
+ 
++	if (spi->type == APPLE_SPI_TYPE_S5L && !ret) {
++		unsigned long end = jiffies + msecs_to_jiffies(APPLE_SPI_TIMEOUT_MS);
++		u64 word_ns = spi_delay_to_ns(&t->word_delay, t);
++
++		/* Everything is queued: let the FIFO run empty and collect the receive side before the transfer is stopped below. */
++		while ((remaining_rx || FIELD_GET(APPLE_S5L_SPI_STATUS_TXFIFO, reg_read(spi, APPLE_SPI_STATUS))) &&
++		       !time_after(jiffies, end)) {
++			apple_spi_rx(spi, &rx_ptr, &remaining_rx, bytes_per_word);
++			cpu_relax();
++		}
++		/* The last word is still shifting out of the shift register. */
++		udelay(DIV_ROUND_UP(t->bits_per_word * 1000000UL, t->speed_hz) + DIV_ROUND_UP_ULL(word_ns, 1000) + 2);
++	}
++
+ 	/*
+ 	 * Sometimes the transfer completes before the last word is in the RX FIFO.
+ 	 * Normally one retry is all it takes to get the last word out.
