@@ -128,3 +128,7 @@ Same set-up, single transmit-only transfer, Apple order, mode 0; reply to the AT
 | all `0xff` / all `0xaa` / repeating `18 e1` / all zeros | `1f 01` | `1f 01` (ff) |
 
 Reading: at 18 KiB the reaction survives bit reversal and pair swapping (both keep the per-byte count of one-bits and the multiset of bytes) but not inversion, a constant pattern, or zeros: it depends on the density of one-bits / a property of the real firmware data, not on word values or on the header. At 8 KiB even the bit-reversed and unswapped variants are idle, so the lower threshold depends on the exact data. This looks like a signal-level effect or a ROM that reacts to something in the data stream, not a protocol answer; nothing here points toward `4b c1`. Not run: destination 0x400 / 0x10001800.
+
+## Hardware follow-up 4: SPI3 chip select driven as GPIO 51 like Apple's driver (T5 payload, DTB-only, 2026-10-12)
+
+`cs-gpios = <&pinctrl 51 active-low>`, the pad's SPI function dropped, 10 us setup/hold from the touch node. The GPIO chip select works (detect PASS, `1f 01` x 8, wake/ATN frames as before). The full 59,288-byte packet (Apple order, mode 0, transmit-only, 5 pairs) still returns **`4c b1`** on every pair. So the chip-select mechanism (pad function vs GPIO) is not the cause. Remaining differences from Apple's path: DMA through SmartIO for packets >= 0x100 bytes (we poll the FIFO), the unexplained data-density dependence (signal-level?), and untested destinations 0x400 / 0x10001800.
