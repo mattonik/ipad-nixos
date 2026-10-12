@@ -145,3 +145,11 @@ Prompted by a pasted note on the upstream Linux `apple_z2` driver (blob transfer
 
 A pasted task asked whether `4c b1` depends on size: six rebuilt packets (payload 64, 256, 1,008, 4,096, 16,384, 59,272 B; wire 80, 272, 1,024, 4,112, 16,400, 59,288 B), mode 2, 1.984 MHz, 5 us word delay, Apple order, transmit-only, separate query. Done offline: `boot/test_touch_fw_rebuild.py` is now in `tools/check_offline.py` (49 passed), and the six packets were rebuilt privately (sizes as above, mode 0600, the full rebuild bit-identical to the export). Not run: the iPad was on the NixOS-in-RAM boot (no `/dev/spidev0.0`, `spidev.bufsiz` 4096), so the touch payload has to be booted first.
 Already known from the runs above (mode 0, T4 kernel whose real clock was ~2.3x the requested one): 80 to 4,112 B idle `1f 01`, 8,208 to ~17.4 KiB `49 69`, >= ~18 KiB `4c b1`, no kernel error at any size. So `4c b1` is size dependent, and 64 B gives `1f 01`, not `4c b1`. Mode 2 is the setting that shifted the ROM's replies by one bit (detect FAIL, sixth run); mode 0 is Apple's decoded mode. Open: whether to repeat the ramp in mode 0 on the corrected-clock kernel (patch 0100), or treat the matrix as answered.
+
+## Size matrix repeat on the corrected-clock kernel (T7, mode 0, 2026-10-12 evening, user-approved)
+
+One fresh T7 boot (DFU, palera1n, `load_m1n1.py`) per packet, ascending sizes. Every run: SPI mode 0, LSB-first, 1,984,000 Hz (true rate since patch 0100), 5 us word delay, Apple order, transmit-only single transfer, `--ack-tries 1`, `1a a1` query as a separate message. Packets rebuilt by `boot/touch_fw_rebuild.py` (destination 0). `touch-diag` built with the new mode-0 default (commit 5e304be).
+
+| payload / wire | detect | upload | query reply | post-failure query x3 / ATN8 / detect | dmesg (SPI) | cleanup |
+|---|---|---|---|---|---|---|
+| 64 / 80 B | PASS | 0.7 ms (8.67 us/byte) | `1f 01` | `1f 01` / `1f 01` / `1f 01` | none | complete (LDO14 0x00, GPIO95 low, clock gated, divider 0x2dc as in all runs) |
