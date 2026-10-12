@@ -91,8 +91,10 @@ static int g_reset_fd = -1, g_power_fd = -1, g_irq_fd = -1;
 static volatile sig_atomic_t g_signal;
 
 /*
- * Optional SPI stage (spidev). Defaults: SPI mode 2 (Apple's controller writes
- * CFG 0xd = AUTO_TX | CPOL | ROLESEL, i.e. CPOL=1 CPHA=0) and 124 * 16 kHz.
+ * Optional SPI stage (spidev). Defaults: SPI mode 0 (Apple's decoded touch
+ * `reg` cells; mode 2, the old default read from CFG 0xd, shifts every ROM
+ * reply by one bit and fails the detect, see the sixth and seventh runs in
+ * research/2026-10-11-touch-upload-hardware-result.md) and 124 * 16 kHz.
  * Both can be overridden per run with --spi-mode and --spi-hz.
  */
 static const char *g_spi_dev;
@@ -100,7 +102,7 @@ static const char *g_spi_dev;
 static int g_spi_lsb = 1;
 static unsigned int g_word_delay_us;	/* spidev word_delay_usecs (needs patch 0096); Apple uses 5 */
 static int g_detect_ok;
-static unsigned int g_spi_mode = 2;		/* CPOL=1, CPHA=0: Apple's decoded default */
+static unsigned int g_spi_mode = 0;		/* CPOL=0, CPHA=0: the mode the touch ROM answers correctly in */
 static unsigned int g_spi_hz = 1984000;		/* 124 * 16 kHz */
 static int g_spi = -1;
 

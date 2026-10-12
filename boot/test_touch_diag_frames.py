@@ -35,9 +35,10 @@ class FrameTests(unittest.TestCase):
         for opcode in ("0x1e, 0x33", "0x1d, 0x53", "0x1c, 0x73"):
             self.assertNotIn(opcode, SOURCE)
 
-    def test_defaults_are_apples_decoded_mode_2(self):
-        self.assertIn("g_spi_mode = 2", SOURCE)
-        self.assertNotIn("g_spi_mode = 3", SOURCE)
+    def test_default_is_mode_0_not_the_one_bit_shift_mode_2(self):
+        self.assertIn("g_spi_mode = 0;", SOURCE)
+        for wrong in ("g_spi_mode = 1;", "g_spi_mode = 2;", "g_spi_mode = 3;"):
+            self.assertNotIn(wrong, SOURCE)
         self.assertIn("g_spi_hz = 1984000", SOURCE)
 
     def test_explicit_overrides_still_parsed_and_range_checked(self):

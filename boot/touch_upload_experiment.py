@@ -31,7 +31,7 @@ def main():
     ap.add_argument("--spi-hz", type=int, default=1984000, help="SPI clock for the whole run (10000..8000000); the first two runs used 1984000")
     ap.add_argument("--chunk", type=int, default=0, help="cut the packet into transfers of this many bytes inside ONE message (chip select stays asserted); 0 = one transfer")
     ap.add_argument("--spi-msb", action="store_true", help="old spidev default (MSB first) for comparison; Apple uses LSB first, which is now the default")
-    ap.add_argument("--spi-mode", type=int, default=2, help="SPI mode 0..3 (touch-diag's old default 2; Apple's decoded mode is 0)")
+    ap.add_argument("--spi-mode", type=int, default=0, help="SPI mode 0..3 (default 0, Apple's decoded mode; mode 2 shifts the ROM replies by one bit)")
     ap.add_argument("--detect-only", action="store_true", help="power up and send only the detect/handshake frames, NO firmware (no --upload-fw)")
     ap.add_argument("--apple", action="store_true", help="follow Apple's recovered order: LDO14, GPIO95, 5 ms, clock, 15 ms, wake 19 c1, ..., a 30 ms wait after the detect, then a transmit-only packet immediately followed by the ACK query, the pair retried up to 5 times")
     ap.add_argument("--display-sync", action="store_true", help="also select peripheral function 1 on GPIO55 (Apple's display_sync enable, a PINMUX change restored on exit) before the first SPI frames after power-up")
