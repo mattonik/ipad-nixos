@@ -153,3 +153,4 @@ One fresh T7 boot (DFU, palera1n, `load_m1n1.py`) per packet, ascending sizes. E
 | payload / wire | detect | upload | query reply | post-failure query x3 / ATN8 / detect | dmesg (SPI) | cleanup |
 |---|---|---|---|---|---|---|
 | 64 / 80 B | PASS | 0.7 ms (8.67 us/byte) | `1f 01` | `1f 01` / `1f 01` / `1f 01` | none | complete (LDO14 0x00, GPIO95 low, clock gated, divider 0x2dc as in all runs) |
+| 256 / 272 B | PASS | 2.5 ms (9.13 us/byte) | `1f 01` | `1f 01` / `1f 01` / `1f 01` | none | complete |
