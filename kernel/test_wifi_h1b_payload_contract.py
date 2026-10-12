@@ -56,6 +56,7 @@ EXPECTED_TAIL = [
     "0097-t7001-air2-touch-diag-cs-delays.patch",
     "0098-spi-apple-s5l-do-not-end-large-transfers-after-one-fifo.patch",
     "0099-j81-d2207-charger-vbus-adc-measurement.patch",
+    "0100-t7001-spi3-60mhz-functional-clock.patch",
 ]
 
 
@@ -76,7 +77,7 @@ def main():
     # Model B (raw) is the same list without 0064 and nothing else.
     raw = re.findall(r'patch -d "\$out" -p1 < \$\{\./patches/([^}]+)\}', NIX_RAW)
     # Model B was built before 0067/0068 existed and is the plain comparison payload: no 0064, 0067, 0068, 0069.
-    assert raw == [p for p in patches if not p.startswith(("0064-", "0067-", "0068-", "0069-", "0070-", "0071-", "0072-", "0073-", "0074-", "0075-", "0076-", "0077-", "0078-", "0079-", "0080-", "0081-", "0082-", "0083-", "0084-", "0085-", "0086-", "0087-", "0088-", "0089-", "0090-", "0091-", "0092-", "0093-", "0094-", "0095-", "0096-", "0097-", "0098-", "0099-"))], raw
+    assert raw == [p for p in patches if not p.startswith(("0064-", "0067-", "0068-", "0069-", "0070-", "0071-", "0072-", "0073-", "0074-", "0075-", "0076-", "0077-", "0078-", "0079-", "0080-", "0081-", "0082-", "0083-", "0084-", "0085-", "0086-", "0087-", "0088-", "0089-", "0090-", "0091-", "0092-", "0093-", "0094-", "0095-", "0096-", "0097-", "0098-", "0099-", "0100-"))], raw
     assert not any(p.startswith("0064-") for p in raw)
     raw_pay = re.search(r"m1n1-hoolock-pcie-j81-wifi-h1b-base-raw = mkJ81BasePayload \{.*?\n        \};", FLAKE, re.S)
     assert raw_pay and "hoolockPcieJ81WifiH1bRawKernel" in raw_pay.group(0) and "brcmfmac.debug=0x001c0004" in raw_pay.group(0)
