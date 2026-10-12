@@ -38,6 +38,7 @@ def main():
     ap.add_argument("--word-delay-us", type=int, default=0, help="inter-word delay in us (needs the 0096 kernel; Apple uses 5; 0..255)")
     ap.add_argument("--upload-rx", action="store_true", help="with --apple: send the packet full duplex and print a summary of the ROM's reply during the transfer (never the packet)")
     ap.add_argument("--probe-sizes", default="", help="comma-separated byte counts (e.g. 16,17,32,64,128,256,512,1024,4096): send valid ATN frames of these sizes as single transfers, no firmware")
+    ap.add_argument("--probe-txonly", action="store_true", help="with --probe-sizes: transmit-only transfers (no receive buffer)")
     ap.add_argument("--tool", default=str(HERE.parent / "artifacts/live/gcroot-touch-diag/bin/touch-diag"))
     ap.add_argument("--packets", default=str(HERE.parent / "firmware/j81-12B410/touch/upload-packets"))
     a = ap.parse_args()
@@ -66,7 +67,7 @@ def main():
             print("dry run finished; add --go to power the controller and send the firmware packet")
             return
         apple = ("--apple-order --apple-upload" if a.apple else "") + (" --upload-rx" if a.upload_rx else "") + (" --display-sync-pinmux --approve-display-sync-pinmux" if a.display_sync else "")
-        upload = "" if a.detect_only else f"--probe-sizes {a.probe_sizes}" if a.probe_sizes else f"--chunk {a.chunk} --upload-fw fw.bin --upload-ack ack.bin --ack-tries {5 if a.apple else a.ack_tries} --approve-firmware-upload"
+        upload = "" if a.detect_only else f"--probe-sizes {a.probe_sizes}" + (" --probe-txonly" if a.probe_txonly else "") if a.probe_sizes else f"--chunk {a.chunk} --upload-fw fw.bin --upload-ack ack.bin --ack-tries {5 if a.apple else a.ack_tries} --approve-firmware-upload"
         print(run(f"cd /tmp/t && ./touch-diag run --execute --approve-pmu-write --spi-dev {dev} --spi-hz {a.spi_hz} --spi-mode {a.spi_mode} --word-delay-us {a.word_delay_us} {'--spi-msb' if a.spi_msb else ''} {apple} {upload}; "
                   "echo EXIT=$?; rm -f fw.bin", timeout=180)[0])
     finally:

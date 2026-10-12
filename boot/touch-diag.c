@@ -401,7 +401,7 @@ static int spi_frame(const char *label, const uint8_t *tx, unsigned int n)
  */
 static const char *g_fw_file, *g_ack_file;
 static unsigned int g_ack_tries = 1, g_chunk;
-static int g_apple_upload, g_apple_order, g_upload_rx;
+static int g_apple_upload, g_apple_order, g_upload_rx, g_probe_txonly;
 static const char *g_probe_sizes;	/* comma-separated byte counts for the transfer-size probe */
 
 static uint8_t *slurp(const char *path, unsigned int max, unsigned int *len)
@@ -646,7 +646,7 @@ static int probe_sizes(void)
 		}
 		memset(&t, 0, sizeof(t));
 		t.tx_buf = (uintptr_t)tx;
-		t.rx_buf = (uintptr_t)rx;
+		t.rx_buf = g_probe_txonly ? 0 : (uintptr_t)rx;
 		t.len = n;
 		t.speed_hz = g_spi_hz;
 		t.bits_per_word = 8;
@@ -936,6 +936,8 @@ int main(int argc, char **argv)
 			g_apple_upload = 1;
 		else if (!strcmp(argv[i], "--apple-order"))
 			g_apple_order = 1;
+		else if (!strcmp(argv[i], "--probe-txonly"))
+			g_probe_txonly = 1;
 		else if (!strcmp(argv[i], "--upload-rx"))
 			g_upload_rx = 1;
 	}
