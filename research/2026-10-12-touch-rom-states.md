@@ -94,3 +94,9 @@ Every run is a fresh power-up, Apple's order, mode 0, LSB-first, detect frame fi
 - Bootload order with EXECUTE last: `0xffffff8002fc3fb4`.
 - SPI config and CS: `0xffffff8002900e10`, `0xffffff8002900cf8`, `0xffffff8002900738` (`internal-cs`, `spi-version`), transfer `0xffffff8002900f64`.
 - SmartIO DMA: submit `0xffffff8002ff3f28`, FIFO depth helper `0xffffff8002ff4d40`.
+
+## Hardware follow-up, 2026-10-12 (items 3 and 6 of the change list; valid packets only, within the standing approval)
+
+- **Time vs bytes (hypothesis 2) is refuted.** At a requested 500 kHz (6.4 us/byte) the 1,024-byte packet (6.6 ms on the wire) and the 4,112-byte packet (26.3 ms; also chunked 1 KiB with 2 ms pauses, 36 ms) still return the idle `1f 01`, while the 8,208-byte packet (52.5 ms) returns `49 69`, exactly as at the fast clock where the same 4,112-byte packet lasted 7 ms and the 8,208-byte one 14 ms. A 26 ms transfer is idle but a 14 ms transfer is not, so the first threshold follows the byte count (between 4,112 and 8,208 bytes), not elapsed chip-select time.
+- **Apple's real wire timing (item 6)**: the full packet at a requested 3.5 MHz with an 11 us word delay (316 ms, 5.33 us/byte) still returns `4c b1`.
+- Not run, needs approval (not valid-packet-from-payload tests): zeroed/invalid-header packets (item 1), declared-vs-clocked length mismatch (item 2), packets with destination 0x400 / 0x10001800 (item 5), full-duplex piecewise sends (item 4).
