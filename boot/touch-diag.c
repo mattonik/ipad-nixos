@@ -457,17 +457,33 @@ static int upload_firmware(void)
 			struct timespec t0, t1;
 			double ms;
 
-			if (g_chunk && g_chunk < fn && !g_upload_rx) {
+			if (g_chunk && g_chunk < fn) {
 				/* Same bytes, still ONE message (chip select held), cut into transmit-only chunks with a pause after each: gives the ROM time to drain its receive buffer. */
 				unsigned int nx = (fn + g_chunk - 1) / g_chunk, i2;
 				struct spi_ioc_transfer *xs = calloc(nx, sizeof(*xs));
 
 				if (!xs)
 					goto out;
+				if (nx > 511) {
+					fprintf(stderr, "too many chunks for one spidev message (max 511)\n");
+					free(xs);
+					goto out;
+				}
+				if (g_upload_rx) {
+					if (!rx)
+						rx = calloc(1, fn);
+					if (!rx) {
+						free(xs);
+						goto out;
+					}
+					memset(rx, 0, fn);
+				}
 				for (i2 = 0; i2 < nx; i2++) {
 					unsigned int off = i2 * g_chunk;
 
 					xs[i2].tx_buf = (uintptr_t)(fw + off);
+					if (g_upload_rx)
+						xs[i2].rx_buf = (uintptr_t)(rx + off);
 					xs[i2].len = fn - off < g_chunk ? fn - off : g_chunk;
 					xs[i2].speed_hz = g_spi_hz;
 					xs[i2].bits_per_word = 8;

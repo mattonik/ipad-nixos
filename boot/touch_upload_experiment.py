@@ -51,7 +51,10 @@ def main():
     # A rebuilt smaller packet must be a valid Apple data packet cut from the verified payload (boot/touch_fw_rebuild.py); no other file is ever sent.
     if a.fw_file != "00-firmware-transfer.bin":
         import touch_fw_rebuild as rb
-        rb.parse(fw)
+        if a.fw_file.startswith("var-") and a.fw_file.endswith(".bin"):
+            assert fw[:2] == b"\x18\xe1" and len(fw) % 4 == 0, "malformed variants must still start with 18 e1 and be 4-byte aligned"   # boot/touch_fw_variants.py output, destination 0 only
+        else:
+            rb.parse(fw)
     print(f"host: fw {len(fw)} bytes sha256 {hashlib.sha256(fw).hexdigest()[:16]}..., ack {ack.hex()}")
 
     stage = pathlib.Path(__file__).resolve().parents[1] / "artifacts/live/private/touch-serve"
