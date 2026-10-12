@@ -29,9 +29,9 @@ PMU_BUS=${PMU_BUS:-0}
 PMU_ADDR=${PMU_ADDR:-0x3c}
 # Same numbers as charging-policy.sh, used only to report what the policy would choose.
 VBUS=${VBUS:-0}
-# The kernel (patch 0099) applies the documented 88 mV and 52.8 mA per count; hardware shows that is 64 times too large (311 V / 31 A), so VBUS_DIV=64 is applied here
-# (UNCONFIRMED against Apple's conversion code, plausible: ~4.9 V and ~0.5 A). Set VBUS_DIV=1 once the kernel factors are corrected.
-VBUS_DIV=${VBUS_DIV:-64}
+# Patch 0099 now converts like Apple's code (16.16 fixed point: 88/65536 V and 52.8/65536 A per count), so VBUS_DIV is 1. Kernels built before that fix (T4, T6) report values
+# 65.536 times too large: run with VBUS_DIV=65 there for an approximation (about 1.0% off) or 65536/1000 exactly is not possible in integer shell arithmetic.
+VBUS_DIV=${VBUS_DIV:-1}
 TARGET_UA=${TARGET_UA:-2400000}
 SAFE_UA=${SAFE_UA:-500000}
 HOT_DECI=${HOT_DECI:-420}

@@ -13,7 +13,8 @@ HARNESS = r'''
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
-typedef uint8_t u8;
+typedef uint8_t u8; typedef uint32_t u32; typedef uint64_t u64;
+static u64 div_u64(u64 a, u32 b) { return a / b; }
 #define BIT(n) (1u << (n))
 struct regmap { unsigned char r[0x800]; unsigned long now_ms; unsigned long event_after_ms; int started; unsigned char res[2]; int fail_read_at; int reads; int nwrites; unsigned writes[64][2]; };
 struct mutex { int locked; };
@@ -38,7 +39,9 @@ def main():
     m = re.search(r"(#define J81_D2207_ADC_CTRL.*?)struct j81_d2207_charger \{.*?\n\};\n(.*?\n\}\n)", text, re.S)
     assert m, "ADC helper not found in the patch"
     defs, func = m.group(1), m.group(2)
-    code = defs + func
+    conv = re.search(r"(static u32 j81_d2207_vbus_uv.*?\n\}\n\nstatic u32 j81_d2207_vbus_ua.*?\n\}\n)", text, re.S)
+    assert conv, "conversion helpers not found in the patch"
+    code = defs + func + conv.group(1)
     code = re.sub(r"\n\s*\n", "\n", code)
     tests = r'''
 static void init(struct regmap *m) { memset(m, 0, sizeof(*m)); g = m; jiffies = 0; m->r[0x500] = 0x40; m->r[0x501] = 0x05; m->r[0x7b] = 0xff; m->res[0] = 0x09; m->res[1] = 0x03; }
@@ -46,6 +49,7 @@ static int same(struct regmap *m) { return m->r[0x500] == 0x40 && m->r[0x501] ==
 int main(void)
 {
 	struct regmap m; struct j81_d2207_charger c = { &m }; unsigned raw = 0; int ret, i;
+	printf("conv uv(3541)=%u ua(591)=%u uv(4095)=%u ua(4095)=%u\n", j81_d2207_vbus_uv(3541), j81_d2207_vbus_ua(591), j81_d2207_vbus_uv(4095), j81_d2207_vbus_ua(4095));
 	/* 1: success, channel 19, completion after 5 ms */
 	init(&m); m.event_after_ms = 5; ret = j81_d2207_adc_read(&c, 19, &raw);
 	printf("success ret=%d raw=%u restored=%d writes=%d first=%03x:%02x\n", ret, raw, same(&m), m.nwrites, m.writes[0][0], m.writes[0][1]);
@@ -76,7 +80,8 @@ int main(void)
     assert "timeout ret=-110 restored=1 lock=0" in out.replace("ret=-60", "ret=-110") or "timeout ret=-60 restored=1 lock=0" in out, out   # ETIMEDOUT is 60 on macOS
     assert "status ret=-5 restored=1" in out and "readfail ret=-5 writes=0 lock=0" in out, out
     assert "maskclear ret=0 maskwrites=0 final=fd" in out, out
-    assert (88000 * 57) == 5016000     # 5.016 V from raw 57
+    # 16.16 fixed point: raw 3541 -> 4.755 V, raw 591 -> 476 mA, and the 12-bit full scales are 5.50 V and 3.30 A
+    assert "conv uv(3541)=4754760 ua(591)=476135 uv(4095)=5498657 ua(4095)=3299194" in out, out
     print("PASS: VBUS ADC helper transaction")
 
 

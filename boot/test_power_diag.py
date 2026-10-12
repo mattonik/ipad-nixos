@@ -87,7 +87,9 @@ class PowerDiagTests(unittest.TestCase):
             self.assertIn("VBUS              5016 mV, 1056 mA = 5296 mW input power; system power estimate 4344 mW", out)
             rows = run(env, "log", "--vbus", "-i", "0", "-n", "1").stdout.splitlines()
             self.assertIn("1056,5016,5296,4344", rows[1])
-            env["VBUS_DIV"] = "64"                                                       # the default: the kernel factors are 64x too large
+            env.pop("VBUS_DIV")                                                          # default 1: the corrected kernel reports real units
+            self.assertIn("VBUS              5016 mV, 1056 mA", run(env, "--vbus").stdout)
+            env["VBUS_DIV"] = "64"
             self.assertIn("VBUS              78 mV, 16 mA", run(env, "--vbus").stdout)
 
     def test_policy_view_backoff(self):
