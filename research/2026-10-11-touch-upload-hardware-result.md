@@ -92,3 +92,15 @@ Reading: until now no transfer larger than the 16-byte FIFO had ever completed o
 
 **Upload:** with the transmit-only packet (Apple order, mode 0, LSB-first) the full 59,288 bytes go out (103 ms at 1.984 MHz) and the ACK query now returns **`4c b1`**, not the idle `1f 01` of all earlier runs and not the expected `4b c1`, on all five pairs and **identically for every setting tried**: word delay 0 and 5 us, requested 0.5, 1.984 and 4 MHz. A deterministic ROM status, not a timing artifact. Pattern: the status words Apple's driver knows, `4a d1` (register write OK) and `4b c1` (data OK), and now `4c b1`, all have the form `0x40|n, 0x?1` with the low nibble of byte 0 plus the high nibble of byte 1 equal to 0x17, i.e. a status code n (a, b, c) with a complement check. So `4c b1` is most likely status code 0xc, a ROM response other than "data accepted". Meaning still unknown (checksum or length error? a different accepted state?). Unwinds clean in every run.
 Next: find what status code 0xc means in Apple's HBPP/bootloader code (research brief), and re-check the exported packet's framing (its internal checksum/length fields and the 4-byte alignment) against the ROM's rules.
+
+## Twenty-first run set: packet-size ramp (T4, 2026-10-12, user-approved; packets rebuilt from the verified payload by `boot/touch_fw_rebuild.py`, Apple order, mode 0)
+
+Each size sent as one transmit-only data packet (valid Apple format, destination 0), five packet+query pairs, fresh power-up per run. ACK reply after the packet:
+
+| payload (packet size) | reply |
+|---|---|
+| 64 B (80), 256 B (272), 1008 B (1024), 4096 B (4112) | `1f 01` (idle: the ROM acts as if nothing was received) |
+| 16,384 B (16,400) | **`49 69`** (a status word from Apple's accepted set, code 9) |
+| 59,272 B (59,288, the full constructed packet) | **`4c b1`** (code 0xc) |
+
+The status depends on the amount sent: nothing recognised up to 4 KiB, code 9 at 16 KiB, code 0xc at the full size. Post-failure diagnostics show the ROM keeps answering the same word to repeated queries, so the state persists until reset. The ROM is clearly receiving data, and its answer is a function of how much; none is `4b c1`. Hypotheses: a status that tracks received length against a size the ROM expects, or a receive-buffer/page boundary effect, or the ROM expecting the data in chunks (the unconstructed pattern is 0x3f0-byte packets with increasing destination offsets). Next: finer ramp (8192, 12288, 24576, 32768, 49152) and a chunked send of the same payload, to map the status code against size and test the chunk pattern.
