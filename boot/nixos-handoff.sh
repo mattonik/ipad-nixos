@@ -99,8 +99,8 @@ nixos_handoff() {
 		return 0
 	fi
 	nh_say "switching root to $nh_top/init"
-	# Stop the debug services that hold the old root; the NixOS system brings its own sshd and networking.
-	killall telnetd dropbear udhcpd wpa_supplicant udhcpc 2>/dev/null
+	# Stop the debug services that hold the old root (a surviving stage-1 dashboard kept the screen black on the first boot); NixOS has its own sshd, networking, charging policy and dashboard.
+	killall telnetd dropbear udhcpd wpa_supplicant udhcpc tablet-dashboard tablet-dashboard-screen charging-policy wifi-up 2>/dev/null
 	exec switch_root "$WORK/newroot" "$nh_top/init"
 	nh_say "switch_root did not take over"
 	nh_cleanup
