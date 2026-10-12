@@ -12,6 +12,7 @@ import http.server
 import os
 import pathlib
 import sys
+import time
 
 
 def make_handler(rootfs, toplevel_line):
@@ -70,7 +71,16 @@ def main(argv=None):
     a = ap.parse_args(argv)
     rootfs, top = resolve(a.rootfs, a.toplevel)
     print(f"serving {rootfs} ({rootfs.stat().st_size / 1e6:.0f} MB) and toplevel {top} on http://{a.bind}:{a.port}/", flush=True)
-    http.server.ThreadingHTTPServer((a.bind, a.port), make_handler(rootfs, top)).serve_forever()
+    # The Mac's 172.16.42.2 only exists once the iPad's USB gadget has enumerated, so retry the bind until then (start this before or right after the DFU load).
+    while True:
+        try:
+            httpd = http.server.ThreadingHTTPServer((a.bind, a.port), make_handler(rootfs, top))
+            break
+        except OSError as error:
+            print(f"waiting for {a.bind} ({error.strerror}); the iPad's USB link is not up yet", flush=True)
+            time.sleep(3)
+    print("listening", flush=True)
+    httpd.serve_forever()
 
 
 if __name__ == "__main__":

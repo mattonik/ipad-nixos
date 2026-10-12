@@ -9,7 +9,22 @@
   nixpkgs.hostPlatform = "aarch64-linux";
   networking.hostName = "ipad-air2";
   networking.useDHCP = false;
-  networking.firewall.enable = true;
+  # USB-only, key-only ssh; the J81 kernel has no nftables/iptables modules to speak of, so no firewall unit that could fail.
+  networking.firewall.enable = false;
+  # The USB gadget (configfs ECM) is set up by stage 1 and survives switch_root; the Mac uses 172.16.42.2 statically.
+  networking.interfaces.usb0.ipv4.addresses = [ { address = "172.16.42.1"; prefixLength = 24; } ];
+  # Wi-Fi: stage 1 copies the private /etc/wpa_supplicant.conf and /lib/firmware into the new root (never from the network); brcmfmac is built in and already probed.
+  systemd.services.wpa-supplicant-j81 = {
+    description = "wpa_supplicant on wlan0 with the private configuration copied in by stage 1";
+    wantedBy = [ "multi-user.target" ];
+    after = [ "network-pre.target" ];
+    unitConfig.ConditionPathExists = "/etc/wpa_supplicant.conf";
+    serviceConfig = {
+      ExecStart = "${pkgs.wpa_supplicant}/bin/wpa_supplicant -i wlan0 -D nl80211 -c /etc/wpa_supplicant.conf";
+      Restart = "on-failure";
+    };
+  };
+  networking.interfaces.wlan0.useDHCP = true;
 
   services.openssh = {
     enable = true;

@@ -100,7 +100,7 @@ nixos_handoff() {
 	fi
 	nh_say "switching root to $nh_top/init"
 	# Stop the debug services that hold the old root; the NixOS system brings its own sshd and networking.
-	killall telnetd dropbear udhcpd 2>/dev/null
+	killall telnetd dropbear udhcpd wpa_supplicant udhcpc 2>/dev/null
 	exec switch_root "$WORK/newroot" "$nh_top/init"
 	nh_say "switch_root did not take over"
 	nh_cleanup
