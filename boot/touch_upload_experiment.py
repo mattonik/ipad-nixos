@@ -41,6 +41,7 @@ def main():
     ap.add_argument("--probe-txonly", action="store_true", help="with --probe-sizes: transmit-only transfers (no receive buffer)")
     ap.add_argument("--fw-file", default="00-firmware-transfer.bin", help="packet file inside --packets to send as the firmware transfer (e.g. a rebuilt pkt-64@0.bin)")
     ap.add_argument("--chunk-delay-us", type=int, default=0, help="with --apple and --chunk: pause after each chunk of the single chip-select interval, in us")
+    ap.add_argument("--ack-in-message", action="store_true", help="with --apple: send the packet and the 1a a1 query as two adjacent transfers of ONE spi message (chip select held), like the upstream apple_z2 driver")
     ap.add_argument("--tool", default=str(HERE.parent / "artifacts/live/gcroot-touch-diag/bin/touch-diag"))
     ap.add_argument("--packets", default=str(HERE.parent / "firmware/j81-12B410/touch/upload-packets"))
     a = ap.parse_args()
@@ -76,7 +77,7 @@ def main():
         if not a.go:
             print("dry run finished; add --go to power the controller and send the firmware packet")
             return
-        apple = ("--apple-order --apple-upload" if a.apple else "") + (" --upload-rx" if a.upload_rx else "") + (" --display-sync-pinmux --approve-display-sync-pinmux" if a.display_sync else "")
+        apple = ("--apple-order --apple-upload" if a.apple else "") + (" --upload-rx" if a.upload_rx else "") + (" --ack-in-message" if a.ack_in_message else "") + (" --display-sync-pinmux --approve-display-sync-pinmux" if a.display_sync else "")
         upload = "" if a.detect_only else f"--probe-sizes {a.probe_sizes}" + (" --probe-txonly" if a.probe_txonly else "") if a.probe_sizes else f"--chunk {a.chunk} --chunk-delay-us {a.chunk_delay_us} --upload-fw fw.bin --upload-ack ack.bin --ack-tries {5 if a.apple else a.ack_tries} --approve-firmware-upload"
         print(run(f"cd /tmp/t && ./touch-diag run --execute --approve-pmu-write --spi-dev {dev} --spi-hz {a.spi_hz} --spi-mode {a.spi_mode} --word-delay-us {a.word_delay_us} {'--spi-msb' if a.spi_msb else ''} {apple} {upload}; "
                   "echo EXIT=$?; rm -f fw.bin", timeout=180)[0])

@@ -401,7 +401,7 @@ static int spi_frame(const char *label, const uint8_t *tx, unsigned int n)
  */
 static const char *g_fw_file, *g_ack_file;
 static unsigned int g_ack_tries = 1, g_chunk;
-static int g_apple_upload, g_apple_order, g_upload_rx, g_probe_txonly;
+static int g_apple_upload, g_apple_order, g_upload_rx, g_probe_txonly, g_ack_in_msg;
 static unsigned int g_chunk_delay_us;	/* delay after every chunk of a chunked transmit-only packet (--chunk N --chunk-delay-us D) */
 static const char *g_probe_sizes;	/* comma-separated byte counts for the transfer-size probe */
 
@@ -456,6 +456,7 @@ static int upload_firmware(void)
 		for (unsigned int k = 0; k < g_ack_tries && k < 5; k++) {
 			struct timespec t0, t1;
 			double ms;
+			int in_msg = 0;
 
 			if (g_chunk && g_chunk < fn) {
 				/* Same bytes, still ONE message (chip select held), cut into transmit-only chunks with a pause after each: gives the ROM time to drain its receive buffer. */
@@ -516,10 +517,31 @@ static int upload_firmware(void)
 				t.speed_hz = g_spi_hz;
 				t.bits_per_word = 8;
 				t.word_delay_usecs = g_word_delay_us;
-				say("upload: pair %u: sending %u bytes %s, one transfer, %u Hz, word delay %u us\n", k + 1, fn, g_upload_rx ? "full duplex (reply captured)" : "transmit-only",
-				    g_spi_hz, g_word_delay_us);
+				say("upload: pair %u: sending %u bytes %s, one transfer, %u Hz, word delay %u us%s\n", k + 1, fn, g_upload_rx ? "full duplex (reply captured)" : "transmit-only",
+				    g_spi_hz, g_word_delay_us, g_ack_in_msg ? ", ack query in the SAME message (chip select held)" : "");
 				clock_gettime(CLOCK_MONOTONIC, &t0);
-				if (ioctl(g_spi, SPI_IOC_MESSAGE(1), &t) < 0) {
+				if (g_ack_in_msg && !g_upload_rx) {
+					/* The upstream Linux apple_z2 pattern: the blob and the 1a a1 query are two adjacent transfers of one spi message, chip select asserted across both. */
+					struct spi_ioc_transfer m[2];
+
+					memset(m, 0, sizeof(m));
+					memset(arx, 0, sizeof(arx));
+					m[0].tx_buf = (uintptr_t)fw;
+					m[0].len = fn;
+					m[1].tx_buf = (uintptr_t)ack;
+					m[1].rx_buf = (uintptr_t)arx;
+					m[1].len = an;
+					for (int j = 0; j < 2; j++) {
+						m[j].speed_hz = g_spi_hz;
+						m[j].bits_per_word = 8;
+						m[j].word_delay_usecs = g_word_delay_us;
+					}
+					if (ioctl(g_spi, SPI_IOC_MESSAGE(2), m) < 0) {
+						perror("firmware transfer + ack query");
+						goto out;
+					}
+					in_msg = 1;
+				} else if (ioctl(g_spi, SPI_IOC_MESSAGE(1), &t) < 0) {
 					perror("firmware transfer");
 					goto out;
 				}
@@ -539,17 +561,19 @@ static int upload_firmware(void)
 					say(" %02x", rx[i]);
 				say("; %u of %u words equal the first word\n", same, fn / 2);
 			}
-			memset(&t, 0, sizeof(t));
-			memset(arx, 0, sizeof(arx));
-			t.tx_buf = (uintptr_t)ack;
-			t.rx_buf = (uintptr_t)arx;
-			t.len = an;
-			t.speed_hz = g_spi_hz;
-			t.bits_per_word = 8;
-			t.word_delay_usecs = g_word_delay_us;
-			if (ioctl(g_spi, SPI_IOC_MESSAGE(1), &t) < 0) {
-				perror("ack query");
-				goto out;
+			if (!in_msg) {
+				memset(&t, 0, sizeof(t));
+				memset(arx, 0, sizeof(arx));
+				t.tx_buf = (uintptr_t)ack;
+				t.rx_buf = (uintptr_t)arx;
+				t.len = an;
+				t.speed_hz = g_spi_hz;
+				t.bits_per_word = 8;
+				t.word_delay_usecs = g_word_delay_us;
+				if (ioctl(g_spi, SPI_IOC_MESSAGE(1), &t) < 0) {
+					perror("ack query");
+					goto out;
+				}
 			}
 			say("upload: pair %u ack reply %02x %02x (expected 4b c1)\n", k + 1, arx[0], arx[1]);
 			if (arx[0] == 0x4b && arx[1] == 0xc1) {
@@ -995,6 +1019,8 @@ int main(int argc, char **argv)
 			g_apple_upload = 1;
 		else if (!strcmp(argv[i], "--apple-order"))
 			g_apple_order = 1;
+		else if (!strcmp(argv[i], "--ack-in-message"))
+			g_ack_in_msg = 1;
 		else if (!strcmp(argv[i], "--probe-txonly"))
 			g_probe_txonly = 1;
 		else if (!strcmp(argv[i], "--upload-rx"))
