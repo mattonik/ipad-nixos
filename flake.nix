@@ -301,7 +301,7 @@
 
           # docs/plans/2026-09-13-j81-wifi-pcie.md's link/enumeration-test
           # kernel, per the approved plan
-          # (/Users/martinp/.claude/plans/mighty-snuggling-cocke.md):
+          # (an internal plan file (not part of the repository)):
           # everything patchedHoolockConfig already has, plus
           # CONFIG_PCIE_APPLE_T7000 for the real (but strictly bounded)
           # PCIe driver kernel/hoolock-pcie-test.nix adds. Built from
@@ -1725,7 +1725,7 @@
         # touch/battery/charging testing on the default payload.
         # Duplicated rather than parameterized, same reasoning as
         # m1n1-hoolock-ans1-test above. Per the approved plan
-        # (/Users/martinp/.claude/plans/mighty-snuggling-cocke.md), a real
+        # (an internal plan file (not part of the repository)), a real
         # hardware boot with this payload is a separate, later, explicit
         # decision -- this output exists for cross-build verification.
         m1n1-hoolock-pcie-test = pkgs.runCommand "ipad-air2-m1n1-hoolock-pcie-test" {

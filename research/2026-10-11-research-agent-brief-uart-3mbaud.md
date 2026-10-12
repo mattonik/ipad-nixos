@@ -1,7 +1,7 @@
 # Brief for the research agent: how does iOS run the Bluetooth UART at 3 Mbaud, and why can Linux only reach ~1.5 Mbaud?
 
 Read first: `research/2026-10-11-bluetooth-findings-review.md` (the connection that makes this the priority), `research/2026-10-10-bluetooth-gpio2-hardware-test.md` (rounds 1-4, measurements), `research/j81-bluetooth-bringup.md` (your own earlier notes; the stale parts are listed in the review).
-Project: Linux on an iPad Air 2 (J81, A8X/T7001). Repo: `/Users/martinp/Work/Sandbox/ipadlinux/ipad-nixos` (branch `main`). Method background: memory note "Apple firmware archaeology technique" (ipsw + Ghidra), `tools/ghidra/README.md`.
+Project: Linux on an iPad Air 2 (J81, A8X/T7001). Repo: `<repo>` (branch `main`). Method background: memory note "Apple firmware archaeology technique" (ipsw + Ghidra), `tools/ghidra/README.md`.
 
 ## The problem in one paragraph
 The Bluetooth controller (BCM4350 combo, UART3 at `0x20a0cc000`, Linux `ttySAC1`) never answers an HCI Reset, although both its control lines are asserted (power-enable PMU GPIO2 = `0x0402`, BT_WAKE = AP GPIO 164; both verified on the live iPad).

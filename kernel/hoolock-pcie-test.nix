@@ -10,7 +10,7 @@
 #
 # See docs/plans/2026-09-13-j81-wifi-pcie.md for the register-level
 # evidence this driver implements, and
-# /Users/martinp/.claude/plans/mighty-snuggling-cocke.md for the approved
+# an internal plan file (not part of the repository) for the approved
 # plan this file is part of.
 { buildLinux
 , runCommand

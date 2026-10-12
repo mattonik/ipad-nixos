@@ -1971,7 +1971,7 @@ boot/Pongo-t7001-diagnostic.bin`) -- if it doesn't, something rebuilt it;
 check `git log -- boot/pongo-t7001.patch` for what changed.
 
 ```bash
-sudo /tmp/palera1n-arm64 --pongo-shell --override-pongo "/Users/martinp/Work/Sandbox/ipadlinux/ipad-nixos/boot/Pongo-t7001-diagnostic.bin" --debug-logging
+sudo /tmp/palera1n-arm64 --pongo-shell --override-pongo "<repo>/boot/Pongo-t7001-diagnostic.bin" --debug-logging
 ```
 
 Two replugs, direct into the Mac (no hub/dock): once right after `Checkmate!`

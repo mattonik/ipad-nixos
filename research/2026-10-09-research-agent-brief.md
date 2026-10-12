@@ -1,7 +1,7 @@
 # Brief for the research agent: why does the iPad hard-reset when brcmfmac posts its first ring buffers?
 
 Read first: `research/2026-10-09-wifi-h1b-handoff.md` (full state, facts, ruled-out list, tooling) and the run log `research/2026-10-07-wifi-h1b-modelA-run.md` (runs 8-30).
-Project: Linux on an iPad Air 2 (J81, A8X/T7001); BCM4350 Wi-Fi over PCIe port 1, private C2 `rieslinga` firmware. Repo: `/Users/martinp/Work/Sandbox/ipadlinux/ipad-nixos` (branch `main`).
+Project: Linux on an iPad Air 2 (J81, A8X/T7001); BCM4350 Wi-Fi over PCIe port 1, private C2 `rieslinga` firmware. Repo: `<repo>` (branch `main`).
 
 ## The problem in one paragraph
 With the NVRAM carrying a `macaddr` line, the firmware boots and its PCIe/msgbuf driver is fully open. The iPad then **hard-resets (no panic text, display off in ~30 ms)** as soon as brcmfmac posts its rx buffers in

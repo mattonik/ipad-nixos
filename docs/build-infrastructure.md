@@ -54,7 +54,7 @@ runtime, not baked into the package) -- surfacing as a confusing "No space
 left on device" failure while just copying kernel source.
 
 **First correction:** the "real" disk was assumed to be
-`/Users/martinp/nixos.qcow2` (dated 2026-09-01, `vzvm.json` showing 4
+`~/nixos.qcow2` (dated 2026-09-01, `vzvm.json` showing 4
 CPUs/8 GB/40 GB, matching project-status.md's prose exactly) -- reasonable,
 but wrong. Bumped to 80 GB when even 40 GB wasn't enough for a fully *cold*
 from-scratch build (no cache at all on that disk), then hit three
@@ -62,14 +62,14 @@ consecutive segfaults on the fresh 80 GB disk (`nix-daemon --stdio` itself,
 then the kernel build process twice, increasingly fast/reproducible).
 
 **Second correction:** the actual disk that was "working just fine
-yesterday" (2026-09-09) was never `/Users/martinp/`'s -- it was
+yesterday" (2026-09-09) was never `~/`'s -- it was
 `ipad-nixos/nixos.qcow2` right here in the repo, already holding 31 GB of
 *warm* store data from real prior work, with its own `vzvm.json` showing
 **12 GB RAM** (matching a note found in terminal history that had been
 wrongly dismissed as stale, because the wrong file had been checked).
 Reattaching that warm, gitignored, in-repo disk -- even kept at 8 GB RAM,
 by explicit choice, not 12 -- immediately fixed the segfaults. **The
-`/Users/martinp/` copy is superseded and likely safe to remove eventually**;
+`~/` copy is superseded and likely safe to remove eventually**;
 `ipad-nixos/` is the real one going forward.
 
 Net effect: it's genuinely unclear whether the segfaults were caused by too

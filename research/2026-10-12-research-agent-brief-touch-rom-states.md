@@ -1,6 +1,6 @@
 # Brief for the research agent: what ROM state machine produces idle / `4969` / `4cb1` as a function of the amount sent?
 
-Project: Linux on an iPad Air 2 (J81, A8X/T7001). Repo `/Users/martinp/Work/Sandbox/ipadlinux/ipad-nixos`. Method: memory note "Apple firmware archaeology technique", `tools/ghidra/README.md`. Scratch Ghidra project from the previous touch analyses may still exist (the previous agent reused it); otherwise re-import `__PRELINK_TEXT` (base `0xffffff8002593000`) from `firmware/j81-12B410/ipsw/`. No downloads without asking the user.
+Project: Linux on an iPad Air 2 (J81, A8X/T7001). Repo `<repo>`. Method: memory note "Apple firmware archaeology technique", `tools/ghidra/README.md`. Scratch Ghidra project from the previous touch analyses may still exist (the previous agent reused it); otherwise re-import `__PRELINK_TEXT` (base `0xffffff8002593000`) from `firmware/j81-12B410/ipsw/`. No downloads without asking the user.
 
 ## Previous work to read first
 `research/2026-10-11-touch-no-ack-analysis.md` (Apple's setup: LSB-first, mode 0, power order, detect frame), `research/2026-10-12-touch-4cb1-analysis.md` (status words, packet format, `0xfc5690` packet builder, bootloader order), `research/2026-10-11-touch-upload-hardware-result.md` (all hardware runs; read the 2026-10-12 sections).

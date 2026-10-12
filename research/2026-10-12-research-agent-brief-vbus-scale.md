@@ -1,6 +1,6 @@
 # Brief for the research agent: confirm the D2207 VBUS ADC scale (our hardware says the documented factors are 64 times too large)
 
-Project: Linux on an iPad Air 2 (J81, A8X/T7001). Repo `/Users/martinp/Work/Sandbox/ipadlinux/ipad-nixos`. Method: memory note "Apple firmware archaeology technique", `tools/ghidra/README.md`. A scratch Ghidra project of the iPad5,3 12B410 `__PRELINK_TEXT` (base `0xffffff8002593000`) was used by the last agents and may still exist; otherwise re-import it from `firmware/j81-12B410/ipsw/` (about 10 minutes flat). No downloads without asking the user.
+Project: Linux on an iPad Air 2 (J81, A8X/T7001). Repo `<repo>`. Method: memory note "Apple firmware archaeology technique", `tools/ghidra/README.md`. A scratch Ghidra project of the iPad5,3 12B410 `__PRELINK_TEXT` (base `0xffffff8002593000`) was used by the last agents and may still exist; otherwise re-import it from `firmware/j81-12B410/ipsw/` (about 10 minutes flat). No downloads without asking the user.
 
 ## Read first
 `research/2026-10-11-d2207-vbus-adc.md` (the recovered ADC transaction and the hardware validation sections at the end), `research/2026-10-11-d2207-linux-vs-ios-charging.md`, `docs/plans/2026-09-26-tethered-tablet-and-charging.md` ("Recovered D2207 VBUS ADC interface").

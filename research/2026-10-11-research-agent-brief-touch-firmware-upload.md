@@ -1,6 +1,6 @@
 # Brief for the research agent: prepare and validate the J81 touch-controller firmware upload (offline), so the user can decide on it
 
-Project: Linux on an iPad Air 2 (J81, A8X/T7001). Repo: `/Users/martinp/Work/Sandbox/ipadlinux/ipad-nixos` (branch `main`). Method background: memory note "Apple firmware archaeology technique" (ipsw + Ghidra), `tools/ghidra/README.md`.
+Project: Linux on an iPad Air 2 (J81, A8X/T7001). Repo: `<repo>` (branch `main`). Method background: memory note "Apple firmware archaeology technique" (ipsw + Ghidra), `tools/ghidra/README.md`.
 
 ## Read first (in this order)
 1. `research/2026-10-04-session-handoff.md` (touch sections: power order, clock, SPI mode, open questions), `research/2026-10-05-touch-pcie-builder-handoff.md`.

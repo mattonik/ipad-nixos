@@ -545,7 +545,7 @@ procedure): `nix build
 
 **T7000 PCIe: real link/enumeration driver implemented and cross-build
 verified, 2026-09-21.** Picked up per the approved plan
-(`/Users/martinp/.claude/plans/mighty-snuggling-cocke.md`), after the
+(`an internal plan file (not part of the repository)`), after the
 same-day background research pass fully recovered the exact
 `_enablePortHardware` register sequence (offsets, bits, confirmed
 microsecond delays via a traced `_IODelay` call) and confirmed windows
@@ -1497,7 +1497,7 @@ first for the latest state before assuming what `0x04c0` is currently
 set to.
 
 **Automatic charging plan approved and Stage 0/1 implemented, same day.**
-Full plan at `/Users/martinp/.claude/plans/mighty-snuggling-cocke.md`.
+Full plan at `an internal plan file (not part of the repository)`.
 Stage 0 (live, no code): tested whether `0x0010` bit 2 is a Bluetooth
 master enable -- **ruled out**, GPIO2's write still didn't persist even
 with it set, HCI commands still timed out. Stage 1 (built and shipped):

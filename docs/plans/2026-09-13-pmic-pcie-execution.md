@@ -486,7 +486,7 @@ running record Martin asked for.)
 ### Bluetooth hypothesis for `0x0010` bit 2, 2026-09-21: tested and ruled out
 
 Before building the console tool tier-switcher (approved plan,
-`/Users/martinp/.claude/plans/mighty-snuggling-cocke.md`), Martin asked
+`an internal plan file (not part of the repository)`), Martin asked
 whether `0x0010` bit 2 might be connected to Bluetooth's still-unexplained
 GPIO2 write (`0x03e6 <- 0x02`, ACKed but historically non-persistent) rather
 than being charging-specific. Tested directly: set `0x0010` bit 2, retried
@@ -503,7 +503,7 @@ out: `0x0010` bit 2 as a master enable" section.
 ### Stage 1: console tier-switcher tool, built and live-validated, 2026-09-21
 
 Following the approved plan
-(`/Users/martinp/.claude/plans/mighty-snuggling-cocke.md`), added
+(`an internal plan file (not part of the repository)`), added
 `action_charging_switch` to `boot/ipad_console.py` -- a menu-driven
 tier-switcher (100/500/1000/2100/2400 mA + custom) built entirely on the
 same primitives already validated live all session (`i2ctransfer` read/write
