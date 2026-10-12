@@ -114,3 +114,17 @@ Every run is a fresh power-up, Apple's order, mode 0, LSB-first, detect frame fi
 | valid 8,176-byte packet sent full duplex in 511 transfers of 16 bytes (one message, chip select held) | 8,176 | `1f 01` for all 4,088 words received **during** the transfer, and `1f 01` after |
 
 Conclusions: (1) **the ROM does not parse the header** here: a wrong header sum and a wrong declared length change nothing; only the number of clocked bytes (and their content) matters. (2) **Content matters**: 18 KiB of zeros leaves the ROM idle, the same length of real firmware data gives `4cb1`. (3) The ROM's MISO stays at its idle word all the way through a 16-byte-piece full-duplex send and afterwards, unlike the single transmit-only transfer of the same size (which moves it to `4969` at 8 KiB): the way the bytes are delivered (full duplex, many short bursts with the controller restarted between them) matters too, or the 16-byte-piece case is not comparable because the controller is reprogrammed for every piece. Not run: items needing a different destination (0x400, 0x10001800).
+
+## Hardware follow-up 3: content patterns (2026-10-12, user-approved; well-formed packets, destination 0, built by `boot/touch_fw_variants.py`)
+
+Same set-up, single transmit-only transfer, Apple order, mode 0; reply to the ATN/ACK query:
+
+| payload | 18,448-byte packet | 8,208-byte packet |
+|---|---|---|
+| real firmware | `4c b1` | `49 69` |
+| real firmware, bits of every byte reversed | `4c b1` | `1f 01` |
+| real firmware, 16-bit pairs unswapped | `4c b1` | `1f 01` |
+| real firmware, every byte inverted | `1f 01` | not run |
+| all `0xff` / all `0xaa` / repeating `18 e1` / all zeros | `1f 01` | `1f 01` (ff) |
+
+Reading: at 18 KiB the reaction survives bit reversal and pair swapping (both keep the per-byte count of one-bits and the multiset of bytes) but not inversion, a constant pattern, or zeros: it depends on the density of one-bits / a property of the real firmware data, not on word values or on the header. At 8 KiB even the bit-reversed and unswapped variants are idle, so the lower threshold depends on the exact data. This looks like a signal-level effect or a ROM that reacts to something in the data stream, not a protocol answer; nothing here points toward `4b c1`. Not run: destination 0x400 / 0x10001800.
