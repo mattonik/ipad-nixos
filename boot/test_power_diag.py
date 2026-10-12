@@ -82,10 +82,13 @@ class PowerDiagTests(unittest.TestCase):
             (pathlib.Path(env["CHG"]) / "current_now").write_text("1056000\n")
             (pathlib.Path(env["CHG"]) / "voltage_now").write_text("5016000\n")
             self.assertIn("VBUS              n/a", run(env).stdout)                      # reading these files would run ADC conversions: off by default
+            env["VBUS_DIV"] = "1"
             out = run(env, "--vbus").stdout
             self.assertIn("VBUS              5016 mV, 1056 mA = 5296 mW input power; system power estimate 4344 mW", out)
             rows = run(env, "log", "--vbus", "-i", "0", "-n", "1").stdout.splitlines()
             self.assertIn("1056,5016,5296,4344", rows[1])
+            env["VBUS_DIV"] = "64"                                                       # the default: the kernel factors are 64x too large
+            self.assertIn("VBUS              78 mV, 16 mA", run(env, "--vbus").stdout)
 
     def test_policy_view_backoff(self):
         with tempfile.TemporaryDirectory() as d:

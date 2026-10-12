@@ -29,6 +29,9 @@ PMU_BUS=${PMU_BUS:-0}
 PMU_ADDR=${PMU_ADDR:-0x3c}
 # Same numbers as charging-policy.sh, used only to report what the policy would choose.
 VBUS=${VBUS:-0}
+# The kernel (patch 0099) applies the documented 88 mV and 52.8 mA per count; hardware shows that is 64 times too large (311 V / 31 A), so VBUS_DIV=64 is applied here
+# (UNCONFIRMED against Apple's conversion code, plausible: ~4.9 V and ~0.5 A). Set VBUS_DIV=1 once the kernel factors are corrected.
+VBUS_DIV=${VBUS_DIV:-64}
 TARGET_UA=${TARGET_UA:-2400000}
 SAFE_UA=${SAFE_UA:-500000}
 HOT_DECI=${HOT_DECI:-420}
@@ -102,7 +105,7 @@ collect() {
 	if [ "$VBUS" = 1 ] && [ -r "$CHG/current_now" ] && [ -r "$CHG/voltage_now" ]; then
 		vi=$(num "$(chgprop current_now)"); vv=$(num "$(chgprop voltage_now)")
 		if [ -n "$vi" ] && [ -n "$vv" ]; then
-			vbus_ma=$((vi / 1000)); vbus_mv=$((vv / 1000)); vbus_mw=$((vv / 1000 * vi / 1000000))
+			vbus_ma=$((vi / 1000 / VBUS_DIV)); vbus_mv=$((vv / 1000 / VBUS_DIV)); vbus_mw=$((vbus_mv * vbus_ma / 1000))
 			[ -n "$pbat_mw" ] && sys_mw=$((vbus_mw - pbat_mw))
 		fi
 	fi
@@ -125,7 +128,7 @@ snapshot() {
 	if [ "$vbus_ma" = n/a ]; then
 		echo "VBUS              n/a (run with --vbus on a kernel with patch 0099; that performs ADC conversions, i.e. PMIC writes that are restored)"
 	else
-		echo "VBUS              ${vbus_mv} mV, ${vbus_ma} mA = ${vbus_mw} mW input power; system power estimate ${sys_mw} mW (input minus battery)"
+		echo "VBUS              ${vbus_mv} mV, ${vbus_ma} mA = ${vbus_mw} mW input power; system power estimate ${sys_mw} mW (input minus battery); kernel values divided by VBUS_DIV=${VBUS_DIV} (unconfirmed scale)"
 	fi
 	echo "charging policy   would choose $(policy_view); last log: $(policy_last)"
 	echo "context           load ${load1:-?}, backlight ${bl:-?}, wlan0 ${wlan}"
