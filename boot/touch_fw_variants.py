@@ -5,6 +5,7 @@ Never contacts hardware. All sizes are totals on the wire; each variant keeps th
   zero SIZE          18 e1 followed by zeros (zeroed header and payload)
   badsum SIZE        a valid packet of SIZE bytes (cut from the real payload) whose 16-bit header sum is wrong
   declared SIZE W    SIZE clocked bytes whose header declares W 32-bit words (header sum correct for the declared length)
+  content KIND SIZE  a well-formed packet whose payload has another content pattern (ff, aa, rep18e1, bitrev, inv, unswapped)
 Destination is always 0; no packet uses another address.
 
   boot/touch_fw_variants.py PACKET_FILE OUT_DIR
@@ -36,6 +37,31 @@ def declared(real, size, words):
     return pkt
 
 
+def content(real, size, kind):
+    """A well-formed packet (correct header and trailer for its own payload, destination 0) whose payload has a different content pattern."""
+    src = r.parse(real)[0]
+    n = size - 16
+    base = (src * (n // len(src) + 1))[:n]
+    if kind == "ff":
+        pay = b"\xff" * n
+    elif kind == "aa":
+        pay = b"\xaa" * n
+    elif kind == "rep18e1":
+        pay = (b"\x18\xe1" * (n // 2))[:n]
+    elif kind == "bitrev":
+        pay = bytes(int(f"{b:08b}"[::-1], 2) for b in base)
+    elif kind == "inv":
+        pay = bytes(b ^ 0xFF for b in base)
+    elif kind == "unswapped":
+        pay = b"".join(base[i + 1:i + 2] + base[i:i + 1] for i in range(0, n, 2))
+    else:
+        raise ValueError(kind)
+    return r.build(pay, 0)
+
+
+CONTENT_KINDS = ("ff", "aa", "rep18e1", "bitrev", "inv", "unswapped")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("packet", type=pathlib.Path)
@@ -48,6 +74,10 @@ def main(argv=None):
         "badsum-8208": badsum(real, 8208), "badsum-18448": badsum(real, 18448),
         "declared-80-as-14818w": declared(real, 80, 14818), "declared-59288-as-16w": declared(real, 59288, 16),
     }
+    for kind in CONTENT_KINDS:
+        variants[f"content-{kind}-18448"] = content(real, 18448, kind)
+    for kind in ("ff", "bitrev", "unswapped"):
+        variants[f"content-{kind}-8208"] = content(real, 8208, kind)
     a.out_dir.mkdir(parents=True, exist_ok=True)
     for name, pkt in variants.items():
         assert len(pkt) % 4 == 0 and pkt[:2] == b"\x18\xe1", name

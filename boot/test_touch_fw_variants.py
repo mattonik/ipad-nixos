@@ -35,5 +35,21 @@ class VariantTests(unittest.TestCase):
         self.assertEqual((len(q), int.from_bytes(q[4:6], "big")), (2064, 16))
 
 
+class ContentTests(unittest.TestCase):
+    def test_content_packets_are_well_formed_and_differ(self):
+        real = real_packet()
+        outs = {}
+        for kind in v.CONTENT_KINDS:
+            pkt = v.content(real, 1040, kind)
+            payload, addr = r.parse(pkt)                     # valid for its own payload, destination 0
+            self.assertEqual((len(pkt), addr), (1040, 0))
+            outs[kind] = payload
+        self.assertEqual(set(outs["ff"]), {0xFF})
+        self.assertEqual(outs["rep18e1"][:4], b"\x18\xe1\x18\xe1")
+        self.assertEqual(len({bytes(x) for x in outs.values()}), len(outs))
+        self.assertEqual(outs["inv"][0], r.parse(real)[0][0] ^ 0xFF)
+        self.assertEqual(outs["unswapped"][0:2], r.parse(real)[0][1::-1][:2])
+
+
 if __name__ == "__main__":
     unittest.main()
