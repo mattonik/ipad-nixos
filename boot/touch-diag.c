@@ -1022,8 +1022,8 @@ int main(int argc, char **argv)
 		else if (!strcmp(argv[i], "--upload-ack"))
 			g_ack_file = argv[i + 1];
 	}
-	if (g_chunk && (g_chunk < 128 || g_chunk > 32768 || (g_chunk & 3))) {
-		fprintf(stderr, "--chunk must be 128..32768 and a multiple of 4\n");
+	if (g_chunk && (g_chunk < 4 || g_chunk > 32768 || (g_chunk & 3))) {
+		fprintf(stderr, "--chunk must be 4..32768 and a multiple of 4\n");
 		return 2;
 	}
 	if (g_ack_tries < 1 || g_ack_tries > 10) {

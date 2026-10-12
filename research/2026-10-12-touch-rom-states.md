@@ -100,3 +100,17 @@ Every run is a fresh power-up, Apple's order, mode 0, LSB-first, detect frame fi
 - **Time vs bytes (hypothesis 2) is refuted.** At a requested 500 kHz (6.4 us/byte) the 1,024-byte packet (6.6 ms on the wire) and the 4,112-byte packet (26.3 ms; also chunked 1 KiB with 2 ms pauses, 36 ms) still return the idle `1f 01`, while the 8,208-byte packet (52.5 ms) returns `49 69`, exactly as at the fast clock where the same 4,112-byte packet lasted 7 ms and the 8,208-byte one 14 ms. A 26 ms transfer is idle but a 14 ms transfer is not, so the first threshold follows the byte count (between 4,112 and 8,208 bytes), not elapsed chip-select time.
 - **Apple's real wire timing (item 6)**: the full packet at a requested 3.5 MHz with an 11 us word delay (316 ms, 5.33 us/byte) still returns `4c b1`.
 - Not run, needs approval (not valid-packet-from-payload tests): zeroed/invalid-header packets (item 1), declared-vs-clocked length mismatch (item 2), packets with destination 0x400 / 0x10001800 (item 5), full-duplex piecewise sends (item 4).
+
+## Hardware follow-up 2: malformed variants and piecewise full duplex (2026-10-12, user-approved; all destination 0, `boot/touch_fw_variants.py`)
+
+| variant | clocked bytes | reply |
+|---|---|---|
+| zeroed header and payload (after `18 e1`) | 8,208 | `1f 01` |
+| zeroed header and payload | 18,448 | `1f 01` |
+| valid packet except the 16-bit header sum | 8,208 | `49 69` (same as the valid packet of that size) |
+| valid packet except the 16-bit header sum | 18,448 | `4c b1` (same as valid) |
+| header declares 14,818 words, only 80 bytes clocked | 80 | `1f 01` |
+| header declares 16 words, 59,288 bytes clocked | 59,288 | `4c b1` |
+| valid 8,176-byte packet sent full duplex in 511 transfers of 16 bytes (one message, chip select held) | 8,176 | `1f 01` for all 4,088 words received **during** the transfer, and `1f 01` after |
+
+Conclusions: (1) **the ROM does not parse the header** here: a wrong header sum and a wrong declared length change nothing; only the number of clocked bytes (and their content) matters. (2) **Content matters**: 18 KiB of zeros leaves the ROM idle, the same length of real firmware data gives `4cb1`. (3) The ROM's MISO stays at its idle word all the way through a 16-byte-piece full-duplex send and afterwards, unlike the single transmit-only transfer of the same size (which moves it to `4969` at 8 KiB): the way the bytes are delivered (full duplex, many short bursts with the controller restarted between them) matters too, or the 16-byte-piece case is not comparable because the controller is reprogrammed for every piece. Not run: items needing a different destination (0x400, 0x10001800).
