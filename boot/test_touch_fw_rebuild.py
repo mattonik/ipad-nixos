@@ -36,6 +36,15 @@ class RebuildTests(unittest.TestCase):
         pkt = synthetic(1024)
         self.assertEqual(r.rebuild(pkt, 1024, 0), pkt)
 
+    def test_destination_rebuild(self):
+        pkt = synthetic(2048)
+        out = r.rebuild_to(pkt, 1040, 0x10001800)
+        payload, addr = r.parse(out)
+        self.assertEqual((len(out), addr, payload), (1056, 0x10001800, r.parse(pkt)[0][:1040]))
+        self.assertEqual(out[6:10], bytes([0x18, 0x00, 0x10, 0x00]))          # halves swapped
+        with self.assertRaises(ValueError):
+            r.rebuild_to(pkt, 1040, 0x401)
+
     def test_rejects_corruption_and_bad_sizes(self):
         pkt = bytearray(synthetic(64))
         bad = bytes(pkt[:20]) + bytes([pkt[20] ^ 1]) + bytes(pkt[21:])

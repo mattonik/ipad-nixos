@@ -7,7 +7,7 @@ payload with its halves swapped. `parse()` validates a packet against that forma
 whose destination is the slice's byte offset (Apple's unconstructed pattern). Rebuilding the full payload at offset 0 must reproduce the original packet bit for bit, which
 is checked on every call, so a wrong format is caught offline and nothing private is ever printed (only lengths, offsets and verdicts).
 
-  boot/touch_fw_rebuild.py PACKET_FILE OUT_DIR SIZE[@OFFSET] [SIZE[@OFFSET] ...]
+  boot/touch_fw_rebuild.py PACKET_FILE OUT_DIR SIZE[@OFFSET | ->DEST] [...]   (->DEST: the first SIZE payload bytes with destination DEST)
 """
 import argparse
 import os
@@ -65,6 +65,16 @@ def rebuild(packet, size, offset=0):
     return build(payload[offset:offset + size], addr + offset)
 
 
+def rebuild_to(packet, size, dest):
+    """The first @size payload bytes of a validated packet, re-wrapped with destination @dest (for the destination tests; the payload content is unchanged)."""
+    payload, addr = parse(packet)
+    if build(payload, addr) != packet:
+        raise ValueError("self-check failed: the packet is not reproduced from its own fields")
+    if size % 4 or size > len(payload) or dest % 4:
+        raise ValueError("size and destination must be multiples of 4, size inside the payload")
+    return build(payload[:size], dest)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("packet", type=pathlib.Path)
@@ -74,6 +84,15 @@ def main(argv=None):
     packet = a.packet.read_bytes()
     a.out_dir.mkdir(parents=True, exist_ok=True)
     for item in a.slices:
+        if "->" in item:
+            size, _, dest = item.partition("->")
+            out = rebuild_to(packet, int(size, 0), int(dest, 0))
+            path = a.out_dir / f"pkt-{int(size, 0)}-to-{int(dest, 0):#x}.bin"
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, stat.S_IRUSR | stat.S_IWUSR)
+            with os.fdopen(fd, "wb") as f:
+                f.write(out)
+            print(f"{path.name}: {len(out)} bytes (payload {int(size, 0)}, destination {int(dest, 0):#x})")
+            continue
         size, _, off = item.partition("@")
         out = rebuild(packet, int(size, 0), int(off, 0) if off else 0)
         path = a.out_dir / f"pkt-{int(size, 0)}@{int(off, 0) if off else 0}.bin"
