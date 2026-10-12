@@ -157,3 +157,9 @@ One fresh T7 boot (DFU, palera1n, `load_m1n1.py`) per packet, ascending sizes. E
 | 1,008 / 1,024 B | PASS | 9.3 ms (9.10 us/byte) | `1f 01` | `1f 01` / `1f 01` / `1f 01` | none | complete |
 | 4,096 / 4,112 B | PASS | 37.5 ms (9.13 us/byte) | `1f 01` | `1f 01` / `1f 01` / `1f 01` | none | complete |
 | 16,384 / 16,400 B | PASS | 149.8 ms (9.13 us/byte) | **`49 69`** | `49 69` / `49 69` / `49 69` | none | complete |
+| 59,272 / 59,288 B (full packet) | PASS | 541.5 ms (9.13 us/byte) | **`4c b1`** | `4c b1` / `4c b1` / `4c b1` | none | complete |
+
+Boots: run 1 on a fresh T7 boot; runs 2-6 on that same boot at Martin's choice (each `touch-diag` run is still a cold controller cycle: LDO14 off, reset asserted, clock gated at the end, LDO14 on, reset release and detect at the start; every snapshot found LDO14 0x00). Battery temperature 33 C throughout. No SPI error or timeout in `dmesg` at any size; every transfer ran at the configured 4.03 us/byte clock plus the 5 us word delay.
+
+**Result: the reply boundary is unchanged on the corrected-clock kernel**: up to 4,112 B on the wire `1f 01` (idle), 16,400 B `49 69`, full packet `4c b1`, the same as the mode-0 ramp on the T4 kernel (whose real clock was ~2.3x faster). Clock rate, word delay and the kernel clock fix do not move it.
+**Decision:** the transport question is answered. There is no size at which the kernel or controller fails, and small packets complete cleanly but are ignored, so no PIO telemetry and no DMA work. The next touch step is a passive bus capture (iOS boot vs Linux, CS/SCLK/MOSI/MISO, reset and ATN if possible, >= 50 MS/s), parked until a logic analyzer already available is identified or Martin chooses to obtain one. Limit of this repeat: it cannot tell a valid but ignored small packet from a byte stream that differs on the board; only the capture can.
