@@ -114,3 +114,9 @@ The status depends on the amount sent: nothing recognised up to 4 KiB, code 9 at
 | 24,592 B, 32,784 B, 49,168 B, 59,288 B | `4c b1` |
 
 Two clean thresholds: between 4,112 and 8,208 bytes (reply changes from idle to `4969`) and between 16,400 and 24,592 bytes (to `4cb1`). Packets up to 4 KiB are not recognised at all (idle) even though they are complete and well-formed. This looks like receive-buffer behaviour in the ROM (overflow-style status codes growing with the amount sent), not a content or checksum error. Idea: Apple's DMA path moves the packet in bursts with natural gaps while the ROM drains its buffer; our PIO polled send is one uninterrupted stream. Next: send the same packet as one chip-select interval cut into chunks with a delay after each chunk (`--chunk N --chunk-delay-us D`) and see whether the reply changes; separately, the idle reply to <=4 KiB packets still needs explaining.
+
+### Chunking with pauses, and the 17-18 KiB boundary (2026-10-12, user-approved)
+
+- The full 59,288-byte packet sent as one chip-select interval cut into chunks (58 x 1024 B or 15 x 4096 B) with 0, 200, 1000 or 2000 us pauses after each chunk: `4c b1` every time. Pauses (the ROM draining a buffer) change nothing.
+- Boundary between the two non-idle codes: payload 17,408 B -> `49 69`, 18,432 B -> `4c b1` (also 19,456 / 20,480 / 21,504 / 22,528). So: <= 4,112 B idle; 8,208 B to ~17.4 KiB `4969`; >= ~18 KiB `4cb1`. Two thresholds, one around 4.5-8 KiB, one around 17.4-18.4 KiB.
+- Note that `4969` (and `4879`) are in the set of words Apple's own detect routine accepts as "ROM alive", while `4cb1` is not: `4969` may be a normal ROM state (data pending?) and `4cb1` an abnormal one. Nothing yet says that any size can produce `4bc1`.
