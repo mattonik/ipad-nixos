@@ -39,12 +39,18 @@ def main():
     ap.add_argument("--upload-rx", action="store_true", help="with --apple: send the packet full duplex and print a summary of the ROM's reply during the transfer (never the packet)")
     ap.add_argument("--probe-sizes", default="", help="comma-separated byte counts (e.g. 16,17,32,64,128,256,512,1024,4096): send valid ATN frames of these sizes as single transfers, no firmware")
     ap.add_argument("--probe-txonly", action="store_true", help="with --probe-sizes: transmit-only transfers (no receive buffer)")
+    ap.add_argument("--fw-file", default="00-firmware-transfer.bin", help="packet file inside --packets to send as the firmware transfer (e.g. a rebuilt pkt-64@0.bin)")
     ap.add_argument("--tool", default=str(HERE.parent / "artifacts/live/gcroot-touch-diag/bin/touch-diag"))
     ap.add_argument("--packets", default=str(HERE.parent / "firmware/j81-12B410/touch/upload-packets"))
     a = ap.parse_args()
     pk = pathlib.Path(a.packets)
-    fw, ack = (pk / "00-firmware-transfer.bin").read_bytes(), (pk / "01-data-ack-query.bin").read_bytes()
-    assert fw[:2] == b"\x18\xe1" and len(fw) == 59288 and ack == b"\x1a\xa1", "packets are not the expected export"
+    fw, ack = (pk / a.fw_file).read_bytes(), (pk / "01-data-ack-query.bin").read_bytes()
+    full = (pk / "00-firmware-transfer.bin").read_bytes()
+    assert full[:2] == b"\x18\xe1" and len(full) == 59288 and ack == b"\x1a\xa1", "packets are not the expected export"
+    # A rebuilt smaller packet must be a valid Apple data packet cut from the verified payload (boot/touch_fw_rebuild.py); no other file is ever sent.
+    if a.fw_file != "00-firmware-transfer.bin":
+        import touch_fw_rebuild as rb
+        rb.parse(fw)
     print(f"host: fw {len(fw)} bytes sha256 {hashlib.sha256(fw).hexdigest()[:16]}..., ack {ack.hex()}")
 
     stage = pathlib.Path(__file__).resolve().parents[1] / "artifacts/live/private/touch-serve"

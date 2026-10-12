@@ -513,6 +513,18 @@ static int upload_firmware(void)
 				break;
 		}
 		say("upload: %s\n", rc ? "NOT ACKNOWLEDGED after the pair retries" : "ACKNOWLEDGED");
+		if (rc) {
+			/* Post-mortem without resending anything: repeat the query, then the long ATN, then the detect frame, to see whether the ROM is still alive. */
+			static const unsigned int gap_ms[3] = { 0, 1, 10 };
+
+			for (unsigned int k = 0; k < 3; k++) {
+				if (gap_ms[k])
+					msleep(gap_ms[k]);
+				spi_frame("post-query", F_ATN_SHORT, sizeof(F_ATN_SHORT));
+			}
+			spi_frame("post-atn8", F_ATN_LONG, sizeof(F_ATN_LONG));
+			spi_frame("post-detect", F_DUMMY, sizeof(F_DUMMY));
+		}
 		goto out;
 	}
 	rx = calloc(1, fn);
