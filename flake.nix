@@ -1046,7 +1046,7 @@
           #   4. the tablet tools /usr/bin/tablet-status and /usr/bin/tablet-dashboard;
           #   5. the universal probe (stage B of the plan; its userland helper is added here once the kernel framework exists).
           # No Bluetooth userland and no I2C tools are included (the Wi-Fi payload rules forbid them; charging uses sysfs only).
-          mkJ81BasePayload = { name, kernel, bootargsExtra ? "", wifi ? false, dashboard ? false, btWakeHog ? false, touchSpidev ? false }:
+          mkJ81BasePayload = { name, kernel, bootargsExtra ? "", wifi ? false, dashboard ? false, btWakeHog ? false, touchSpidev ? false, touchGpioCs ? false }:
             let
               dropbearPkg = pkgsCrossMusl.dropbear;
               dropbearClosure = pkgs.closureInfo { rootPaths = [ dropbearPkg ]; };
@@ -1064,6 +1064,13 @@
               ${if touchSpidev then ''
               # TEST ONLY (research/2026-10-11-touch-upload notes): turn on the disabled spidev child on SPI3 (patch 0095) for the touch experiment.
               fdtput -t s "$out/t7001-j81.dtb" /soc/spi@20a08c000/touch-diag@0 status okay
+              ${if touchGpioCs then ''
+              # TEST ONLY: chip select of SPI3 driven as a GPIO (AP pin 51, active low) like Apple's driver does, instead of the pad's SPI function. The pad's SPI pinmux is
+              # dropped (the pin is strictly owned by one user), which is done by renaming the pinctrl state so "default" no longer exists.
+              pinctrl_ph=$(fdtget "$out/t7001-j81.dtb" /soc/pinctrl@20e300000 phandle)
+              fdtput -t x "$out/t7001-j81.dtb" /soc/spi@20a08c000 cs-gpios "$(printf %x "$pinctrl_ph")" 0x33 0x1
+              fdtput -t s "$out/t7001-j81.dtb" /soc/spi@20a08c000 pinctrl-names sleep
+              '' else ""}
               '' else ""}
               ${if btWakeHog then ''
               # TEST ONLY (docs/plans/2026-10-08-j81-bluetooth-battery-adt.md): a gpio-hog that the kernel's own pinctrl driver applies at boot, driving AP GPIO 164
@@ -3446,6 +3453,17 @@
           wifi = true;
           dashboard = true;
           touchSpidev = true;
+          kernel = hoolockWifiKernel;
+          bootargsExtra = "pcie_aspm=off pcie_apple_t7000.device_wake=1 fbcon=font:TER16x32 spidev.bufsiz=65536";
+        };
+
+        # TEST ONLY: the touch payload with the SPI3 chip select driven as a GPIO (pin 51) like Apple's driver; only the DTB differs from m1n1-hoolock-wifi-touch.
+        m1n1-hoolock-wifi-touch-gpiocs = mkJ81BasePayload {
+          name = "m1n1-hoolock-wifi-touch-gpiocs";
+          wifi = true;
+          dashboard = true;
+          touchSpidev = true;
+          touchGpioCs = true;
           kernel = hoolockWifiKernel;
           bootargsExtra = "pcie_aspm=off pcie_apple_t7000.device_wake=1 fbcon=font:TER16x32 spidev.bufsiz=65536";
         };
