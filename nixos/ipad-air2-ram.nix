@@ -11,7 +11,14 @@ let
     install -m755 ${../boot/tablet-dashboard.sh} $out/bin/tablet-dashboard
     install -m755 ${../boot/charging-policy.sh} $out/bin/charging-policy
     install -m755 ${../boot/power-diag.sh} $out/bin/power-diag
+    install -m755 ${../boot/power-logger.sh} $out/bin/power-logger
+    install -m755 ${../boot/backlight-idle.sh} $out/bin/backlight-idle
     for f in $out/bin/*; do sed -i '1s|.*|#!${pkgs.busybox}/bin/sh|' $f; done
+  '';
+  # The touch controller experiment tool (SPI3 test node, GPIO and PMIC accesses; inert unless run with explicit flags). Private packets are never in the image: copy them over ssh.
+  touchDiag = pkgs.runCommandCC "touch-diag" { } ''
+    mkdir -p $out/bin
+    $CC -O2 -Wall -o $out/bin/touch-diag ${../boot/touch-diag.c}
   '';
 in
 {
@@ -47,7 +54,24 @@ in
   };
   users.users.root.openssh.authorizedKeys.keyFiles = [ ../boot/ssh/authorized_keys ];
 
-  environment.systemPackages = (with pkgs; [ iw wpa_supplicant iproute2 busybox i2c-tools ]) ++ [ j81Tools ];
+  # Continuous read-only power log (battery, charger, load) in RAM, rotated; VBUS reads are off (they are PMIC ADC conversions): set VBUS=1 only on purpose.
+  systemd.services.power-logger = {
+    description = "Power log (read-only; VBUS off)";
+    wantedBy = [ "multi-user.target" ];
+    after = [ "charging-policy.service" ];
+    path = [ pkgs.busybox pkgs.i2c-tools j81Tools ];
+    environment = { INTERVAL = "10"; MAX_BYTES = "2000000"; VBUS = "0"; };
+    serviceConfig = { ExecStart = "${pkgs.busybox}/bin/sh ${j81Tools}/bin/power-logger"; Restart = "on-failure"; RestartSec = 10; };
+  };
+  # Dim the screen after two minutes without a button press so the tablet can charge; a button press brings it back.
+  systemd.services.backlight-idle = {
+    description = "Dim the backlight when idle";
+    wantedBy = [ "multi-user.target" ];
+    path = [ pkgs.busybox ];
+    environment = { IDLE_SECS = "120"; DIM = "100"; };
+    serviceConfig = { ExecStart = "${pkgs.busybox}/bin/sh ${j81Tools}/bin/backlight-idle"; Restart = "on-failure"; RestartSec = 5; };
+  };
+  environment.systemPackages = (with pkgs; [ iw wpa_supplicant iproute2 busybox i2c-tools ]) ++ [ j81Tools touchDiag ];
 
   # Keep the closure small: this is a RAM-resident system on a 2 GB tablet.
   documentation.enable = false;

@@ -10,11 +10,33 @@ import argparse
 import re
 import secrets
 import socket
+import subprocess
+from pathlib import Path
 import sys
 import time
 
 
+SSH_KEY = Path(__file__).resolve().parent.parent / "artifacts/live/ssh/ipad_ed25519"
+
+
+def run_ssh(command, timeout=60, host="172.16.42.1"):
+    """NixOS-in-RAM has no telnet recovery shell: run the command over ssh with the dedicated key (the RAM root makes a new host key each boot, so the host key is not pinned on this direct USB link)."""
+    r = subprocess.run(["ssh", "-i", str(SSH_KEY), "-o", "IdentitiesOnly=yes", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-o", "UserKnownHostsFile=/dev/null",
+                        "-o", "StrictHostKeyChecking=no", "-o", "LogLevel=ERROR", f"root@{host}", command],
+                       capture_output=True, text=True, timeout=timeout)
+    return (r.stdout + r.stderr).strip("\n"), r.returncode
+
+
 def run(command, timeout=60, host="172.16.42.1", port=23):
+    """Telnet recovery shell if it answers (stage 1 / postmarketOS), otherwise ssh (NixOS)."""
+    try:
+        socket.create_connection((host, port), timeout=3).close()
+    except OSError:
+        return run_ssh(command, timeout, host)
+    return run_telnet(command, timeout, host, port)
+
+
+def run_telnet(command, timeout=60, host="172.16.42.1", port=23):
     mark = secrets.token_hex(6)
     start, end = f"@@S{mark}@@", f"@@E{mark}@@"
     s = socket.create_connection((host, port), timeout=10)

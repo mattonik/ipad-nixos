@@ -3491,8 +3491,9 @@
           wifi = true;
           dashboard = true;
           nixosHandoff = true;
+          touchSpidev = true;       # the SPI3 touch test node (/dev/spidev0.0) for the touch tools in the image
           kernel = hoolockWifiKernel;
-          bootargsExtra = "pcie_aspm=off pcie_apple_t7000.device_wake=1 fbcon=font:TER16x32 j81.nixos=http://172.16.42.2:8000/";
+          bootargsExtra = "pcie_aspm=off pcie_apple_t7000.device_wake=1 fbcon=font:TER16x32 spidev.bufsiz=65536 j81.nixos=http://172.16.42.2:8000/";
         };
 
         # TEST ONLY: Wi-Fi H1B base (public), DMA MODEL B (raw) + brcmfmac PCIe, NO firmware; private overlay is added locally.
