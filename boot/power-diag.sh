@@ -38,6 +38,9 @@ HOT_DECI=${HOT_DECI:-420}
 MAX_CAPACITY=${MAX_CAPACITY:-80}
 
 if [ -z "$I2CTRANSFER" ]; then
+	I2CTRANSFER=$(command -v i2ctransfer 2>/dev/null)	# NixOS: in PATH
+fi
+if [ -z "$I2CTRANSFER" ]; then
 	for c in /usr/bin/i2ctransfer /tmp/bt/i2ctransfer /tmp/power/i2ctransfer; do
 		[ -x "$c" ] && I2CTRANSFER=$c && break
 	done

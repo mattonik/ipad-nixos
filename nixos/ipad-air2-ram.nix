@@ -75,12 +75,20 @@ in
   # the charging policy (2400 mA input limit with backoff; without it the PMIC falls back to its 100 mA default) and the tablet dashboard on the screen.
   networking.usePredictableInterfaceNames = false;     # keep wlan0 (the scripts and the Wi-Fi unit use it)
   boot.kernel.sysctl."kernel.printk" = "1 1 1 1";      # kernel messages would overwrite the dashboard on the console
-  systemd.services."getty@tty1".enable = false;        # the screen shows the dashboard; ssh over USB is the way in
+  # The screen shows the dashboard; ssh over USB is the way in. logind would otherwise spawn a getty on the active VT (it did on the first N2 boot), so no automatic VTs.
+  systemd.services."getty@tty1".enable = false;
+  services.logind.settings.Login = { NAutoVTs = 0; ReserveVT = 0; };
   systemd.services.charging-policy = {
     description = "J81 charging policy (input current limit with thermal and capacity backoff)";
     wantedBy = [ "multi-user.target" ];
     path = [ pkgs.busybox ];
-    serviceConfig = { ExecStart = "${pkgs.busybox}/bin/sh ${j81Tools}/bin/charging-policy"; Restart = "on-failure"; RestartSec = 5; };
+    serviceConfig = {
+      ExecStart = "${pkgs.busybox}/bin/sh ${j81Tools}/bin/charging-policy";
+      StandardOutput = "append:/var/log/charging-policy.log";   # where power-diag and the stage-1 scripts look for it
+      StandardError = "inherit";
+      Restart = "on-failure";
+      RestartSec = 5;
+    };
   };
   systemd.services.tablet-dashboard = {
     description = "Tablet dashboard on the iPad screen";
