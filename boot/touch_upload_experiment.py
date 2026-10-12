@@ -27,7 +27,7 @@ HOST = "172.16.42.2"
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--go", action="store_true", help="actually power the controller and send the firmware packet")
-    ap.add_argument("--ack-tries", type=int, default=6, help="repeat the ACK query up to N times (1..10) on a 0/2/10/50/200/1000 ms schedule; the packet is never resent")
+    ap.add_argument("--ack-tries", type=int, default=None, help="repeat the ACK query up to N times (1..10) on a 0/2/10/50/200/1000 ms schedule (default 6); with --apple: packet+query pairs (default 5)")
     ap.add_argument("--spi-hz", type=int, default=1984000, help="SPI clock for the whole run (10000..8000000); the first two runs used 1984000")
     ap.add_argument("--chunk", type=int, default=0, help="cut the packet into transfers of this many bytes inside ONE message (chip select stays asserted); 0 = one transfer")
     ap.add_argument("--spi-msb", action="store_true", help="old spidev default (MSB first) for comparison; Apple uses LSB first, which is now the default")
@@ -78,7 +78,7 @@ def main():
             print("dry run finished; add --go to power the controller and send the firmware packet")
             return
         apple = ("--apple-order --apple-upload" if a.apple else "") + (" --upload-rx" if a.upload_rx else "") + (" --ack-in-message" if a.ack_in_message else "") + (" --display-sync-pinmux --approve-display-sync-pinmux" if a.display_sync else "")
-        upload = "" if a.detect_only else f"--probe-sizes {a.probe_sizes}" + (" --probe-txonly" if a.probe_txonly else "") if a.probe_sizes else f"--chunk {a.chunk} --chunk-delay-us {a.chunk_delay_us} --upload-fw fw.bin --upload-ack ack.bin --ack-tries {5 if a.apple else a.ack_tries} --approve-firmware-upload"
+        upload = "" if a.detect_only else f"--probe-sizes {a.probe_sizes}" + (" --probe-txonly" if a.probe_txonly else "") if a.probe_sizes else f"--chunk {a.chunk} --chunk-delay-us {a.chunk_delay_us} --upload-fw fw.bin --upload-ack ack.bin --ack-tries {a.ack_tries if a.ack_tries is not None else 5 if a.apple else 6} --approve-firmware-upload"
         print(run(f"cd /tmp/t && ./touch-diag run --execute --approve-pmu-write --spi-dev {dev} --spi-hz {a.spi_hz} --spi-mode {a.spi_mode} --word-delay-us {a.word_delay_us} {'--spi-msb' if a.spi_msb else ''} {apple} {upload}; "
                   "echo EXIT=$?; rm -f fw.bin", timeout=180)[0])
     finally:
