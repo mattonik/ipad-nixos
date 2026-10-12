@@ -1046,7 +1046,7 @@
           #   4. the tablet tools /usr/bin/tablet-status and /usr/bin/tablet-dashboard;
           #   5. the universal probe (stage B of the plan; its userland helper is added here once the kernel framework exists).
           # No Bluetooth userland and no I2C tools are included (the Wi-Fi payload rules forbid them; charging uses sysfs only).
-          mkJ81BasePayload = { name, kernel, bootargsExtra ? "", wifi ? false, dashboard ? false, btWakeHog ? false, touchSpidev ? false, touchGpioCs ? false }:
+          mkJ81BasePayload = { name, kernel, bootargsExtra ? "", wifi ? false, dashboard ? false, btWakeHog ? false, touchSpidev ? false, touchGpioCs ? false, nixosHandoff ? false }:
             let
               dropbearPkg = pkgsCrossMusl.dropbear;
               dropbearClosure = pkgs.closureInfo { rootPaths = [ dropbearPkg ]; };
@@ -1093,6 +1093,22 @@
               sed 's|@DROPBEAR@|${dropbearPkg}|' ${./boot/ssh-stage1.sh} \
                 | sed 's|^loop_forever$|/usr/bin/charging-policy >/var/log/charging-policy.log 2>\&1 \&\n[ -x /usr/bin/wifi-up ] \&\& /usr/bin/wifi-up >/dev/null 2>\&1 \&\n[ -x /usr/bin/tablet-dashboard-screen ] \&\& /usr/bin/tablet-dashboard-screen >/dev/null 2>\&1 \&\nloop_forever|' > "overlay/$hook"
               chmod 755 "overlay/$hook"
+              ${if nixosHandoff then ''
+              # NixOS in RAM (docs/plans/2026-10-11-nixos-in-ram.md): with j81.nixos=URL on the kernel command line the debug hook returns to /init after starting its services, and a
+              # modified /init (the original plus one block right after the hook loop) sources boot/nixos-handoff.sh as PID 1, which fetches the system and switches root;
+              # on any failure the block ends in the recovery loop, so telnet and ssh stay available. Without the argument nothing changes.
+              sed -i 's|^loop_forever$|grep -q "j81\.nixos=" /proc/cmdline \&\& exit 0\nloop_forever|' "overlay/$hook"
+              (cd original-etc && cpio -id --no-absolute-filenames init < ../initramfs.cpio)
+              awk '{ print } /^done$/ && !d { d = 1;
+                print "if [ -r /usr/bin/nixos-handoff ] && grep -q \"j81\\.nixos=\" /proc/cmdline; then";
+                print "\t. /usr/bin/nixos-handoff";
+                print "\tnixos_handoff";
+                print "\tloop_forever";
+                print "fi" }' original-etc/init > overlay/init
+              chmod 755 overlay/init
+              cp ${./boot/nixos-handoff.sh} overlay/usr/bin/nixos-handoff
+              chmod 755 overlay/usr/bin/nixos-handoff
+              '' else ""}
 
               mkdir -p overlay/root/.ssh overlay/var/empty overlay/var/run overlay/var/log
               echo 'root:x:0:0:root:/root:/bin/sh' > overlay/etc/passwd
@@ -3468,6 +3484,17 @@
           bootargsExtra = "pcie_aspm=off pcie_apple_t7000.device_wake=1 fbcon=font:TER16x32 spidev.bufsiz=65536";
         };
 
+        # NixOS in RAM: the production Wi-Fi base plus the stage-1 hand-off. With `j81.nixos=http://172.16.42.2:8000/` it fetches root.squashfs from the Mac and switches root into
+        # the NixOS system; without that argument (or on any failure) it behaves exactly like m1n1-hoolock-wifi. Same kernel; only the initramfs differs.
+        m1n1-hoolock-wifi-nixos = mkJ81BasePayload {
+          name = "m1n1-hoolock-wifi-nixos";
+          wifi = true;
+          dashboard = true;
+          nixosHandoff = true;
+          kernel = hoolockWifiKernel;
+          bootargsExtra = "pcie_aspm=off pcie_apple_t7000.device_wake=1 fbcon=font:TER16x32 j81.nixos=http://172.16.42.2:8000/";
+        };
+
         # TEST ONLY: Wi-Fi H1B base (public), DMA MODEL B (raw) + brcmfmac PCIe, NO firmware; private overlay is added locally.
         m1n1-hoolock-pcie-j81-wifi-h1b-base-raw = mkJ81BasePayload {
           name = "m1n1-hoolock-pcie-j81-wifi-h1b-base-raw";
@@ -3948,6 +3975,17 @@
       # NixOS that lives entirely in RAM (feasibility; docs/plans/2026-10-11-nixos-in-ram.md).
       nixosConfigurations.ipad-air2-ram = nixpkgs.lib.nixosSystem {
         modules = [ ./nixos/ipad-air2-ram.nix ];
+      };
+
+      # The RAM system's pieces for the stage-1 hand-off (boot/nixos-handoff.sh): the toplevel and a zstd squashfs of its closure, root = the store paths (make-squashfs layout).
+      # Built on the aarch64 builder: nix build .#packages.aarch64-linux.ipad-air2-ram-rootfs -o artifacts/live/gcroot-nixos-ram-rootfs
+      packages.aarch64-linux = let ramSystem = self.nixosConfigurations.ipad-air2-ram; in {
+        ipad-air2-ram-toplevel = ramSystem.config.system.build.toplevel;
+        ipad-air2-ram-rootfs = ramSystem.pkgs.callPackage "${nixpkgs}/nixos/lib/make-squashfs.nix" {
+          fileName = "root";
+          storeContents = [ ramSystem.config.system.build.toplevel ];
+          comp = "zstd -Xcompression-level 19";
+        };
       };
 
       # macOS remote Linux builder used for every x86_64-linux/aarch64-linux
