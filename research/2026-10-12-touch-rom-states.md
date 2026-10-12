@@ -156,3 +156,4 @@ One fresh T7 boot (DFU, palera1n, `load_m1n1.py`) per packet, ascending sizes. E
 | 256 / 272 B | PASS | 2.5 ms (9.13 us/byte) | `1f 01` | `1f 01` / `1f 01` / `1f 01` | none | complete |
 | 1,008 / 1,024 B | PASS | 9.3 ms (9.10 us/byte) | `1f 01` | `1f 01` / `1f 01` / `1f 01` | none | complete |
 | 4,096 / 4,112 B | PASS | 37.5 ms (9.13 us/byte) | `1f 01` | `1f 01` / `1f 01` / `1f 01` | none | complete |
+| 16,384 / 16,400 B | PASS | 149.8 ms (9.13 us/byte) | **`49 69`** | `49 69` / `49 69` / `49 69` | none | complete |
