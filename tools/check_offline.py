@@ -23,6 +23,7 @@ HOST_TESTS = (
     "boot/test_tablet_status.py",
     "boot/test_verify_pcie_payload.py",
     "boot/test_touch_diag_frames.py",
+    "boot/test_touch_fw_rebuild.py",
     "boot/test_bt_probe.py",
     "boot/test_dump_adt.py",
     "boot/test_inspect_j81_touch.py",
