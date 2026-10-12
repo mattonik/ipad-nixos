@@ -132,3 +132,7 @@ Reading: at 18 KiB the reaction survives bit reversal and pair swapping (both ke
 ## Hardware follow-up 4: SPI3 chip select driven as GPIO 51 like Apple's driver (T5 payload, DTB-only, 2026-10-12)
 
 `cs-gpios = <&pinctrl 51 active-low>`, the pad's SPI function dropped, 10 us setup/hold from the touch node. The GPIO chip select works (detect PASS, `1f 01` x 8, wake/ATN frames as before). The full 59,288-byte packet (Apple order, mode 0, transmit-only, 5 pairs) still returns **`4c b1`** on every pair. So the chip-select mechanism (pad function vs GPIO) is not the cause. Remaining differences from Apple's path: DMA through SmartIO for packets >= 0x100 bytes (we poll the FIFO), the unexplained data-density dependence (signal-level?), and untested destinations 0x400 / 0x10001800.
+
+## Hardware follow-up 5: destination tests (T7, 2026-10-12, user-approved)
+
+A 1,040-byte data packet (the first 1,040 payload bytes, valid format, Apple order, mode 0, transmit-only, two pairs) with destination **0x400** and, separately, **0x10001800**: both return the idle `1f 01` to the ACK query, exactly like the small packets with destination 0 (no `4b c1`). The ROM still passes the detect frame afterwards (fresh power-up). No effect and no harm: the destination does not change the reply.
