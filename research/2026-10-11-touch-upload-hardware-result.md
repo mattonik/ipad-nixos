@@ -104,3 +104,13 @@ Each size sent as one transmit-only data packet (valid Apple format, destination
 | 59,272 B (59,288, the full constructed packet) | **`4c b1`** (code 0xc) |
 
 The status depends on the amount sent: nothing recognised up to 4 KiB, code 9 at 16 KiB, code 0xc at the full size. Post-failure diagnostics show the ROM keeps answering the same word to repeated queries, so the state persists until reset. The ROM is clearly receiving data, and its answer is a function of how much; none is `4b c1`. Hypotheses: a status that tracks received length against a size the ROM expects, or a receive-buffer/page boundary effect, or the ROM expecting the data in chunks (the unconstructed pattern is 0x3f0-byte packets with increasing destination offsets). Next: finer ramp (8192, 12288, 24576, 32768, 49152) and a chunked send of the same payload, to map the status code against size and test the chunk pattern.
+
+### Finer ramp (same set-up; user-approved, 2026-10-12)
+
+| packet size | reply |
+|---|---|
+| 80 ... 4,112 B | `1f 01` |
+| 8,208 B, 12,304 B, 16,400 B | `49 69` |
+| 24,592 B, 32,784 B, 49,168 B, 59,288 B | `4c b1` |
+
+Two clean thresholds: between 4,112 and 8,208 bytes (reply changes from idle to `4969`) and between 16,400 and 24,592 bytes (to `4cb1`). Packets up to 4 KiB are not recognised at all (idle) even though they are complete and well-formed. This looks like receive-buffer behaviour in the ROM (overflow-style status codes growing with the amount sent), not a content or checksum error. Idea: Apple's DMA path moves the packet in bursts with natural gaps while the ROM drains its buffer; our PIO polled send is one uninterrupted stream. Next: send the same packet as one chip-select interval cut into chunks with a delay after each chunk (`--chunk N --chunk-delay-us D`) and see whether the reply changes; separately, the idle reply to <=4 KiB packets still needs explaining.

@@ -402,6 +402,7 @@ static int spi_frame(const char *label, const uint8_t *tx, unsigned int n)
 static const char *g_fw_file, *g_ack_file;
 static unsigned int g_ack_tries = 1, g_chunk;
 static int g_apple_upload, g_apple_order, g_upload_rx, g_probe_txonly;
+static unsigned int g_chunk_delay_us;	/* delay after every chunk of a chunked transmit-only packet (--chunk N --chunk-delay-us D) */
 static const char *g_probe_sizes;	/* comma-separated byte counts for the transfer-size probe */
 
 static uint8_t *slurp(const char *path, unsigned int max, unsigned int *len)
@@ -456,30 +457,60 @@ static int upload_firmware(void)
 			struct timespec t0, t1;
 			double ms;
 
-			memset(&t, 0, sizeof(t));
-			t.tx_buf = (uintptr_t)fw;
-			if (g_upload_rx) {
-				if (!rx)
-					rx = calloc(1, fn);
-				if (!rx)
+			if (g_chunk && g_chunk < fn && !g_upload_rx) {
+				/* Same bytes, still ONE message (chip select held), cut into transmit-only chunks with a pause after each: gives the ROM time to drain its receive buffer. */
+				unsigned int nx = (fn + g_chunk - 1) / g_chunk, i2;
+				struct spi_ioc_transfer *xs = calloc(nx, sizeof(*xs));
+
+				if (!xs)
 					goto out;
-				memset(rx, 0, fn);
-				t.rx_buf = (uintptr_t)rx;
+				for (i2 = 0; i2 < nx; i2++) {
+					unsigned int off = i2 * g_chunk;
+
+					xs[i2].tx_buf = (uintptr_t)(fw + off);
+					xs[i2].len = fn - off < g_chunk ? fn - off : g_chunk;
+					xs[i2].speed_hz = g_spi_hz;
+					xs[i2].bits_per_word = 8;
+					xs[i2].word_delay_usecs = g_word_delay_us;
+					xs[i2].delay_usecs = i2 + 1 < nx ? g_chunk_delay_us : 0;
+				}
+				say("upload: pair %u: sending %u bytes transmit-only as %u chunks of %u bytes, %u us pause after each, %u Hz\n", k + 1, fn, nx, g_chunk, g_chunk_delay_us, g_spi_hz);
+				clock_gettime(CLOCK_MONOTONIC, &t0);
+				i2 = ioctl(g_spi, SPI_IOC_MESSAGE(nx), xs);
+				free(xs);
+				if ((int)i2 < 0) {
+					perror("firmware transfer (chunked)");
+					goto out;
+				}
+				clock_gettime(CLOCK_MONOTONIC, &t1);
+				ms = (t1.tv_sec - t0.tv_sec) * 1000.0 + (t1.tv_nsec - t0.tv_nsec) / 1e6;
+				say("upload: transfer took %.1f ms\n", ms);
+			} else {
+				memset(&t, 0, sizeof(t));
+				t.tx_buf = (uintptr_t)fw;
+				if (g_upload_rx) {
+					if (!rx)
+						rx = calloc(1, fn);
+					if (!rx)
+						goto out;
+					memset(rx, 0, fn);
+					t.rx_buf = (uintptr_t)rx;
+				}
+				t.len = fn;
+				t.speed_hz = g_spi_hz;
+				t.bits_per_word = 8;
+				t.word_delay_usecs = g_word_delay_us;
+				say("upload: pair %u: sending %u bytes %s, one transfer, %u Hz, word delay %u us\n", k + 1, fn, g_upload_rx ? "full duplex (reply captured)" : "transmit-only",
+				    g_spi_hz, g_word_delay_us);
+				clock_gettime(CLOCK_MONOTONIC, &t0);
+				if (ioctl(g_spi, SPI_IOC_MESSAGE(1), &t) < 0) {
+					perror("firmware transfer");
+					goto out;
+				}
+				clock_gettime(CLOCK_MONOTONIC, &t1);
+				ms = (t1.tv_sec - t0.tv_sec) * 1000.0 + (t1.tv_nsec - t0.tv_nsec) / 1e6;
+				say("upload: transfer took %.1f ms (%.2f us per byte; bare clock alone would be %.2f us per byte)\n", ms, ms * 1000.0 / fn, 8e6 / g_spi_hz);
 			}
-			t.len = fn;
-			t.speed_hz = g_spi_hz;
-			t.bits_per_word = 8;
-			t.word_delay_usecs = g_word_delay_us;
-			say("upload: pair %u: sending %u bytes %s, one transfer, %u Hz, word delay %u us\n", k + 1, fn, g_upload_rx ? "full duplex (reply captured)" : "transmit-only",
-			    g_spi_hz, g_word_delay_us);
-			clock_gettime(CLOCK_MONOTONIC, &t0);
-			if (ioctl(g_spi, SPI_IOC_MESSAGE(1), &t) < 0) {
-				perror("firmware transfer");
-				goto out;
-			}
-			clock_gettime(CLOCK_MONOTONIC, &t1);
-			ms = (t1.tv_sec - t0.tv_sec) * 1000.0 + (t1.tv_nsec - t0.tv_nsec) / 1e6;
-			say("upload: transfer took %.1f ms (%.2f us per byte; bare clock alone would be %.2f us per byte)\n", ms, ms * 1000.0 / fn, 8e6 / g_spi_hz);
 			if (g_upload_rx) {
 				/* Only the ROM's reply is summarised, never the packet. */
 				unsigned int same = 0, i;
@@ -962,6 +993,8 @@ int main(int argc, char **argv)
 			g_spi_hz = strtoul(argv[i + 1], NULL, 0);
 		else if (!strcmp(argv[i], "--upload-fw"))
 			g_fw_file = argv[i + 1];
+		else if (!strcmp(argv[i], "--chunk-delay-us"))
+			g_chunk_delay_us = strtoul(argv[i + 1], NULL, 0);
 		else if (!strcmp(argv[i], "--probe-sizes"))
 			g_probe_sizes = argv[i + 1];
 		else if (!strcmp(argv[i], "--chunk"))
