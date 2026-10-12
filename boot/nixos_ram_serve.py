@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Serve the NixOS-in-RAM root to the iPad's stage-1 hand-off (boot/nixos-handoff.sh) over the USB link.
 
-  boot/nixos_ram_serve.py [--rootfs artifacts/live/gcroot-nixos-ram-rootfs] [--toplevel artifacts/live/gcroot-nixos-ram-toplevel] [--bind 172.16.42.2] [--port 8000]
+  boot/nixos_ram_serve.py [--dir artifacts/live/gcroot-nixos-ram-serve] [--bind 172.16.42.2] [--port 8000]
+  (the directory comes from `nix build .#packages.aarch64-linux.ipad-air2-ram-serve -o artifacts/live/gcroot-nixos-ram-serve`; it holds root.squashfs and a `toplevel` file that were
+   built together, so the two cannot be mismatched. The old --rootfs/--toplevel pair is still accepted.)
 
 Serves exactly two files and nothing else: `/root.squashfs` (the zstd squashfs of the system's Nix store) and `/toplevel` (one line: the store path of the system, read from the
 toplevel GC root's link target). Read-only, no directory listing, no other path. Private files (firmware, Wi-Fi credentials, ssh keys) are NOT served: the iPad takes them from the
@@ -48,6 +50,15 @@ def make_handler(rootfs, toplevel_line):
     return Handler
 
 
+def resolve_dir(directory):
+    d = pathlib.Path(directory)
+    img = (d / "root.squashfs").resolve()
+    top = (d / "toplevel").read_text().strip()
+    if not img.is_file() or not top.startswith("/nix/store/"):
+        raise SystemExit(f"{directory} must contain root.squashfs and a toplevel file naming a /nix/store path")
+    return img, top
+
+
 def resolve(rootfs_path, toplevel_path):
     rootfs = pathlib.Path(rootfs_path).resolve()
     if rootfs.is_dir():
@@ -64,12 +75,13 @@ def resolve(rootfs_path, toplevel_path):
 def main(argv=None):
     root = pathlib.Path(__file__).resolve().parent.parent
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--rootfs", default=str(root / "artifacts/live/gcroot-nixos-ram-rootfs"))
-    ap.add_argument("--toplevel", default=str(root / "artifacts/live/gcroot-nixos-ram-toplevel"))
+    ap.add_argument("--dir", default=str(root / "artifacts/live/gcroot-nixos-ram-serve"))
+    ap.add_argument("--rootfs")
+    ap.add_argument("--toplevel")
     ap.add_argument("--bind", default="172.16.42.2")
     ap.add_argument("--port", type=int, default=8000)
     a = ap.parse_args(argv)
-    rootfs, top = resolve(a.rootfs, a.toplevel)
+    rootfs, top = resolve(a.rootfs, a.toplevel) if a.rootfs and a.toplevel else resolve_dir(a.dir)
     print(f"serving {rootfs} ({rootfs.stat().st_size / 1e6:.0f} MB) and toplevel {top} on http://{a.bind}:{a.port}/", flush=True)
     # The Mac's 172.16.42.2 only exists once the iPad's USB gadget has enumerated, so retry the bind until then (start this before or right after the DFU load).
     while True:

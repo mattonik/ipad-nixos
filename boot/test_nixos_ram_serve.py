@@ -28,6 +28,17 @@ class ServeTests(unittest.TestCase):
             finally:
                 httpd.shutdown()
 
+    def test_dir_form(self):
+        with tempfile.TemporaryDirectory() as d:
+            d = pathlib.Path(d)
+            (d / "root.squashfs").write_bytes(b"x")
+            (d / "toplevel").write_text("/nix/store/abc-nixos-system-y\n")
+            img, top = srv.resolve_dir(d)
+            self.assertEqual((img.name, top), ("root.squashfs", "/nix/store/abc-nixos-system-y"))
+            (d / "toplevel").write_text("/etc/passwd\n")
+            with self.assertRaises(SystemExit):
+                srv.resolve_dir(d)
+
     def test_toplevel_must_be_a_store_path(self):
         with tempfile.TemporaryDirectory() as d:
             (pathlib.Path(d) / "a.img").write_bytes(b"x")

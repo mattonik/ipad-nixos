@@ -3981,6 +3981,12 @@
       # Built on the aarch64 builder: nix build .#packages.aarch64-linux.ipad-air2-ram-rootfs -o artifacts/live/gcroot-nixos-ram-rootfs
       packages.aarch64-linux = let ramSystem = self.nixosConfigurations.ipad-air2-ram; in {
         ipad-air2-ram-toplevel = ramSystem.config.system.build.toplevel;
+        # One directory with exactly what the hand-off fetches, so the image and the toplevel path can never be mismatched: nix build .#packages.aarch64-linux.ipad-air2-ram-serve -o artifacts/live/gcroot-nixos-ram-serve
+        ipad-air2-ram-serve = ramSystem.pkgs.runCommand "ipad-air2-ram-serve" { } ''
+          mkdir -p $out
+          ln -s ${self.packages.aarch64-linux.ipad-air2-ram-rootfs} $out/root.squashfs
+          echo ${builtins.unsafeDiscardStringContext (toString ramSystem.config.system.build.toplevel)} > $out/toplevel
+        '';
         ipad-air2-ram-rootfs = ramSystem.pkgs.callPackage "${nixpkgs}/nixos/lib/make-squashfs.nix" {
           fileName = "root";
           storeContents = [ ramSystem.config.system.build.toplevel ];
