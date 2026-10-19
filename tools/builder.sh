@@ -107,6 +107,9 @@ cmd_archive() {
 	[ -w "$ARCH" ] || die "$ARCH is not writable"
 	[ "$(free_kb "$ARCH")" -gt $(( used / 1024 + 4194304 )) ] || die "not enough free space on the NAS"
 	mkdir "$dest" || die "cannot create $dest"
+	# A failed run removes its own half-written archive directory (never anything else); the local files are untouched until the archive has verified.
+	tmpcache="$STATE/.archive-cache.$$"
+	trap '[ "${ARCHIVE_OK:-0}" = 1 ] || { rm -rf "$dest" "$tmpcache"; echo "builder: archive FAILED; removed the incomplete $dest; local files untouched" >&2; }' EXIT
 
 	say "1/5 compressing the disk (zstd) -> $dest/nixos.qcow2.zst"
 	zstd -T0 -3 -q -f -o "$dest/nixos.qcow2.zst" "$STATE/nixos.qcow2" || die "zstd failed"
@@ -116,7 +119,12 @@ cmd_archive() {
 	tar -C "$STATE" -czf "$dest/keys.tgz" keys 2>/dev/null || die "tar of keys failed"
 	cp "$STATE/vzvm.json" "$dest/vzvm.json"
 	say "4/5 exporting the host-side closure (launcher and guest system) as a Nix file cache"
-	$NIX copy --to "file://$dest/cache" "$launcher" "$guest" || die "nix copy failed"
+	# Build the cache on the LOCAL disk first: nix copy writes NAR files in parallel and several store paths share identical contents, which fails with "File exists" when it renames onto
+	# an SMB share. Then move the finished cache to the NAS with rsync.
+	rm -rf "$tmpcache"; mkdir -p "$tmpcache"
+	$NIX copy --to "file://$tmpcache/cache" "$launcher" "$guest" > /dev/null 2> "$tmpcache/nix-copy.log" || { tail -n 5 "$tmpcache/nix-copy.log" >&2; die "nix copy failed"; }
+	rsync -a "$tmpcache/cache/" "$dest/cache/" || die "copying the cache to the NAS failed"
+	rm -rf "$tmpcache"
 	{
 		echo "created: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 		echo "host: $(hostname)"
@@ -133,7 +141,8 @@ cmd_archive() {
 	say "5/5 checksums and read-back verification (this reads everything back from the NAS)"
 	( cd "$dest" && find . -type f ! -name SHA256SUMS -print0 | xargs -0 shasum -a 256 > SHA256SUMS && shasum -a 256 -c SHA256SUMS >/dev/null ) || die "verification FAILED: $dest is not trustworthy; nothing was deleted"
 	zstd -t -q "$dest/nixos.qcow2.zst" || die "the compressed disk does not test clean; nothing was deleted"
-	echo "$stamp" > "$ARCH/latest"; echo "linux-builder-$stamp" > "$ARCH/latest"
+	echo "linux-builder-$stamp" > "$ARCH/latest"
+	ARCHIVE_OK=1
 	say "archive verified: $dest ($(du -sh "$dest" | awk '{print $1}'))"
 
 	if [ "$del" = 1 ]; then

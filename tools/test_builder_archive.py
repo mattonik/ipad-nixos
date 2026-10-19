@@ -14,7 +14,8 @@ FAKE_NIX = """#!/bin/sh
 echo "$@" >> "$NIX_CALLS"
 case "$*" in
   *--version*) echo "nix (fake) 2.34" ;;
-  *"copy --to file://"*) d=$(echo "$*" | sed -n 's|.*--to file://\\([^ ]*\\).*|\\1|p'); mkdir -p "$d"; echo cache > "$d/nix-cache-info" ;;
+  *"copy --to file://"*) [ "${NIX_COPY_FAIL:-0}" = 1 ] && { echo "error: filesystem error: in rename: File exists" >&2; exit 1; }
+     d=$(echo "$*" | sed -n 's|.*--to file://\\([^ ]*\\).*|\\1|p'); mkdir -p "$d"; echo cache > "$d/nix-cache-info" ;;
   *"copy --from"*) [ "${NIX_UNTRUSTED:-0}" = 1 ] && { echo "error: cannot add path: lacks a signature by a trusted key" >&2; exit 1; } ;;
   *build*) link=""; while [ $# -gt 0 ]; do [ "$1" = -o ] && link=$2; shift; done; [ -n "$link" ] && ln -sfn "$FAKE_LAUNCHER" "$link" ;;
 esac
@@ -92,6 +93,15 @@ class BuilderArchiveTests(unittest.TestCase):
         self.assertFalse(list(self.f.state.glob("store-*.img")))
         self.assertTrue((self.f.state / "keys" / "builder_ed25519").exists())              # keys and the launcher link stay
         self.assertTrue((self.f.state / "result-linux-builder").is_symlink())
+
+    def test_failed_nix_copy_cleans_up_its_partial_archive_and_keeps_local_files(self):
+        r = self.f.run("archive", "--delete-local", "--yes", NIX_COPY_FAIL=1)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("nix copy failed", r.stderr)
+        self.assertEqual(list(self.f.arch.glob("linux-builder-*")), [])           # the half-written archive directory is removed
+        self.assertFalse((self.f.arch / "latest").exists())
+        self.assertTrue((self.f.state / "nixos.qcow2").exists())                    # nothing local was deleted
+        self.assertFalse(list(self.f.state.glob(".archive-cache.*")))
 
     def test_roundtrip_restores_identical_disk_and_keys(self):
         original = (self.f.state / "nixos.qcow2").read_bytes()
