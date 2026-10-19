@@ -180,3 +180,6 @@ the absence of an error -- and don't trust a `--repair` shortcut here,
 since that flag requires `trusted-users` membership neither the
 operator's shell account nor an autonomous session has by default on
 this setup.
+
+## Stopping and parking the builder (2026-10-19)
+The builder is not a launchd service; it is whatever shell started `create-builder`. To park it: run `sync` in the guest (`ssh -i keys/builder_ed25519 -p 31022 builder@localhost sync`; the guest's `sudo` needs a password, so an in-guest `poweroff` is not available without it), make sure no `nix build` is running, then `kill -TERM` the `vzvm` process: the Virtualization framework's stop request shuts the guest down cleanly in about 30 seconds and the launcher exits with it. The port 31022 listener disappears. While it is stopped, builds of Linux derivations fail to reach `ssh-ng://builder@linux-builder` (it is listed in `/etc/nix/machines`); darwin builds are unaffected. Start it again with the procedure above, from inside this directory. Do not SIGKILL it while builds are running (that corrupted the disk once).
