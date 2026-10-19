@@ -1,5 +1,13 @@
 # macOS Linux-builder VM
 
+> **RUNBOOK: the Linux builder VM** (any agent: read this instead of guessing; details further down)
+> - **Status / start / stop:** `tools/builder.sh status`, `tools/builder.sh start`, `tools/builder.sh stop` (run from anywhere; the script works from inside the repo, which is where the VM's disk lives).
+> - **Start by hand:** `cd` into the repo root, `nix build .#packages.aarch64-darwin.linux-builder -o result-linux-builder` once, then `./result-linux-builder/bin/create-builder` (background it; ready when `ssh -i keys/builder_ed25519 -p 31022 builder@localhost true` works, about 1 minute).
+> - **Stop:** no build running; `ssh -i keys/builder_ed25519 -p 31022 builder@localhost sync`; `kill -TERM <pid of vzvm>` (clean guest shutdown in 30-90 s). Never SIGKILL while builds run (corrupted the disk once). The guest's `sudo` needs a password, so do not try an in-guest poweroff.
+> - **Never** run a bare `nix run nixpkgs#darwin.linux-builder-vz` (creates a different, empty VM in the current directory).
+> - **Offline = Linux builds fail** with a connection error to `ssh-ng://builder@linux-builder` (listed in `/etc/nix/machines`). It is not a launchd service, so nothing restarts it. Current state is whatever `tools/builder.sh status` says; as of 2026-10-19 it was stopped on purpose by the project owner, so do not start it unless the task needs a Linux build, and say so when you do.
+
+
 Host: Apple Silicon Mac, aarch64-darwin, **16 GB total RAM**, running Colima's
 own Docker VM concurrently. aarch64-darwin cannot build `x86_64-linux` or
 `aarch64-linux` derivations directly, so every kernel/initramfs/payload build

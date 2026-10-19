@@ -43,3 +43,7 @@ boot/vendor/*
 !boot/vendor/README.md
 .DS_Store
 __pycache__/
+
+# Linux builder VM launcher output (tools/builder.sh)
+builder.log
+result-linux-builder

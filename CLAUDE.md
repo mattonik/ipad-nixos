@@ -1666,6 +1666,10 @@ A7–A8X Linux uses 4 KiB pages; older 16 KiB claims in historical logs are
 superseded. Touch and Wi-Fi work follows the evidence and staged hardware
 gates in the current driver plan.
 
+## Linux builder VM (read before any `nix build` of a Linux derivation)
+
+Linux derivations (kernel, NixOS image, static tools) build on a macOS Linux-builder VM that is **managed by hand**, not by launchd: use `tools/builder.sh status|start|stop` and read the RUNBOOK box at the top of `docs/build-infrastructure.md`. It may be stopped on purpose (the project owner parked it on 2026-10-19 to keep it offline until needed): if a Linux build fails to connect to `linux-builder`, check `tools/builder.sh status`, tell the owner, and start it only if the task needs it. Never SIGKILL it while builds run; never run a bare `nix run nixpkgs#darwin.linux-builder-vz`.
+
 ## Target Hardware
 
 - **Primary target**: iPad Air 2 (A8X, 2014) — 3-core ARM64, 2GB RAM, PowerVR GXA6850 GPU
