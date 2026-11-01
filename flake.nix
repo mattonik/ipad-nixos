@@ -4044,7 +4044,22 @@
 
       # The RAM system's pieces for the stage-1 hand-off (boot/nixos-handoff.sh): the toplevel and a zstd squashfs of its closure, root = the store paths (make-squashfs layout).
       # Built on the aarch64 builder: nix build .#packages.aarch64-linux.ipad-air2-ram-rootfs -o artifacts/live/gcroot-nixos-ram-rootfs
-      packages.aarch64-linux = let ramSystem = self.nixosConfigurations.ipad-air2-ram; in {
+      packages.aarch64-linux = let
+        ramSystem = self.nixosConfigurations.ipad-air2-ram;
+        pkgsArm = nixpkgs.legacyPackages.aarch64-linux;
+        # The driver and DT sources under test: the exact patched tree of the Wi-Fi base kernel (m1n1-hoolock-pcie-j81-wifi-h1b-base).
+        j81TestKernel = self.packages.${linuxBuildSystem}.hoolock-pcie-j81-wifi-h1b-kernel;
+      in {
+        # Off-hardware driver tests (kernel/kunit/README.md): KUnit suites run on QEMU arm64 against the shipping driver code.
+        # nix build .#packages.aarch64-linux.j81-kunit -o result-j81-kunit
+        j81-kunit = pkgsArm.callPackage ./kernel/kunit/j81-kunit.nix { kernelSrc = j81TestKernel.src; };
+        # dt-schema check of t7001-j81.dtb against the reviewed warning list (kernel/dtbs-check/README.md).
+        # nix build .#packages.aarch64-linux.j81-dtbs-check -o result-j81-dtbs-check
+        j81-dtbs-check = pkgsArm.callPackage ./kernel/dtbs-check/j81-dtbs-check.nix {
+          kernelSrc = j81TestKernel.src;
+          defconfig = "ipad_t7001_hoolock_pcie_j81_wifi_h1b_defconfig";
+          inherit (pkgsArm.python3Packages) dtschema;
+        };
         ipad-air2-ram-toplevel = ramSystem.config.system.build.toplevel;
         # One directory with exactly what the hand-off fetches, so the image and the toplevel path can never be mismatched: nix build .#packages.aarch64-linux.ipad-air2-ram-serve -o artifacts/live/gcroot-nixos-ram-serve
         ipad-air2-ram-serve = ramSystem.pkgs.runCommand "ipad-air2-ram-serve" { } ''

@@ -1,0 +1,8 @@
+# KUnit config for the J81 driver suites (kernel/kunit/README.md).
+# kunit.py adds the arm64 QEMU virt console options on top.
+CONFIG_KUNIT=y
+CONFIG_POWER_SUPPLY=y
+CONFIG_SERIAL_DEV_BUS=y
+CONFIG_BATTERY_BQ27XXX=y
+CONFIG_BATTERY_BQ27XXX_HDQ_UART=y
+CONFIG_BATTERY_BQ27XXX_HDQ_UART_KUNIT_TEST=y

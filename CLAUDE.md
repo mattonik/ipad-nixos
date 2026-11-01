@@ -1674,6 +1674,10 @@ Linux derivations (kernel, NixOS image, static tools) build on a macOS Linux-bui
 
 To free the local disk, `tools/builder.sh archive --delete-local` moves the VM's state to the NAS (`/Volumes/martin/Projects/Archive/ipad-nixos`) and `tools/builder.sh restore` brings it back to a local directory; read the RUNBOOK box before using them. Never run the VM's disk from the NAS.
 
+## Off-hardware driver and DT tests
+
+Driver logic and the J81 device tree can be checked without the iPad, on the aarch64 builder: `nix build .#packages.aarch64-linux.j81-kunit` runs KUnit suites on QEMU arm64 against the shipping driver source (`kernel/kunit/README.md`), and `nix build .#packages.aarch64-linux.j81-dtbs-check` runs dt-schema on `t7001-j81.dtb` and fails on any warning not in `kernel/dtbs-check/t7001-j81.known-warnings` (`kernel/dtbs-check/README.md`). Neither touches a payload. Run both after changing the HDQ battery driver or a J81 DT patch; they cannot say whether the hardware accepts what the driver sends.
+
 ## Target Hardware
 
 - **Primary target**: iPad Air 2 (A8X, 2014) — 3-core ARM64, 2GB RAM, PowerVR GXA6850 GPU
