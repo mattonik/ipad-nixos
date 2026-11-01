@@ -49,7 +49,17 @@ cycle costs far more. The kernel `dev` output and the payload have GC roots
 
 Verified at build time: the modules carry `vermagic=7.3.0-rc1 SMP preempt mod_unload
 aarch64`, and the kernel's `System.map` has no `spi_apple` symbol, so the controller
-really is a module. Not yet run on the iPad.
+really is a module.
+
+**Hardware result, 2026-11-01 (run K1, payload `wifi-touch-kmod-K1`, run id
+`ea04e00d82b46e61351a9610ebdb6ab3`):** the payload booted to the dashboard with no
+`/dev/spidev*`, as expected. `tools/kmod.sh stock spi-apple` (module SHA-256
+`07e49227…b357`) loaded the controller: `/dev/spidev0.0` appeared on
+`20a08c000.spi/spi_master/spi0`. A work copy with one added `dev_info()` was built in
+19 s and swapped live (`c32d7beb…f4ef`): dmesg printed `apple-spi 20a08c000.spi: kmod
+reload test K1`, `/dev/spidev0.0` came back, and Wi-Fi stayed associated throughout.
+The stock module was loaded again afterwards. The only kernel message is the
+expected out-of-tree taint notice.
 
 `load` uses the USB SSH link (`root@172.16.42.1`, key `artifacts/live/ssh/ipad_ed25519`;
 override with `IPAD` and `IPAD_KEY`). It writes `/tmp/NAME.ko` on the iPad, which
