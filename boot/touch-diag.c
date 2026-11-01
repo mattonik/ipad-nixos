@@ -318,7 +318,18 @@ static void unwind(void)
 	if (g_st.clock_changed) {
 		say("unwind: disabling touch clock\n");
 		clock_disable();
-		say("unwind: clock register 0x%08x (was 0x%08x)\n", *g_clk, g_st.clk_orig);
+		/*
+		 * clock_disable() leaves our own divider in the register; the boot value can differ (0x800002ee, divider 750, on
+		 * 2026-11-01). Put the snapshot back exactly (it is gated off: run() refuses to start from an ungated clock).
+		 */
+		if (*g_clk != g_st.clk_orig) {
+			*g_clk = g_st.clk_orig;
+			clk_wait_not_busy();
+		}
+		say("unwind: clock register 0x%08x (was 0x%08x)%s\n", *g_clk, g_st.clk_orig,
+		    *g_clk == g_st.clk_orig ? "" : "  RESTORE MISMATCH");
+		if (*g_clk != g_st.clk_orig)
+			g_restore_failed = 1;
 		g_st.clock_changed = 0;
 	}
 }
