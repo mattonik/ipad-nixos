@@ -47,3 +47,6 @@ __pycache__/
 # Linux builder VM launcher output (tools/builder.sh)
 builder.log
 result-linux-builder
+
+# Driver reload work copies and built modules (tools/kmod.sh)
+artifacts/kmod/

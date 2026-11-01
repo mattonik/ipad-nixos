@@ -855,6 +855,53 @@
             source = inputs.hoolockLinux;
             hoolockConfig = patchedHoolockWifiConfig;
           };
+          # Driver reload loop (docs/kmod-reload.md, tools/kmod.sh): the Wi-Fi kernel with module unloading and the
+          # touch-path drivers (SPI controller, apple_z2) as modules, so they can be rebuilt out of tree against this
+          # kernel's dev output and swapped on the booted iPad with rmmod/insmod, without a DFU cycle.
+          # brcmfmac and everything else stay built in (a brcmfmac reload reset an iPad 6 once, Orchard docs/integration/j71t.md).
+          patchedHoolockWifiKmodConfig = pkgs.runCommand "ipad-t7001-hoolock-wifi-kmod-defconfig-4k" {} ''
+            cat ${patchedHoolockWifiConfig} > "$out"
+            echo 'CONFIG_MODULE_UNLOAD=y' >> "$out"
+            echo 'CONFIG_SPI_APPLE=m' >> "$out"
+            echo 'CONFIG_TOUCHSCREEN_APPLE_Z2=m' >> "$out"
+          '';
+          hoolockWifiKmodKernel = pkgsCross.callPackage ./kernel/hoolock-pcie-j81-wifi-h1b.nix {
+            source = inputs.hoolockLinux;
+            hoolockConfig = patchedHoolockWifiKmodConfig;
+          };
+          # One out-of-tree module build against hoolockWifiKmodKernel: src holds the C files and a Kbuild file.
+          # Rebuilds only the module (seconds), never the kernel. Same toolchain and make flags as the kernel itself.
+          mkJ81Kmod = { name, src }: pkgsCross.stdenv.mkDerivation {
+            pname = "j81-kmod-${name}";
+            version = hoolockWifiKmodKernel.modDirVersion;
+            inherit src;
+            nativeBuildInputs = hoolockWifiKmodKernel.moduleBuildDependencies;
+            # The kernel's own make flags minus the two that only make sense inside its build (O=$(buildRoot), --eval=undefine modules).
+            makeFlags = builtins.filter
+              (f: !(pkgs.lib.hasPrefix "O=" f || pkgs.lib.hasPrefix "--eval=" f))
+              hoolockWifiKmodKernel.makeFlags ++ [
+              "-C" "${hoolockWifiKmodKernel.dev}/lib/modules/${hoolockWifiKmodKernel.modDirVersion}/build"
+              "M=$(PWD)"
+              "modules"
+            ];
+            installPhase = ''
+              mkdir -p "$out"
+              cp *.ko "$out/"
+            '';
+          };
+          # The kernel's own sources for each reloadable module, as tools/kmod.sh extract starts from them.
+          j81KmodStockSrc = {
+            spi-apple = pkgs.runCommand "j81-kmod-src-spi-apple" {} ''
+              mkdir -p "$out"
+              cp ${hoolockWifiKmodKernel.src}/drivers/spi/spi-apple.c "$out/"
+              echo 'obj-m += spi-apple.o' > "$out/Kbuild"
+            '';
+            apple_z2 = pkgs.runCommand "j81-kmod-src-apple_z2" {} ''
+              mkdir -p "$out"
+              cp ${hoolockWifiKmodKernel.src}/drivers/input/touchscreen/apple_z2.c "$out/"
+              echo 'obj-m += apple_z2.o' > "$out/Kbuild"
+            '';
+          };
           # Same, DMA model B (raw PTE indexing): no 0064.
           hoolockPcieJ81WifiH1bRawKernel = pkgsCross.callPackage ./kernel/hoolock-pcie-j81-wifi-h1b-raw.nix {
             source = inputs.hoolockLinux;
@@ -1321,6 +1368,12 @@
         pinpoke-static = pinpokePkg;
         uartpeek-static = uartpeekPkg;
         touch-diag-static = touchDiagStaticPkg;
+        # Driver reload loop (docs/kmod-reload.md).
+        hoolock-wifi-kmod-kernel = hoolockWifiKmodKernel;
+        j81-kmod-spi-apple = mkJ81Kmod { name = "spi-apple"; src = j81KmodStockSrc.spi-apple; };
+        j81-kmod-apple_z2 = mkJ81Kmod { name = "apple_z2"; src = j81KmodStockSrc.apple_z2; };
+        j81-kmod-src-spi-apple = j81KmodStockSrc.spi-apple;
+        j81-kmod-src-apple_z2 = j81KmodStockSrc.apple_z2;
         uartpoke-static = uartpokePkg;
         hoolock-pcie-j81-wifi-h1b-raw-kernel = hoolockPcieJ81WifiH1bRawKernel;
         hoolock-pcie-gate-aux-ref-test-kernel = hoolockPcieGateAuxRefTestKernel;
@@ -3470,6 +3523,17 @@
           dashboard = true;
           touchSpidev = true;
           kernel = hoolockWifiKernel;
+          bootargsExtra = "pcie_aspm=off pcie_apple_t7000.device_wake=1 fbcon=font:TER16x32 spidev.bufsiz=65536";
+        };
+
+        # TEST ONLY: m1n1-hoolock-wifi-touch on the modular kernel (docs/kmod-reload.md). The SPI controller is a module, so SPI3 and
+        # its spidev child appear only after `tools/kmod.sh load spi-apple`; every later driver change is a reload, not a DFU cycle.
+        m1n1-hoolock-wifi-touch-kmod = mkJ81BasePayload {
+          name = "m1n1-hoolock-wifi-touch-kmod";
+          wifi = true;
+          dashboard = true;
+          touchSpidev = true;
+          kernel = hoolockWifiKmodKernel;
           bootargsExtra = "pcie_aspm=off pcie_apple_t7000.device_wake=1 fbcon=font:TER16x32 spidev.bufsiz=65536";
         };
 
