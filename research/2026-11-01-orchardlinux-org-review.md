@@ -207,3 +207,19 @@ newer firmware. Together with C1 and the October size ramp, the replies still
 depend only on how many bytes are clocked. That points back at the wire itself,
 which the parked bus capture would show. The one iPad 5 element we cannot copy is
 its S8000 SPI controller with Berkay's continuous PIO feed.
+
+## Hardware result P1: full-duplex upload on the current S5L driver hangs after 32 bytes
+
+Same payload and settings as F1, with `--upload-rx` (the full 12B410 packet sent full
+duplex, so RX is drained). The transfer fails with `-ETIMEDOUT`. dmesg: `polled
+transfer timed out (remaining 59256 tx, 0 rx), status=0x400433`. Decoded with our S5L
+definitions: TX FIFO level 16 (full), RX FIFO level 0, `HUNG` (bit 4) and
+`RXL_TIMEOUT` (bit 5) set. The controller stopped after 32 bytes, two FIFOs' worth.
+Clock and power unwound exactly. **So the S5L PIO path still hangs whenever the
+receive side is active**, the failure 0098 only fixed for transmit-only. The
+"remaining 0 rx" with an empty RX FIFO also suggests the RX accounting is off.
+Berkay's S8000 fix addresses exactly this class of problem: both word counts set to
+the full length, RX always drained, and never more than one FIFO of unread words in
+flight. Our transmit-only uploads leave `RXCNT = 0` and never read RX at all. Whether
+that also corrupts the long transmit-only stream (the byte-count thresholds) is the
+hypothesis the PIO port tests.
