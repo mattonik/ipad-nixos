@@ -1,0 +1,28 @@
+--- a/drivers/power/supply/Kconfig
++++ b/drivers/power/supply/Kconfig
+@@ -346,6 +346,15 @@
+ 	  with BATTERY_BQ27XXX_HDQ, which is a different transport (a real
+ 	  Linux 1-Wire master).
+ 
++config BATTERY_BQ27XXX_HDQ_UART_KUNIT_TEST
++	tristate "KUnit tests for the BQ27xxx HDQ-over-UART transport" if !KUNIT_ALL_TESTS
++	depends on BATTERY_BQ27XXX_HDQ_UART && KUNIT
++	default KUNIT_ALL_TESTS
++	help
++	  Runs the HDQ framing, echo-sync and gauge-transaction logic of
++	  bq27xxx_battery_hdq_uart.c against a fake serdev controller
++	  (ipad-nixos kernel/kunit/). No hardware involved.
++
+ config BATTERY_BQ27XXX_DT_UPDATES_NVM
+ 	bool "BQ27xxx support for update of NVM/flash data memory"
+ 	depends on BATTERY_BQ27XXX_I2C
+--- a/drivers/power/supply/bq27xxx_battery_hdq_uart.c
++++ b/drivers/power/supply/bq27xxx_battery_hdq_uart.c
+@@ -471,3 +471,7 @@
+ 
+ MODULE_DESCRIPTION("TI HDQ battery gauge over UART (single-wire, bit-banged via serdev)");
+ MODULE_LICENSE("GPL");
++
++#if IS_ENABLED(CONFIG_BATTERY_BQ27XXX_HDQ_UART_KUNIT_TEST)
++#include "bq27xxx_battery_hdq_uart_kunit.c"
++#endif

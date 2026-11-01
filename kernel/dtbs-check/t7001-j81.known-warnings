@@ -1,0 +1,30 @@
+# Reviewed dtbs_check warnings for apple/t7001-j81.dtb (kernel/dtbs-check/README.md).
+# One normalized warning per line, exactly as j81-dtbs-check writes them to warnings.txt,
+# each with a comment saying why it is accepted. Reviewed 2026-11-01 against dtschema 2025.12.
+
+# Patch 0010/0017: our J81 D2207 charger child has no binding YAML yet (driver is project-local).
+arch/arm64/boot/dts/apple/t7001-j81.dtb: /soc/i2c@20a110000/pmic@3c/charger: failed to match any schema with compatible: ['apple,j81-d2207-charger']
+
+# Patch 0004/0006: provisional HDQ-over-UART gauge compatible; no binding until DEVICE_TYPE settles the name.
+arch/arm64/boot/dts/apple/t7001-j81.dtb: /soc/serial@20a0d4000/gauge: failed to match any schema with compatible: ['ti,bq27540-hdq-uart']
+
+# Patch 0007/0008: compatible added to spi-apple.c but not to apple,spi.yaml.
+arch/arm64/boot/dts/apple/t7001-j81.dtb: /soc/spi@20a08c000: failed to match any schema with compatible: ['apple,s5l8960x-spi']
+
+# Patch 0089/0090: J81 DART option properties, undocumented test toggles read from the DT.
+arch/arm64/boot/dts/apple/t7001-j81.dtb: iommu@602002000 (apple,t7000-dart): 'apple,diag-config', 'apple,error-reflector', 'apple,fetch-config', 'apple,ios-pte', 'apple,pci-alias' do not match any of the regexes: '^pinctrl-[0-9]+$' [from schema $id: http://devicetree.org/schemas/iommu/apple,dart.yaml]
+
+# Patch 0010: apple,pmic.yaml does not allow a charger child.
+arch/arm64/boot/dts/apple/t7001-j81.dtb: pmic@3c (apple,arabela-pmic): 'charger' does not match any of the regexes: '^backlight(@[0-9a-f]+)?$', '^nvmem(@[0-9a-f]+)?$', '^pinctrl-[0-9]+$', '^rtc(@[0-9a-f]+)?$' [from schema $id: http://devicetree.org/schemas/mfd/apple,pmic.yaml]
+
+# Patch 0092/0093: Bluetooth UART sampling-factor property, undocumented in samsung_uart.yaml.
+arch/arm64/boot/dts/apple/t7001-j81.dtb: serial@20a0cc000 (apple,s5l-uart): Unevaluated properties are not allowed ('apple,baud-factor-select' was unexpected) [from schema $id: http://devicetree.org/schemas/serial/samsung_uart.yaml]
+
+# Patch 0006: samsung_uart.yaml does not allow a serdev child node.
+arch/arm64/boot/dts/apple/t7001-j81.dtb: serial@20a0d4000 (apple,s5l-uart): Unevaluated properties are not allowed ('gauge' was unexpected) [from schema $id: http://devicetree.org/schemas/serial/samsung_uart.yaml]
+
+# Patch 0051/0095/0097: disabled spidev touch-diag child; trivial-devices.yaml rejects its SPI timing properties.
+arch/arm64/boot/dts/apple/t7001-j81.dtb: touch-diag@0 (rohm,dh2228fv): 'spi-cpol', 'spi-cs-hold-delay-ns', 'spi-cs-setup-delay-ns' do not match any of the regexes: '^pinctrl-[0-9]+$' [from schema $id: http://devicetree.org/schemas/trivial-devices.yaml]
+
+# Patch 0090: Wi-Fi endpoint sits on bus 1 but its root port has no bus-range; harmless at runtime (Linux assigns buses), worth a bus-range = <1 1> later.
+arch/arm64/boot/dts/apple/t7001.dtsi:477.24-481.7: Warning (pci_device_bus_num): /soc/pcie@610000000/pci@1,0/network@0,0: PCI bus number 1 out of range, expected (0 - 0)
