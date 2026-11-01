@@ -180,3 +180,30 @@ destination `0x10009000`, 1,024-byte packet, header `18 e1 30 01 00 fc 90 00 10 
   tool's own divider instead of restoring the snapshot. The clock gate (bit 31)
   ended disabled as before, so it is probably harmless, but per the standing rule
   I stopped here. The other iPad 5 difference, no inter-word delay, was **not run**.
+
+## Hardware results D1, C2, F1: the remaining iPad 5 alternatives (2026-11-01 night)
+
+Martin asked to try all the alternatives. Payload: the m1n1-from-source wifi-touch
+payload (PR #16, built-in SPI, spidev child, 64 KiB buffer). touch-diag now has the
+exact clock restore (`84faf99`), and every run unwound to `0x800002ee (was
+0x800002ee)`. Temperature was 30.5 C. All runs used `--apple`, mode 0, LSB-first,
+1,984,000 Hz. Private logs are under `artifacts/live/private/`.
+
+| Run | Packet | Word delay | Attempts | Reply |
+|---|---|---|---|---|
+| D1 | 12B410 firmware, 59,288 B | 0 us (iPad 5 timing), 245 ms on the wire | 1 | `4c b1` |
+| C2 | calibration 0x3f0 B to `0x10009000` | 0 us | 5 | `1f 01` every time |
+| F1 | **iPadOS 15.8.8** firmware, 59,288 B | 5 us | 1 | `4c b1` |
+
+The 15.8.8 `J81.mtprops` came from Apple's IPSW by HTTP byte range with Orchard's
+`remote_ipsw` (3.0 MB read, sha256 `457c7af5…`, matching Orchard's recipe; stored
+privately under `firmware/j81-19H422/`). Its `C1F15,2` packet differs from 12B410's
+in only **4 bytes** (offsets 29735, 29775 and the checksum trailer), and its z2fw
+reproduces Orchard's pinned `b9b4a072…`.
+
+**Conclusion:** none of the iPad 5 differences changes the ROM's answer. Not the
+inter-word delay, not calibration-first to `0x10009000`, not five attempts, not the
+newer firmware. Together with C1 and the October size ramp, the replies still
+depend only on how many bytes are clocked. That points back at the wire itself,
+which the parked bus capture would show. The one iPad 5 element we cannot copy is
+its S8000 SPI controller with Berkay's continuous PIO feed.
