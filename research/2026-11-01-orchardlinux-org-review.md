@@ -160,3 +160,23 @@ capture.
   outside the standing touch approval.
 - micro23's two J81 touch candidates on Orchard's driver got "no response to taps".
   The ROM replies are not published.
+
+## Hardware result C1: calibration chunk first, 2026-11-01 (Martin approved)
+
+Run C1 on payload `wifi-touch-kmod-K1` (run id `ea04e00d82b46e61351a9610ebdb6ab3`),
+stock `spi_apple` module, private log `touch-cal-C1-20261101T194527Z.log`. First 0x3f0 bytes of the
+unit's `multi-touch-calibration` (1024 bytes in our ADT capture, matching `MtCl`),
+wrapped exactly as Orchard's `apple_z2_build_hbpp_blob()`: byte pairs swapped,
+destination `0x10009000`, 1,024-byte packet, header `18 e1 30 01 00 fc 90 00 10 00 01 9c`.
+`touch_upload_experiment.py --go --apple --spi-hz 1984000 --word-delay-us 5 --ack-tries 1`.
+
+- Power-up and `DETECT PASS` as always (`1f 01` x 8).
+- The packet went out in 9.3 ms. The ACK reply was **`1f 01`** (idle), not `4b c1`, and
+  every post-query stayed `1f 01`. That's the same as every packet of 4,112 bytes or
+  less in the size ramp. **The calibration-first order does not produce an ACK here.**
+- **Stop rule hit:** the touch-clock register snapshot was `0x800002ee` before the
+  run (divider 750), but the unwind left `0x800002dc` (divider 732, the tool's
+  KLCT value). Earlier runs started from `0x800002dc`. The unwind writes the
+  tool's own divider instead of restoring the snapshot. The clock gate (bit 31)
+  ended disabled as before, so it is probably harmless, but per the standing rule
+  I stopped here. The other iPad 5 difference, no inter-word delay, was **not run**.
