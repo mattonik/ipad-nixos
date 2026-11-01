@@ -223,6 +223,23 @@
         "url": "https://nightly.link/hoolocklinux/m1n1/actions/runs/33380676898/m1n1.zip"
       }
     },
+    "hoolockM1n1Src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1788170631,
+        "narHash": "sha256-aO2zqooc4bVbDtCEjjbfSL5U+le0b0CqyQoqI+h3rIc=",
+        "owner": "HoolockLinux",
+        "repo": "m1n1",
+        "rev": "d5a10ac52a6468484854419a6c5130f1d62073eb",
+        "type": "github"
+      },
+      "original": {
+        "owner": "HoolockLinux",
+        "repo": "m1n1",
+        "rev": "d5a10ac52a6468484854419a6c5130f1d62073eb",
+        "type": "github"
+      }
+    },
     "linuxApple519": {
       "flake": false,
       "locked": {
@@ -363,10 +380,32 @@
         "hoolockLinux": "hoolockLinux",
         "hoolockLinuxAns1": "hoolockLinuxAns1",
         "hoolockM1n1": "hoolockM1n1",
+        "hoolockM1n1Src": "hoolockM1n1Src",
         "linuxApple519": "linuxApple519",
         "linuxAppleResources": "linuxAppleResources",
         "nixpkgs": "nixpkgs",
-        "nixpkgsBuilder": "nixpkgsBuilder"
+        "nixpkgsBuilder": "nixpkgsBuilder",
+        "rust-overlay": "rust-overlay"
+      }
+    },
+    "rust-overlay": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1793523538,
+        "narHash": "sha256-vHPjEGxtV+StSLW9DJpa3c3gt0UD0s1q4nC98AZ0N0c=",
+        "owner": "oxalica",
+        "repo": "rust-overlay",
+        "rev": "c85ccd343087c57da6021cafa1647142ad03e32e",
+        "type": "github"
+      },
+      "original": {
+        "owner": "oxalica",
+        "repo": "rust-overlay",
+        "type": "github"
       }
     },
     "treefmt-nix": {

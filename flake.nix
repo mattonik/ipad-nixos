@@ -58,6 +58,20 @@
       url = "https://nightly.link/hoolocklinux/m1n1/actions/runs/33380676898/m1n1.zip";
       flake = false;
     };
+    # The source of that same nightly (HoolockLinux m1n1 `idevice`, d5a10ac), built by
+    # boot/m1n1/default.nix with OrchardLinux's ADT calibration forwarding
+    # (docs/m1n1-from-source.md). The J81 base payloads use this build; the older
+    # one-off test payloads keep the nightly binary above, as the record of what ran.
+    hoolockM1n1Src = {
+      url = "github:HoolockLinux/m1n1/d5a10ac52a6468484854419a6c5130f1d62073eb";
+      flake = false;
+    };
+    # Rust toolchain with the aarch64-unknown-none-softfloat target that m1n1's Rust
+    # part needs (nixpkgs' rustc only ships the host's standard library).
+    rust-overlay = {
+      url = "github:oxalica/rust-overlay";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs = { self, nixpkgs, nixpkgsBuilder, devenv, ... }@inputs:
@@ -72,9 +86,15 @@
           (_final: prev: {
             libplist = prev.libplist.overrideAttrs (_: { doCheck = false; });
           })
+          inputs.rust-overlay.overlays.default
         ];
       };
       darwinGaster = darwinPkgs.callPackage ./boot/gaster.nix {};
+      # m1n1 from source, built on the Mac (see boot/m1n1/default.nix for why).
+      darwinM1n1 = darwinPkgs.callPackage ./boot/m1n1 {
+        src = inputs.hoolockM1n1Src;
+        rev = inputs.hoolockM1n1Src.rev;
+      };
 
       # Cross-compilation: build on x86_64, target aarch64 (iPad ARM64)
       # glibc variant — used for the kernel build (buildLinux handles cross internally)
@@ -1102,7 +1122,8 @@
             } ''
               mkdir -p "$out" overlay/etc/postmarketos-mkinitfs/hooks overlay/usr/bin
               cp ${inputs.hoolockDocs}/binaries/Pongo.bin "$out/Pongo.bin"
-              cp ${inputs.hoolockM1n1}/m1n1.bin "$out/m1n1.bin"
+              # m1n1 built from source (boot/m1n1, docs/m1n1-from-source.md), same Hoolock commit as the nightly zip.
+              cp ${darwinM1n1}/m1n1.bin "$out/m1n1.bin"
               gzip -n -c ${kernel}/Image > "$out/Image.gz"
 
               dtc -I dtb -O dts ${kernel}/dtbs/apple/t7001-j81.dtb \
@@ -1111,6 +1132,9 @@
               ${if touchSpidev then ''
               # TEST ONLY (research/2026-10-11-touch-upload notes): turn on the disabled spidev child on SPI3 (patch 0095) for the touch experiment.
               fdtput -t s "$out/t7001-j81.dtb" /soc/spi@20a08c000/touch-diag@0 status okay
+              # touchscreen0 alias: m1n1 copies the ADT multi-touch calibration into this node at boot (apple,z2-cal-blob and friends,
+              # readable on the iPad under /proc/device-tree), so the calibration never has to be a file in this repository.
+              fdtput -t s "$out/t7001-j81.dtb" /aliases touchscreen0 /soc/spi@20a08c000/touch-diag@0
               ${if touchGpioCs then ''
               # TEST ONLY: chip select of SPI3 driven as a GPIO (AP pin 51, active low) like Apple's driver does, instead of the pad's SPI function. The pad's SPI pinmux is
               # dropped (the pin is strictly owned by one user), which is done by renaming the pinctrl state so "default" no longer exists.
@@ -4036,6 +4060,7 @@
       };
 
       packages.aarch64-darwin.gaster = darwinGaster;
+      packages.aarch64-darwin.m1n1 = darwinM1n1;
 
       # NixOS that lives entirely in RAM (feasibility; docs/plans/2026-10-11-nixos-in-ram.md).
       nixosConfigurations.ipad-air2-ram = nixpkgs.lib.nixosSystem {
