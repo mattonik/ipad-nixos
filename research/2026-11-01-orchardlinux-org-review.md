@@ -85,3 +85,35 @@ our pins), `cli` (archived), and the distro repos beyond reference.
 Orchard boots J81 Wi-Fi with an upstream-shaped stack on our pin. Booting their
 `examples/hardware-check --device j81` on our iPad would be one A/B run (needs
 Hoolock's prebuilt Pongo, Podman, and a case-sensitive volume for the kernel cache).
+
+## Follow-up: touch, "hot reload" and other tooling (same day)
+
+**Touch.** N61 (iPhone 6, T7000) touch works with mode 0, 8-bit words, 500 kHz,
+and CFG `0x4018`, then `0x4038` with PIO (`docs/bring-up/n61-touch.md`,
+`spi/0003`). In that word bit 14 is set and bit 13 (our `APPLE_SPI_CFG_LSB_FIRST`)
+is clear, so N61 seems to send **MSB-first**. Our J81 runs send LSB-first,
+recovered from Apple's S5L config. 500 kHz is not new: we already ran it, and it
+refuted the timing hypothesis. N61 is a Gen1 ROM and J81 is N1/Z2, so the
+protocol differs, and Orchard's J81 port (T7000 SPI + iPad 5 N1 runtime) got no
+taps on micro23's J81. The ROM reply it got is not recorded. The one new,
+hardware-backed variable is the CFG word and bit order. It touches the parked
+transport question (`touch-status`), so it needs Martin's go-ahead.
+
+**"Hot reload".** Orchard has no live kernel replacement. It rejects kexec on
+purpose (`docs/bring-up/bootloader/README.md`, `docs/integration/j71t.md` 2.8-2.9).
+What makes its loop fast:
+- a persistent incremental kernel tree in `kernel/.work/` plus an input-keyed,
+  hash-checked component cache (`orchard cache`, hard-linked objects);
+- a kernel SDK export, so module or DTB edits rebuild without the full kernel
+  (`src/orchard/kernel_sdk.py`);
+- `orchard push/pull/exec/shell` over USB SSH, SHA-256 checked, with a serial
+  fallback up to 16 MiB.
+For us this means building the touch/SPI drivers as modules, rebuilding only
+the `.ko` and loading it with `rmmod`/`insmod`, with no DFU cycle. Caveat:
+reloading `brcmfmac` reset an iPad 6 once (`j71t.md`), so keep Wi-Fi built in.
+
+**Other things worth taking:** firmware recipes that pull only the needed files
+from an IPSW by HTTP byte range, `capture-adt` without a PongoOS reboot, the
+`hardware-check` example and `/run/hardware-check.txt` report, m1n1 built from
+source with ADT touch-calibration forwarding (no private cal files), and
+m1n1's boot-entry `launch` from a boot partition, for a later native install.
