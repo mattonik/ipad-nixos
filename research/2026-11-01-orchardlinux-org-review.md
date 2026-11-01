@@ -117,3 +117,19 @@ from an IPSW by HTTP byte range, `capture-adt` without a PongoOS reboot, the
 `hardware-check` example and `/run/hardware-check.txt` report, m1n1 built from
 source with ADT touch-calibration forwarding (no private cal files), and
 m1n1's boot-entry `launch` from a boot partition, for a later native install.
+
+## Correction: the N61 SPI config matches ours (same day, later)
+
+The "N61 looks MSB-first" lead above was wrong. Decoded against our S5L
+definitions (`spi-apple.c` after patch 0007), N61's `0x4018` is `ROLESEL` (bit 3)
+| `CLOCK_ENABLE` (bit 4) | `CLOCK_SELECT` (bit 14), and `0x4038` adds IRQ mode
+(bit 5). Bit 13 is `APPLE_S5L_SPI_CFG_MSB_FIRST`, and it is **clear**, so N61 is
+LSB-first like our J81 runs. Our `apple_s5l_spi_init()` writes the same bits 3, 4,
+14 and IRQ mode. The only difference is the IRQ FIFO threshold field (ours 1 byte,
+N61's 0), which does not change the wire. MSB-first was also our original
+spidev default, and hardware already refuted it on 2026-10-11: the ROM's replies
+only decode as valid HBPP words LSB-first
+(`research/2026-10-11-touch-no-ack-analysis.md`). **No run was made.** The N61 SPI
+config gives no new touch variable. The difference is the touch ROM itself
+(Gen1 on N61, N1/Z2 on J81), and the touch upload stays parked for the bus
+capture.
