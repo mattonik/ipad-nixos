@@ -133,3 +133,30 @@ only decode as valid HBPP words LSB-first
 config gives no new touch variable. The difference is the touch ROM itself
 (Gen1 on N61, N1/Z2 on J81), and the touch upload stays parked for the bus
 capture.
+
+## Touch hints from Orchard's latest work (2026-11-01 evening)
+
+- **iPad 5 touch works on hardware** (Orchard PR #28, Berkay Kösebay, stages 1-3):
+  `iPad6,11 Touchscreen` probed with no firmware errors, and a 30 s drag gave
+  12,600 events with 0 `SYN_DROPPED`. iPad 5 is personality `C1F15,1`, the same
+  N1 bootloader class as J81's `C1F15,2`. Its boot sequence (`input/0009`): wake
+  `19 c1` and NOP probe before reset release (we do the same), then the unit's
+  **calibration first**, in packets of at most 0x3f0 bytes to `0x10009000`, each
+  checked for ATN_ACK `4b c1` with five attempts, **then** the firmware packet, then
+  N1 register calibration, `1f 01`, execute `0x10003400`. Timing: 10 us CS
+  setup/hold, **no inter-word delay** ("as iOS' configureSPI() asks"), on the S8000
+  SPI with Berkay's continuous-feed PIO sequence (`spi/0006`).
+- **Our firmware bytes are right.** Orchard's `z2packet.extract()` run on our
+  12B410 `J81.mtprops`, profile `C1F15,2`, returns 59,288 bytes, byte-identical to
+  our `00-firmware-transfer.bin` (sha256 `9948ce32…`).
+- **Their J81 packet is probably different.** The same converter on our mtprops
+  gives z2fw sha256 `670eab55…`, but Orchard's J81 recipe pins `b9b4a072…` from
+  iPadOS 15.8.8's `J81.mtprops`. Since the code is the same, the 15.8.8 packet most
+  likely differs from iOS 8.1's (not verified, since we don't have the 15.8.8 file).
+- Never tried on J81: a calibration-sized packet (≤ 0x3f0 bytes) **to `0x10009000`**
+  sent before the firmware. Our size ramp sent packets to address 0, `0x400` and
+  `0x10001800`, and never got `4b c1`. One ACK on a calibration chunk would prove the
+  packet framing and wire path for the first time. It is a calibration-phase run,
+  outside the standing touch approval.
+- micro23's two J81 touch candidates on Orchard's driver got "no response to taps".
+  The ROM replies are not published.
