@@ -82,19 +82,24 @@ The `apple_z2` driver reads `apple,z2-cal-blob` once it binds to an
 `apple,j81-touchscreen` node. That node is not enabled yet: touch is parked
 on the transport question (memory note `touch-status`).
 
-## Hardware check (open)
+## Hardware check, 2026-11-01: passed
 
-Nothing here has run on the iPad yet. The first run should:
+Payload `m1n1-hoolock-wifi-touch` from this branch (public, no Wi-Fi
+firmware), loaded from PongoOS with `boot/load_m1n1.py`. PongoOS dropped the USB
+link at `bootm` as usual, and Linux answered on 172.16.42.1 about 12 s later.
 
-1. Boot `m1n1-hoolock-wifi-touch` (or the usual production payload) as usual
-   and confirm it reaches the same state as the nightly-m1n1 payload: screen,
-   USB ECM, ssh, Wi-Fi.
-2. Confirm the m1n1 version in
-   `/proc/device-tree/chosen/asahi,m1n1-stage2-version` reads
-   `hoolock-d5a10ac-ipad-nixos`.
-3. On the touch payload, check that
-   `/proc/device-tree/soc/spi@20a08c000/touch-diag@0/apple,z2-cal-blob` exists
-   and record only its size, never its bytes.
+1. **Boot:** kernel 7.3.0-rc1 up, USB ECM and ssh work, `/dev/spidev0.0`
+   present. The only errors in `dmesg` were the ones every earlier
+   nightly-m1n1 run already showed: the `g_multi` gadget `-22`, the generic PCI
+   `retraining failed`, `of_irq_parse_pci -22`, and brcmfmac finding no
+   firmware (expected, because the public payload carries none).
+2. **Version:** `/chosen/asahi,m1n1-stage1-version` and `-stage2-version` both
+   read `hoolock-d5a10ac-ipad-nixos`.
+3. **Calibration from the ADT:** `/aliases/touchscreen0` points at
+   `/soc/spi@20a08c000/touch-diag@0`. That node now carries
+   `apple,z2-cal-blob` (1024 bytes) and `apple,z2-prox-cal-blob` (128 bytes).
+   Only the sizes were read, never the bytes.
 
-If step 1 fails, the earlier nightly-m1n1 builds of the same payloads are the
-control.
+Not covered: Wi-Fi with the private overlay, and the NixOS hand-off payload.
+Both use the same m1n1 and the same `mkJ81BasePayload` path, so they are
+expected to behave the same, but neither has run yet.
