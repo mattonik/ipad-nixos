@@ -1065,7 +1065,7 @@
             cp ${pkgsCrossMusl.pkgsStatic.iw}/bin/iw "$out/bin/iw"
           '';
 
-          # pinpoke: read any pin's pad register and drive ONE allow-listed pin (AP GPIO 164, BT_WAKE) through /dev/mem; run-time bring-up tool only (boot/pinpoke.c).
+          # pinpoke: read any pin's pad register, drive ONE allow-listed pin (AP GPIO 164, BT_WAKE), and set only the PERIPH field of UART3 TX/RTS (AP GPIO 14, 32) through /dev/mem; run-time bring-up tool only (boot/pinpoke.c).
           pinpokePkg = pkgsCrossMusl.stdenv.mkDerivation {
             name = "pinpoke";
             dontUnpack = true;
