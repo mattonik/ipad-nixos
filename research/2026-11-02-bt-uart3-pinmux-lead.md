@@ -155,3 +155,60 @@ asks for; pushes the hcd under that name to `/tmp/fw` (RAM) and points
 only); then restores every register, the firmware path, deletes
 `/tmp/fw`, and verifies. `boot/hciscan.c` (flake `hciscan-static`) brings
 hciN up and prints only the classic-inquiry and LE-advertiser counts.
+
+## Live bring-up result, 2026-11-02 13:5x UTC: Bluetooth works
+
+Run by the owner (`boot/bt_live_bringup.py`, commit 53556cc) on the running
+W1 payload (kernel 7.3.0-rc1, run id `27070e50…`), no reboot.
+
+Pads after the flip: 14=`0x00072621` (f1), 32=`0x00072622` (f1); 15/33
+unchanged on f1. PMU `0x0402` = `0x0b`, GPIO164 = `0x00072603`.
+
+Attach 1 (no patchram reachable), at 115,200:
+
+```
+Bluetooth: hci0: BCM: chip id 92
+Bluetooth: hci0: BCM: features 0x2f
+Bluetooth: hci0: BCM4350C0
+Bluetooth: hci0: BCM4354 (003.001.012) build 0000
+Bluetooth: hci0: BCM: firmware Patch file not found, tried:
+  'brcm/BCM4354.apple,j81.hcd' 'brcm/BCM4354.hcd' 'brcm/BCM.apple,j81.hcd' 'brcm/BCM.hcd'
+```
+
+Attach 2, with the iPadOS 15.8.8 patchram in RAM under
+`brcm/BCM4354.apple,j81.hcd`:
+
+```
+Bluetooth: hci0: BCM4354 'brcm/BCM4354.apple,j81.hcd' Patch
+Bluetooth: hci0: BCM: features 0x2f
+Bluetooth: hci0: BCM4350 UART 37.4 MHz Riesling USI STC
+Bluetooth: hci0: BCM4354 (003.001.012) build 1529
+```
+
+Scan (`hciscan`, counts only): hci0 up; classic inquiry 1 device; LE
+passive scan 20 s: 31 advertisers.
+
+Restore: pads 14/32 back on f2 (`0x00072641`/`0x00072643`), `0x0402`
+`0x09`, GPIO164 `0x00072602`, UART3 registers and `firmware_class.path`
+back to baseline, `/tmp/fw` removed. Script printed `restored OK`.
+
+Reading:
+
+- The pad function was the only blocker. With 14/32 on function 1, the
+  stock `hci_bcm` path (115,200 first, then its own baud change) resets the
+  controller, reads its version, downloads Apple's patchram and returns the
+  patched build string `BCM4350 UART 37.4 MHz Riesling USI STC`, build 1529.
+  The radio receives: classic inquiry and LE scanning both find devices.
+- Linux `btbcm` calls subversion `0x610c` "BCM4354"/"BCM4350C0"; Apple calls
+  it BCM4350C2. The kernel's first lookup name is
+  `brcm/BCM4354.apple,j81.hcd` (board compatible suffix), so the
+  patchram must be installed under that name (or `BCM.apple,j81.hcd` as the
+  generic fallback, which is Orchard's name).
+- Not needed: LPO/clock changes, a reset GPIO, timing changes, or the
+  Hoolock "Taurus" calibration upload.
+
+Next: boot the 0101 payload (pads on f1 from DT) and make Bluetooth
+start without hand-written registers: a `bluetooth` serdev child on
+`serial3` with `shutdown-gpios` on the D2207 GPIO provider (pin 2) and
+`device-wakeup-gpios` on GPIO164 (Orchard's `devices/t7001/0006` shape),
+plus the patchram supplied privately at boot (never in Git or the Nix store).
