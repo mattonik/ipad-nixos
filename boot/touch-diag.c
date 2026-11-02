@@ -1119,7 +1119,7 @@ static int release(void)
 
 static int dsync(unsigned int func)
 {
-	uint32_t saved, want, rb;
+	uint32_t saved, route, rb;
 	FILE *f;
 
 	if (func < 1 || func > 3) {
@@ -1138,10 +1138,10 @@ static int dsync(unsigned int func)
 		perror(DSYNC_STATE);
 		return 1;
 	}
-	want = (saved & ~PINMUX_MASK) | 0x200u | (func << 5);
-	g_gpio_w[GPIO_DISPLAY_SYNC] = want;
+	route = (saved & ~PINMUX_MASK) | 0x200u | (func << 5);
+	g_gpio_w[GPIO_DISPLAY_SYNC] = route;
 	rb = g_gpio[GPIO_DISPLAY_SYNC];
-	say("dsync: GPIO%d word 0x%08x -> wrote 0x%08x, reads 0x%08x (PERIPH %u)\n", GPIO_DISPLAY_SYNC, saved, want, rb, (rb & PINMUX_PERIPH_FIELD) >> 5);
+	say("dsync: GPIO%d word 0x%08x -> wrote 0x%08x, reads 0x%08x (PERIPH %u)\n", GPIO_DISPLAY_SYNC, saved, route, rb, (rb & PINMUX_PERIPH_FIELD) >> 5);
 	return (rb & PINMUX_PERIPH_FIELD) >> 5 == func ? 0 : 1;
 }
 

@@ -31,9 +31,17 @@ class FrameTests(unittest.TestCase):
         data = frame("F_DUMMY")
         self.assertEqual(data, bytes.fromhex("1aa1") + bytes.fromhex("18e1") * 7)
 
-    def test_no_write_or_firmware_frames_in_source(self):
+    def test_write_and_execute_frames_only_in_the_gated_n1_boot(self):
+        # The N1 register write (1e 33), execute (1d 53) and register read (1c 73) frames exist only in the n1_* post-firmware boot
+        # (2026-11-02), which runs only with --n1-boot --approve-execute after a firmware ACK.
+        n1 = SOURCE.split("static int n1_xfer(", 1)[1].split("static int probe_sizes(void)", 1)[0]
+        rest = SOURCE.replace(n1, "")
         for opcode in ("0x1e, 0x33", "0x1d, 0x53", "0x1c, 0x73"):
-            self.assertNotIn(opcode, SOURCE)
+            self.assertIn(opcode, n1)
+            self.assertNotIn(opcode, rest)
+        self.assertIn('"--approve-execute"', SOURCE)
+        self.assertIn("--n1-boot writes touch-controller registers and starts its firmware: it needs --approve-execute", SOURCE)
+        self.assertIn("if ((g_num_cal || g_n1_boot) && n1_boot())", SOURCE)
 
     def test_default_is_mode_0_not_the_one_bit_shift_mode_2(self):
         self.assertIn("g_spi_mode = 0;", SOURCE)
