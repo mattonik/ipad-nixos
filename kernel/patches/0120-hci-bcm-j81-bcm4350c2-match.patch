@@ -1,6 +1,6 @@
 Bluetooth: hci_bcm: match the iPad Air 2 (J81) BCM4350C2
 
-Match apple,j81-bcm4350c2-bt (Orchard's compatible, binding in 0111) with
+Match apple,j81-bcm4350c2-bt (Orchard's compatible, binding in 0119) with
 no board data: the mainline sequence at 115,200 is the one verified on
 hardware (research/2026-11-02-bt-uart3-pinmux-lead.md). Orchard's own
 match uses the iPad 5/7 board sequence, not yet validated on the Air 2.

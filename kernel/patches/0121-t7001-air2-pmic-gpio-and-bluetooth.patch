@@ -1,6 +1,6 @@
 arm64: dts: apple: t7001-air2: D2207 PMIC GPIO and the Bluetooth serdev node
 
-pmu_gpio (apple,d2207-pmic-gpio, 0102-0110) with only GPIO 2 usable: GPIO 3
+pmu_gpio (apple,d2207-pmic-gpio, 0110-0118) with only GPIO 2 usable: GPIO 3
 (Wi-Fi REG_ON) stays with 0052. The bluetooth child on serial3 takes power
 enable from D2207 GPIO 2 and BT_WAKE from AP GPIO 164, at 115,200 (no
 max-speed). bluetooth0 alias for m1n1's local-bd-address.
