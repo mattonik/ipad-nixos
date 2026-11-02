@@ -418,3 +418,19 @@ routed), a 30 s touch window while Martin touched, then `rmmod` and `dsync-resto
 
 So display sync, routed before or after the boot, doesn't start contact reporting. Everything
 was restored (GPIO 55 back to `0x00072a82`, LDO14 and clock released).
+
+**Offline trace of iOS's post-bootload path (15.8.8 `AppleMultitouchSPI`,
+`bootloadTimerFiredHandler` at `0xfffffff005de1844`):** after "successfully bootloaded
+device" the kext marks firmware present (vtable +0x780), posts a state change (+0x6c8, 1),
+sleeps 2 ms, caches device properties (+0x608, the discovery Orchard already reproduces),
+runs +0x5a0, publishes "Driver is Ready" and posts state 2. Its only device writes besides
+discovery are `deviceSetReport` (`e4` short / `e5` long, `FUN_fffffff005deeadc`), used for
+power stats `0x72`, the optional `DefaultReports` (none for J81) and userspace requests. **No
+iOS step after execute is missing from our flow.**
+
+The ADT's `multi-touch` node (J81 capture) lists functions beyond the ones Orchard uses:
+`function-enable_cs` (GPIO 51 = the SPI CS pin, args `01 01 00 00`), `function-power_ana`
+(PMU `Lump 0x20e`, already decoded as LDO14), `function-display_sync` (GPIO 55, args
+`01 01 00 02`, the same shape as `function-power_ldo` GPIO 95 `01 01 00 00` apart from the
+last byte) and `function-clock_enable` (KLCT). Untested idea: display sync may want to be
+**driven as a GPIO output** (like power_ldo) rather than routed to a peripheral function.
