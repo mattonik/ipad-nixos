@@ -379,3 +379,15 @@ it sets on its own is power stats `0x72`. Reports `0x30` and `0x31` are driver-i
 `AppleMultitouchSPIUserClient`, i.e. the userspace MultitouchSupport framework. The next
 source is therefore MultitouchSupport in the 15.8.8 dyld shared cache (the full IPSW is on
 the NAS).
+
+**Userspace side (iPadOS 15.8.8 dyld cache, extracted from the NAS IPSW with `ipsw extract
+--dyld`):** MultitouchSupport `MTDevicePowerSetState` builds a 0x204-byte request of type 4 with
+the state byte and sends it with `MTDeviceIssueDriverRequest`, which is a kext request and not a
+device report. `MTDeviceSetTouchMode` only posts notifications and input-detection masks
+(`0x8009`, `0x819d`, `0x8199`). The kext also applies an optional `DefaultReports` property,
+an array of (report ID, data) pairs written with "Setting DefaultReport 0x%02X". But the string
+`DefaultReports` appears only once in the whole J81 kernelcache (the kext's own lookup), so no
+J81 personality sets it. So far nothing in iOS sends a "start reporting" report to the J81 N1
+firmware. Remaining suspects: hardware-side, i.e. the display-sync routing (GPIO 55; Orchard
+reads iOS function code 2 as "input", which may mean "peripheral route 2") or a missing
+supply/clock difference; or a mode change carried in the kext's power-state handling.
