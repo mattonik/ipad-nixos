@@ -156,75 +156,73 @@ only); then restores every register, the firmware path, deletes
 `/tmp/fw`, and verifies. `boot/hciscan.c` (flake `hciscan-static`) brings
 hciN up and prints only the classic-inquiry and LE-advertiser counts.
 
-## Live bring-up on W1, 2026-11-02
+## Live bring-up result, 2026-11-02 13:5x UTC: Bluetooth works
 
-**Bluetooth works: firmware loaded and the controller scans.** Run by the
-project owner from their own terminal at about 13:58 UTC (the first try
-failed before any write: that terminal could not reach 172.16.42.1 over
-ssh, so the script now stops with a clear message, commit 53556cc). Script
-`boot/bt_live_bringup.py` at 53556cc, total 2 min 13 s.
+Run by the owner (`boot/bt_live_bringup.py`, commit 53556cc) on the running
+W1 payload (kernel 7.3.0-rc1, run id `27070e50…`), no reboot.
 
-Payload: W1 Wi-Fi NixOS in RAM, not rebooted for this test.
+Pads after the flip: 14=`0x00072621` (f1), 32=`0x00072622` (f1); 15/33
+unchanged on f1. PMU `0x0402` = `0x0b`, GPIO164 = `0x00072603`.
 
-    uname -a: Linux ipad-air2 7.3.0-rc1 #1-NixOS SMP PREEMPT Tue Jan  1 00:00:00 UTC 1980 aarch64 GNU/Linux
-    /proc/cmdline: console=tty0 loglevel=8 ignore_loglevel rdinit=/init PMOS_NO_OUTPUT_REDIRECT pd_ignore_unused clk_ignore_unused pcie_aspm=off pcie_apple_t7000.device_wake=1 fbcon=font:TER16x32 spidev.bufsiz=65536 j81.nixos=http://172.16.42.2:8000/ j81.run_id=27070e503241158c1c4ff4fe17176305
+Attach 1 (no patchram reachable), at 115,200:
 
-Registers:
+```
+Bluetooth: hci0: BCM: chip id 92
+Bluetooth: hci0: BCM: features 0x2f
+Bluetooth: hci0: BCM4350C0
+Bluetooth: hci0: BCM4354 (003.001.012) build 0000
+Bluetooth: hci0: BCM: firmware Patch file not found, tried:
+  'brcm/BCM4354.apple,j81.hcd' 'brcm/BCM4354.hcd' 'brcm/BCM.apple,j81.hcd' 'brcm/BCM.hcd'
+```
 
-    baseline: 14=0x00072641 15=0x00070221 32=0x00072643 33=0x00070221 164=0x00072602; 0x0402 0x09; 0x0010 0x00; uart +0x04=0x00000085 +0x08=0x00000011 +0x28=0x0000000c +0x34=0x00000000 +0x38=0x00000000; firmware path '/lib/firmware/postmarketos'
-    powered:  14=0x00072621 15=0x00070221 32=0x00072622 33=0x00070220 164=0x00072603; 0x0402 0x0b; 0x0010 0x00; uart unchanged
-    final:    14=0x00072641 15=0x00070221 32=0x00072643 33=0x00070221 164=0x00072602; 0x0402 0x09; 0x0010 0x00; uart unchanged; firmware path '/lib/firmware/postmarketos'; /tmp/fw removed
-    restored OK
+Attach 2, with the iPadOS 15.8.8 patchram in RAM under
+`brcm/BCM4354.apple,j81.hcd`:
 
-(Bit 0 of the pad registers is the pin level: 32 = RTS out and 33 = CTS in
-read 0 while the controller was powered and attached.)
+```
+Bluetooth: hci0: BCM4354 'brcm/BCM4354.apple,j81.hcd' Patch
+Bluetooth: hci0: BCM: features 0x2f
+Bluetooth: hci0: BCM4350 UART 37.4 MHz Riesling USI STC
+Bluetooth: hci0: BCM4354 (003.001.012) build 1529
+```
 
-Attach 1, no patchram reachable (`btattach -B /dev/ttySAC1 -P bcm -S 115200`):
+Scan (`hciscan`, counts only): hci0 up; classic inquiry 1 device; LE
+passive scan 20 s: 31 advertisers.
 
-    Bluetooth: hci0: BCM: chip id 92
-    Bluetooth: hci0: BCM: features 0x2f
-    Bluetooth: hci0: BCM4350C0
-    Bluetooth: hci0: BCM4354 (003.001.012) build 0000
-    Bluetooth: hci0: BCM: firmware Patch file not found, tried:
-    Bluetooth: hci0: BCM: 'brcm/BCM4354.apple,j81.hcd'
-    Bluetooth: hci0: BCM: 'brcm/BCM4354.hcd'
-    Bluetooth: hci0: BCM: 'brcm/BCM.apple,j81.hcd'
-    Bluetooth: hci0: BCM: 'brcm/BCM.hcd'
+Restore: pads 14/32 back on f2 (`0x00072641`/`0x00072643`), `0x0402`
+`0x09`, GPIO164 `0x00072602`, UART3 registers and `firmware_class.path`
+back to baseline, `/tmp/fw` removed. Script printed `restored OK`.
 
-Attach 2, patchram `BCM.apple,j81.hcd` (Orchard `bluetool-hcd@1` from
-iPadOS 15.8.8 BlueTool, 72,360 bytes) placed in RAM under all four names,
-`firmware_class.path=/tmp/fw`:
+Reading:
 
-    Bluetooth: hci0: BCM: chip id 92
-    Bluetooth: hci0: BCM: features 0x2f
-    Bluetooth: hci0: BCM4350C0
-    Bluetooth: hci0: BCM4354 (003.001.012) build 0000
-    Bluetooth: hci0: BCM4354 'brcm/BCM4354.apple,j81.hcd' Patch
-    Bluetooth: hci0: BCM: features 0x2f
-    Bluetooth: hci0: BCM4350 UART 37.4 MHz Riesling USI STC
-    Bluetooth: hci0: BCM4354 (003.001.012) build 1529
+- The pad function was the only blocker. With 14/32 on function 1, the
+  stock `hci_bcm` path (115,200 first, then its own baud change) resets the
+  controller, reads its version, downloads Apple's patchram and returns the
+  patched build string `BCM4350 UART 37.4 MHz Riesling USI STC`, build 1529.
+  The radio receives: classic inquiry and LE scanning both find devices.
+- Linux `btbcm` calls subversion `0x610c` "BCM4354"/"BCM4350C0"; Apple calls
+  it BCM4350C2. The kernel's first lookup name is
+  `brcm/BCM4354.apple,j81.hcd` (board compatible suffix), so the
+  patchram must be installed under that name (or `BCM.apple,j81.hcd` as the
+  generic fallback, which is Orchard's name).
+- Not needed: LPO/clock changes, a reset GPIO, timing changes, or the
+  Hoolock "Taurus" calibration upload.
 
-Scan (`hciscan 0 20`, counts only): `hci0 up`; classic inquiry 1
-device; LE passive scan 20 s: 31 advertisers.
+Next: boot the 0101 payload (pads on f1 from DT) and make Bluetooth
+start without hand-written registers: a `bluetooth` serdev child on
+`serial3` with `shutdown-gpios` on the D2207 GPIO provider (pin 2) and
+`device-wakeup-gpios` on GPIO164 (Orchard's `devices/t7001/0006` shape),
+plus the patchram supplied privately at boot (never in Git or the Nix store).
 
-**Reading.** The UART3 pinmux (TX/RTS on function 1, patch 0101) was the
-whole Bluetooth blocker: with it, the stock `hci_bcm` driver identifies
-the chip, the Apple patchram downloads at 115,200 in about 8 s, the
-controller comes back as "BCM4350 UART 37.4 MHz Riesling USI STC" build
-1529 (the J81 module, matching Orchard's STC choice), and it inquires and
-scans normally. Notes for the permanent setup:
+Additional notes from the run:
 
-- Firmware name: the kernel's first choice is
-  `brcm/BCM4354.apple,j81.hcd` (btbcm's UART subversion table names
-  this chip "BCM4354"; the board name comes from the DT's `apple,j81`); Orchard installs it as `brcm/BCM.apple,j81.hcd`, the
-  third name tried, so either works.
-- Power is still manual: PMU GPIO2 (`0x0402` 0x0b) and BT_WAKE (GPIO164)
-  are set by hand. A persistent setup needs a D2207 GPIO provider (or a
-  regulator) for `shutdown-gpios`/`device-wakeup-gpios` on a serdev
-  `brcm,bcm4350-bt` child of UART3, plus the firmware in the payload's
-  private firmware tree (never Git).
-- The link stayed at 115,200: nothing raised the rate. 3 Mbaud needs the
-  S5L sampling-factor baud support (`+0x28 = 0x80000`) in samsung_tty
-  first.
-- Not tested: connecting or pairing a device, and coexistence with Wi-Fi
-  under load.
+- The first attempt, a few minutes earlier, stopped before any write
+  because the owner's terminal could not reach 172.16.42.1 over ssh. The
+  script now stops with a clear message in that case (53556cc).
+- Bit 0 of the pad registers is the pin level: 32 (RTS out) and 33 (CTS
+  in) read 0 while the controller was powered and attached.
+- The 72,360-byte patchram download took about 8 s
+  (2738.04 -> 2746.15 in dmesg), which matches 115,200 baud. Raising the
+  rate later needs the S5L sampling-factor baud support
+  (`+0x28 = 0x80000`) in samsung_tty.
+- Not tested: connecting or pairing a device, and Wi-Fi coexistence under
+  load.
