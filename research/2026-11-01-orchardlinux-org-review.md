@@ -360,3 +360,22 @@ count stayed at 6, the post-boot total, for the whole window, with 0 input event
 running J81 firmware sends no interrupts for touches in this state, so contact reporting is
 not enabled, or not routed to the ATN line, after Orchard's iPad 5 discovery sequence.
 Afterwards `apple_z2` was unloaded and `touch-diag release` restored LDO14 and the clock.
+
+**Run Z1g (report-enable experiment):** iPad rebooted on Z1 (run id checked first). The
+`apple_z2` work copy gained `j81_init`, which writes the iPhone 6 (N61) report sequence
+after discovery: `e4 9d 08 01 00…` / `e4 bf 04 9d 81 09 00` / `e4 af 01 00`, each followed by
+`e1`. The firmware's echo bytes after each write were `e4 9d 03`, `e4 bf 00` and `e4 af 03`.
+Read as status, `bf` was accepted and `9d`/`af` were rejected (an inference). The same
+runtime then followed: report `0x50` frames, then the stale zero-data read. In a 90 s touch
+window the interrupt count stayed at 2 (the boot edges) with 0 events. GPIO 84 reads high
+afterwards (`/sys/kernel/debug/gpio`), so the line isn't stuck asserted: the chip just never
+signals. Whether Martin touched in this window wasn't confirmed, but Z1e (confirmed) behaved
+the same. Released LDO14 and the clock afterwards.
+
+**Decompile result (iPadOS 15.8.8 `AppleMultitouchSPI`, `__TEXT_EXEC 0xfffffff005de0000`,
+0x139c8 bytes):** the kernel driver writes no report to enable contacts. The only report
+it sets on its own is power stats `0x72`. Reports `0x30` and `0x31` are driver-internal
+(interrupt read delay / repeats). Everything else comes through `deviceSetReport` from
+`AppleMultitouchSPIUserClient`, i.e. the userspace MultitouchSupport framework. The next
+source is therefore MultitouchSupport in the 15.8.8 dyld shared cache (the full IPSW is on
+the NAS).
