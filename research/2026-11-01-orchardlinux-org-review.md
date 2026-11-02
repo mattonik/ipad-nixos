@@ -312,3 +312,18 @@ discovery (E2 x2, family `0xd1`, sensor `0xd3`, region `0xd0`/`0xa1`, surface `0
 EB/E3 report reads, i.e. Orchard's `apple_z2` N1 runtime with the J81 match. Our modular
 kernel builds `apple_z2` as a module, so this can come in through the same reload loop.
 It also needs a touchscreen DT node instead of the spidev test child.
+
+## apple_z2 on J81, run Z1 (2026-11-02, partial)
+
+Payload `wifi-touch-z2-kmod-Z1` (run id `16056205…`) booted. m1n1 copied the calibration
+into the touchscreen node (`apple,z2-cal-blob` and `apple,z2-prox-cal-blob` present under
+`/proc/device-tree`). The bounded-PIO `spi_apple` loaded, the private z2fw (59,376 B,
+sha256 `670eab55…`) went to `/lib/firmware/apple/j81-fwstart.z2fw`, and `touch-diag hold`
+turned on LDO14 (0x04) and the touch clock (`0x000802dc`) from the snapshot `0x00` /
+`0x800002ee`. OrchardLinux's `apple_z2` module (rebuilt from their Pauli and driver patches)
+then **failed probe: `error -ENODEV: unable to get display-sync pins`**. The J71t/J81 path
+calls `devm_pinctrl_get()`, which returns `-ENODEV` for a node with no pinctrl properties at
+all. In Orchard's DT the node probably inherits a pinctrl device. The work copy now treats
+`-ENODEV` as "no display-sync pins" (J81 leaves the pin an input, as iOS does) and builds.
+Before it could be loaded, the session hit its usage limit and the iPad stopped answering, so
+there is no driver result yet.
