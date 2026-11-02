@@ -1043,6 +1043,74 @@ static int step_power(void)
 	return 0;
 }
 
+/*
+ * hold / release: for the apple_z2 kernel driver test (docs/kmod-reload.md). Our kernel has no driver for the D2207 touch analog supply (LDO14) or the PMGR
+ * touch clock, which OrchardLinux's DT gives apple_z2 as ana-supply and clocks. `hold --approve-pmu-write` switches both on and exits, leaving the GPIOs to
+ * apple_z2 (power-ldo GPIO95, reset GPIO82, IRQ GPIO84); the pre-hold values go to HOLD_STATE. `release` puts both back exactly from that file.
+ */
+#define HOLD_STATE "/run/touch-diag-hold"
+
+static int hold(void)
+{
+	uint8_t v = 0, volt = 0;
+	FILE *f;
+
+	if (open_pmu() || open_mem(1, 0))
+		return 1;
+	if (pmu_read(REG_LDO14_ENABLE, &g_st.ldo_orig) || pmu_read(REG_LDO14_VOLTAGE, &volt))
+		return 1;
+	g_st.clk_orig = *g_clk;
+	say("hold: snapshot LDO14 enable 0x%02x voltage 0x%02x clock 0x%08x\n", g_st.ldo_orig, volt, g_st.clk_orig);
+	if ((g_st.ldo_orig & LDO14_ENABLE_BIT) || volt != LDO14_VOLTAGE_EXPECTED || !(g_st.clk_orig & CLK_GATE_OFF)) {
+		say("abort: LDO14 or the touch clock is not in its off state (already held?)\n");
+		return 1;
+	}
+	f = fopen(HOLD_STATE, "wx");
+	if (!f || fprintf(f, "%u %u\n", g_st.ldo_orig, g_st.clk_orig) < 0 || fclose(f)) {
+		perror(HOLD_STATE);
+		return 1;
+	}
+	if (step_ldo(&v))
+		goto undo;
+	msleep(5);
+	if (step_clock())
+		goto undo;
+	msleep(15);
+	say("hold: LDO14 and the touch clock are on; run `touch-diag release` to restore them\n");
+	return 0;
+undo:
+	unwind();
+	unlink(HOLD_STATE);
+	return 1;
+}
+
+static int release(void)
+{
+	unsigned int ldo, clk;
+	uint8_t v = 0;
+	FILE *f = fopen(HOLD_STATE, "r");
+
+	if (!f || fscanf(f, "%u %u", &ldo, &clk) != 2) {
+		say("release: no %s, nothing held\n", HOLD_STATE);
+		return 1;
+	}
+	fclose(f);
+	if (open_pmu() || open_mem(1, 0))
+		return 1;
+	g_st.ldo_orig = (uint8_t)ldo;
+	g_st.clk_orig = clk;
+	g_st.ldo_changed = g_st.clock_changed = 1;
+	unwind();
+	pmu_read(REG_LDO14_ENABLE, &v);
+	if (v != g_st.ldo_orig || *g_clk != g_st.clk_orig) {
+		say("release: RESTORE MISMATCH (LDO14 0x%02x, clock 0x%08x)\n", v, *g_clk);
+		return 1;
+	}
+	unlink(HOLD_STATE);
+	say("release: restored\n");
+	return 0;
+}
+
 static int run(void)
 {
 	int rc = 1, level_before = -1, level_after = -1, got_edge = 0;
@@ -1274,6 +1342,19 @@ int main(int argc, char **argv)
 	}
 	if (!strcmp(cmd, "spi-check"))
 		return spi_open() ? 1 : 0;
+	if (!strcmp(cmd, "release"))
+		return release();
+	if (!strcmp(cmd, "hold")) {
+		int approve = 0;
+
+		for (int i = 2; i < argc; i++)
+			approve |= !strcmp(argv[i], "--approve-pmu-write");
+		if (!approve) {
+			fprintf(stderr, "hold writes the PMU (LDO14 enable) and the PMGR touch clock: it needs --approve-pmu-write\n");
+			return 2;
+		}
+		return hold();
+	}
 	if (!strcmp(cmd, "run")) {
 		int exec = 0, approve = 0, ds_flag = 0, ds_approve = 0;
 

@@ -1113,7 +1113,7 @@
           #   4. the tablet tools /usr/bin/tablet-status and /usr/bin/tablet-dashboard;
           #   5. the universal probe (stage B of the plan; its userland helper is added here once the kernel framework exists).
           # No Bluetooth userland and no I2C tools are included (the Wi-Fi payload rules forbid them; charging uses sysfs only).
-          mkJ81BasePayload = { name, kernel, bootargsExtra ? "", wifi ? false, dashboard ? false, btWakeHog ? false, touchSpidev ? false, touchGpioCs ? false, nixosHandoff ? false }:
+          mkJ81BasePayload = { name, kernel, bootargsExtra ? "", wifi ? false, dashboard ? false, btWakeHog ? false, touchSpidev ? false, touchGpioCs ? false, touchZ2 ? false, nixosHandoff ? false }:
             let
               dropbearPkg = pkgsCrossMusl.dropbear;
               dropbearClosure = pkgs.closureInfo { rootPaths = [ dropbearPkg ]; };
@@ -1135,6 +1135,24 @@
               # touchscreen0 alias: m1n1 copies the ADT multi-touch calibration into this node at boot (apple,z2-cal-blob and friends,
               # readable on the iPad under /proc/device-tree), so the calibration never has to be a file in this repository.
               fdtput -t s "$out/t7001-j81.dtb" /aliases touchscreen0 /soc/spi@20a08c000/touch-diag@0
+              ${if touchZ2 then ''
+              # TEST ONLY (docs/kmod-reload.md, research/2026-11-01-orchardlinux-org-review.md): turn the spidev child into the J81 N1 touchscreen for
+              # OrchardLinux's apple_z2 (loaded as a module with tools/kmod.sh), from their t7001-air2 DT: IRQ GPIO 84 falling, reset GPIO 82 active low,
+              # LDO enable GPIO 95. No ana-supply or clock: this kernel has no driver for either; `touch-diag hold` switches LDO14 and the touch clock on.
+              # Mode 0 LSB-first, as the touch ROM answered on 2026-11-02; the alias stays, so m1n1 still copies the calibration into this node.
+              t=/soc/spi@20a08c000/touch-diag@0
+              ph=$(fdtget "$out/t7001-j81.dtb" /soc/pinctrl@20e300000 phandle)
+              fdtput -t s "$out/t7001-j81.dtb" $t compatible apple,j81-touchscreen
+              fdtput -d "$out/t7001-j81.dtb" $t spi-cpol
+              fdtput -t x "$out/t7001-j81.dtb" $t spi-lsb-first
+              fdtput -t x "$out/t7001-j81.dtb" $t interrupts-extended "$(printf %x "$ph")" 0x54 0x2
+              fdtput -t x "$out/t7001-j81.dtb" $t reset-gpios "$(printf %x "$ph")" 0x52 0x1
+              fdtput -t x "$out/t7001-j81.dtb" $t power-ldo-gpios "$(printf %x "$ph")" 0x5f 0x0
+              fdtput -t s "$out/t7001-j81.dtb" $t firmware-name apple/j81-fwstart.z2fw
+              fdtput -t x "$out/t7001-j81.dtb" $t touchscreen-size-x 0x600
+              fdtput -t x "$out/t7001-j81.dtb" $t touchscreen-size-y 0x800
+              fdtput -t x "$out/t7001-j81.dtb" $t touchscreen-inverted-y
+              '' else ""}
               ${if touchGpioCs then ''
               # TEST ONLY: chip select of SPI3 driven as a GPIO (AP pin 51, active low) like Apple's driver does, instead of the pad's SPI function. The pad's SPI pinmux is
               # dropped (the pin is strictly owned by one user), which is done by renaming the pinctrl state so "default" no longer exists.
@@ -3557,6 +3575,17 @@
           wifi = true;
           dashboard = true;
           touchSpidev = true;
+          kernel = hoolockWifiKmodKernel;
+          bootargsExtra = "pcie_aspm=off pcie_apple_t7000.device_wake=1 fbcon=font:TER16x32 spidev.bufsiz=65536";
+        };
+
+        # TEST ONLY: m1n1-hoolock-wifi-touch-kmod with the spidev child turned into the J81 touchscreen for OrchardLinux's apple_z2 module (touchZ2 above).
+        m1n1-hoolock-wifi-touch-z2-kmod = mkJ81BasePayload {
+          name = "m1n1-hoolock-wifi-touch-z2-kmod";
+          wifi = true;
+          dashboard = true;
+          touchSpidev = true;
+          touchZ2 = true;
           kernel = hoolockWifiKmodKernel;
           bootargsExtra = "pcie_aspm=off pcie_apple_t7000.device_wake=1 fbcon=font:TER16x32 spidev.bufsiz=65536";
         };
