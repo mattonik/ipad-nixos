@@ -93,6 +93,8 @@ let
     patch -d "$out" -p1 < ${./patches/0098-spi-apple-s5l-do-not-end-large-transfers-after-one-fifo.patch}
     patch -d "$out" -p1 < ${./patches/0099-j81-d2207-charger-vbus-adc-measurement.patch}
     patch -d "$out" -p1 < ${./patches/0100-t7001-spi3-60mhz-functional-clock.patch}
+    # UART3 (Bluetooth) pads on function 1, not 2: live A/B 2026-11-02 got the first HCI Reset reply (research/2026-11-02-bt-uart3-pinmux-lead.md).
+    patch -d "$out" -p1 < ${./patches/0101-t7001-uart3-pads-function-1.patch}
   '';
   buildArgs = builtins.removeAttrs args [ "source" "hoolockConfig" "runCommand" ];
 in
