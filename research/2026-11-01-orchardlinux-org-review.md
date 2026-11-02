@@ -250,3 +250,37 @@ SmartIO above that. The stock module was loaded again afterwards. Next options:
 Apple's IRQ-mode PIO for transfers up to 255 bytes, then decide whether the long
 transmit-only stream needs the same treatment. Or go straight to SmartIO DMA, which
 is the larger job.
+
+## FIRST TOUCH ACK: Apple's S5L PIO order fixes the upload (2026-11-02, runs S5, F-tx, F-rx)
+
+Apple's PIO path, decompiled from the iPadOS 15.8.8 J81 kernelcache (`AppleSamsungSPI`,
+`FUN_fffffff005c1e5c4` transfer and `FUN_fffffff005c1edd4` start; the kernelcache came
+by byte range with Orchard's `remote_ipsw`, 19.7 MB read, sha256 `832cd980…`):
+
+1. RXCNT = TXCNT = max(tx, rx), **also for transmit-only**. The extra receive words are
+   discarded. This corrects our October note "Apple writes RXCNT = 0", which was wrong.
+2. CLKDIV (`0x30`), WORD_DELAY (`0x38`), STATUS clear, CFG = base (`0x4018` on J81:
+   ROLESEL, CLOCK_ENABLE, CLOCK_SELECT; **no AUTO_TX**, FIFO threshold 0).
+3. **CTRL = `0xd` (RUN | TX_RESET | RX_RESET) in one write.** The `0xd` earlier notes
+   decoded as "CFG = AUTO_TX | …" is this CTRL value.
+4. CFG |= bit 5 (PIO mode), then prime the TX FIFO (padding with `0xff`), then the IRQ
+   enables (0x100, or 0x80 for receive-only) and IRQ-driven refills.
+
+The work-copy module follows 1-4 with polled, bounded refills (diff:
+`research/2026-11-02-s5l-bounded-pio-wip.diff`, module sha256 `2ff43506b3e10c32…`, switch
+`s5l_bounded_apple_order`). Payload `wifi-touch-kmod-K1`, `--apple`, 1.984 MHz, 5 us word
+delay, clock and power unwound exactly on every run:
+
+- **S5**, full-duplex probe frames 16 to 4096 bytes: all complete, with no hang (the
+  32-word wall is gone). The ROM answers `48 79` instead of `1f 01`; `0x4879` is in
+  Apple's accepted HBPP word set.
+- **F-tx**, the 12B410 firmware packet (59,288 B) transmit-only: 541.6 ms, **ACK reply `4b c1`,
+  ACKNOWLEDGED.** This is the first ACK this project has ever had from the J81 touch ROM.
+- **F-rx**, the same packet full duplex: the ROM sent `48 79` for all 29,644 words during
+  the transfer, then **`4b c1`, ACKNOWLEDGED.**
+
+**Root cause of the October `4c b1` / byte-count thresholds: hypothesis H3, wire corruption
+in our S5L PIO path.** The fix is the controller start order and counts, not the
+firmware, timing, order or bit order. Next, outside the standing approval: N1 register
+calibration, calibration upload, `1f 01`, then execute `0x10003400`. Then turn the module
+change into a kernel patch and do the reproducible build.
