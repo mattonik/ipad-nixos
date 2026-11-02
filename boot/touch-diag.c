@@ -1111,6 +1111,85 @@ static int release(void)
 	return 0;
 }
 
+/*
+ * dsync / dsync-restore: route the display sync pin (GPIO 55) to peripheral function FUNC (1..3, the PINMUX PERIPH field, bits 6:5) while apple_z2 runs the
+ * controller, and put the saved word back later. Question: does the J81 N1 controller need the panel's sync to scan (research/2026-11-01-orchardlinux-org-review.md)?
+ */
+#define DSYNC_STATE "/run/touch-diag-dsync"
+
+static int dsync(unsigned int func)
+{
+	uint32_t saved, want, rb;
+	FILE *f;
+
+	if (func < 1 || func > 3) {
+		fprintf(stderr, "dsync FUNC: FUNC must be 1..3\n");
+		return 2;
+	}
+	if (open_mem(1, 1))
+		return 1;
+	saved = g_gpio[GPIO_DISPLAY_SYNC];
+	if (saved & PINMUX_PERIPH_FIELD) {
+		say("abort: GPIO%d word 0x%08x already has a peripheral function\n", GPIO_DISPLAY_SYNC, saved);
+		return 1;
+	}
+	f = fopen(DSYNC_STATE, "wx");
+	if (!f || fprintf(f, "%u\n", saved) < 0 || fclose(f)) {
+		perror(DSYNC_STATE);
+		return 1;
+	}
+	want = (saved & ~PINMUX_MASK) | 0x200u | (func << 5);
+	g_gpio_w[GPIO_DISPLAY_SYNC] = want;
+	rb = g_gpio[GPIO_DISPLAY_SYNC];
+	say("dsync: GPIO%d word 0x%08x -> wrote 0x%08x, reads 0x%08x (PERIPH %u)\n", GPIO_DISPLAY_SYNC, saved, want, rb, (rb & PINMUX_PERIPH_FIELD) >> 5);
+	return (rb & PINMUX_PERIPH_FIELD) >> 5 == func ? 0 : 1;
+}
+
+static int dsync_restore(void)
+{
+	unsigned int saved;
+	uint32_t rb;
+	FILE *f = fopen(DSYNC_STATE, "r");
+
+	if (!f || fscanf(f, "%u", &saved) != 1) {
+		say("dsync-restore: no %s, nothing changed\n", DSYNC_STATE);
+		return 1;
+	}
+	fclose(f);
+	if (open_mem(1, 1))
+		return 1;
+	g_gpio_w[GPIO_DISPLAY_SYNC] = saved;
+	rb = g_gpio[GPIO_DISPLAY_SYNC];
+	say("dsync-restore: GPIO%d word 0x%08x (saved 0x%08x)%s\n", GPIO_DISPLAY_SYNC, rb, saved, rb == saved ? "" : "  RESTORE MISMATCH");
+	if (rb != saved)
+		return 1;
+	unlink(DSYNC_STATE);
+	return 0;
+}
+
+/*
+ * dsync-gpio LEVEL SECONDS: drive display sync (GPIO 55) as a plain GPIO output at LEVEL for SECONDS, then release the line. The ADT describes
+ * function-display_sync like function-power_ldo (a GPIO output), so this tests whether the controller needs it driven rather than routed.
+ */
+static int dsync_gpio(unsigned int level, unsigned int seconds)
+{
+	int fd;
+
+	if (level > 1 || seconds < 1 || seconds > 300) {
+		fprintf(stderr, "dsync-gpio LEVEL(0|1) SECONDS(1..300)\n");
+		return 2;
+	}
+	fd = request_line(GPIO_DISPLAY_SYNC, GPIO_V2_LINE_FLAG_OUTPUT, (int)level, "touch-diag-dsync");
+	if (fd < 0)
+		return 1;
+	say("dsync-gpio: GPIO%d driven %u for %u s (reads %d)\n", GPIO_DISPLAY_SYNC, level, seconds, get_line(fd));
+	for (unsigned int s = 0; s < seconds && !g_signal; s++)
+		msleep(1000);
+	close(fd);
+	say("dsync-gpio: released\n");
+	return 0;
+}
+
 static int run(void)
 {
 	int rc = 1, level_before = -1, level_after = -1, got_edge = 0;
@@ -1344,6 +1423,30 @@ int main(int argc, char **argv)
 		return spi_open() ? 1 : 0;
 	if (!strcmp(cmd, "release"))
 		return release();
+	if (!strcmp(cmd, "dsync-gpio")) {
+		int approve = 0;
+
+		for (int i = 2; i < argc; i++)
+			approve |= !strcmp(argv[i], "--approve-display-sync-pinmux");
+		if (argc < 4 || !approve) {
+			fprintf(stderr, "usage: touch-diag dsync-gpio LEVEL SECONDS --approve-display-sync-pinmux\n");
+			return 2;
+		}
+		return dsync_gpio(strtoul(argv[2], NULL, 0), strtoul(argv[3], NULL, 0));
+	}
+	if (!strcmp(cmd, "dsync-restore"))
+		return dsync_restore();
+	if (!strcmp(cmd, "dsync")) {
+		int approve = 0;
+
+		for (int i = 2; i < argc; i++)
+			approve |= !strcmp(argv[i], "--approve-display-sync-pinmux");
+		if (argc < 3 || !approve) {
+			fprintf(stderr, "usage: touch-diag dsync FUNC --approve-display-sync-pinmux\n");
+			return 2;
+		}
+		return dsync(strtoul(argv[2], NULL, 0));
+	}
 	if (!strcmp(cmd, "hold")) {
 		int approve = 0;
 

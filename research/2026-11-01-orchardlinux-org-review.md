@@ -360,3 +360,91 @@ count stayed at 6, the post-boot total, for the whole window, with 0 input event
 running J81 firmware sends no interrupts for touches in this state, so contact reporting is
 not enabled, or not routed to the ATN line, after Orchard's iPad 5 discovery sequence.
 Afterwards `apple_z2` was unloaded and `touch-diag release` restored LDO14 and the clock.
+
+**Run Z1g (report-enable experiment):** iPad rebooted on Z1 (run id checked first). The
+`apple_z2` work copy gained `j81_init`, which writes the iPhone 6 (N61) report sequence
+after discovery: `e4 9d 08 01 00…` / `e4 bf 04 9d 81 09 00` / `e4 af 01 00`, each followed by
+`e1`. The firmware's echo bytes after each write were `e4 9d 03`, `e4 bf 00` and `e4 af 03`.
+Read as status, `bf` was accepted and `9d`/`af` were rejected (an inference). The same
+runtime then followed: report `0x50` frames, then the stale zero-data read. In a 90 s touch
+window the interrupt count stayed at 2 (the boot edges) with 0 events. GPIO 84 reads high
+afterwards (`/sys/kernel/debug/gpio`), so the line isn't stuck asserted: the chip just never
+signals. Whether Martin touched in this window wasn't confirmed, but Z1e (confirmed) behaved
+the same. Released LDO14 and the clock afterwards.
+
+**Decompile result (iPadOS 15.8.8 `AppleMultitouchSPI`, `__TEXT_EXEC 0xfffffff005de0000`,
+0x139c8 bytes):** the kernel driver writes no report to enable contacts. The only report
+it sets on its own is power stats `0x72`. Reports `0x30` and `0x31` are driver-internal
+(interrupt read delay / repeats). Everything else comes through `deviceSetReport` from
+`AppleMultitouchSPIUserClient`, i.e. the userspace MultitouchSupport framework. The next
+source is therefore MultitouchSupport in the 15.8.8 dyld shared cache (the full IPSW is on
+the NAS).
+
+**Userspace side (iPadOS 15.8.8 dyld cache, extracted from the NAS IPSW with `ipsw extract
+--dyld`):** MultitouchSupport `MTDevicePowerSetState` builds a 0x204-byte request of type 4 with
+the state byte and sends it with `MTDeviceIssueDriverRequest`, which is a kext request and not a
+device report. `MTDeviceSetTouchMode` only posts notifications and input-detection masks
+(`0x8009`, `0x819d`, `0x8199`). The kext also applies an optional `DefaultReports` property,
+an array of (report ID, data) pairs written with "Setting DefaultReport 0x%02X". But the string
+`DefaultReports` appears only once in the whole J81 kernelcache (the kext's own lookup), so no
+J81 personality sets it. So far nothing in iOS sends a "start reporting" report to the J81 N1
+firmware. Remaining suspects: hardware-side, i.e. the display-sync routing (GPIO 55; Orchard
+reads iOS function code 2 as "input", which may mean "peripheral route 2") or a missing
+supply/clock difference; or a mode change carried in the kext's power-state handling.
+
+**Run Z1h (display sync):** Z1 boot (run id checked), `apple_z2` booted the chip as before
+(input1, 2 interrupts). With the driver running, `touch-diag dsync N` moved GPIO 55 from its
+boot word `0x00072a82` (PERIPH 0) to peripheral function 1, 2 and 3 in turn (`0x…aa2`,
+`0x…ac2`, `0x…ae2`, each read back), for a 30 s touch window each while Martin touched
+continuously. **The interrupt count stayed at 2 and there were 0 events in every window.**
+`dsync-restore` put back `0x00072a82` each time, and power and clock were released afterwards.
+Routing display sync after the boot doesn't start contact reporting. Not tested: routing it
+before the firmware starts.
+
+Where this leaves J81 touch: SPI is fixed, and the bootloader, calibration, registers,
+execute and the runtime discovery all work. The firmware sends report `0x50` status frames
+but never signals a touch. That matches micro23's "no response to taps" on Orchard's J81
+port, which uses the same post-boot flow.
+
+**Run Z1i (display sync routed before the firmware boots):** same Z1 boot. For each function
+N: `touch-diag dsync N`, then `insmod apple_z2` (which boots the chip with the pin already
+routed), a 30 s touch window while Martin touched, then `rmmod` and `dsync-restore`.
+- **N = 1:** the read-back word had bit 0 set (`0x00072aa3`, the pin reads high), and **the
+  driver's boot failed: `probe … failed with error -71` (EPROTO)**. Function 1 interferes
+  with the bootloader handshake.
+- **N = 2 and N = 3:** the boot succeeded (input3, input4, two interrupt edges per boot, so the
+  cumulative count went 2 → 4 → 6), but **no interrupts and 0 events during either touch
+  window**.
+
+So display sync, routed before or after the boot, doesn't start contact reporting. Everything
+was restored (GPIO 55 back to `0x00072a82`, LDO14 and clock released).
+
+**Offline trace of iOS's post-bootload path (15.8.8 `AppleMultitouchSPI`,
+`bootloadTimerFiredHandler` at `0xfffffff005de1844`):** after "successfully bootloaded
+device" the kext marks firmware present (vtable +0x780), posts a state change (+0x6c8, 1),
+sleeps 2 ms, caches device properties (+0x608, the discovery Orchard already reproduces),
+runs +0x5a0, publishes "Driver is Ready" and posts state 2. Its only device writes besides
+discovery are `deviceSetReport` (`e4` short / `e5` long, `FUN_fffffff005deeadc`), used for
+power stats `0x72`, the optional `DefaultReports` (none for J81) and userspace requests. **No
+iOS step after execute is missing from our flow.**
+
+The ADT's `multi-touch` node (J81 capture) lists functions beyond the ones Orchard uses:
+`function-enable_cs` (GPIO 51 = the SPI CS pin, args `01 01 00 00`), `function-power_ana`
+(PMU `Lump 0x20e`, already decoded as LDO14), `function-display_sync` (GPIO 55, args
+`01 01 00 02`, the same shape as `function-power_ldo` GPIO 95 `01 01 00 00` apart from the
+last byte) and `function-clock_enable` (KLCT). Untested idea: display sync may want to be
+**driven as a GPIO output** (like power_ldo) rather than routed to a peripheral function.
+
+**Run Z1j (display sync driven as a GPIO, new `touch-diag dsync-gpio LEVEL SECONDS`):**
+- **High:** the chip boots but **discovery fails: `device information failed: -74`**, so probe
+  fails. A first low attempt overlapped the still-held high line and failed the same way.
+- **Low (clean rerun):** the boot and discovery succeed (input7), but a 35 s touch window while
+  Martin touched gives **no new interrupts and 0 events**.
+Display sync clearly affects the controller (high, or peripheral function 1, breaks the
+handshake), but no tested setting makes it report contacts. Released afterwards.
+
+**Status: J81 touch parked here (2026-11-02), as agreed with Martin.** Everything up to a
+running N1 firmware that answers discovery works on our stack. The open problem is that the
+firmware never raises ATN for touches. The remaining untested ideas are electrical: the analog
+rail level (LDO14 voltage `0x14` is never changed), `function-enable_cs`, and the PMU
+`function-sensor_power` (`Lump 0x202`), or a bus capture of iOS.

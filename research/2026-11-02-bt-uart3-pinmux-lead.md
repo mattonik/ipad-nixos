@@ -328,3 +328,10 @@ lines left out):
 Bluetooth at boot with no manual register writes. Still open: 3 Mbaud
 (0092/0093 exist; add `max-speed` in a separate test), pairing/connecting a
 device, Wi-Fi coexistence under load, and BlueZ userland in the payload.
+
+## Patch renumbering, 2026-11-02 (merge with main)
+
+Main's W1 Wi-Fi cleanup took 0101-0108, so this branch's patches moved up
+by eight: 0101 (UART3 pads) is now **0109**, the Orchard PMIC GPIO and
+binding patches 0102-0111 are **0110-0119**, and our 0112/0113/0114 are
+**0120/0121/0122**. Notes above use the old numbers.

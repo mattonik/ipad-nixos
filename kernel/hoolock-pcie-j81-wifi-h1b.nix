@@ -93,23 +93,34 @@ let
     patch -d "$out" -p1 < ${./patches/0098-spi-apple-s5l-do-not-end-large-transfers-after-one-fifo.patch}
     patch -d "$out" -p1 < ${./patches/0099-j81-d2207-charger-vbus-adc-measurement.patch}
     patch -d "$out" -p1 < ${./patches/0100-t7001-spi3-60mhz-functional-clock.patch}
+    # Wi-Fi cleanup W1 (research/2026-11-01-orchardlinux-org-review.md): OrchardLinux/orchard b5e3769 kernel/patches/drivers
+    # wifi/0001,0003,0004, usb/0001-0002, spi/0001, pinctrl/0002, power/0011, copied unchanged. 0106 halves the effective
+    # GPIO chip-select delays of 0097 (they were applied twice before).
+    patch -d "$out" -p1 < ${./patches/0101-orchard-wifi-brcmfmac-Don-t-cancel-reset-work-that-was-never.patch}
+    patch -d "$out" -p1 < ${./patches/0102-orchard-wifi-brcmfmac-msgbuf-Map-RX-buffers-for-device-reads.patch}
+    patch -d "$out" -p1 < ${./patches/0103-orchard-wifi-brcmfmac-Report-port-authorized-after-the-firm.patch}
+    patch -d "$out" -p1 < ${./patches/0104-orchard-usb-dwc2-gadget-Enter-L0-before-calling-the-resume-c.patch}
+    patch -d "$out" -p1 < ${./patches/0105-orchard-usb-gadget-f_ecm-Resend-a-notification-that-failed-t.patch}
+    patch -d "$out" -p1 < ${./patches/0106-orchard-spi-Apply-GPIO-chip-select-delays-only-once.patch}
+    patch -d "$out" -p1 < ${./patches/0107-orchard-pinctrl-apple-Let-GPIO-interrupts-be-wakeup-sources.patch}
+    patch -d "$out" -p1 < ${./patches/0108-orchard-power-supply-bq27xxx-Report-discharging-at-full-char.patch}
     # UART3 (Bluetooth) pads on function 1, not 2: live A/B 2026-11-02 got the first HCI Reset reply (research/2026-11-02-bt-uart3-pinmux-lead.md).
-    patch -d "$out" -p1 < ${./patches/0101-t7001-uart3-pads-function-1.patch}
-    # Bluetooth at boot: Orchard's Apple PMIC GPIO driver with D2207 support (0102-0110, bindings kept) and the BCM4350C2 binding (0111),
-    # an hci_bcm match without board data (0112), and the DT: pmu_gpio with only GPIO 2 usable, the serial3 bluetooth child (0113); 0114 lets the binding take fewer than three reserved ranges.
-    patch -d "$out" -p1 < ${./patches/0102-orchard-dt-bindings-gpio-add-Apple-D2365-PMIC-GPIOs.patch}
-    patch -d "$out" -p1 < ${./patches/0103-orchard-gpio-add-Apple-D2365-PMIC-driver.patch}
-    patch -d "$out" -p1 < ${./patches/0104-orchard-dt-bindings-gpio-apple-Add-D2333-PMIC-GPIO-controlle.patch}
-    patch -d "$out" -p1 < ${./patches/0105-orchard-gpio-apple-Add-D2333-PMIC-GPIO-support.patch}
-    patch -d "$out" -p1 < ${./patches/0106-orchard-dt-bindings-gpio-apple-Allow-three-reserved-GPIO-ran.patch}
-    patch -d "$out" -p1 < ${./patches/0107-orchard-dt-bindings-gpio-apple-d2365-pmic-gpio-Describe-the-.patch}
-    patch -d "$out" -p1 < ${./patches/0108-orchard-gpio-apple-d2365-Add-the-PMU-event-interrupt-control.patch}
-    patch -d "$out" -p1 < ${./patches/0109-orchard-dt-bindings-gpio-apple-d2365-pmic-gpio-Add-the-D2207.patch}
-    patch -d "$out" -p1 < ${./patches/0110-orchard-gpio-apple-d2365-Add-D2207-PMIC-GPIO-support.patch}
-    patch -d "$out" -p1 < ${./patches/0111-orchard-dt-bindings-net-bluetooth-brcm-Add-iPad-Air-2-BCM435.patch}
-    patch -d "$out" -p1 < ${./patches/0112-hci-bcm-j81-bcm4350c2-match.patch}
-    patch -d "$out" -p1 < ${./patches/0113-t7001-air2-pmic-gpio-and-bluetooth.patch}
-    patch -d "$out" -p1 < ${./patches/0114-dt-bindings-gpio-apple-pmic-gpio-reserved-ranges-min-items.patch}
+    patch -d "$out" -p1 < ${./patches/0109-t7001-uart3-pads-function-1.patch}
+    # Bluetooth at boot: Orchard's Apple PMIC GPIO driver with D2207 support (0110-0118, bindings kept) and the BCM4350C2 binding (0119),
+    # an hci_bcm match without board data (0120), and the DT: pmu_gpio with only GPIO 2 usable, the serial3 bluetooth child (0121); 0122 lets the binding take fewer than three reserved ranges.
+    patch -d "$out" -p1 < ${./patches/0110-orchard-dt-bindings-gpio-add-Apple-D2365-PMIC-GPIOs.patch}
+    patch -d "$out" -p1 < ${./patches/0111-orchard-gpio-add-Apple-D2365-PMIC-driver.patch}
+    patch -d "$out" -p1 < ${./patches/0112-orchard-dt-bindings-gpio-apple-Add-D2333-PMIC-GPIO-controlle.patch}
+    patch -d "$out" -p1 < ${./patches/0113-orchard-gpio-apple-Add-D2333-PMIC-GPIO-support.patch}
+    patch -d "$out" -p1 < ${./patches/0114-orchard-dt-bindings-gpio-apple-Allow-three-reserved-GPIO-ran.patch}
+    patch -d "$out" -p1 < ${./patches/0115-orchard-dt-bindings-gpio-apple-d2365-pmic-gpio-Describe-the-.patch}
+    patch -d "$out" -p1 < ${./patches/0116-orchard-gpio-apple-d2365-Add-the-PMU-event-interrupt-control.patch}
+    patch -d "$out" -p1 < ${./patches/0117-orchard-dt-bindings-gpio-apple-d2365-pmic-gpio-Add-the-D2207.patch}
+    patch -d "$out" -p1 < ${./patches/0118-orchard-gpio-apple-d2365-Add-D2207-PMIC-GPIO-support.patch}
+    patch -d "$out" -p1 < ${./patches/0119-orchard-dt-bindings-net-bluetooth-brcm-Add-iPad-Air-2-BCM435.patch}
+    patch -d "$out" -p1 < ${./patches/0120-hci-bcm-j81-bcm4350c2-match.patch}
+    patch -d "$out" -p1 < ${./patches/0121-t7001-air2-pmic-gpio-and-bluetooth.patch}
+    patch -d "$out" -p1 < ${./patches/0122-dt-bindings-gpio-apple-pmic-gpio-reserved-ranges-min-items.patch}
   '';
   buildArgs = builtins.removeAttrs args [ "source" "hoolockConfig" "runCommand" ];
 in
