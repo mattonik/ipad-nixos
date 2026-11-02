@@ -327,3 +327,29 @@ all. In Orchard's DT the node probably inherits a pinctrl device. The work copy 
 `-ENODEV` as "no display-sync pins" (J81 leaves the pin an input, as iOS does) and builds.
 Before it could be loaded, the session hit its usage limit and the iPad stopped answering, so
 there is no driver result yet.
+
+## apple_z2 on J81, runs Z1b-Z1d (2026-11-02 afternoon): input device, discovery passes, no contacts yet
+
+Same Z1 payload, rebooted (run id `16056205…`). Bounded-PIO `spi_apple`, `touch-diag hold`,
+private z2fw, then OrchardLinux's `apple_z2` as a module with three J81 changes (diff
+against Orchard's file: `research/2026-11-02-apple-z2-j81-wip.diff`): no display-sync
+pinctrl is accepted, **J81 family 22** (the iPad 5 reports 21), and sensor/surface
+mismatches only warn. Debug dumps were added.
+
+- The driver boots the chip by itself: detect, firmware, calibration from the DT blob m1n1
+  wrote, the N1 registers, execute. **`input: iPad5,3 Touchscreen` registers as event1.**
+- Discovery passes exactly: device info `e2 16 01 92 09`, family `0x16` (22), sensor
+  little-endian 40x30 (`01 28 1e`), firmware version `0x381`, region `d0`/`a1`, and surface
+  14745x19657 (the same as the iPad 5's, so the inverted-y default and the scaling apply).
+- At runtime the firmware raises ATN a few times and sends frames
+  `ea NN 0e 00 | 0x 50 02 00 00 00 00 0x 00 xx 27 00 00 | ck ck`: report **`0x50`**, not the
+  contact reports `0x43..0x45` the iPad 5 parser handles. The length query right after a
+  frame repeats `e1 0e` but its data phase reads all zeros, which the driver counts as a
+  bad frame (`-EBADMSG` → "touch frame error -74, resynchronising"). Resync then succeeds.
+- Martin touched the screen in two windows (Z1b 60 s, Z1c 45 s, plus Z1d 40 s): no input
+  events, and only a handful of interrupts in total. So the J81 firmware isn't sending contact
+  reports in this mode yet.
+
+Next: find out what iOS sends after discovery to start contact reporting on J81 (the
+iPadOS 15.8.8 `AppleMultitouchN1SPI` is in the kernelcache we already fetched), decode
+report `0x50`, and tolerate the stale length reply after a frame.

@@ -1,0 +1,86 @@
+--- /private/tmp/claude-501/-Users-martinp-Work-Sandbox-ipadlinux/f43313c3-32c7-4933-a6f8-4c16bb2f9854/scratchpad/z2/drivers/input/touchscreen/apple_z2.c	2026-11-02 07:21:36
++++ artifacts/kmod/apple_z2/apple_z2.c	2026-11-02 13:41:28
+@@ -5,6 +5,7 @@
+  * Copyright (C) The Asahi Linux Contributors
+  */
+ 
++#define DEBUG
+ #include <linux/bitmap.h>
+ #include <linux/bitrev.h>
+ #include <linux/bits.h>
+@@ -872,6 +873,7 @@
+ 	error = spi_sync_transfer(z2->spidev, &xfer, 1);
+ 	if (error)
+ 		return error;
++	dev_dbg(&z2->spidev->dev, "rd-len tx=%*ph rx=%*ph\n", 16, z2->tx_buf, 16, z2->rx_buf);
+ 	apple_z2_post_z2_xfer_delay(z2);
+ 	if (apple_z2_is_n61(z2)) {
+ 		if (!apple_z2_z2_checksum_valid(z2->rx_buf, APPLE_Z2_CMD_SIZE))
+@@ -949,6 +951,7 @@
+ 	}
+ 	if (error)
+ 		return error;
++	dev_dbg(&z2->spidev->dev, "rd-data len=%zu rx=%*ph\n", wire_len, (int)min_t(size_t, wire_len, 64), z2->rx_buf);
+ 	if (apple_z2_is_iphone7_plus(z2))
+ 		apple_z2_post_z2_xfer_delay(z2);
+ 
+@@ -1609,10 +1612,12 @@
+ 	if (error)
+ 		return error;
+ 	if (data[0] != 1 || data[1] != n1->rows || data[2] != n1->columns) {
+-		dev_err(&z2->spidev->dev,
+-			"unexpected sensor: endianness %u, %ux%u\n",
+-			data[0], data[1], data[2]);
+-		return -ENODEV;
++		/* J81 bring-up: report instead of refusing; the descriptor values were copied from the iPad 5. */
++		dev_warn(&z2->spidev->dev,
++			 "unexpected sensor: endianness %u, %ux%u\n",
++			 data[0], data[1], data[2]);
++		if (data[0] != 1)
++			return -ENODEV;
+ 	}
+ 	dev_dbg(&z2->spidev->dev, "firmware version %#x\n",
+ 		get_unaligned_be16(data + 3));
+@@ -1635,9 +1640,9 @@
+ 		return error;
+ 	if (get_unaligned_le32(data) != n1->surface_width ||
+ 	    get_unaligned_le32(data + 4) != n1->surface_height) {
+-		dev_err(&z2->spidev->dev, "unexpected surface %ux%u\n",
+-			get_unaligned_le32(data), get_unaligned_le32(data + 4));
+-		return -ENODEV;
++		/* J81 bring-up: use the surface the firmware reports. */
++		dev_warn(&z2->spidev->dev, "unexpected surface %ux%u, using it\n",
++			 get_unaligned_le32(data), get_unaligned_le32(data + 4));
+ 	}
+ 
+ 	return apple_z2_set_surface(z2, data);
+@@ -4016,7 +4021,7 @@
+ 	.device_info_attempts = 4,
+ 	.device_info_retry_us = 3000,
+ 	.interface = 1,
+-	.family = 21,
++	.family = 22,	/* J81 runtime reports 22 (run Z1, 2026-11-02); the iPad 5 reports 21 */
+ 	.rows = 40,
+ 	.columns = 30,
+ 	.surface_width = 14745,
+@@ -4137,6 +4142,11 @@
+ 					     "unable to get analog supply\n");
+ 
+ 		z2->sync_pinctrl = devm_pinctrl_get(dev);
++		/* J81 on this kernel: the node has no pinctrl states at all (display sync stays an input, as in iOS). */
++		if (PTR_ERR_OR_ZERO(z2->sync_pinctrl) == -ENODEV) {
++			z2->sync_pinctrl = NULL;
++			goto no_sync_pins;
++		}
+ 		if (IS_ERR(z2->sync_pinctrl))
+ 			return dev_err_probe(dev, PTR_ERR(z2->sync_pinctrl),
+ 					     "unable to get display-sync pins\n");
+@@ -4159,6 +4169,8 @@
+ 				return dev_err_probe(dev, PTR_ERR(z2->sync_inactive),
+ 						     "missing display-sync-inactive state\n");
+ 		}
++no_sync_pins:
++		;
+ 	}
+ 
+ 	z2->power_ana_gpio =
