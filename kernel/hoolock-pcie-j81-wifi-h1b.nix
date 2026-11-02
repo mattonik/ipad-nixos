@@ -93,6 +93,17 @@ let
     patch -d "$out" -p1 < ${./patches/0098-spi-apple-s5l-do-not-end-large-transfers-after-one-fifo.patch}
     patch -d "$out" -p1 < ${./patches/0099-j81-d2207-charger-vbus-adc-measurement.patch}
     patch -d "$out" -p1 < ${./patches/0100-t7001-spi3-60mhz-functional-clock.patch}
+    # Wi-Fi cleanup W1 (research/2026-11-01-orchardlinux-org-review.md): OrchardLinux/orchard b5e3769 kernel/patches/drivers
+    # wifi/0001,0003,0004, usb/0001-0002, spi/0001, pinctrl/0002, power/0011, copied unchanged. 0106 halves the effective
+    # GPIO chip-select delays of 0097 (they were applied twice before).
+    patch -d "$out" -p1 < ${./patches/0101-orchard-wifi-brcmfmac-Don-t-cancel-reset-work-that-was-never.patch}
+    patch -d "$out" -p1 < ${./patches/0102-orchard-wifi-brcmfmac-msgbuf-Map-RX-buffers-for-device-reads.patch}
+    patch -d "$out" -p1 < ${./patches/0103-orchard-wifi-brcmfmac-Report-port-authorized-after-the-firm.patch}
+    patch -d "$out" -p1 < ${./patches/0104-orchard-usb-dwc2-gadget-Enter-L0-before-calling-the-resume-c.patch}
+    patch -d "$out" -p1 < ${./patches/0105-orchard-usb-gadget-f_ecm-Resend-a-notification-that-failed-t.patch}
+    patch -d "$out" -p1 < ${./patches/0106-orchard-spi-Apply-GPIO-chip-select-delays-only-once.patch}
+    patch -d "$out" -p1 < ${./patches/0107-orchard-pinctrl-apple-Let-GPIO-interrupts-be-wakeup-sources.patch}
+    patch -d "$out" -p1 < ${./patches/0108-orchard-power-supply-bq27xxx-Report-discharging-at-full-char.patch}
   '';
   buildArgs = builtins.removeAttrs args [ "source" "hoolockConfig" "runCommand" ];
 in
