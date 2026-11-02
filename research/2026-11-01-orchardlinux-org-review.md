@@ -425,8 +425,11 @@ device" the kext marks firmware present (vtable +0x780), posts a state change (+
 sleeps 2 ms, caches device properties (+0x608, the discovery Orchard already reproduces),
 runs +0x5a0, publishes "Driver is Ready" and posts state 2. Its only device writes besides
 discovery are `deviceSetReport` (`e4` short / `e5` long, `FUN_fffffff005deeadc`), used for
-power stats `0x72`, the optional `DefaultReports` (none for J81) and userspace requests. **No
-iOS step after execute is missing from our flow.**
+power stats `0x72`, the optional `DefaultReports` (none for J81) and userspace requests.
+This 15.8.8 trace does not establish the older 12B410 path: its J81 personality sets
+`AutomaticallySetOperatingMode`, and its post-discovery `+0x598` method sends
+`rOPERATING_MODE` report `0xab {0}`. A synchronized 60-second live touch test showed
+that the accepted write still yielded zero contact IRQs and input bytes.
 
 The ADT's `multi-touch` node (J81 capture) lists functions beyond the ones Orchard uses:
 `function-enable_cs` (GPIO 51 = the SPI CS pin, args `01 01 00 00`), `function-power_ana`
@@ -445,6 +448,22 @@ handshake), but no tested setting makes it report contacts. Released afterwards.
 
 **Status: J81 touch parked here (2026-11-02), as agreed with Martin.** Everything up to a
 running N1 firmware that answers discovery works on our stack. The open problem is that the
-firmware never raises ATN for touches. The remaining untested ideas are electrical: the analog
-rail level (LDO14 voltage `0x14` is never changed), `function-enable_cs`, and the PMU
-`function-sensor_power` (`Lump 0x202`), or a bus capture of iOS.
+firmware never raises ATN for touches. The remaining untested ideas are the analog
+rail level (LDO14 voltage `0x14` is never changed), `function-enable_cs`, the exact
+display-sync transition during boot, or a bus capture of iOS. The PMU
+`function-sensor_power` (`Lump 0x202`) belongs to the Oscar motion coprocessor ADT node,
+not touch. Both the 12B410 and 15.8.8 firmware images booted with Apple's
+proximity/touch calibration order and still
+produced no contact IRQ during confirmed touch windows. The 12B410 post-discovery
+`0xab {0}` write was also accepted but produced no contacts.
+
+**Correction (2026-11-02 evening, from Martin's `research/2026-11-02-j81-touch-runtime-gap.md`
+in the `ipadlinux-bt-ab` checkout):** the PMU `function-sensor_power` (`Lump 0x202`) listed
+above as an untested touch lead belongs to the ADT's **Oscar motion-coprocessor** node, not
+to `multi-touch`. Touch's `function-power_ana` (`Lump 0x20e`, LDO14) is already on in every
+run, and LDO14's stored `0x14` is the documented 6 V code. Drop both from the touch leads. That
+note also rules out Apple's bootload order with proximity calibration, the 15.8.8 firmware
+(`0x382`), and the iOS 8.1 `rOPERATING_MODE` write (`e4 ab 01 00`, accepted with status 0), and
+shows GPIO84 sampling high for a full touch minute. What's left: a forced report read during a
+touch (silent queue vs. no scanning), and display sync routed at Apple's exact wake-to-dummy
+point with reset asserted.
