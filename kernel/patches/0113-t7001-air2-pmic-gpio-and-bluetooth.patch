@@ -1,0 +1,100 @@
+arm64: dts: apple: t7001-air2: D2207 PMIC GPIO and the Bluetooth serdev node
+
+pmu_gpio (apple,d2207-pmic-gpio, 0102-0110) with only GPIO 2 usable: GPIO 3
+(Wi-Fi REG_ON) stays with 0052. The bluetooth child on serial3 takes power
+enable from D2207 GPIO 2 and BT_WAKE from AP GPIO 164, at 115,200 (no
+max-speed). bluetooth0 alias for m1n1's local-bd-address.
+
+diff -ruN a/arch/arm64/boot/dts/apple/t7001-air2.dtsi b/arch/arm64/boot/dts/apple/t7001-air2.dtsi
+--- a/arch/arm64/boot/dts/apple/t7001-air2.dtsi	2026-11-02 17:16:06
++++ b/arch/arm64/boot/dts/apple/t7001-air2.dtsi	2026-11-02 17:16:06
+@@ -10,6 +10,11 @@
+ / {
+ 	chassis-type = "tablet";
+ 
++	aliases {
++		/* m1n1 copies the ADT's mac-address-bluetooth0 into this node's local-bd-address. */
++		bluetooth0 = &bluetooth;
++	};
++
+ 	chosen {
+ 		#address-cells = <2>;
+ 		#size-cells = <2>;
+@@ -75,21 +80,15 @@
+ };
+ 
+ /*
+- * BT-1 (transport only): describes and enables UART3, the BCM43540
+- * combo chip's HCI UART interface. See
+- * docs/plans/2026-09-08-j81-bluetooth-battery-adt.md's "BT-1".
++ * UART3: the BCM4350C2 combo chip's Bluetooth HCI UART (BT-1,
++ * docs/plans/2026-09-08-j81-bluetooth-battery-adt.md).
+  *
+- * Deliberately no bluetooth serdev child node here yet: this patch
+- * validates the UART transport independently through the plain tty and
+- * userspace `btattach`. The common serial core does expose Samsung UART
+- * ports as serdev controllers when a DT child is present, so the later
+- * power-managed Bluetooth node can use the standard hci_bcm serdev path.
+- *
+- * Host-wake (AP GPIO 164) and PMU power-enable (PMU GPIO 2) are also
+- * deliberately left out of this first patch either way -- both are
+- * optional to hci_bcm, and this step is testing whether iBoot/m1n1
+- * already left the radio powered, without guessing this SoC's PMU GPIO
+- * register layout or an IRQ polarity.
++ * The bluetooth serdev child is the setup verified live on 2026-11-02
++ * with btattach (research/2026-11-02-bt-uart3-pinmux-lead.md): power
++ * enable on D2207 GPIO 2 (0x0402: 0x09 off, 0x0b on), BT_WAKE on AP
++ * GPIO 164, 115,200 baud, Apple's patchram as
++ * brcm/BCM4354.apple,j81.hcd. No max-speed, so hci_bcm never changes
++ * the baud rate; 3 Mbaud is a separate test. No host-wakeup interrupt.
+  */
+ &serial3 {
+ 	status = "okay";
+@@ -101,6 +100,12 @@
+ 	 * field in the upper half of UBRDIV (baud = 24 MHz / ((16 - i) x (div + 1)); measured, research/2026-10-11-uart3-register-capture.md); the legacy divider tops out at 1.5 Mbaud.
+ 	 */
+ 	apple,baud-factor-select;
++
++	bluetooth: bluetooth {
++		compatible = "apple,j81-bcm4350c2-bt";
++		shutdown-gpios = <&pmu_gpio 2 GPIO_ACTIVE_HIGH>;
++		device-wakeup-gpios = <&pinctrl 164 GPIO_ACTIVE_HIGH>;
++	};
+ };
+ 
+ /*
+@@ -173,6 +178,18 @@
+ 		reg = <0x3c>;
+ 		#address-cells = <1>;
+ 		#size-cells = <1>;
++
++		pmu_gpio: gpio {
++			compatible = "apple,d2207-pmic-gpio";
++			gpio-controller;
++			#gpio-cells = <2>;
++			/*
++			 * Only GPIO 2 (Bluetooth power enable) is usable. GPIO 3
++			 * (Wi-Fi REG_ON) stays with the PCIe driver's J81
++			 * write (0052); the other lines stay as iBoot left them.
++			 */
++			gpio-reserved-ranges = <0 2>, <3 18>;
++		};
+ 
+ 		rtc@5c0 {
+ 			compatible = "apple,arabela-pmic-rtc", "apple,amber-pmic-rtc";
+diff -ruN a/arch/arm64/boot/dts/apple/t7001.dtsi b/arch/arm64/boot/dts/apple/t7001.dtsi
+--- a/arch/arm64/boot/dts/apple/t7001.dtsi	2026-11-02 17:16:06
++++ b/arch/arm64/boot/dts/apple/t7001.dtsi	2026-11-02 17:16:06
+@@ -25,12 +25,6 @@
+ 		 * local-mac-address, and brcmfmac writes it into the NVRAM (macaddr=) the firmware needs to attach.
+ 		 */
+ 		wifi0 = &wifi0;
+-		/*
+-		 * No bluetooth0 alias yet: that only matters once a real
+-		 * bluetooth child node exists (see serial3's comment below
+-		 * and the BT-1 plan) -- m1n1's mac-address-bluetooth0 copy
+-		 * has nothing to attach to until then.
+-		 */
+ 	};
+ 
+ 	clkref: clock-ref {

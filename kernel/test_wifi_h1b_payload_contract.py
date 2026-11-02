@@ -58,6 +58,19 @@ EXPECTED_TAIL = [
     "0099-j81-d2207-charger-vbus-adc-measurement.patch",
     "0100-t7001-spi3-60mhz-functional-clock.patch",
     "0101-t7001-uart3-pads-function-1.patch",
+    "0102-orchard-dt-bindings-gpio-add-Apple-D2365-PMIC-GPIOs.patch",
+    "0103-orchard-gpio-add-Apple-D2365-PMIC-driver.patch",
+    "0104-orchard-dt-bindings-gpio-apple-Add-D2333-PMIC-GPIO-controlle.patch",
+    "0105-orchard-gpio-apple-Add-D2333-PMIC-GPIO-support.patch",
+    "0106-orchard-dt-bindings-gpio-apple-Allow-three-reserved-GPIO-ran.patch",
+    "0107-orchard-dt-bindings-gpio-apple-d2365-pmic-gpio-Describe-the-.patch",
+    "0108-orchard-gpio-apple-d2365-Add-the-PMU-event-interrupt-control.patch",
+    "0109-orchard-dt-bindings-gpio-apple-d2365-pmic-gpio-Add-the-D2207.patch",
+    "0110-orchard-gpio-apple-d2365-Add-D2207-PMIC-GPIO-support.patch",
+    "0111-orchard-dt-bindings-net-bluetooth-brcm-Add-iPad-Air-2-BCM435.patch",
+    "0112-hci-bcm-j81-bcm4350c2-match.patch",
+    "0113-t7001-air2-pmic-gpio-and-bluetooth.patch",
+    "0114-dt-bindings-gpio-apple-pmic-gpio-reserved-ranges-min-items.patch",
 ]
 
 
@@ -78,7 +91,7 @@ def main():
     # Model B (raw) is the same list without 0064 and nothing else.
     raw = re.findall(r'patch -d "\$out" -p1 < \$\{\./patches/([^}]+)\}', NIX_RAW)
     # Model B was built before 0067/0068 existed and is the plain comparison payload: no 0064, 0067, 0068, 0069.
-    assert raw == [p for p in patches if not p.startswith(("0064-", "0067-", "0068-", "0069-", "0070-", "0071-", "0072-", "0073-", "0074-", "0075-", "0076-", "0077-", "0078-", "0079-", "0080-", "0081-", "0082-", "0083-", "0084-", "0085-", "0086-", "0087-", "0088-", "0089-", "0090-", "0091-", "0092-", "0093-", "0094-", "0095-", "0096-", "0097-", "0098-", "0099-", "0100-", "0101-"))], raw
+    assert raw == [p for p in patches if not p.startswith(("0064-", "0067-", "0068-", "0069-", "0070-", "0071-", "0072-", "0073-", "0074-", "0075-", "0076-", "0077-", "0078-", "0079-", "0080-", "0081-", "0082-", "0083-", "0084-", "0085-", "0086-", "0087-", "0088-", "0089-", "0090-", "0091-", "0092-", "0093-", "0094-", "0095-", "0096-", "0097-", "0098-", "0099-", "0100-", "0101-", "0102-", "0103-", "0104-", "0105-", "0106-", "0107-", "0108-", "0109-", "0110-", "0111-", "0112-", "0113-", "0114-"))], raw
     assert not any(p.startswith("0064-") for p in raw)
     raw_pay = re.search(r"m1n1-hoolock-pcie-j81-wifi-h1b-base-raw = mkJ81BasePayload \{.*?\n        \};", FLAKE, re.S)
     assert raw_pay and "hoolockPcieJ81WifiH1bRawKernel" in raw_pay.group(0) and "brcmfmac.debug=0x001c0004" in raw_pay.group(0)

@@ -181,6 +181,14 @@ def main():
         bad_cred = tmp / "bad.conf"
         bad_cred.write_text("hello\n")
         expect_exit(lambda: A.assemble(pub, assets, work / "w2", check_hashes=False, wifi_userland=tmp / "userland", wifi_credentials=bad_cred), "not a wpa_supplicant configuration")
+        # the optional Bluetooth patchram is staged under the hci_bcm name and verified like the Wi-Fi assets
+        hcd = tmp / "BCM.apple,j81.hcd"
+        hcd.write_bytes(b"\x4c\xfc" + bytes(64))
+        mb = A.assemble(pub, assets, work / "bt", check_hashes=False, bt_patchram=hcd)
+        assert any(a["staged"] == "BCM4354.apple,j81.hcd" for a in mb["assets"])
+        pb, _ = A.verify(work / "bt")
+        assert not pb, pb
+        assert cpio_entries(gzip.decompress((work / "bt" / "initramfs.gz").read_bytes()))["lib/firmware/brcm/BCM4354.apple,j81.hcd"][1] == hcd.read_bytes()
         (assets / A.NVRAM_NAME).write_bytes(b"")
         expect_exit(lambda: A.assemble(pub, assets, work / "x2", check_hashes=False), "empty")
         assert not (work / "x2").exists()

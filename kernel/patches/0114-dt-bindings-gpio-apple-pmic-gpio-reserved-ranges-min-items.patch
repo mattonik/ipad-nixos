@@ -1,0 +1,17 @@
+dt-bindings: gpio: apple,d2365-pmic-gpio: allow one to three reserved ranges
+
+dt-schema reads a bare maxItems as an exact count, so a node with one or
+two reserved ranges (the J81 D2207 node reserves <0 2>, <3 18>) failed
+validation. Set minItems: 1.
+
+diff -ruN a/Documentation/devicetree/bindings/gpio/apple,d2365-pmic-gpio.yaml b/Documentation/devicetree/bindings/gpio/apple,d2365-pmic-gpio.yaml
+--- a/Documentation/devicetree/bindings/gpio/apple,d2365-pmic-gpio.yaml	2026-11-02 17:20:04
++++ b/Documentation/devicetree/bindings/gpio/apple,d2365-pmic-gpio.yaml	2026-11-02 17:20:04
+@@ -43,6 +43,7 @@
+     const: 2
+ 
+   gpio-reserved-ranges:
++    minItems: 1
+     maxItems: 3
+ 
+   interrupt-controller: true

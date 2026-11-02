@@ -226,3 +226,63 @@ Additional notes from the run:
   (`+0x28 = 0x80000`) in samsung_tty.
 - Not tested: connecting or pairing a device, and Wi-Fi coexistence under
   load.
+
+## Bluetooth at boot: patches 0102-0114, built, not booted (2026-11-02)
+
+Goal: Bluetooth comes up by itself at boot, with no hand-written registers.
+Off-hardware only so far.
+
+Patches (after 0101, in `kernel/hoolock-pcie-j81-wifi-h1b.nix`):
+
+- 0102-0110: Orchard's Apple PMIC GPIO driver, applied unchanged with the
+  authors' trailers (pauli1go 0037/0038/0081/0082/0088, Orchard
+  drivers/gpio 0001-0004, Orchard tree b5e3769). Its D2207 data: config byte
+  0x400 + n, mode bits 7:5 (0 = output), level bit 1. So output-high from
+  the boot state 0x09 gives 0x0b, the value proven live. Probe writes
+  nothing for the D2207 (no event block). `CONFIG_GPIO_APPLE_D2365=y`.
+- 0111: Orchard's binding entry for `apple,j81-bcm4350c2-bt`.
+- 0112 (ours): hci_bcm matches that compatible with no board data, so it
+  runs the plain mainline sequence that worked live. Orchard's own match
+  uses the iPad 5/7 board sequence, which nobody has tested on the Air 2.
+  Mainline has no `brcm,bcm4354-bt` entry.
+- 0113 (ours, DT): `pmu_gpio` under the D2207 with
+  `gpio-reserved-ranges = <0 2>, <3 18>`, so only GPIO 2 is usable (GPIO 3,
+  Wi-Fi REG_ON, stays with 0052). serial3 gets a `bluetooth` child:
+  `shutdown-gpios = <&pmu_gpio 2 GPIO_ACTIVE_HIGH>`,
+  `device-wakeup-gpios = <&pinctrl 164 GPIO_ACTIVE_HIGH>`, no `max-speed`
+  (no baud change; 3 Mbaud is a later test), no host-wakeup. Plus a
+  `bluetooth0` alias; m1n1 fills `local-bd-address` through it.
+- 0114 (ours): the GPIO binding gets `minItems: 1` for
+  `gpio-reserved-ranges`. dt-schema reads a bare `maxItems: 3` as exactly
+  three, so any one- or two-range node failed, Orchard's J81 node included.
+
+Firmware: `boot/assemble_private_wifi_payload.py --bt-patchram <hcd>`
+stages the patchram in the private initramfs overlay as
+`lib/firmware/brcm/BCM4354.apple,j81.hcd` (the first name hci_bcm asked
+for live), checked against the Orchard pin (72,360 bytes) and verified like
+the Wi-Fi assets. Never in Git or the Nix store. Without it, hci_bcm logs
+"Patch file not found" during power-on (hci workqueue, after probe) and
+carries on, so boot and USB networking are not blocked.
+
+Checks:
+
+- `j81-dtbs-check`: 9 warnings, 0 new. One known warning moved six lines
+  (a comment removed from t7001.dtsi); the known-warnings file is updated.
+- `m1n1-hoolock-wifi-touch-kmod` built:
+  `/nix/store/n2w3mm92arpz0055scw50qdblibcm9ra-ipad-air2-m1n1-hoolock-wifi-touch-kmod`
+  (GC roots `artifacts/live/gcroot-wifi-touch-kmod-bt` in the main
+  checkout and in the worktree). DTB: `bluetooth0` alias,
+  `serial@20a0cc000/bluetooth` with shutdown on pmu_gpio pin 2 and wakeup
+  on pinctrl pin 164 (0xa4), `uart3-pins` all function 1. System.map:
+  `apple_pmic_gpio_probe`, `d2207_gpio_info`, `bcm_serdev_probe`.
+- `boot/test_assemble_private_wifi_payload.py` passes (new patchram case).
+  `kernel/test_wifi_h1b_payload_contract.py`: the expected patch tail is
+  updated and passes; the test still fails a later check that already
+  fails on the branch before this work (the touch DTB's
+  `firmware-name apple/j81-fwstart.z2fw` trips its no-firmware rule).
+- kunit not run: no driver covered by `j81-kunit` changed.
+
+Expected at boot: `pmu_gpio` probes, hci_uart_bcm binds serial3, hci0
+appears, the controller powers on (0x0402 -> 0x0b, GPIO164 high), and the
+log shows "BCM4354 'brcm/BCM4354.apple,j81.hcd' Patch" then "BCM4350 UART
+37.4 MHz Riesling USI STC" build 1529. Not yet run on hardware.
