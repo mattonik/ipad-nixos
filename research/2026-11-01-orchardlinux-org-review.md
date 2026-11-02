@@ -353,3 +353,10 @@ mismatches only warn. Debug dumps were added.
 Next: find out what iOS sends after discovery to start contact reporting on J81 (the
 iPadOS 15.8.8 `AppleMultitouchN1SPI` is in the kernelcache we already fetched), decode
 report `0x50`, and tolerate the stale length reply after a frame.
+
+**Run Z1e (confirmed touching):** Martin touched continuously ("still touching" at the
+1-minute mark) through a 120 s capture, with the interrupt count logged every 5 s. **The
+count stayed at 6, the post-boot total, for the whole window, with 0 input events.** The
+running J81 firmware sends no interrupts for touches in this state, so contact reporting is
+not enabled, or not routed to the ATN line, after Orchard's iPad 5 discovery sequence.
+Afterwards `apple_z2` was unloaded and `touch-diag release` restored LDO14 and the clock.
