@@ -405,3 +405,16 @@ Where this leaves J81 touch: SPI is fixed, and the bootloader, calibration, regi
 execute and the runtime discovery all work. The firmware sends report `0x50` status frames
 but never signals a touch. That matches micro23's "no response to taps" on Orchard's J81
 port, which uses the same post-boot flow.
+
+**Run Z1i (display sync routed before the firmware boots):** same Z1 boot. For each function
+N: `touch-diag dsync N`, then `insmod apple_z2` (which boots the chip with the pin already
+routed), a 30 s touch window while Martin touched, then `rmmod` and `dsync-restore`.
+- **N = 1:** the read-back word had bit 0 set (`0x00072aa3`, the pin reads high), and **the
+  driver's boot failed: `probe … failed with error -71` (EPROTO)**. Function 1 interferes
+  with the bootloader handshake.
+- **N = 2 and N = 3:** the boot succeeded (input3, input4, two interrupt edges per boot, so the
+  cumulative count went 2 → 4 → 6), but **no interrupts and 0 events during either touch
+  window**.
+
+So display sync, routed before or after the boot, doesn't start contact reporting. Everything
+was restored (GPIO 55 back to `0x00072a82`, LDO14 and clock released).
