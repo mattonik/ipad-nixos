@@ -74,16 +74,31 @@ def capture_adt(device, timeout, idle):
     raise RuntimeError(f"ADT output did not become idle within {timeout:g} seconds")
 
 
-def validate_j81(data, minimum):
+# Per-board identity checks. iPhone 5s boards (A7) come from
+# docs/plans/2026-11-02-iphone5s-bringup.md; J81 stays the default.
+BOARDS = {
+    "j81": ("J81", "t7001", ("A1566",)),
+    "n51": ("N51", "s5l8960x", ("A1453", "A1533")),
+    "n53": ("N53", "s5l8960x", ("A1457", "A1518", "A1528", "A1530")),
+}
+
+
+def validate(data, minimum, board="j81"):
+    target, platform, models = BOARDS[board]
     text = data.decode("utf-8", "replace")
     checks = {
         f"at least {minimum} bytes": len(data) >= minimum,
-        "target-type J81": re.search(r"(?m)^target-type\s+J81\s*$", text) is not None,
-        "platform-name t7001": "platform-name" in text and "t7001" in text,
-        "regulatory model A1566": "regulatory-model-number" in text and "A1566" in text,
+        f"target-type {target}": re.search(rf"(?m)^target-type\s+{target}\s*$", text) is not None,
+        f"platform-name {platform}": "platform-name" in text and platform in text,
+        f"regulatory model {'/'.join(models)}": "regulatory-model-number" in text
+        and any(model in text for model in models),
         "device-tree root": re.search(r"(?m)^name\s+device-tree\s*$", text) is not None,
     }
     return [name for name, passed in checks.items() if not passed]
+
+
+def validate_j81(data, minimum):
+    return validate(data, minimum, "j81")
 
 
 def safe_output(path, parser):
@@ -113,14 +128,10 @@ def write_private(path, data):
 def main():
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     parser = argparse.ArgumentParser(
-        description="Safely capture a connected J81 ADT from PongoOS"
+        description="Safely capture a connected device's ADT from PongoOS"
     )
-    parser.add_argument(
-        "-o",
-        "--output",
-        type=Path,
-        default=REPO / "artifacts/adt" / f"{stamp}-j81.adt",
-    )
+    parser.add_argument("--board", choices=sorted(BOARDS), default="j81")
+    parser.add_argument("-o", "--output", type=Path)
     parser.add_argument("--wait-seconds", type=float, default=60)
     parser.add_argument("--timeout", type=float, default=90, help="whole-capture timeout")
     parser.add_argument(
@@ -130,6 +141,8 @@ def main():
     args = parser.parse_args()
     if args.wait_seconds < 0 or min(args.timeout, args.idle_seconds, args.min_bytes) <= 0:
         parser.error("wait must be non-negative; capture limits must be positive")
+    if args.output is None:
+        args.output = REPO / "artifacts/adt" / f"{stamp}-{args.board}.adt"
     output = safe_output(args.output, parser)
 
     try:
@@ -140,7 +153,7 @@ def main():
     except (usb.core.USBError, RuntimeError) as error:
         raise SystemExit(f"ADT capture failed: {error}") from error
 
-    failures = validate_j81(data, args.min_bytes)
+    failures = validate(data, args.min_bytes, args.board)
     if failures:
         partial = output.with_name(output.name + ".partial")
         write_private(partial, data)
@@ -150,7 +163,7 @@ def main():
 
     write_private(output, data)
     digest = hashlib.sha256(data).hexdigest()
-    print(f"Captured J81 ADT: {output}")
+    print(f"Captured {BOARDS[args.board][0]} ADT: {output}")
     print(f"bytes={len(data)} sha256={digest}")
     print("Contains device identifiers and calibration: keep private and never commit it.")
 

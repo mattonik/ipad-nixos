@@ -76,4 +76,17 @@ with tempfile.TemporaryDirectory() as directory:
     assert output.stat().st_mode & 0o777 == 0o600
 
 assert any(call[0][:5] == (0x21, 3, 0, 0, b"dt\n") for call in transfers)
+
+# iPhone 5s boards: the J81 profile must reject an N51 tree and vice versa.
+module = runpy.run_path(Path(__file__).with_name("dump_adt.py"))
+n51 = b"""target-type                      N51
+platform-name                    73 35 6c 38 39 36 30 78 00 |s5l8960x.|
+regulatory-model-number          41 31 35 33 33 00 |A1533.|
+name                             device-tree
+"""
+assert module["validate"](n51, 1, "n51") == []
+assert module["validate"](n51, 1, "j81")
+assert module["validate"](sample, 1, "n51")
+assert module["validate"](n51, 1, "n53") == ["target-type N53", "regulatory model A1457/A1518/A1528/A1530"]
+assert module["validate_j81"](sample, 1) == []
 print("ADT capture test passed")

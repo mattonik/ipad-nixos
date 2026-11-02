@@ -1245,6 +1245,52 @@
                 "$out/Image.gz" "$out/initramfs.gz" > "$out/m1n1-linux.bin"
               sha256sum "$out/Pongo.bin" "$out/m1n1.bin" "$out/m1n1-linux.bin" > "$out/SHA256SUMS"
             '';
+
+          # iPhone 5s control payload builder (see m1n1-hoolock-n51-control
+          # below). `board` is "n51" or "n53".
+          mkIphone5sControl = board: pkgs.runCommand "iphone5s-${board}-m1n1-hoolock-control" {
+            nativeBuildInputs = [ pkgs.gzip pkgs.dtc pkgs.cpio ];
+          } ''
+            mkdir -p "$out"
+            cp ${inputs.hoolockDocs}/binaries/Pongo.bin "$out/Pongo.bin"
+            cp ${inputs.hoolockM1n1}/m1n1.bin "$out/m1n1.bin"
+            gzip -n -c ${hoolockKernel}/Image > "$out/Image.gz"
+
+            dtb=s5l8960x-${board}.dtb
+            dtc -I dtb -O dts ${hoolockKernel}/dtbs/apple/$dtb \
+              | sed -e '/^\tchosen {$/,/^\t};$/ s/framebuffer@0 {/framebuffer {/' \
+              | dtc -I dts -O dtb -p 0x10000 -o "$out/$dtb"
+            # Fail the build rather than ship a DTB m1n1 cannot fill in.
+            dtc -I dtb -O dts "$out/$dtb" 2>/dev/null | grep -qP '^\t\tframebuffer \{$'
+            dtc -I dtb -O dts "$out/$dtb" 2>/dev/null | grep -q '"apple,${board}"'
+
+            gzip -dc ${inputs.linuxAppleResources}/debug_initrd.img > initramfs.cpio
+            mkdir -p original-etc overlay/etc overlay/usr/bin
+            (cd original-etc && cpio -id --no-absolute-filenames etc/deviceinfo < ../initramfs.cpio)
+            cp original-etc/etc/deviceinfo overlay/etc/deviceinfo
+            printf '\ndeviceinfo_usb_rndis_function="ecm.usb0"\n' >> overlay/etc/deviceinfo
+            touch -d @1 overlay/etc/deviceinfo
+            for f in ${i2cToolsPkg}/bin/*; do
+              cp "$f" "overlay/usr/bin/$(basename "$f")"
+              chmod 755 "overlay/usr/bin/$(basename "$f")"
+              touch -d @1 "overlay/usr/bin/$(basename "$f")"
+            done
+            (cd overlay
+             { printf '%s\0' "etc/deviceinfo"
+               for f in ${i2cToolsPkg}/bin/*; do
+                 printf 'usr/bin/%s\0' "$(basename "$f")"
+               done
+             } | cpio --null -o -H newc --owner=0:0 --reproducible
+            ) >> initramfs.cpio
+            gzip -n -c initramfs.cpio > "$out/initramfs.gz"
+
+            printf '%s\n' 'chosen.bootargs=console=tty0 loglevel=8 ignore_loglevel rdinit=/init PMOS_NO_OUTPUT_REDIRECT pd_ignore_unused clk_ignore_unused' \
+              > "$out/bootargs"
+            cat "$out/m1n1.bin" "$out/bootargs" "$out/$dtb" \
+              "$out/Image.gz" "$out/initramfs.gz" > "$out/m1n1-linux.bin"
+            sha256sum "$out/Pongo.bin" "$out/m1n1.bin" "$out/m1n1-linux.bin" \
+              > "$out/SHA256SUMS"
+          '';
         in {
         # Linux kernel for iPad Air 2 (A8X)
         kernel = modernKernel;
@@ -1657,6 +1703,21 @@
           sha256sum "$out/Pongo.bin" "$out/m1n1.bin" "$out/m1n1-linux.bin" \
             > "$out/SHA256SUMS"
         '';
+
+        # iPhone 5s (A7, S5L8960X) first-boot payloads, one per board:
+        # N51 = iPhone6,1 (A1453/A1533), N53 = iPhone6,2 (A1457/A1518/
+        # A1528/A1530). docs/plans/2026-11-02-iphone5s-bringup.md, step P1.
+        # Same shape as m1n1-hoolock-control above and deliberately no new
+        # kernel: the pinned Hoolock tree already ships s5l8960x-n51/n53.dts,
+        # and hoolockKernel is the Hoolock defconfig with 4 KiB pages (which
+        # A7 needs too). Our J81 patches only add T7001 DT nodes and drivers
+        # that bind to J81-only compatibles, so they are inert here. The only
+        # board change is the DTB; the /chosen/framebuffer@0 rename is the
+        # same m1n1 dt_set_fb() exact-path fix J81 needed. The initramfs
+        # carries the ECM gadget override and i2c-tools (for reading the
+        # Amber PMIC at 0x74), but not btattach or any J81 test hooks.
+        m1n1-hoolock-n51-control = mkIphone5sControl "n51";
+        m1n1-hoolock-n53-control = mkIphone5sControl "n53";
 
         # docs/plans/2026-09-13-j81-ans1-observation-only.md's dedicated
         # ANS1 test payload -- identical to m1n1-hoolock-control above in
