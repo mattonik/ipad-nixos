@@ -113,6 +113,8 @@ def main():
     public_text = base.lower().replace("brcmfmac", "").replace("mkdir -p overlay/lib/firmware", "")
     public_text = public_text.replace("${pkgs.wireless-regdb}/lib/firmware/regulatory.db.p7s", "").replace("${pkgs.wireless-regdb}/lib/firmware/regulatory.db", "")
     public_text = public_text.replace("overlay/lib/firmware/", "")
+    # A DT firmware-name property only names a file the private overlay supplies (touch, bda0d56); it carries no firmware.
+    public_text = re.sub(r"firmware-name \S+", "", public_text)
     assert "firmware" not in public_text, "no chip firmware may be copied into the public payload"
     assert "rdinit=/init" in base and 'deviceinfo_usb_rndis_function="ecm.usb0"' in base, "USB recovery must stay"
     print("PASS: Wi-Fi H1B base contracts (model A and B: host path 0052-0057 + 0063 (+0064), 0065/0066 diagnostics, no 0060/probe drivers, brcmfmac PCIe, no firmware, USB recovery)")
