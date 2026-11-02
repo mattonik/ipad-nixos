@@ -84,6 +84,8 @@ def main():
     args = ap.parse_args()
     fw = args.fw.read_bytes()
 
+    if ssh("echo ok") != "ok":
+        sys.exit(f"cannot reach the iPad over ssh: {ssh('true')}")
     print("uname:", ssh("uname -a"))
     print("cmdline:", ssh("cat /proc/cmdline"))
     for tool in TOOLS:
