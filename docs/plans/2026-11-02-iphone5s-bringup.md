@@ -27,7 +27,7 @@ for the ADT identity check:
 | N51 | iPhone6,1 | A1453, A1533 | `s5l8960x-n51.dts` |
 | N53 | iPhone6,2 | A1457, A1518, A1528, A1530 | `s5l8960x-n53.dts` |
 
-**Open: which board Martin has.** Asked on 2026-11-02.
+**Martin's phone is an A1457, so N53 (iPhone6,2)** (confirmed 2026-11-02).
 
 A7 is the first chip of the same family as A8X. Most SoC blocks share
 drivers and compatibles: our T7001 nodes often carry
@@ -105,7 +105,7 @@ from public teardowns are leads only until the 5s ADT confirms them.
 
 ## Steps to a USB shell
 
-**P0, Martin, no code.** Model number (N51 or N53). iOS version, and confirm
+**P0, Martin, no code.** Model number: A1457, N53 (done). iOS version, and confirm
 it boots normally. Put it in DFU and confirm the Mac sees CPID `0x8960`.
 
 **P1, payload (done in this branch, not built yet).**
@@ -122,14 +122,14 @@ no kernel build when `hoolockKernel` is already in the builder's store.
 Build on the Mac with:
 
 ```
-nix build .#packages.x86_64-linux.m1n1-hoolock-n51-control -o result-n51
+nix build .#packages.x86_64-linux.m1n1-hoolock-n53-control -o result-n53
 ```
 
 **P2, PongoOS and an ADT capture.** Boot to PongoOS with palera1n (or the
 fallbacks above), then:
 
 ```
-nix develop -c python3 boot/dump_adt.py --board n51
+nix develop -c python3 boot/dump_adt.py --board n53
 ```
 
 The capture goes to the Git-ignored `artifacts/adt/` and is private (serial
@@ -140,7 +140,7 @@ controller and SPI instance, Bluetooth UART, PMIC child functions.
 **P3, first Linux boot.** From the PongoOS shell state:
 
 ```
-python3 boot/load_m1n1.py result-n51/m1n1-linux.bin
+python3 boot/load_m1n1.py result-n53/m1n1-linux.bin
 ```
 
 `boot/run_m1n1_debug.sh` is not used here: it verifies a J81 private Wi-Fi
