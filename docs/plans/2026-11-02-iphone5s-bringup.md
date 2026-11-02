@@ -95,7 +95,7 @@ from public teardowns are leads only until the 5s ADT confirms them.
    Mac is unverified. Hoolock's own notes say A7 needs several replugs for the
    exploit to succeed on a Linux host. Fallbacks in order: checkra1n 0.12.4
    (supports A7 and has its own PongoOS shell and override options), then
-   Hoolock's iBoot method (`remote_boot` with gaster, using
+   Hoolock's iBoot method (`remote_boot` with Hoolock's gaster fork, using
    `im4m/0x8960.im4m`), noting gaster has been unreliable on this Mac before.
 2. **The PongoOS method needs a bootable iOS install.** Hoolock's setup guide
    says the PongoOS route only works when the device can boot its normal OS.
@@ -190,9 +190,16 @@ Archived on the NAS (`/Volumes/martin/Projects/Archive/ipad-nixos/`):
 
 - `firmware/ipsw/`: iPhone 5s IPSWs for N51/N53, iOS 7.0.1, 7.1.2, 9.3.5
   and 12.5.8 (the firmware archive thread).
-- `tools/iphone5s/`: checkra1n 0.12.4 for macOS, and source snapshots of
-  HoolockLinux `remote_boot` and `gaster`, each with SHA256SUMS and a
-  README.
+- `tools/iphone5s/` (verified with `shasum -c` on the NAS, 2026-11-02):
+  `checkra1n beta 0.12.4.dmg` (official macOS build), `remote_boot` at
+  `e254a58`, and its pinned submodules as separate archives: Hoolock's own
+  `gaster` fork (`2b9d747`, which is not in 0x7ff/gaster), `hBootPatcher`
+  (`981d35b`), `hKernelFWExtractor` (`1d48403`) and HoolockLinux
+  `plooshfinder` (`c151549`). Upstream 0x7ff/gaster (`7fffffff3`) is kept
+  for reference. The folder's README explains how to reassemble the tree.
+  Rebuilding from git instead has two traps: the submodule URLs use SSH, and
+  `hKernelFWExtractor` points at palera1n/plooshfinder, which lacks the
+  pinned commit.
 
 ## Research backlog (offline, no phone needed)
 
