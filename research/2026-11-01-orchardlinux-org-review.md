@@ -434,3 +434,17 @@ The ADT's `multi-touch` node (J81 capture) lists functions beyond the ones Orcha
 `01 01 00 02`, the same shape as `function-power_ldo` GPIO 95 `01 01 00 00` apart from the
 last byte) and `function-clock_enable` (KLCT). Untested idea: display sync may want to be
 **driven as a GPIO output** (like power_ldo) rather than routed to a peripheral function.
+
+**Run Z1j (display sync driven as a GPIO, new `touch-diag dsync-gpio LEVEL SECONDS`):**
+- **High:** the chip boots but **discovery fails: `device information failed: -74`**, so probe
+  fails. A first low attempt overlapped the still-held high line and failed the same way.
+- **Low (clean rerun):** the boot and discovery succeed (input7), but a 35 s touch window while
+  Martin touched gives **no new interrupts and 0 events**.
+Display sync clearly affects the controller (high, or peripheral function 1, breaks the
+handshake), but no tested setting makes it report contacts. Released afterwards.
+
+**Status: J81 touch parked here (2026-11-02), as agreed with Martin.** Everything up to a
+running N1 firmware that answers discovery works on our stack. The open problem is that the
+firmware never raises ATN for touches. The remaining untested ideas are electrical: the analog
+rail level (LDO14 voltage `0x14` is never changed), `function-enable_cs`, and the PMU
+`function-sensor_power` (`Lump 0x202`), or a bus capture of iOS.

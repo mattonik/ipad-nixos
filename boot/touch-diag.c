@@ -1167,6 +1167,29 @@ static int dsync_restore(void)
 	return 0;
 }
 
+/*
+ * dsync-gpio LEVEL SECONDS: drive display sync (GPIO 55) as a plain GPIO output at LEVEL for SECONDS, then release the line. The ADT describes
+ * function-display_sync like function-power_ldo (a GPIO output), so this tests whether the controller needs it driven rather than routed.
+ */
+static int dsync_gpio(unsigned int level, unsigned int seconds)
+{
+	int fd;
+
+	if (level > 1 || seconds < 1 || seconds > 300) {
+		fprintf(stderr, "dsync-gpio LEVEL(0|1) SECONDS(1..300)\n");
+		return 2;
+	}
+	fd = request_line(GPIO_DISPLAY_SYNC, GPIO_V2_LINE_FLAG_OUTPUT, (int)level, "touch-diag-dsync");
+	if (fd < 0)
+		return 1;
+	say("dsync-gpio: GPIO%d driven %u for %u s (reads %d)\n", GPIO_DISPLAY_SYNC, level, seconds, get_line(fd));
+	for (unsigned int s = 0; s < seconds && !g_signal; s++)
+		msleep(1000);
+	close(fd);
+	say("dsync-gpio: released\n");
+	return 0;
+}
+
 static int run(void)
 {
 	int rc = 1, level_before = -1, level_after = -1, got_edge = 0;
@@ -1400,6 +1423,17 @@ int main(int argc, char **argv)
 		return spi_open() ? 1 : 0;
 	if (!strcmp(cmd, "release"))
 		return release();
+	if (!strcmp(cmd, "dsync-gpio")) {
+		int approve = 0;
+
+		for (int i = 2; i < argc; i++)
+			approve |= !strcmp(argv[i], "--approve-display-sync-pinmux");
+		if (argc < 4 || !approve) {
+			fprintf(stderr, "usage: touch-diag dsync-gpio LEVEL SECONDS --approve-display-sync-pinmux\n");
+			return 2;
+		}
+		return dsync_gpio(strtoul(argv[2], NULL, 0), strtoul(argv[3], NULL, 0));
+	}
 	if (!strcmp(cmd, "dsync-restore"))
 		return dsync_restore();
 	if (!strcmp(cmd, "dsync")) {
