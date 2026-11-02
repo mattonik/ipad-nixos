@@ -114,3 +114,44 @@ registers at baseline). Side note: pin 32's readback in function 1 was
 `0x00072643` on restore, so bit 0 is a level/readback bit, not something
 the `func` write changed. Next: DT `0001`/`0005` to function 1 for all four
 UART3 pads, then hci_uart/btattach at 115,200 and the Broadcom firmware load.
+
+## 0101 off-hardware checks, 2026-11-02
+
+- `j81-dtbs-check` with 0101: pass, 9 warnings, 0 new, 0 fixed.
+- `m1n1-hoolock-wifi-touch-kmod` with 0101: built
+  (`/nix/store/lc8j0n4gnsf222vdi6z36qck3pd2ym78-ipad-air2-m1n1-hoolock-wifi-touch-kmod`,
+  GC root `artifacts/live/gcroot-wifi-touch-kmod-uart3f1`). Its
+  `t7001-j81.dtb` has `uart3-pins { pinmux = <0x1000e 0x1000f 0x10020 0x10021>; }`.
+  Not booted.
+
+## Live bring-up on W1, 2026-11-02: prepared, not yet run
+
+The project owner approved a full live bring-up on the running W1 NixOS
+payload (no reboot). What happened so far:
+
+- Capability check (read-only, over ssh): kernel 7.3.0-rc1, run id
+  `27070e503241158c1c4ff4fe17176305`; `/dev/mem`, `/dev/i2c-0` present;
+  `ttySAC1` = UART3 `0x20a0cc000`; `bluetooth`, `hci_uart` and `btbcm` are
+  built in and the serdev driver `hci_uart_bcm` is registered (UART3 has no
+  serdev child, so the line-discipline path via `btattach -P bcm` is used).
+  No `/proc/config.gz`, no BlueZ userland, no python on the iPad.
+- Pushed to `/tmp/bt`: pinpoke (421e658, with `func`), uartpoke,
+  i2ctransfer, btattach (static), hciscan (new). Baseline unchanged from
+  the morning A/B: 14=0x00072641 15=0x00070221 32=0x00072643
+  33=0x00070221 164=0x00072602, 0x0402 0x09, 0x0010 0x00, UART3 +0x28 0xc.
+- Patchram: `BCM.apple,j81.hcd` (Orchard `devices/j81/firmware.json`,
+  `bluetool-hcd@1` from iPadOS 15.8.8 `usr/sbin/BlueTool`), extracted from
+  the local IPSW on the NAS through Orchard's reader with a local-file
+  shim; 72,360 bytes, sha256 matches Orchard's pin. Kept outside Git.
+- The first register write (pinmux/BT_WAKE/PMU) was refused by Claude's
+  auto-mode tool classifier, so nothing was written. Same situation as
+  2026-10-10: the owner runs the self-restoring script instead.
+
+`boot/bt_live_bringup.py --fw <private hcd>` does the whole sequence and
+restores it: GPIO 14/32 -> function 1, BT_WAKE high, PMU `0x0402` 0x0b;
+`btattach -P bcm -S 115200` once to learn the patchram name the kernel
+asks for; pushes the hcd under that name to `/tmp/fw` (RAM) and points
+`firmware_class.path` there; re-attaches; runs `hciscan 0 20` (counts
+only); then restores every register, the firmware path, deletes
+`/tmp/fw`, and verifies. `boot/hciscan.c` (flake `hciscan-static`) brings
+hciN up and prints only the classic-inquiry and LE-advertiser counts.

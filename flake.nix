@@ -1097,6 +1097,14 @@
             installPhase = "mkdir -p $out/bin && cp uartpeek $out/bin/uartpeek";
           };
 
+          # hciscan: bring hciN up and print only COUNTS of classic/LE devices (boot/hciscan.c); for payloads without BlueZ userland, run-time tool only.
+          hciscanPkg = pkgsCrossMusl.stdenv.mkDerivation {
+            name = "hciscan";
+            dontUnpack = true;
+            buildPhase = "$CC -static -O2 -Wall -Wextra -Werror -o hciscan ${./boot/hciscan.c}";
+            installPhase = "mkdir -p $out/bin && cp hciscan $out/bin/hciscan";
+          };
+
           # Bluetooth bring-up tools, pushed to the iPad at run time (never part of a payload): static btattach and i2c-tools (docs/plans/2026-10-08-j81-bluetooth-battery-adt.md).
           btUserlandPkg = pkgs.runCommand "ipad-air2-bt-userland" {} ''
             mkdir -p "$out/bin"
@@ -1409,6 +1417,7 @@
         bt-userland-static = btUserlandPkg;
         pinpoke-static = pinpokePkg;
         uartpeek-static = uartpeekPkg;
+        hciscan-static = hciscanPkg;
         touch-diag-static = touchDiagStaticPkg;
         # Driver reload loop (docs/kmod-reload.md).
         hoolock-wifi-kmod-kernel = hoolockWifiKmodKernel;
