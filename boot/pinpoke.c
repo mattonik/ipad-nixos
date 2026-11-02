@@ -1,12 +1,15 @@
 /*
  * pinpoke: read the Apple GPIO pad register of one pin of the T7000/T7001 pinctrl block (0x20e300000) through /dev/mem, and (for ONE allow-listed pin only)
- * drive it. A bring-up tool for the iPad Air 2 Bluetooth BT_WAKE line (AP GPIO 164, ADT bluetooth node `function-bt_wake`); nothing else can be written.
+ * drive it. A bring-up tool for the iPad Air 2 Bluetooth BT_WAKE line (AP GPIO 164, ADT bluetooth node `function-bt_wake`), plus the peripheral-function
+ * field of the two UART3 output pads (AP GPIO 14 TX, 32 RTS) for the 2026-11-02 pinmux A/B; nothing else can be written.
  * Run only with the user's explicit approval (2026-10-10) on the running iPad; the test-only payload m1n1-hoolock-wifi-btwake does the same with a DT gpio-hog.
  *
  *   pinpoke read PIN                  print the 32-bit register of PIN (any pin 0..255)
  *   pinpoke high 164                  read-modify-write: PERIPH=0, MODE=OUT, DATA=1 (what the kernel's gpio direction_output(1) does); other bits kept
  *   pinpoke low 164                   same with DATA=0
  *   pinpoke restore 164 0xVALUE       write back a previously read register value (only for the allow-listed pin)
+ *   pinpoke func 14|32 1|2            read-modify-write of PERIPH (bits 6:5) only, on UART3 TX (14) or RTS (32); every other bit kept.
+ *                                     Our DT uses function 2; BAT-4 proved function 2 wrong for UART5's GPIO34 and function 1 right.
  *
  * Register layout (drivers/pinctrl/pinctrl-apple-gpio.c): reg = base + 4*pin; DATA bit 0, MODE bits 3:1 (1 = output), PERIPH bits 6:5, pull bits 8:7, input enable bit 9.
  * Writes are refused for every pin except WRITE_PIN, and `restore` refuses values that set the lock bit (bit 21) or a peripheral function.
@@ -21,6 +24,8 @@
 
 #define PINCTRL_BASE 0x20e300000ULL
 #define WRITE_PIN 164
+#define FUNC_PIN_TX 14
+#define FUNC_PIN_RTS 32
 #define REG_DATA (1u << 0)
 #define REG_MODE_MASK (7u << 1)
 #define REG_MODE_OUT (1u << 1)
@@ -50,7 +55,7 @@ int main(int argc, char **argv)
 	uint32_t v;
 
 	if (argc < 3) {
-		fprintf(stderr, "usage: %s read PIN | high 164 | low 164 | restore 164 0xVALUE\n", argv[0]);
+		fprintf(stderr, "usage: %s read PIN | high 164 | low 164 | restore 164 0xVALUE | func 14|32 1|2\n", argv[0]);
 		return 1;
 	}
 	pin = atoi(argv[2]);
@@ -61,6 +66,29 @@ int main(int argc, char **argv)
 	if (strcmp(argv[1], "read") == 0) {
 		reg = map_reg(pin, &fd, &base);
 		printf("pin %d reg 0x%08x\n", pin, *reg);
+		return 0;
+	}
+	if (strcmp(argv[1], "func") == 0) {
+		long f;
+
+		if (pin != FUNC_PIN_TX && pin != FUNC_PIN_RTS) {
+			fprintf(stderr, "refusing to change the function of pin %d (only %d and %d)\n", pin, FUNC_PIN_TX, FUNC_PIN_RTS);
+			return 1;
+		}
+		if (argc != 4 || (strcmp(argv[3], "1") != 0 && strcmp(argv[3], "2") != 0)) {
+			fprintf(stderr, "function must be 1 or 2\n");
+			return 1;
+		}
+		f = argv[3][0] - '0';
+		reg = map_reg(pin, &fd, &base);
+		v = *reg;
+		if (v & REG_LOCK) {
+			fprintf(stderr, "pad is locked\n");
+			return 1;
+		}
+		v = (v & ~REG_PERIPH_MASK) | ((uint32_t)f << 5);
+		*reg = v;
+		printf("pin %d reg now 0x%08x\n", pin, *reg);
 		return 0;
 	}
 	if (pin != WRITE_PIN) {

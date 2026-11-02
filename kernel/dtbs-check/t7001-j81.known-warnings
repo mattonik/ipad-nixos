@@ -27,4 +27,4 @@ arch/arm64/boot/dts/apple/t7001-j81.dtb: serial@20a0d4000 (apple,s5l-uart): Unev
 arch/arm64/boot/dts/apple/t7001-j81.dtb: touch-diag@0 (rohm,dh2228fv): 'spi-cpol', 'spi-cs-hold-delay-ns', 'spi-cs-setup-delay-ns' do not match any of the regexes: '^pinctrl-[0-9]+$' [from schema $id: http://devicetree.org/schemas/trivial-devices.yaml]
 
 # Patch 0090: Wi-Fi endpoint sits on bus 1 but its root port has no bus-range; harmless at runtime (Linux assigns buses), worth a bus-range = <1 1> later.
-arch/arm64/boot/dts/apple/t7001.dtsi:477.24-481.7: Warning (pci_device_bus_num): /soc/pcie@610000000/pci@1,0/network@0,0: PCI bus number 1 out of range, expected (0 - 0)
+arch/arm64/boot/dts/apple/t7001.dtsi:471.24-475.7: Warning (pci_device_bus_num): /soc/pcie@610000000/pci@1,0/network@0,0: PCI bus number 1 out of range, expected (0 - 0)

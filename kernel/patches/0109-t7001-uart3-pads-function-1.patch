@@ -1,0 +1,35 @@
+--- a/arch/arm64/boot/dts/apple/t7001.dtsi
++++ b/arch/arm64/boot/dts/apple/t7001.dtsi
+@@ -418,18 +418,22 @@
+ 			};
+ 
+ 			/*
+-			 * AP GPIO 14 (TX) and 32 (RTS), function 2 (UART),
+-			 * independently decoded from the real J81 ADT's
+-			 * function-tx/function-rts OIPG descriptors on
+-			 * uart3, then cross-checked against the pre-existing
+-			 * J82-derived numbers in the plan doc -- exact match.
+-			 * RX/CTS are not separately pin-muxed in the ADT
+-			 * (fixed routing on this controller); only TX/RTS
+-			 * need an explicit pinmux entry here.
++			 * UART3 (Bluetooth): AP GPIO 14 TX, 15 RX, 32 RTS,
++			 * 33 CTS, all peripheral function 1. The pins come
++			 * from the J81 ADT's function-tx/function-rts; the
++			 * function does not (the OIPG flags byte said 2, the
++			 * same wrong rule BAT-4 found on UART5's GPIO34).
++			 * With TX/RTS on function 2 the BCM4350C2 never saw
++			 * a byte; on function 1 it answers HCI Reset at
++			 * 115,200 (research/2026-11-02-bt-uart3-pinmux-lead.md).
++			 * RX/CTS already read function 1 from iBoot; they
++			 * are listed so Linux does not depend on that.
+ 			 */
+ 			uart3_pins: uart3-pins {
+-				pinmux = <APPLE_PINMUX(14, 2)>,
+-					 <APPLE_PINMUX(32, 2)>;
++				pinmux = <APPLE_PINMUX(14, 1)>,
++					 <APPLE_PINMUX(15, 1)>,
++					 <APPLE_PINMUX(32, 1)>,
++					 <APPLE_PINMUX(33, 1)>;
+ 			};
+ 
+ 			/*

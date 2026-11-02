@@ -10,6 +10,7 @@ selected NVRAM, under the canonical names the pinned brcmfmac loader requests wh
     lib/firmware/brcm/brcmfmac4350c2-pcie.clm_blob    <- rieslinga.clmb
     lib/firmware/brcm/brcmfmac4350c2-pcie.txcap_blob  <- rieslinga.txcb
     lib/firmware/brcm/brcmfmac4350c2-pcie.txt         <- the tuple-selected NVRAM (whitespace-normalised)
+    lib/firmware/brcm/BCM4354.apple,j81.hcd           <- optional (--bt-patchram): the Bluetooth patchram hci_bcm asks for
 
 The selection is made here, explicitly, from the OTP-proven identity (research/2026-10-06-bcm4350-otp-
 parser-result.md); the driver is not asked to choose. The output (firmware, NVRAM, hashes, run token)
@@ -46,6 +47,9 @@ BINARIES = {
     "rieslinga.clmb": (BASE + ".clm_blob", "f1a77b5d933be97f472530c10c9c8d3ae204e8977c32275a113798c00cb2fa66", 9001),
     "rieslinga.txcb": (BASE + ".txcap_blob", "9d270addd113628f9d30fe89a7cbd27ce127503343b5e7bb1ba7b1072cd1722a", 316),
 }
+# Bluetooth patchram: Orchard devices/j81/firmware.json bluetool-hcd@1 output (iPadOS 15.8.8 usr/sbin/BlueTool), staged under the first name
+# hci_bcm requests on J81 (research/2026-11-02-bt-uart3-pinmux-lead.md).
+BT_PATCHRAM = ("BCM4354.apple,j81.hcd", "9bf34c420336303d8c46a4f70c5bd47b771675a9ba18b64a8e6ef70528494019", 72360)
 NVRAM_NAME = "P-rieslinga_M-CIDR_V-u__m-2.1.txt"
 NVRAM_STAGED = BASE + ".txt"
 FORBIDDEN_WIFI_TOOLS = {"wpa_supplicant", "wpa_cli", "hostapd", "iw", "iwctl", "iwd", "NetworkManager",
@@ -204,7 +208,7 @@ def wifi_userland_entries(userland_dir, credentials_file):
 
 
 def assemble(public, assets, out, nvram_name=NVRAM_NAME, check_hashes=True, token=None, extra_bootargs=(), nvram_macaddr=None,
-             wifi_userland=None, wifi_credentials=None, production=False):
+             wifi_userland=None, wifi_credentials=None, production=False, bt_patchram=None):
     out = private_out_dir(out)
     if out.exists() and any(out.iterdir()):
         raise SystemExit(f"{out} already exists and is not empty")
@@ -219,6 +223,15 @@ def assemble(public, assets, out, nvram_name=NVRAM_NAME, check_hashes=True, toke
             raise SystemExit(f"{src} does not match the recorded 12B410 C2 asset (size/SHA-256)")
         files.append((staged_name, data))
         manifest_assets.append({"source": src, "staged": staged_name, "size": len(data), "sha256": sha256(data)})
+    if bt_patchram:
+        staged_name, want_hash, want_size = BT_PATCHRAM
+        data = Path(bt_patchram).read_bytes()
+        if not data:
+            raise SystemExit(f"{bt_patchram} is empty")
+        if check_hashes and (sha256(data) != want_hash or len(data) != want_size):
+            raise SystemExit(f"{bt_patchram} does not match the recorded J81 Bluetooth patchram (size/SHA-256)")
+        files.append((staged_name, data))
+        manifest_assets.append({"source": Path(bt_patchram).name, "staged": staged_name, "size": len(data), "sha256": sha256(data)})
     raw = (assets / nvram_name).read_bytes()
     staged, npairs = check_nvram(raw)
     macaddr = None
@@ -346,6 +359,7 @@ def main():
     ap.add_argument("--wifi-userland", type=Path, help="directory with static iw, wpa_supplicant, wpa_cli (flake package wifi-userland-static; bin/ is accepted); starts Wi-Fi at boot with --wifi-credentials")
     ap.add_argument("--wifi-credentials", type=Path, help="private wpa_supplicant.conf (ssid/psk); installed only into the private payload, mode 0600, never recorded in the manifest")
     ap.add_argument("--production", action="store_true", help="payload of the production kernel (m1n1-hoolock-wifi): quiet brcmfmac logging, so the brcmfmac.debug bootarg is not required")
+    ap.add_argument("--bt-patchram", type=Path, help="private Bluetooth patchram (BCM.apple,j81.hcd); staged as lib/firmware/brcm/BCM4354.apple,j81.hcd for hci_bcm at boot")
     ap.add_argument("--no-hash-check", action="store_true", help="test fixtures only (synthetic assets)")
     args = ap.parse_args()
     if args.verify:
@@ -362,7 +376,8 @@ def main():
         ap.error("--public, --assets and --out are required")
     manifest = assemble(args.public, args.assets, args.out, args.nvram, check_hashes=not args.no_hash_check,
                         extra_bootargs=args.extra_bootarg, nvram_macaddr=args.nvram_macaddr,
-                        wifi_userland=args.wifi_userland, wifi_credentials=args.wifi_credentials, production=args.production)
+                        wifi_userland=args.wifi_userland, wifi_credentials=args.wifi_credentials, production=args.production,
+                        bt_patchram=args.bt_patchram)
     problems, _ = verify(args.out)
     if problems:
         print("FAIL after assembly:", problems)

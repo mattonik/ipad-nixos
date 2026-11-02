@@ -104,6 +104,23 @@ let
     patch -d "$out" -p1 < ${./patches/0106-orchard-spi-Apply-GPIO-chip-select-delays-only-once.patch}
     patch -d "$out" -p1 < ${./patches/0107-orchard-pinctrl-apple-Let-GPIO-interrupts-be-wakeup-sources.patch}
     patch -d "$out" -p1 < ${./patches/0108-orchard-power-supply-bq27xxx-Report-discharging-at-full-char.patch}
+    # UART3 (Bluetooth) pads on function 1, not 2: live A/B 2026-11-02 got the first HCI Reset reply (research/2026-11-02-bt-uart3-pinmux-lead.md).
+    patch -d "$out" -p1 < ${./patches/0109-t7001-uart3-pads-function-1.patch}
+    # Bluetooth at boot: Orchard's Apple PMIC GPIO driver with D2207 support (0110-0118, bindings kept) and the BCM4350C2 binding (0119),
+    # an hci_bcm match without board data (0120), and the DT: pmu_gpio with only GPIO 2 usable, the serial3 bluetooth child (0121); 0122 lets the binding take fewer than three reserved ranges.
+    patch -d "$out" -p1 < ${./patches/0110-orchard-dt-bindings-gpio-add-Apple-D2365-PMIC-GPIOs.patch}
+    patch -d "$out" -p1 < ${./patches/0111-orchard-gpio-add-Apple-D2365-PMIC-driver.patch}
+    patch -d "$out" -p1 < ${./patches/0112-orchard-dt-bindings-gpio-apple-Add-D2333-PMIC-GPIO-controlle.patch}
+    patch -d "$out" -p1 < ${./patches/0113-orchard-gpio-apple-Add-D2333-PMIC-GPIO-support.patch}
+    patch -d "$out" -p1 < ${./patches/0114-orchard-dt-bindings-gpio-apple-Allow-three-reserved-GPIO-ran.patch}
+    patch -d "$out" -p1 < ${./patches/0115-orchard-dt-bindings-gpio-apple-d2365-pmic-gpio-Describe-the-.patch}
+    patch -d "$out" -p1 < ${./patches/0116-orchard-gpio-apple-d2365-Add-the-PMU-event-interrupt-control.patch}
+    patch -d "$out" -p1 < ${./patches/0117-orchard-dt-bindings-gpio-apple-d2365-pmic-gpio-Add-the-D2207.patch}
+    patch -d "$out" -p1 < ${./patches/0118-orchard-gpio-apple-d2365-Add-D2207-PMIC-GPIO-support.patch}
+    patch -d "$out" -p1 < ${./patches/0119-orchard-dt-bindings-net-bluetooth-brcm-Add-iPad-Air-2-BCM435.patch}
+    patch -d "$out" -p1 < ${./patches/0120-hci-bcm-j81-bcm4350c2-match.patch}
+    patch -d "$out" -p1 < ${./patches/0121-t7001-air2-pmic-gpio-and-bluetooth.patch}
+    patch -d "$out" -p1 < ${./patches/0122-dt-bindings-gpio-apple-pmic-gpio-reserved-ranges-min-items.patch}
   '';
   buildArgs = builtins.removeAttrs args [ "source" "hoolockConfig" "runCommand" ];
 in

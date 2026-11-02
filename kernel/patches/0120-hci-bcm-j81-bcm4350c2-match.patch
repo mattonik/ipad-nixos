@@ -1,0 +1,22 @@
+Bluetooth: hci_bcm: match the iPad Air 2 (J81) BCM4350C2
+
+Match apple,j81-bcm4350c2-bt (Orchard's compatible, binding in 0111) with
+no board data: the mainline sequence at 115,200 is the one verified on
+hardware (research/2026-11-02-bt-uart3-pinmux-lead.md). Orchard's own
+match uses the iPad 5/7 board sequence, not yet validated on the Air 2.
+
+diff -ruN a/drivers/bluetooth/hci_bcm.c b/drivers/bluetooth/hci_bcm.c
+--- a/drivers/bluetooth/hci_bcm.c	2026-11-02 17:16:06
++++ b/drivers/bluetooth/hci_bcm.c	2026-11-02 17:16:06
+@@ -1592,6 +1592,11 @@
+ 	{ .compatible = "brcm,bcm43438-bt", .data = &bcm43438_device_data },
+ 	{ .compatible = "brcm,bcm4349-bt", .data = &bcm43438_device_data },
+ 	{ .compatible = "brcm,bcm43540-bt", .data = &bcm4354_device_data },
++	/*
++	 * iPad Air 2: the plain sequence (115,200 baud, patchram, no early
++	 * baud change) is the one verified on hardware.
++	 */
++	{ .compatible = "apple,j81-bcm4350c2-bt" },
+ 	{ .compatible = "brcm,bcm4335a0" },
+ 	{ .compatible = "cypress,cyw4373a0-bt", .data = &cyw4373a0_device_data },
+ 	{ .compatible = "infineon,cyw55572-bt", .data = &cyw55572_device_data },
