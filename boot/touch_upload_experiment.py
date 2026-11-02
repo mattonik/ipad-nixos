@@ -42,6 +42,8 @@ def main():
     ap.add_argument("--fw-file", default="00-firmware-transfer.bin", help="packet file inside --packets to send as the firmware transfer (e.g. a rebuilt pkt-64@0.bin)")
     ap.add_argument("--chunk-delay-us", type=int, default=0, help="with --apple and --chunk: pause after each chunk of the single chip-select interval, in us")
     ap.add_argument("--ack-in-message", action="store_true", help="with --apple: send the packet and the 1a a1 query as two adjacent transfers of ONE spi message (chip select held), like the upstream apple_z2 driver")
+    ap.add_argument("--cal-files", default="", help="comma-separated calibration packet files inside --packets (boot/touch_fw_rebuild.py framing to 0x10009000...), sent after the firmware ACK, each ACK-checked (4b c1)")
+    ap.add_argument("--n1-boot", action="store_true", help="after the firmware (and --cal-files): N1 register calibration, 1f 01, execute 1d 53 at 0x10003400 (touch-diag --n1-boot --approve-execute); then watch the IRQ line 2 s")
     ap.add_argument("--tool", default=str(HERE.parent / "artifacts/live/gcroot-touch-diag/bin/touch-diag"))
     ap.add_argument("--packets", default=str(HERE.parent / "firmware/j81-12B410/touch/upload-packets"))
     a = ap.parse_args()
@@ -63,11 +65,19 @@ def main():
     (stage / "touch-diag").write_bytes(pathlib.Path(a.tool).read_bytes())
     (stage / "fw.bin").write_bytes(fw)
     (stage / "ack.bin").write_bytes(ack)
+    cal_names = [c for c in a.cal_files.split(",") if c]
+    for i, c in enumerate(cal_names):
+        import touch_fw_rebuild as rb
+        cal = (pk / c).read_bytes()
+        _, addr = rb.parse(cal)
+        assert 0x10009000 <= addr < 0x10009400, "calibration packets must target 0x10009000..0x100093ff"
+        (stage / f"cal{i}.bin").write_bytes(cal)
     handler = lambda *x, **k: http.server.SimpleHTTPRequestHandler(*x, directory=str(stage), **k)  # noqa: E731
     srv = http.server.ThreadingHTTPServer(("", PORT), handler)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     try:
-        out = run(f"mkdir -p /tmp/t && cd /tmp/t && for f in touch-diag fw.bin ack.bin; do wget -q -O $f http://{HOST}:{PORT}/$f || echo FETCHFAIL $f; done; chmod 755 touch-diag; ls -l; "
+        cals = " ".join(f"cal{i}.bin" for i in range(len(cal_names)))
+        out = run(f"mkdir -p /tmp/t && cd /tmp/t && for f in touch-diag fw.bin ack.bin {cals}; do wget -q -O $f http://{HOST}:{PORT}/$f || echo FETCHFAIL $f; done; chmod 755 touch-diag; ls -l; "
                   "cat /sys/module/spidev/parameters/bufsiz; ls /dev/spidev* 2>&1; ./touch-diag plan | head -3", timeout=120)
         print(out[0])
         if "FETCHFAIL" in out[0]:
@@ -78,12 +88,12 @@ def main():
             print("dry run finished; add --go to power the controller and send the firmware packet")
             return
         apple = ("--apple-order --apple-upload" if a.apple else "") + (" --upload-rx" if a.upload_rx else "") + (" --ack-in-message" if a.ack_in_message else "") + (" --display-sync-pinmux --approve-display-sync-pinmux" if a.display_sync else "")
-        upload = "" if a.detect_only else f"--probe-sizes {a.probe_sizes}" + (" --probe-txonly" if a.probe_txonly else "") if a.probe_sizes else f"--chunk {a.chunk} --chunk-delay-us {a.chunk_delay_us} --upload-fw fw.bin --upload-ack ack.bin --ack-tries {a.ack_tries if a.ack_tries is not None else 5 if a.apple else 6} --approve-firmware-upload"
+        upload = "" if a.detect_only else f"--probe-sizes {a.probe_sizes}" + (" --probe-txonly" if a.probe_txonly else "") if a.probe_sizes else f"--chunk {a.chunk} --chunk-delay-us {a.chunk_delay_us} --upload-fw fw.bin --upload-ack ack.bin --ack-tries {a.ack_tries if a.ack_tries is not None else 5 if a.apple else 6} --approve-firmware-upload" + "".join(f" --upload-cal cal{i}.bin" for i in range(len(cal_names))) + (" --n1-boot --approve-execute" if a.n1_boot else "")
         print(run(f"cd /tmp/t && ./touch-diag run --execute --approve-pmu-write --spi-dev {dev} --spi-hz {a.spi_hz} --spi-mode {a.spi_mode} --word-delay-us {a.word_delay_us} {'--spi-msb' if a.spi_msb else ''} {apple} {upload}; "
-                  "echo EXIT=$?; rm -f fw.bin", timeout=180)[0])
+                  "echo EXIT=$?; rm -f fw.bin cal*.bin", timeout=180)[0])
     finally:
         srv.shutdown()
-        run("rm -f /tmp/t/fw.bin /tmp/t/ack.bin", timeout=20)
+        run("rm -f /tmp/t/fw.bin /tmp/t/ack.bin /tmp/t/cal*.bin", timeout=20)
 
 
 main()

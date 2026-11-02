@@ -712,6 +712,199 @@ out:
  * transfer, time each one, and summarise the reply. Finds where the SPI controller's PIO path breaks (transfers larger than its 16-byte FIFO hung in the T3 run).
  * Stops at the first failed transfer.
  */
+/*
+ * N1 post-firmware boot (--upload-cal FILE... --n1-boot --approve-execute), after OrchardLinux's J81/J71t apple_z2 N1 path (kernel/patches/drivers/input/0009,
+ * 0014; iOS MTSPIBootloader_N1): the unit's calibration packets (each 18 e1 data packet sent transmit-only, ATN_ACK 4b c1, up to five attempts), the register
+ * calibration (1e 33 masked writes, ATN_ACK 4a d1), the calibration request 1f 01 (65 ms), and the execute command 1d 53 at 0x10003400. The tool then only watches
+ * the interrupt line and sends NOP frames; the usual unwind powers the controller off. Calibration bytes are never printed.
+ */
+static const char *g_cal_files[4];
+static unsigned int g_num_cal;
+static int g_n1_boot;
+
+static int n1_xfer(const uint8_t *tx, uint8_t *rx, unsigned int n)
+{
+	struct spi_ioc_transfer t;
+
+	memset(&t, 0, sizeof(t));
+	t.tx_buf = (uintptr_t)tx;
+	t.rx_buf = (uintptr_t)rx;
+	t.len = n;
+	t.speed_hz = g_spi_hz;
+	t.bits_per_word = 8;
+	t.word_delay_usecs = g_word_delay_us;
+	if (ioctl(g_spi, SPI_IOC_MESSAGE(1), &t) < 0) {
+		perror("spi transfer");
+		return -1;
+	}
+	return 0;
+}
+
+static int n1_ack(uint16_t *reply)
+{
+	static const uint8_t q[2] = { 0x1a, 0xa1 };
+	uint8_t rx[2] = { 0 };
+
+	if (n1_xfer(q, rx, 2))
+		return -1;
+	*reply = (uint16_t)(rx[0] << 8 | rx[1]);
+	return 0;
+}
+
+/* N1 values: two BE16 halves, low half first. */
+static void n1_put32(uint8_t *p, uint32_t v)
+{
+	p[0] = (uint8_t)(v >> 8);
+	p[1] = (uint8_t)v;
+	p[2] = (uint8_t)(v >> 24);
+	p[3] = (uint8_t)(v >> 16);
+}
+
+static uint16_t n1_sum(const uint8_t *p, unsigned int n)
+{
+	uint16_t s = 0;
+
+	while (n--)
+		s = (uint16_t)(s + *p++);
+	return s;
+}
+
+static int n1_read_reg(uint32_t addr, uint32_t *value)
+{
+	static const uint8_t result[8] = { 0x1a, 0xa1, 0x18, 0xe1, 0x18, 0xe1, 0x18, 0xe1 };
+	uint8_t tx[8] = { 0x1c, 0x73 }, rx[8] = { 0 };
+	uint16_t s;
+
+	n1_put32(tx + 2, addr);
+	s = n1_sum(tx + 2, 4);
+	tx[6] = (uint8_t)(s >> 8);
+	tx[7] = (uint8_t)s;
+	if (n1_xfer(tx, rx, 8) || n1_xfer(result, rx, 8))
+		return -1;
+	*value = (uint32_t)(rx[2] << 8 | rx[3]) | (uint32_t)(rx[4] << 8 | rx[5]) << 16;
+	say("n1: read  0x%08x = 0x%08x (reply %02x %02x)\n", addr, *value, rx[0], rx[1]);
+	return 0;
+}
+
+static int n1_write_reg(uint32_t addr, uint32_t value)
+{
+	uint8_t tx[16] = { 0x1e, 0x33 }, rx[16];
+	uint16_t s, reply = 0;
+
+	n1_put32(tx + 2, addr);
+	n1_put32(tx + 6, 0xffffffff);
+	n1_put32(tx + 10, value);
+	s = n1_sum(tx + 2, 12);
+	tx[14] = (uint8_t)(s >> 8);
+	tx[15] = (uint8_t)s;
+	if (n1_xfer(tx, rx, 16) || n1_ack(&reply))
+		return -1;
+	say("n1: write 0x%08x = 0x%08x: ACK %04x%s\n", addr, value, reply, reply == 0x4ad1 ? "" : "  (expected 4ad1)");
+	return reply == 0x4ad1 ? 0 : -1;
+}
+
+static int n1_send_packet(const char *path)
+{
+	unsigned int n = 0;
+	uint8_t *p = slurp(path, 0x10000, &n);
+	uint16_t reply = 0;
+	int rc = -1;
+
+	if (!p)
+		return -1;
+	if (n < 20 || p[0] != 0x18 || p[1] != 0xe1 || p[2] != 0x30 || p[3] != 0x01 || (n & 3)) {
+		fprintf(stderr, "%s: not an 18 e1 30 01 data packet\n", path);
+		goto out;
+	}
+	for (unsigned int k = 0; k < 5; k++) {
+		struct spi_ioc_transfer t;
+
+		if (k)
+			usleep_(1500);
+		memset(&t, 0, sizeof(t));
+		t.tx_buf = (uintptr_t)p;
+		t.len = n;
+		t.speed_hz = g_spi_hz;
+		t.bits_per_word = 8;
+		t.word_delay_usecs = g_word_delay_us;
+		if (ioctl(g_spi, SPI_IOC_MESSAGE(1), &t) < 0 || n1_ack(&reply)) {
+			perror("calibration packet");
+			goto out;
+		}
+		say("n1: calibration packet %u bytes, attempt %u: ACK %04x\n", n, k + 1, reply);
+		if (reply == 0x4bc1) {
+			rc = 0;
+			break;
+		}
+	}
+out:
+	free(p);
+	return rc;
+}
+
+static int n1_boot(void)
+{
+	/* J81/J82 personality C1F15,2 (OrchardLinux 0014, iPadOS 15.8 AppleMultitouchSPI J82); const-cal 2 on controller 0x434d11a0, else 3. */
+	static const struct { uint32_t addr, value; } regs[] = {
+		{ 0x10003060, 6068 },	/* fll-mval */
+		{ 0x1000305c, 0x20 },
+		{ 0x10003058, 6 },
+		{ 0x10003000, 3 },	/* const-cal */
+		{ 0x10003518, 1 },	/* clk32-clock-enable */
+	};
+	uint8_t ex[12] = { 0x1d, 0x53 }, nop[16] = { 0x1a, 0xa1, 0x18, 0xe1, 0x18, 0xe1, 0x18, 0xe1, 0x18, 0xe1, 0x18, 0xe1, 0x18, 0xe1, 0x18, 0xe1 };
+	uint8_t rx[16];
+	uint32_t version = 0, v = 0;
+	uint16_t s, reply = 0;
+	int edges = 0;
+
+	for (unsigned int i = 0; i < g_num_cal; i++)
+		if (n1_send_packet(g_cal_files[i]))
+			return -1;
+	if (!g_n1_boot)
+		return 0;
+	if (n1_read_reg(0x10008ffc, &version))
+		return -1;
+	for (unsigned int i = 0; i < sizeof(regs) / sizeof(regs[0]); i++)
+		if (n1_write_reg(regs[i].addr, regs[i].addr == 0x10003000 && version == 0x434d11a0 ? 2 : regs[i].value))
+			return -1;
+	if (n1_read_reg(0x10003800, &v))	/* SPI_APU_EN, logged only */
+		return -1;
+	{
+		static const uint8_t cal[2] = { 0x1f, 0x01 };
+		uint8_t crx[2] = { 0 };
+
+		if (n1_xfer(cal, crx, 2))
+			return -1;
+		msleep(65);
+		if (n1_ack(&reply))
+			return -1;
+		say("n1: calibration request 1f 01: reply %02x %02x, status %04x\n", crx[0], crx[1], reply);
+	}
+	n1_put32(ex + 2, 0x10003400);
+	ex[6] = 0x00; ex[7] = 0x01; ex[8] = 0x00; ex[9] = 0x00;	/* LE32 0x100 */
+	s = n1_sum(ex + 2, 8);
+	ex[10] = (uint8_t)(s >> 8);
+	ex[11] = (uint8_t)s;
+	if (n1_xfer(ex, rx, 12))
+		return -1;
+	say("n1: execute 1d 53 0x10003400 sent (irq level %d)\n", get_line(g_irq_fd));
+	msleep(42);
+	/* Watch the interrupt line for 2 s: a running N1 firmware raises it when it has a report. */
+	for (int ms = 0; ms < 2000; ms += 10) {
+		struct pollfd pf = { .fd = g_irq_fd, .events = POLLIN };
+		struct gpio_v2_line_event ev;
+
+		if (poll(&pf, 1, 10) > 0 && read(g_irq_fd, &ev, sizeof(ev)) == (ssize_t)sizeof(ev))
+			edges++;
+	}
+	say("n1: after execute: %d irq edges in 2 s, irq level %d\n", edges, get_line(g_irq_fd));
+	if (n1_xfer(nop, rx, 16))
+		return -1;
+	hexline("post-exec nop", nop, rx, 16);
+	return 0;
+}
+
 static int probe_sizes(void)
 {
 	char *list = strdup(g_probe_sizes), *tok, *save = NULL;
@@ -997,6 +1190,8 @@ static int run(void)
 		say("step 7: firmware upload experiment\n");
 		if (upload_firmware())
 			goto out;
+		if ((g_num_cal || g_n1_boot) && n1_boot())
+			goto out;
 	} else if (g_spi_dev && (got_edge || g_detect_ok)) {
 		say("step 7: minimal frames (handshake only: no firmware, no register write)\n");
 		if (spi_frame("wake", F_WAKE, sizeof(F_WAKE)) ||
@@ -1038,6 +1233,8 @@ int main(int argc, char **argv)
 			g_probe_txonly = 1;
 		else if (!strcmp(argv[i], "--upload-rx"))
 			g_upload_rx = 1;
+		else if (!strcmp(argv[i], "--n1-boot"))
+			g_n1_boot = 1;
 	}
 	for (int i = 2; i + 1 < argc; i++) {
 		if (!strcmp(argv[i], "--spi-dev"))
@@ -1060,6 +1257,8 @@ int main(int argc, char **argv)
 			g_ack_tries = strtoul(argv[i + 1], NULL, 0);
 		else if (!strcmp(argv[i], "--upload-ack"))
 			g_ack_file = argv[i + 1];
+		else if (!strcmp(argv[i], "--upload-cal") && g_num_cal < 4)
+			g_cal_files[g_num_cal++] = argv[i + 1];
 	}
 	if (g_chunk && (g_chunk < 4 || g_chunk > 32768 || (g_chunk & 3))) {
 		fprintf(stderr, "--chunk must be 4..32768 and a multiple of 4\n");
@@ -1105,6 +1304,16 @@ int main(int argc, char **argv)
 			if (!g_fw_file || !g_ack_file || !g_spi_dev || !up) {
 				fprintf(stderr, "firmware upload needs --spi-dev, --upload-fw, --upload-ack and --approve-firmware-upload\n");
 				return 2;
+			}
+			if (g_n1_boot) {
+				int ex = 0;
+
+				for (int i = 2; i < argc; i++)
+					ex |= !strcmp(argv[i], "--approve-execute");
+				if (!ex) {
+					fprintf(stderr, "--n1-boot writes touch-controller registers and starts its firmware: it needs --approve-execute\n");
+					return 2;
+				}
 			}
 		}
 		g_ds_pinmux = ds_flag;

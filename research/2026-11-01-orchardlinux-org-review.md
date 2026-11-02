@@ -284,3 +284,31 @@ in our S5L PIO path.** The fix is the controller start order and counts, not the
 firmware, timing, order or bit order. Next, outside the standing approval: N1 register
 calibration, calibration upload, `1f 01`, then execute `0x10003400`. Then turn the module
 change into a kernel patch and do the reproducible build.
+
+## The J81 touch firmware boots (2026-11-02, run B1)
+
+Same payload and bounded-PIO module, temperature 29.8 C, private log `touch-n1boot-B1-20261102T061629Z.log`.
+touch-diag gained `--upload-cal FILE` and `--n1-boot --approve-execute`, which do the
+post-firmware sequence from OrchardLinux's N1 driver (`input/0009`, `0014`; iOS
+`MTSPIBootloader_N1`). The harness gained `--cal-files` and `--n1-boot`. Sequence and replies:
+
+| Step | Reply |
+|---|---|
+| detect | `1f 01` x 8, DETECT PASS |
+| firmware 59,288 B (12B410), transmit-only | ACK `4b c1` |
+| calibration chunk 0x3f0 B to `0x10009000` | ACK `4b c1`, first attempt |
+| calibration chunk 16 B to `0x100093f0` | ACK `4b c1`, first attempt |
+| read version `0x10008ffc` | **`0x434d15c1`** (so const-cal 3, not the 0x434d11a0 case) |
+| writes fll-mval 6068, `0x1000305c`=0x20, `0x10003058`=6, const-cal 3, clk32-enable 1 | ACK `4a d1` on all five |
+| read SPI_APU_EN `0x10003800` | 0 |
+| calibration request `1f 01`, 65 ms | status `49 69` |
+| execute `1d 53` `0x10003400` arg 0x100 | sent |
+| next 2 s | **17 interrupt edges**, line low |
+| NOP frame after execute | `e1 0e 00 … 00 ef 00`: no longer an HBPP word, a runtime frame |
+
+**The touch controller left its bootloader and is running firmware, raising its
+interrupt line.** The clock and power unwound exactly. Next: the runtime protocol, which is
+discovery (E2 x2, family `0xd1`, sensor `0xd3`, region `0xd0`/`0xa1`, surface `0xd9`) and
+EB/E3 report reads, i.e. Orchard's `apple_z2` N1 runtime with the J81 match. Our modular
+kernel builds `apple_z2` as a module, so this can come in through the same reload loop.
+It also needs a touchscreen DT node instead of the spidev test child.
