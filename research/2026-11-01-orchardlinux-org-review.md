@@ -346,9 +346,9 @@ mismatches only warn. Debug dumps were added.
   contact reports `0x43..0x45` the iPad 5 parser handles. The length query right after a
   frame repeats `e1 0e` but its data phase reads all zeros, which the driver counts as a
   bad frame (`-EBADMSG` → "touch frame error -74, resynchronising"). Resync then succeeds.
-- Martin touched the screen in two windows (Z1b 60 s, Z1c 45 s, plus Z1d 40 s): no input
-  events, and only a handful of interrupts in total. So the J81 firmware isn't sending contact
-  reports in this mode yet.
+- Three touch windows (Z1b 60 s, Z1c 45 s, Z1d 40 s; whether Martin touched during each is
+  not confirmed): no input events, and only a handful of interrupts in total. If he did, the
+  J81 firmware isn't sending contact reports in this mode yet.
 
 Next: find out what iOS sends after discovery to start contact reporting on J81 (the
 iPadOS 15.8.8 `AppleMultitouchN1SPI` is in the kernelcache we already fetched), decode
