@@ -215,9 +215,8 @@ controller comes back as "BCM4350 UART 37.4 MHz Riesling USI STC" build
 scans normally. Notes for the permanent setup:
 
 - Firmware name: the kernel's first choice is
-  `brcm/BCM4354.apple,j81.hcd` (subversion 0x210c maps to "BCM4354" in
-  btbcm's UART table, and the board name comes from the DT's
-  `apple,j81`); Orchard installs it as `brcm/BCM.apple,j81.hcd`, the
+  `brcm/BCM4354.apple,j81.hcd` (btbcm's UART subversion table names
+  this chip "BCM4354"; the board name comes from the DT's `apple,j81`); Orchard installs it as `brcm/BCM.apple,j81.hcd`, the
   third name tried, so either works.
 - Power is still manual: PMU GPIO2 (`0x0402` 0x0b) and BT_WAKE (GPIO164)
   are set by hand. A persistent setup needs a D2207 GPIO provider (or a
