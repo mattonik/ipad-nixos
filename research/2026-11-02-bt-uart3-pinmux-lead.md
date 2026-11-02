@@ -286,3 +286,45 @@ Expected at boot: `pmu_gpio` probes, hci_uart_bcm binds serial3, hci0
 appears, the controller powers on (0x0402 -> 0x0b, GPIO164 high), and the
 log shows "BCM4354 'brcm/BCM4354.apple,j81.hcd' Patch" then "BCM4350 UART
 37.4 MHz Riesling USI STC" build 1529. Not yet run on hardware.
+
+## BT1 boot result, 2026-11-02: Bluetooth starts by itself
+
+The owner booted payload `wifi-touch-kmod-BT1` (public
+`/nix/store/n2w3mm92arpz0055scw50qdblibcm9ra-ipad-air2-m1n1-hoolock-wifi-touch-kmod`,
+patches through 0114, private overlay with the Wi-Fi assets and
+`BCM4354.apple,j81.hcd`) with `boot/run_m1n1_debug.sh` at about 17:40 UTC.
+Run id `a7b2c38b907c59ae10861b66dc5cd835`, kernel 7.3.0-rc1. Nothing was
+run by hand before the checks below; all checks were read-only.
+
+Boot log (Bluetooth lines, unedited apart from the protocol-registration
+lines left out):
+
+    [    0.149405] 20a0cc000.serial: ttySAC1 MMIO32:0x000000020a0cc000 (irq = 48, base_baud = 0) is a APPLE S5L
+    [    0.157840] serial serial0: tty port ttySAC1 registered
+    [    1.070515] Bluetooth: hci0: BCM: chip id 92
+    [    1.079127] Bluetooth: hci0: BCM: features 0x2f
+    [    1.130021] Bluetooth: hci0: BCM4350C0
+    [    1.135146] Bluetooth: hci0: BCM4354 (003.001.012) build 0000
+    [    1.139552] Bluetooth: hci0: BCM4354 'brcm/BCM4354.apple,j81.hcd' Patch
+    [    9.206828] Bluetooth: hci0: BCM: features 0x2f
+    [    9.258982] Bluetooth: hci0: BCM4350 UART 37.4 MHz Riesling USI STC
+    [    9.269528] Bluetooth: hci0: BCM4354 (003.001.012) build 1529
+
+- `/sys/class/bluetooth/hci0` exists. hci_uart_bcm bound UART3 as a
+  serdev device (no btattach), powered the chip and loaded the patchram
+  from the initramfs in about 8 s at 115,200.
+- PMIC GPIO: `gpiochip1` is `20a110000.i2c:pmic@3c:gpio` (the D2207
+  driver). PMU `0x0402` reads `0x0b` (Bluetooth power on, driven through
+  `shutdown-gpios`); `0x0403` reads `0x0b` (Wi-Fi REG_ON, still set by
+  0052 as before).
+- Wi-Fi: brcmfmac loaded its firmware, `wlan0` is up with an address.
+- No new errors: the only error lines are the known `g_multi` -22, PCIe
+  "retraining failed" and brcmfmac `of_irq_parse_pci` -22 lines that
+  earlier boots also show. Battery reports `Discharging` as usual.
+- Scan (`hciscan 0 20`, pushed to `/tmp/bt`, counts only): classic
+  inquiry 2 devices; LE passive scan 20 s: 29 advertisers.
+
+**Reading:** patches 0101-0114 plus the private patchram give working
+Bluetooth at boot with no manual register writes. Still open: 3 Mbaud
+(0092/0093 exist; add `max-speed` in a separate test), pairing/connecting a
+device, Wi-Fi coexistence under load, and BlueZ userland in the payload.
