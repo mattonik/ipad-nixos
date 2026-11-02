@@ -391,3 +391,17 @@ J81 personality sets it. So far nothing in iOS sends a "start reporting" report 
 firmware. Remaining suspects: hardware-side, i.e. the display-sync routing (GPIO 55; Orchard
 reads iOS function code 2 as "input", which may mean "peripheral route 2") or a missing
 supply/clock difference; or a mode change carried in the kext's power-state handling.
+
+**Run Z1h (display sync):** Z1 boot (run id checked), `apple_z2` booted the chip as before
+(input1, 2 interrupts). With the driver running, `touch-diag dsync N` moved GPIO 55 from its
+boot word `0x00072a82` (PERIPH 0) to peripheral function 1, 2 and 3 in turn (`0x…aa2`,
+`0x…ac2`, `0x…ae2`, each read back), for a 30 s touch window each while Martin touched
+continuously. **The interrupt count stayed at 2 and there were 0 events in every window.**
+`dsync-restore` put back `0x00072a82` each time, and power and clock were released afterwards.
+Routing display sync after the boot doesn't start contact reporting. Not tested: routing it
+before the firmware starts.
+
+Where this leaves J81 touch: SPI is fixed, and the bootloader, calibration, registers,
+execute and the runtime discovery all work. The firmware sends report `0x50` status frames
+but never signals a touch. That matches micro23's "no response to taps" on Orchard's J81
+port, which uses the same post-boot flow.
