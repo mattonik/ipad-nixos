@@ -1672,6 +1672,9 @@ upstream N51/N53 DTS carry over; first payloads are
 `m1n1-hoolock-n51-control`/`-n53-control` (no new kernel build). PMIC
 (Amber at `0x74`), battery, Wi-Fi, touch firmware and storage need fresh
 work. Keep 5s payloads separate from every J81 package. Not booted yet.
+**Paused by Martin 2026-11-02 until the iPad Air 2 is further along**; the
+plan's "Research backlog" and "Resuming" sections say where to pick up.
+Martin's phone is an A1457 (N53).
 
 ## Linux builder VM (read before any `nix build` of a Linux derivation)
 

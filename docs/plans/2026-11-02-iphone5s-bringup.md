@@ -1,6 +1,8 @@
 # iPhone 5s (A7) bring-up plan
 
-Date: 2026-11-02. Status: plan plus first payload, nothing run on hardware.
+Date: 2026-11-02. Status: **paused by Martin on 2026-11-02** until the iPad
+Air 2 work is further along. Plan plus first payload exist; nothing has been
+built or run on hardware. Resume at "Resuming" below.
 
 Goal: reach the same milestone the iPad Air 2 reached on 2026-09-08, a Linux
 shell on the iPhone 5s that the Mac can reach over USB networking
@@ -177,6 +179,60 @@ to `/Volumes/martin/Projects/Archive/ipad-nixos/firmware/ipsw/`. 12.5.8 is the
 right source for the DeviceTree (cross-check against the live ADT) and the
 kernelcache for Apple driver analysis (touch, PMIC, Wi-Fi). Keep extracted
 firmware out of Git, as for J81.
+
+## Paused state and what is archived
+
+Martin's device: iPhone 5s **A1457 = N53 (iPhone6,2)**. It still boots iOS
+normally, which the PongoOS route needs. DFU/CPID `0x8960` has not been
+checked yet.
+
+Archived on the NAS (`/Volumes/martin/Projects/Archive/ipad-nixos/`):
+
+- `firmware/ipsw/`: iPhone 5s IPSWs for N51/N53, iOS 7.0.1, 7.1.2, 9.3.5
+  and 12.5.8 (the firmware archive thread).
+- `tools/iphone5s/`: checkra1n 0.12.4 for macOS, and source snapshots of
+  HoolockLinux `remote_boot` and `gaster`, each with SHA256SUMS and a
+  README.
+
+## Research backlog (offline, no phone needed)
+
+Do these in order when the iPad allows. Each can be done from the archived
+IPSWs and public sources alone.
+
+1. **N53 DeviceTree from the 12.5.8 IPSW.** Extract `DeviceTree.n53ap.im4p`.
+   If it is encrypted, check The Apple Wiki for the published key before
+   anything else. Decode and record (sanitized) the Wi-Fi bus and chip, the
+   battery gauge transport, the touch controller with its SPI instance and
+   GPIOs, the Bluetooth UART, and the Amber PMIC's child functions. This
+   answers most of the "What does not carry over" table before any boot.
+2. **Cross-check the upstream N53 DTS against that tree.** Look for any
+   register, IRQ or power-domain mismatch in the nodes the first boot uses
+   (UART0, I2C0, USB complex, PMGR display domains, DWI).
+3. **Amber PMIC.** Find the PMIC driver kext in the 12.5.8 kernelcache
+   (12.x ships per-kext symbols less often than 10.x, so also check the
+   unstripped-kext repos used for J81). Goal: the charger input-current
+   register, the same question J81 answered with D2207 `0x04c0`.
+4. **Wi-Fi bus.** If the tree confirms SDIO, survey whether any Linux or
+   Corellium-derived Apple SDIO host driver exists. If none does, this is
+   the largest new driver on the 5s, and it should be scoped before it is
+   started.
+5. **Touch.** Compare the 5s multitouch ADT node and kext personality with
+   J81's (the TOUCH-3 method). Reuse `0007` for the SPI controller and the
+   2026-11-02 J81 SPI start order once that lands as a kernel patch.
+6. **Storage.** Read Hoolock's A7 storage status again at resume time
+   before planning anything.
+
+## Resuming
+
+1. Re-read Hoolock's A7 feature table and bump nothing blindly. If the J81
+   kernel pin has moved, rebuild the 5s payload on the new pin, because it
+   shares `hoolockKernel`.
+2. Build `m1n1-hoolock-n53-control` on the Mac (P1).
+3. DFU check, then palera1n to PongoOS, falling back to the archived
+   checkra1n 0.12.4 (P2).
+4. Capture the live ADT with `dump_adt.py --board n53` and compare it with
+   the IPSW-derived tree from backlog item 1.
+5. First Linux boot (P3), then the read-only inventory (P4).
 
 ## Verification done for P1
 
