@@ -223,3 +223,30 @@ the full length, RX always drained, and never more than one FIFO of unread words
 flight. Our transmit-only uploads leave `RXCNT = 0` and never read RX at all. Whether
 that also corrupts the long transmit-only stream (the byte-count thresholds) is the
 hypothesis the PIO port tests.
+
+## PIO port, first hardware runs S1-S4 (2026-11-02 morning)
+
+Payload `wifi-touch-kmod-K1` (run id `ea04e00d…`), freshly booted. The `spi_apple` work
+copy has a new S5L bounded-PIO loop after Berkay's S8000 sequence (diff:
+`research/2026-11-02-s5l-bounded-pio-wip.diff`; switches `s5l_bounded_pio`,
+`s5l_bounded_autotx`, `s5l_bounded_mode`, all writable at runtime). Every run used
+`--apple`, 1.984 MHz, 5 us word delay, and full-duplex probe frames of 16 to 4096 bytes
+(no firmware). Clock and power unwound exactly on every run.
+
+| Run | AUTO_TX | CFG mode after RUN | Result |
+|---|---|---|---|
+| S1 | off | polled (0) | the 2-byte wake `19 c1` times out: TX 2 sent, **no RX at all** (status `0x30`, HUNG + RXL_TIMEOUT) |
+| S2 | on | polled (0) | wake, dummy and detect OK (`DETECT PASS`); probes of 16 and 32 B return `1f 01`; **64 B fails after 32 words** (status `0xc30`: TX level 16, RX level 1 with nothing outstanding) |
+| S3 | on | PIO enable (1) | same as S2: 32 B OK, 64 B stops at 32 |
+| S4 | off | PIO enable (1) | as S1: no RX |
+
+Findings: on the S5L, **receive needs AUTO_TX**, and with AUTO_TX the controller stops
+after exactly 32 words (two FIFOs) and reports a full TX FIFO we didn't fill. That is
+the same 32-word wall as P1 and as the pre-0098 transmit-only hang. So the S5L does
+not take the S8000 sequence as-is. The likely reading is that AUTO_TX makes the
+controller generate its own TX words, which conflicts with fed data. Apple itself
+uses PIO only below 0x100 bytes, in IRQ mode with thresholds 0x180, and DMA through
+SmartIO above that. The stock module was loaded again afterwards. Next options:
+Apple's IRQ-mode PIO for transfers up to 255 bytes, then decide whether the long
+transmit-only stream needs the same treatment. Or go straight to SmartIO DMA, which
+is the larger job.
