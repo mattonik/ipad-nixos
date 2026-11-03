@@ -548,6 +548,13 @@ Test-only module SHA-256:
   substitution let discovery finish. During another **50-second confirmed finger window**,
   IRQ 57 stayed **11 on CPU0, 1 on CPU2**, the event device yielded **0 bytes**, and
   wake-assisted polling again recorded **0 nonempty reports**.
+- To control for polling itself disrupting touch, the 12B410 image was loaded again with
+  `sync_window=1`, `poll_ms=0`, `poll_wake=N`. The firmware again returned a zero surface
+  descriptor and the diagnostic module bound. An initial 50-second window was invalidated
+  when Martin reported missing the swipe. In a synchronized repeat, Martin confirmed swiping
+  for most of the **50-second** window; IRQ 57 stayed **14 on CPU0, 2 on CPU2** and
+  `/dev/input/event1` yielded **0 bytes**. Thus periodic wake/poll is not required for the
+  observed absence of contact IRQs with function 1.
 
 The older firmware file was restored byte-for-byte (SHA-256 `670eab55…`). The module was
 unloaded; LDO14 returned to `0x00`, touch clock to `0x800002ee`, and GPIO55 to

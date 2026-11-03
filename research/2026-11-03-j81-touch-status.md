@@ -37,6 +37,7 @@ frames at boot. These observations do not directly measure whether electrode sca
   stopped after execution, before these reads. A test-only host-side substitution of the
   known surface descriptor let the driver run with function 1 selected; confirmed touch
   windows with both firmware versions still produced no IRQs, input events or queued contacts.
+  A confirmed repeat with periodic polling disabled also produced no IRQs or input events.
   One other function-1 attempt failed earlier at device information (`-74`).
 - The examined iOS kext and MultitouchSupport paths show no additional "start reporting"
   command after discovery (`DefaultReports` unset for J81, power state is a kext request).
