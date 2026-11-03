@@ -2,7 +2,7 @@
 
 Summary of the touch work from 2026-11-01 to 2026-11-03. Full run records:
 `research/2026-11-01-orchardlinux-org-review.md` (runs C1, D1, C2, F1, P1, S1-S5, F-tx/F-rx, B1,
-Z1-Z1j, Z2), `research/2026-11-02-j81-touch-runtime-gap.md` (Martin's parallel runs), and the
+Z1-Z1j, Z2, Z3), `research/2026-11-02-j81-touch-runtime-gap.md` (Martin's parallel runs), and the
 two work-copy diffs below. Touch is **parked** at this point.
 
 ## What works
@@ -19,21 +19,27 @@ two work-copy diffs below. Touch is **parked** at this point.
 
 ## What doesn't
 
-The running firmware **never scans**: no ATN interrupt on touch, GPIO84 stays high, and forced
-reads under the driver lock (with an N1 wake `ee` first; without it the idle firmware returns
-all zeros) report an empty queue (`e1 00 00`) for 423 reads during a confirmed touch. It only
-sends `0x50` status frames at boot.
+The running firmware **does not generate queued contact reports under the tested startup
+sequences**: no ATN interrupt on touch, GPIO84 stays high, and forced reads under the driver
+lock (with an N1 wake `ee` first; without it the idle firmware returns all zeros) report an
+empty queue (`e1 00 00`) for 423 reads during a confirmed touch. It only sends `0x50` status
+frames at boot. These observations do not directly measure whether electrode scanning occurs.
 
-## Ruled out (each with a confirmed touch window)
+## Tested ideas and controls
 
 - iPad 5 order (calibration first), no inter-word delay, 15.8.8 firmware, Apple order with prox
   calibration.
 - N61 report-enable writes `9d`/`bf`/`af`; iOS 8.1 `rOPERATING_MODE` `e4 ab 01 00` (accepted).
-- Display sync GPIO 55: PINMUX function 1/2/3 after boot, before boot, and at Apple's
-  wake-to-dummy point (function 1 always breaks the boot with `-71`/`-74`); driven as a GPIO,
-  where high breaks discovery and low has no effect.
-- iOS kext and MultitouchSupport: no "start reporting" command after discovery
-  (`DefaultReports` unset for J81, power state is a kext request).
+- Display sync GPIO 55: PINMUX function 2/3 after boot, before boot, and at Apple's
+  wake-to-dummy point; driven as a GPIO, where high breaks discovery and low has no effect.
+  Function 1 permits firmware execution but returned zero runtime geometry (`0xa1` region
+  parameters and `0xd9` surface) in the recorded discovery. The manual spidev diagnostic
+  stopped after execution, before these reads. A test-only host-side substitution of the
+  known surface descriptor let the driver run with function 1 selected; confirmed touch
+  windows with both firmware versions still produced no IRQs, input events or queued contacts.
+  One other function-1 attempt failed earlier at device information (`-74`).
+- The examined iOS kext and MultitouchSupport paths show no additional "start reporting"
+  command after discovery (`DefaultReports` unset for J81, power state is a kext request).
 - PMU `sensor_power` `Lump 0x202` is the Oscar coprocessor, not touch; LDO14 `0x14` is correct.
 
 ## How to rerun
@@ -47,7 +53,9 @@ through `tools/builder.sh build --wait --who <thread>`.
 
 ## Next (not started)
 
-A trace under iPadOS of GPIO 55 (display sync) and ATN during a real touch, which needs a
+Determine why selecting GPIO55 function 1 at the recovered point makes the runtime `0xa1`
+and `0xd9` data zero under Linux, including the display-side signal and the iOS power path.
+An iPadOS trace of GPIO55 (display sync) and ATN during a real touch would help, but needs a
 logic analyzer (the no-new-hardware rule applies). Before upstreaming: turn the `spi_apple`
 change into a kernel patch (it fixes S5L full duplex in general) and report the findings to
 OrchardLinux.

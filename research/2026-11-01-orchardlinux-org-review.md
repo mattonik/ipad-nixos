@@ -506,13 +506,51 @@ Martin touched during each window.
   touching, **all returned 16 zero bytes**. The idle firmware doesn't answer a plain read.
 - **`poll_ms=100 poll_wake=1`** (the N1 wake `ee` before each read, as the resync path does):
   the firmware answers properly, `e1 00 00` = queue empty. **423 reads in 45 s while touching,
-  0 non-empty, 0 events, no new interrupts.** So the controller **isn't scanning**: there is no
-  queued contact data that ATN fails to signal.
+  0 non-empty, 0 events, no new interrupts.** There is no queued contact data that ATN fails to
+  signal under this startup sequence; this does not directly measure electrode scanning.
 - **`sync_window` (GPIO 55 PINMUX routed between the `19 c1` wake and the dummy transfer with
   reset asserted, Apple's point):** function 1 reads back `0x00072aa3` (pin high) and the boot
   fails again (`-71`). Functions 2 and 3 boot normally; in 30 s of touching each, the only
   non-empty replies were the boot-time `0x50` status frames (4 per boot), with 0 events. The pad
   was restored (`0x00072a82`) each time, and power and clock were released afterwards.
 
-Conclusion: the J81 N1 firmware boots and answers, but never scans in any configuration tried.
-Display sync at Apple's exact point doesn't change that.
+Conclusion at Z2: the J81 N1 firmware boots and answers, but generated no queued contact
+reports in any tested runtime configuration. The manual spidev diagnostic stopped after
+firmware execute, before runtime discovery. The driver reached discovery with function 1 but
+failed on an all-zero `0xd9` surface descriptor, so the apparent boot discrepancy was a
+difference in how far the two tests went. Run Z3 below tests runtime despite that descriptor.
+
+## GPIO55 function 1 through runtime discovery, run Z3 (2026-11-03)
+
+Re-examining the saved Z2 `sw1.txt` and `sw2.txt` logs showed that function 1 passed HBPP
+detect, firmware upload, calibration (`0x4969`), execute, N1 device information, and firmware
+version `0x381`. It returned six zero bytes for report `0xa1` (region parameters) and a
+16-byte zero `0xd9` surface descriptor. Function 2 returned `0xa1` data containing `05` and
+`02`, and a valid `0xd9` surface of 14745x19657. Thus Z2's `-71` occurred at host-side
+surface validation, not at the bootloader handshake.
+
+For a bounded runtime test, a temporary build of the ignored `apple_z2` work copy substituted the
+16-byte surface descriptor observed with function 2/3 **only when the J81 firmware reports
+zero width and height**. This changes host-side validation and input scaling, not the
+controller's reply. The test-only source is retained at
+`artifacts/kmod/apple_z2-fallback-tested.c`; the ordinary work copy was restored afterwards.
+Test-only module SHA-256:
+`7021b0f47c7b0049fc3fbf5ba58edecbe6d58d0f5ec7854bde39242cbc255ae1`.
+
+- The first 12B410 attempt with `sync_window=1` reached firmware execution but failed
+  earlier in N1 device information (`-74`). After a full rail/clock release and hold, the
+  next attempt returned zero `0xd9`, used the diagnostic descriptor, and bound. During a
+  **50-second confirmed finger window**, IRQ 57 stayed **9 on CPU0, 1 on CPU2**,
+  `/dev/input/event1` yielded **0 bytes**, and wake-assisted 100 ms polling recorded
+  **0 nonempty reports**.
+- The 19H422 (iPadOS 15.8.8) Apple-order/proximity Z2FW booted with the same function-1
+  route and reported firmware version **`0x382`**. Its `0xd9` was also zero; the diagnostic
+  substitution let discovery finish. During another **50-second confirmed finger window**,
+  IRQ 57 stayed **11 on CPU0, 1 on CPU2**, the event device yielded **0 bytes**, and
+  wake-assisted polling again recorded **0 nonempty reports**.
+
+The older firmware file was restored byte-for-byte (SHA-256 `670eab55…`). The module was
+unloaded; LDO14 returned to `0x00`, touch clock to `0x800002ee`, and GPIO55 to
+`0x00072a82`. `spi_apple` remains loaded. Selecting function 1 at this point is insufficient
+for contacts on either tested firmware. The zero geometry is itself a new lead: determine why
+this route changes `0xa1`/`0xd9` under Linux before treating display sync as fully understood.
