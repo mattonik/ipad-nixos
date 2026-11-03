@@ -52,10 +52,12 @@ z2fw to `/lib/firmware/apple/j81-fwstart.z2fw`, `insmod apple_z2.ko` with option
 Modules must match the payload's kernel (rebuild both after any kernel change), and builds go
 through `tools/builder.sh build --wait --who <thread>`.
 
-## Next (not started)
+## Next
 
-Determine why selecting GPIO55 function 1 at the recovered point makes the runtime `0xa1`
-and `0xd9` data zero under Linux, including the display-side signal and the iOS power path.
+The [firmware and GPIO55 follow-up](2026-11-03-j81-touch-geometry-and-sync.md) found that
+`0xa1`/`0xd9` read runtime RAM, while GPIO55 function 1 exposes a stable 30 Hz digital
+signal in this Linux boot. Determine why that route leaves the runtime reports zero;
+the correct iPadOS sync waveform and the firmware's initialization path remain unknown.
 An iPadOS trace of GPIO55 (display sync) and ATN during a real touch would help, but needs a
 logic analyzer (the no-new-hardware rule applies). Before upstreaming: turn the `spi_apple`
 change into a kernel patch (it fixes S5L full duplex in general) and report the findings to
