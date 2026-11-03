@@ -3,7 +3,31 @@
 Summary of the touch work from 2026-11-01 to 2026-11-03. Full run records:
 `research/2026-11-01-orchardlinux-org-review.md` (runs C1, D1, C2, F1, P1, S1-S5, F-tx/F-rx, B1,
 Z1-Z1j, Z2, Z3), `research/2026-11-02-j81-touch-runtime-gap.md` (Martin's parallel runs), and the
-two work-copy diffs below. Touch is **parked** at this point.
+two work-copy diffs below.
+
+**Update, 2026-11-03 evening: touch works.** A live module swap on the Orchard J81 kernel produced continuous
+contacts: 2,914 `SYN_REPORT` events during 30 s of swiping (about 97 reports/s), with no new frame errors.
+The fix is on branch `j81-touch-core` (commit `ec96768`), as payload `m1n1-orchard-touch`
+(`docs/orchard-j81-touch.md`, `kernel/orchard-j81-touch.nix`, `kernel/orchard-touch-patches/0001`-`0004`)
+on Orchard Linux `df7c930`:
+
+- `0001`: the bounded T7000 SPI PIO order found here (counts before RUN, status clear, PIO mode, prime TX),
+  RX drained on transmit-only transfers, controller kept runtime-active.
+- `0002`: `apple_z2` treats `devm_pinctrl_get() == -ENODEV` as no display-sync route (J81 has no pinctrl states).
+- `0003`: **the step that turned rare contacts into continuous touch.** J81 sometimes returns the runtime
+  `E1` header one byte late in the 16-byte interrupt response; the driver used to reject it. Validating the
+  shifted header raised a 20 s capture from one 10 ms contact per second to over 2,000 position updates.
+- `0004`: J81 N1 family 22 (not 21), matching stock iPadOS.
+
+The private 15.8.8 `j81-fwstart.z2fw` (59,376 B, SHA-256 `b9b4a072…`) is added by
+`boot/assemble_private_wifi_payload.py --touch-firmware`, never into Git or the Nix store.
+
+Still open: the rebuilt `m1n1-orchard-touch` image has not had a physical boot test (the measurement came from
+a live module swap), including Wi-Fi in that image; the branch is not merged to main; Orchard PRs #57 and #60
+are not merged upstream; the default Hoolock payloads do not carry touch; and the transient zero geometry at
+discovery (`research/2026-11-03-j81-touch-geometry-and-sync.md`) is worked around, not fixed.
+
+The sections below are the state before this fix.
 
 ## What works
 
