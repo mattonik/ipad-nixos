@@ -392,6 +392,17 @@ firmware. Remaining suspects: hardware-side, i.e. the display-sync routing (GPIO
 reads iOS function code 2 as "input", which may mean "peripheral route 2") or a missing
 supply/clock difference; or a mode change carried in the kext's power-state handling.
 
+**Power-state path resolved offline, 2026-11-02:** the 19H422 J81 N1 instance
+vtable `0xfffffff006ddaaa0` inherits `+0x718` and its workloop callback from
+Z2SPI. On a nonzero power transition, it calls the ADT power providers, then
+`function-enable_cs` (GPIO51), `function-clock_enable` (PMGR touch clock),
+N1's overridden `+0x910` method (`19 c1` wake transfer and 10 ms wait), and
+`function-display_sync` (GPIO55), in that order. This confirms the iOS 8
+wake-to-sync timing still applies on iOS 15. The power path contains no extra
+N1 report write that obviously starts scanning. A runtime contact window with
+GPIO55 routed at that exact transition remains untested; the separate build
+agent's opt-in kernel experiment targets it.
+
 **Run Z1h (display sync):** Z1 boot (run id checked), `apple_z2` booted the chip as before
 (input1, 2 interrupts). With the driver running, `touch-diag dsync N` moved GPIO 55 from its
 boot word `0x00072a82` (PERIPH 0) to peripheral function 1, 2 and 3 in turn (`0x…aa2`,
@@ -449,13 +460,27 @@ handshake), but no tested setting makes it report contacts. Released afterwards.
 **Status: J81 touch parked here (2026-11-02), as agreed with Martin.** Everything up to a
 running N1 firmware that answers discovery works on our stack. The open problem is that the
 firmware never raises ATN for touches. The remaining untested ideas are the analog
-rail level (LDO14 voltage `0x14` is never changed), `function-enable_cs`, the exact
-display-sync transition during boot, or a bus capture of iOS. The PMU
+rail level (LDO14 voltage `0x14` is never changed), `function-enable_cs`, a runtime
+contact test with GPIO55 selected at Apple's boot transition, or a bus capture of iOS. The PMU
 `function-sensor_power` (`Lump 0x202`) belongs to the Oscar motion coprocessor ADT node,
 not touch. Both the 12B410 and 15.8.8 firmware images booted with Apple's
 proximity/touch calibration order and still
 produced no contact IRQ during confirmed touch windows. The 12B410 post-discovery
 `0xab {0}` write was also accepted but produced no contacts.
+
+**Exact GPIO55 transition tested independently, 2026-11-02:** With the J81 touch driver
+unloaded and SPI3 temporarily bound to spidev, `touch-diag --apple-order
+--display-sync-pinmux` selected GPIO55 peripheral function 1 after the `19 c1` wake
+and before the dummy transfer, matching the recovered iOS call order. Detect passed
+(`1f 01`/`48 79`), the 12B410 firmware and touch calibration ACKed, all N1 register
+writes ACKed, and execute produced 17 ATN edges in 2 seconds, matching the earlier
+no-sync B1 boot. During this run a read-only sampler observed GPIO55's input bit
+low 602 times and high 594 times, with 137 transitions, so the display pipeline
+does supply a changing signal when the pin is muxed. This establishes a valid
+boot sequence, **not** contact reporting: the diagnostic unwinds after execute
+without runtime discovery or a touch window. GPIO55, rail and clock were restored,
+and spidev was unbound. The remaining discriminating test is runtime touch with
+GPIO55 activated at that exact boot transition.
 
 **Correction (2026-11-02 evening, from Martin's `research/2026-11-02-j81-touch-runtime-gap.md`
 in the `ipadlinux-bt-ab` checkout):** the PMU `function-sensor_power` (`Lump 0x202`) listed
@@ -465,5 +490,29 @@ run, and LDO14's stored `0x14` is the documented 6 V code. Drop both from the to
 note also rules out Apple's bootload order with proximity calibration, the 15.8.8 firmware
 (`0x382`), and the iOS 8.1 `rOPERATING_MODE` write (`e4 ab 01 00`, accepted with status 0), and
 shows GPIO84 sampling high for a full touch minute. What's left: a forced report read during a
-touch (silent queue vs. no scanning), and display sync routed at Apple's exact wake-to-dummy
-point with reset asserted.
+touch (silent queue vs. no scanning), and a runtime contact test with display sync routed
+at Apple's exact wake-to-dummy point with reset asserted. The detect and manual firmware
+boot at that point now pass, and GPIO55's sampled level toggles while muxed.
+
+## Forced reads and display sync at Apple's point, run Z2 (2026-11-03)
+
+New payload `wifi-touch-z2-kmod-Z2` (run id `d8b3f19e…`; rebuilt because the merged W1 patches
+changed the kernel). Modules were rebuilt on the shared build VM with
+`tools/builder.sh build --who touch-thread`. The `apple_z2` work copy (diff updated in
+`research/2026-11-02-apple-z2-j81-wip.diff`) gained `poll_ms`, `poll_wake` and `sync_window`.
+Martin touched during each window.
+
+- **`poll_ms=100`** (a read under the driver lock every 100 ms): 426 reads in 45 s while
+  touching, **all returned 16 zero bytes**. The idle firmware doesn't answer a plain read.
+- **`poll_ms=100 poll_wake=1`** (the N1 wake `ee` before each read, as the resync path does):
+  the firmware answers properly, `e1 00 00` = queue empty. **423 reads in 45 s while touching,
+  0 non-empty, 0 events, no new interrupts.** So the controller **isn't scanning**: there is no
+  queued contact data that ATN fails to signal.
+- **`sync_window` (GPIO 55 PINMUX routed between the `19 c1` wake and the dummy transfer with
+  reset asserted, Apple's point):** function 1 reads back `0x00072aa3` (pin high) and the boot
+  fails again (`-71`). Functions 2 and 3 boot normally; in 30 s of touching each, the only
+  non-empty replies were the boot-time `0x50` status frames (4 per boot), with 0 events. The pad
+  was restored (`0x00072a82`) each time, and power and clock were released afterwards.
+
+Conclusion: the J81 N1 firmware boots and answers, but never scans in any configuration tried.
+Display sync at Apple's exact point doesn't change that.
