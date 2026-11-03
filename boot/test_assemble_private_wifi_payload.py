@@ -8,6 +8,7 @@ from pathlib import Path
 import shutil
 import sys
 import tempfile
+from unittest.mock import patch
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
@@ -126,6 +127,22 @@ def main():
             A.compose({"bootargs": b"x\n", "initramfs.gz": __import__("gzip").compress(b"")}, ("bootargs", "initramfs.gz"), b"", "t", (ok,))
         assert m3["extra_bootargs"] == ["pcie_apple_t7000.device_wake=1", "brcmfmac.h1b_ds_ack=2"]
         assert "pcie_apple_t7000.device_wake=1 brcmfmac.h1b_ds_ack=2 j81.run_id=" in m3["bootargs"] and not A.verify(out3)[0]
+        touch = tmp / "j81-fwstart.z2fw"
+        touch.write_bytes(b"synthetic touch firmware")
+        expect_exit(lambda: A.assemble(pub, assets, work / "no-module", check_hashes=False, touch_firmware=touch), "apple_z2.ko")
+        touch_pub = make_public(Path(tempfile.mkdtemp(prefix="touch-base-")), [("lib/modules/apple_z2.ko", 0o100644, b"module")])
+        empty_touch = tmp / "empty.z2fw"
+        empty_touch.write_bytes(b"")
+        expect_exit(lambda: A.assemble(touch_pub, assets, work / "empty-firmware", check_hashes=False, touch_firmware=empty_touch), "touch firmware is empty")
+        synthetic_binaries = {name: (staged, sha((assets / name).read_bytes()), len((assets / name).read_bytes()))
+                              for name, (staged, _hash, _size) in A.BINARIES.items()}
+        with patch.dict(A.BINARIES, synthetic_binaries):
+            expect_exit(lambda: A.assemble(touch_pub, assets, work / "wrong-firmware", touch_firmware=touch), "touch firmware does not match")
+        touch_out = work / "touch"
+        touch_manifest = A.assemble(touch_pub, assets, touch_out, check_hashes=False, touch_firmware=touch)
+        assert not A.verify(touch_out)[0]
+        assert cpio_entries(gzip.decompress((touch_out / "initramfs.gz").read_bytes()))[A.TOUCH_FIRMWARE[0]][1] == touch.read_bytes()
+        assert touch_manifest["touch_firmware"]["sha256"] == sha(touch.read_bytes())
         for bad in ("pcie_apple_t7000.device_wake=2", "brcmfmac.h1b_ds_ack=3", "brcmfmac.h1b_apple_shared=8", "brcmfmac.h1b_hold=2", "brcmfmac.h1b_ring_ids=2", "brcmfmac.h1b_defer_s=1000", "apple_dart.pci_rebase=2", "apple_dart.pci_alias=2", "apple_dart.ios_pte=2", "brcmfmac.h1b_feed=8", "brcmfmac.h1b_rxpost=1000", "brcmfmac.h1b_sync_ms=100000", "brcmfmac.h1b_fast_poll_us=1", "brcmfmac.h1b_step_s=100", "brcmfmac.h1b_tcm_idx=2", "brcmfmac.h1b_bell_only=2", "brcmfmac.h1b_no_bell=2", "apple_dart.h1b_apple_init=2", "io_pgtable_dart.ios_leaf_bits=99999", "brcmfmac.h1b_step_s=", "brcmfmac.h1b_fast_poll_us=123456", "apple_dart.pci_rebase=-1", "brcmfmac.h1b_defer_s=", "init=/bin/sh", "brcmfmac.debug=0", "pcie_aspm.policy=bogus", "pcie_aspm=on"):
             expect_exit(lambda b=bad: A.assemble(pub, assets, work / ("bad" + str(abs(hash(b)) % 1000)), check_hashes=False, extra_bootargs=(b,)), "not an allowed test toggle")
         # A test MAC can be appended to the staged NVRAM (unicast, locally administered only; never twice).

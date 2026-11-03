@@ -34,6 +34,10 @@
       url = "github:HoolockLinux/linux/6831bc701a6ce059e71e5aaa9488c9195bea6927";
       flake = false;
     };
+    orchardLinux = {
+      url = "github:OrchardLinux/linux/df7c930f80abd32a054617cd30ea450b7acfb3e0";
+      flake = false;
+    };
     # Separate, isolated pin for research/j81-long-term-subsystems.md's
     # internal-storage check: Hoolock's own `ans1` branch (ANS1/ASP storage
     # controller support), 27 commits ahead of the hoolockLinux pin above.
@@ -891,6 +895,9 @@
             source = inputs.hoolockLinux;
             hoolockConfig = patchedHoolockWifiKmodConfig;
           };
+          orchardJ81TouchKernel = pkgsCross.callPackage ./kernel/orchard-j81-touch.nix {
+            source = inputs.orchardLinux;
+          };
           # One out-of-tree module build against hoolockWifiKmodKernel: src holds the C files and a Kbuild file.
           # Rebuilds only the module (seconds), never the kernel. Same toolchain and make flags as the kernel itself.
           mkJ81Kmod = { name, src }: pkgsCross.stdenv.mkDerivation {
@@ -1123,7 +1130,7 @@
           #   4. the tablet tools /usr/bin/tablet-status and /usr/bin/tablet-dashboard;
           #   5. the universal probe (stage B of the plan; its userland helper is added here once the kernel framework exists).
           # No Bluetooth userland and no I2C tools are included (the Wi-Fi payload rules forbid them; charging uses sysfs only).
-          mkJ81BasePayload = { name, kernel, bootargsExtra ? "", wifi ? false, dashboard ? false, btWakeHog ? false, touchSpidev ? false, touchGpioCs ? false, touchZ2 ? false, nixosHandoff ? false }:
+          mkJ81BasePayload = { name, kernel, bootargsExtra ? "", wifi ? false, dashboard ? false, btWakeHog ? false, touchSpidev ? false, touchGpioCs ? false, touchZ2 ? false, touchModule ? false, nixosHandoff ? false }:
             let
               dropbearPkg = pkgsCrossMusl.dropbear;
               dropbearClosure = pkgs.closureInfo { rootPaths = [ dropbearPkg ]; };
@@ -1190,7 +1197,7 @@
 
               hook=etc/postmarketos-mkinitfs/hooks/20-debug-shell.sh
               sed 's|@DROPBEAR@|${dropbearPkg}|' ${./boot/ssh-stage1.sh} \
-                | sed 's|^loop_forever$|/usr/bin/charging-policy >/var/log/charging-policy.log 2>\&1 \&\n[ -x /usr/bin/wifi-up ] \&\& /usr/bin/wifi-up >/dev/null 2>\&1 \&\n[ -x /usr/bin/tablet-dashboard-screen ] \&\& /usr/bin/tablet-dashboard-screen >/dev/null 2>\&1 \&\nloop_forever|' > "overlay/$hook"
+                | sed 's|^loop_forever$|/usr/bin/charging-policy >/var/log/charging-policy.log 2>\&1 \&\nif [ -f /lib/modules/apple_z2.ko ]; then insmod /lib/modules/apple_z2.ko >/var/log/apple-z2.log 2>\&1; fi\nif [ -f /lib/modules/rfkill.ko ]; then insmod /lib/modules/rfkill.ko; insmod /lib/modules/cfg80211.ko; insmod /lib/modules/brcmutil.ko; insmod /lib/modules/brcmfmac.ko >/var/log/brcmfmac.log 2>\&1; fi\n[ -x /usr/bin/wifi-up ] \&\& /usr/bin/wifi-up >/dev/null 2>\&1 \&\n[ -x /usr/bin/tablet-dashboard-screen ] \&\& /usr/bin/tablet-dashboard-screen >/dev/null 2>\&1 \&\nloop_forever|' > "overlay/$hook"
               chmod 755 "overlay/$hook"
               ${if nixosHandoff then ''
               # NixOS in RAM (docs/plans/2026-10-11-nixos-in-ram.md): with j81.nixos=URL on the kernel command line the debug hook returns to /init after starting its services, and a
@@ -1210,6 +1217,14 @@
               '' else ""}
 
               mkdir -p overlay/root/.ssh overlay/var/empty overlay/var/run overlay/var/log
+              ${if touchModule then ''
+              mkdir -p overlay/lib/modules
+              cp ${kernel.modules}/lib/modules/${kernel.modDirVersion}/kernel/drivers/input/touchscreen/apple_z2.ko overlay/lib/modules/apple_z2.ko
+              cp ${kernel.modules}/lib/modules/${kernel.modDirVersion}/kernel/net/rfkill/rfkill.ko overlay/lib/modules/rfkill.ko
+              cp ${kernel.modules}/lib/modules/${kernel.modDirVersion}/kernel/net/wireless/cfg80211.ko overlay/lib/modules/cfg80211.ko
+              cp ${kernel.modules}/lib/modules/${kernel.modDirVersion}/kernel/drivers/net/wireless/broadcom/brcm80211/brcmutil/brcmutil.ko overlay/lib/modules/brcmutil.ko
+              cp ${kernel.modules}/lib/modules/${kernel.modDirVersion}/kernel/drivers/net/wireless/broadcom/brcm80211/brcmfmac/brcmfmac.ko overlay/lib/modules/brcmfmac.ko
+              '' else ""}
               echo 'root:x:0:0:root:/root:/bin/sh' > overlay/etc/passwd
               echo 'root:x:0:' > overlay/etc/group
               cp ${./boot/ssh/authorized_keys} overlay/root/.ssh/authorized_keys
@@ -1423,6 +1438,7 @@
         touch-diag-static = touchDiagStaticPkg;
         # Driver reload loop (docs/kmod-reload.md).
         hoolock-wifi-kmod-kernel = hoolockWifiKmodKernel;
+        orchard-j81-touch-kernel = orchardJ81TouchKernel;
         j81-kmod-spi-apple = mkJ81Kmod { name = "spi-apple"; src = j81KmodStockSrc.spi-apple; };
         j81-kmod-apple_z2 = mkJ81Kmod { name = "apple_z2"; src = j81KmodStockSrc.apple_z2; };
         j81-kmod-src-spi-apple = j81KmodStockSrc.spi-apple;
@@ -3555,6 +3571,15 @@
           dashboard = true;
           kernel = hoolockWifiKernel;
           bootargsExtra = "pcie_aspm=off pcie_apple_t7000.device_wake=1 fbcon=font:TER16x32";
+        };
+
+        m1n1-orchard-touch = mkJ81BasePayload {
+          name = "m1n1-orchard-touch";
+          wifi = true;
+          dashboard = true;
+          touchModule = true;
+          kernel = orchardJ81TouchKernel;
+          bootargsExtra = "pcie_aspm=off fbcon=font:TER16x32";
         };
 
         # TEST ONLY: the production Wi-Fi base plus a boot-time gpio-hog driving AP GPIO 164 (Bluetooth BT_WAKE) high, for the Bluetooth bring-up

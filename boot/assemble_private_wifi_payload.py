@@ -50,6 +50,7 @@ BINARIES = {
 # Bluetooth patchram: Orchard devices/j81/firmware.json bluetool-hcd@1 output (iPadOS 15.8.8 usr/sbin/BlueTool), staged under the first name
 # hci_bcm requests on J81 (research/2026-11-02-bt-uart3-pinmux-lead.md).
 BT_PATCHRAM = ("BCM4354.apple,j81.hcd", "9bf34c420336303d8c46a4f70c5bd47b771675a9ba18b64a8e6ef70528494019", 72360)
+TOUCH_FIRMWARE = ("lib/firmware/apple/j81-fwstart.z2fw", "b9b4a072e9498bfac4e6dbb124fa5a758719ad0edfaf052855c955285369afaf", 59376)
 NVRAM_NAME = "P-rieslinga_M-CIDR_V-u__m-2.1.txt"
 NVRAM_STAGED = BASE + ".txt"
 FORBIDDEN_WIFI_TOOLS = {"wpa_supplicant", "wpa_cli", "hostapd", "iw", "iwctl", "iwd", "NetworkManager",
@@ -208,7 +209,7 @@ def wifi_userland_entries(userland_dir, credentials_file):
 
 
 def assemble(public, assets, out, nvram_name=NVRAM_NAME, check_hashes=True, token=None, extra_bootargs=(), nvram_macaddr=None,
-             wifi_userland=None, wifi_credentials=None, production=False, bt_patchram=None):
+             wifi_userland=None, wifi_credentials=None, production=False, bt_patchram=None, touch_firmware=None):
     out = private_out_dir(out)
     if out.exists() and any(out.iterdir()):
         raise SystemExit(f"{out} already exists and is not empty")
@@ -247,6 +248,17 @@ def assemble(public, assets, out, nvram_name=NVRAM_NAME, check_hashes=True, toke
                             "macaddr_added": bool(macaddr), **({"macaddr": macaddr} if macaddr else {})})
     extra_entries, wifi_tools, wifi_source = [], None, None
     public_entries = cpio_entries(gzip.decompress(parts["initramfs.gz"]))
+    touch_manifest = None
+    if touch_firmware:
+        path, want_hash, want_size = TOUCH_FIRMWARE
+        if "lib/modules/apple_z2.ko" not in public_entries:
+            raise SystemExit("touch firmware requires a public payload with apple_z2.ko")
+        touch_data = Path(touch_firmware).read_bytes()
+        if not touch_data:
+            raise SystemExit("touch firmware is empty")
+        if check_hashes and (len(touch_data) != want_size or sha256(touch_data) != want_hash):
+            raise SystemExit("touch firmware does not match the recorded J81 15.8.8 asset (size/SHA-256)")
+        touch_manifest = {"path": path, "size": len(touch_data), "sha256": sha256(touch_data)}
     public_has_wifi = all(f"usr/bin/{n}" in public_entries for n in WIFI_TOOLS + ("wifi-up",))
     if public_has_wifi:
         # The base package already carries the generic Wi-Fi userland (mkJ81BasePayload wifi = true): only the private credentials are added.
@@ -265,6 +277,8 @@ def assemble(public, assets, out, nvram_name=NVRAM_NAME, check_hashes=True, toke
         if wifi_userland:
             extra_entries, wifi_tools = wifi_userland_entries(wifi_userland, wifi_credentials)
             wifi_source = "private overlay"
+    if touch_manifest:
+        extra_entries.append((touch_manifest["path"], 0o100644, touch_data))
     token = token or secrets.token_hex(16)
     final_parts, blob = compose(parts, names, build_overlay(files, extra_entries), token, tuple(extra_bootargs))
     out.mkdir(parents=True, exist_ok=True)
@@ -278,6 +292,7 @@ def assemble(public, assets, out, nvram_name=NVRAM_NAME, check_hashes=True, toke
         "public_parts_sha256": {n: sha256(parts[n]) for n in names},
         "final_m1n1_linux_sha256": sha256(blob), "final_size": len(blob),
         "bootargs": final_parts["bootargs"].decode().strip(), "extra_bootargs": list(extra_bootargs), "assets": manifest_assets,
+        "touch_firmware": touch_manifest,
         "production": bool(production),
         "wifi_userland": ({"tools_sha256": wifi_tools, "source": wifi_source, "credentials_present": bool(wifi_credentials),
                            "autostart": "/usr/bin/wifi-up from the boot hook"}
@@ -315,6 +330,13 @@ def verify(out):
             problems.append(f"{a['staged']} is empty")
         elif sha256(entry[1]) != a["sha256"]:
             problems.append(f"{a['staged']} differs from the manifest")
+    touch = manifest.get("touch_firmware")
+    if touch:
+        entry = entries.get(touch["path"])
+        if entry is None or len(entry[1]) != touch["size"] or sha256(entry[1]) != touch["sha256"]:
+            problems.append("touch firmware missing or differs from the manifest")
+        if "lib/modules/apple_z2.ko" not in entries:
+            problems.append("touch module missing from the initramfs")
     nv = entries.get(f"{FW_DIR}/{NVRAM_STAGED}")
     if nv and len([l for l in nv[1].decode(errors="ignore").splitlines() if "=" in l]) < 10:
         problems.append("staged NVRAM is not a plausible key=value file")
@@ -360,6 +382,7 @@ def main():
     ap.add_argument("--wifi-credentials", type=Path, help="private wpa_supplicant.conf (ssid/psk); installed only into the private payload, mode 0600, never recorded in the manifest")
     ap.add_argument("--production", action="store_true", help="payload of the production kernel (m1n1-hoolock-wifi): quiet brcmfmac logging, so the brcmfmac.debug bootarg is not required")
     ap.add_argument("--bt-patchram", type=Path, help="private Bluetooth patchram (BCM.apple,j81.hcd); staged as lib/firmware/brcm/BCM4354.apple,j81.hcd for hci_bcm at boot")
+    ap.add_argument("--touch-firmware", type=Path, help="private, verified J81 15.8.8 j81-fwstart.z2fw for the Orchard touch payload")
     ap.add_argument("--no-hash-check", action="store_true", help="test fixtures only (synthetic assets)")
     args = ap.parse_args()
     if args.verify:
@@ -377,7 +400,7 @@ def main():
     manifest = assemble(args.public, args.assets, args.out, args.nvram, check_hashes=not args.no_hash_check,
                         extra_bootargs=args.extra_bootarg, nvram_macaddr=args.nvram_macaddr,
                         wifi_userland=args.wifi_userland, wifi_credentials=args.wifi_credentials, production=args.production,
-                        bt_patchram=args.bt_patchram)
+                        bt_patchram=args.bt_patchram, touch_firmware=args.touch_firmware)
     problems, _ = verify(args.out)
     if problems:
         print("FAIL after assembly:", problems)

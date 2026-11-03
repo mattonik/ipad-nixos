@@ -1,0 +1,28 @@
+From 6efb7ef2456561aa2feee9bce717ac030ef2e5ce Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Martin=20Pu=C5=A1k=C3=A1=C4=8D?= <martin@icebear.sk>
+Date: Tue, 3 Nov 2026 17:40:36 +0100
+Subject: [PATCH] Input: apple_z2: Match J81 N1 family 22
+
+The live J81 and stock iPadOS both report family 22; family 21 rejects runtime discovery.
+
+Assisted-by: LLM
+---
+ drivers/input/touchscreen/apple_z2.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/input/touchscreen/apple_z2.c b/drivers/input/touchscreen/apple_z2.c
+index 018ec6ea5..60908f998 100644
+--- a/drivers/input/touchscreen/apple_z2.c
++++ b/drivers/input/touchscreen/apple_z2.c
+@@ -4049,7 +4049,7 @@ static const struct apple_z2_n1_info apple_z2_j81_n1 = {
+ 	.device_info_attempts = 4,
+ 	.device_info_retry_us = 3000,
+ 	.interface = 1,
+-	.family = 21,
++	.family = 22,
+ 	.rows = 40,
+ 	.columns = 30,
+ 	.surface_width = 14745,
+-- 
+2.56.0
+

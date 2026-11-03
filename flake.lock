@@ -373,6 +373,23 @@
         "type": "github"
       }
     },
+    "orchardLinux": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1793557603,
+        "narHash": "sha256-PjKLrJkAfORLqaU58GlP8pf758F2OyjIEoRyOdxs15o=",
+        "owner": "OrchardLinux",
+        "repo": "linux",
+        "rev": "df7c930f80abd32a054617cd30ea450b7acfb3e0",
+        "type": "github"
+      },
+      "original": {
+        "owner": "OrchardLinux",
+        "repo": "linux",
+        "rev": "df7c930f80abd32a054617cd30ea450b7acfb3e0",
+        "type": "github"
+      }
+    },
     "root": {
       "inputs": {
         "devenv": "devenv",
@@ -385,6 +402,7 @@
         "linuxAppleResources": "linuxAppleResources",
         "nixpkgs": "nixpkgs",
         "nixpkgsBuilder": "nixpkgsBuilder",
+        "orchardLinux": "orchardLinux",
         "rust-overlay": "rust-overlay"
       }
     },
