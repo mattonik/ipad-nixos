@@ -50,3 +50,6 @@ result-linux-builder
 
 # Driver reload work copies and built modules (tools/kmod.sh)
 artifacts/kmod/
+.build-lock/
+.store-image.*
+console.log

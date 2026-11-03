@@ -1,8 +1,11 @@
 #!/bin/sh
 # Manage the macOS Linux-builder VM that every Linux build in this repo depends on (kernel, NixOS image, static tools). Runbook: docs/build-infrastructure.md.
 #
-#   tools/builder.sh status                         is it running? (vzvm process, SSH port 31022, a login with keys/builder_ed25519)
-#   tools/builder.sh start                          build the launcher if needed and start the VM IN THE BACKGROUND from the state directory (the VM's disk lives there)
+#   tools/builder.sh status                         is it running? (vzvm process, SSH port 31022, a login, a working guest userland, guest disk use, host free space, build lock holder)
+#   tools/builder.sh start                          build the launcher if needed, build the store image correctly, start the VM IN THE BACKGROUND from the state directory
+#   tools/builder.sh build [--wait] [--who NAME] ARGS...
+#                                                   run `nix build ARGS...` under the shared build lock (one build at a time across all agents); refuses if the VM is unhealthy
+#                                                   or the Mac has less than $BUILDER_MIN_HOST_FREE_GB (15) GB free. --wait queues behind the current holder instead of failing.
 #   tools/builder.sh stop                           sync in the guest, then SIGTERM vzvm (clean guest shutdown in ~30-90 s). Never SIGKILLs unless FORCE=1.
 #   tools/builder.sh archive [-n] [--delete-local [--yes]]
 #                                                   copy the VM's state to the NAS as cold storage (see below); -n = dry run
@@ -16,6 +19,10 @@
 # a restore does not depend on cache.nixos.org still serving them), meta.txt and SHA256SUMS. The VM is never run from the NAS: network storage is too slow and unsafe for it.
 #
 # Never run a bare `nix run nixpkgs#darwin.linux-builder-vz`: it creates a different, empty VM in the current directory.
+#
+# Store image: the launcher builds the guest's read-only store image (store-<hash>.img, erofs) by piping tar into mkfs.erofs 1.9.4 on first start. That pipe silently drops
+# directory entries (glibc-bin/bin and others come out empty), so the guest boots with a broken userland and never accepts SSH (found 2026-11-03). `start` therefore builds
+# the image itself from a tar FILE, which comes out correct, before the launcher looks for it.
 set -u
 REPO=$(cd "$(dirname "$0")/.." && pwd)
 STATE=${BUILDER_DIR:-$REPO}
@@ -44,12 +51,70 @@ on_network_fs() {
 	mount | grep -E " on $mp \((smbfs|nfs|afpfs|webdav)" >/dev/null 2>&1
 }
 
+LOCK="$STATE/.build-lock"
+MIN_HOST_FREE_GB=${BUILDER_MIN_HOST_FREE_GB:-15}
+
+# The launcher's run script names the store image, the closure to pack and the tar/mkfs.erofs it would use.
+run_script() { nix-store -qR "$(launcher_path)" 2>/dev/null | grep -- '-run-nixos-vm$' | head -n 1; }
+store_image_name() { sed -n 's|^storeImage="$imageDir/\(store-[a-z0-9]*\.img\)"$|\1|p' "$1"; }
+
+ensure_store_image() {
+	rs=$(run_script); [ -n "$rs" ] || die "cannot find the launcher's run-nixos-vm script"
+	img=$(store_image_name "$rs"); [ -n "$img" ] || die "cannot find the store image name in $rs"
+	[ -f "$STATE/$img" ] && return 0
+	tar=$(grep -o '/nix/store/[a-z0-9]*-gnutar-[^/]*/bin/tar' "$rs" | head -n 1)
+	mkfs=$(grep -o '/nix/store/[a-z0-9]*-erofs-utils-[^/]*/bin/mkfs.erofs' "$rs" | head -n 1)
+	paths=$(grep -o '/nix/store/[a-z0-9]*-closure-info/store-paths' "$rs" | head -n 1)
+	label=$(sed -n 's/^ *-L \([^ ]*\) .*/\1/p' "$rs" | head -n 1); uuid=$(sed -n 's/^ *-U \([^ ]*\) .*/\1/p' "$rs" | head -n 1)
+	[ -x "$tar" ] && [ -x "$mkfs" ] && [ -f "$paths" ] && [ -n "$label" ] && [ -n "$uuid" ] || die "cannot parse the store image recipe from $rs"
+	say "building the store image $img from a tar file (the launcher's tar | mkfs.erofs pipe drops directory entries)"
+	tmp="$STATE/.store-image.$$"; trap 'rm -f "$tmp.tar" "$tmp.img"' EXIT
+	"$tar" --create --absolute-names --verbatim-files-from --transform 'flags=rSh;s|/nix/store/||' \
+		--transform 'flags=rSh;s|~nix~case~hack~[[:digit:]]\+||g' --files-from "$paths" -f "$tmp.tar" || die "tar failed"
+	"$mkfs" --quiet --force-uid=0 --force-gid=0 -L "$label" -U "$uuid" -T 0 --hard-dereference --tar=f "$tmp.img" "$tmp.tar" || die "mkfs.erofs failed"
+	# Spot check: glibc's bin directory is the one the pipe empties first.
+	dump="$(dirname "$mkfs")/dump.erofs"; gbin=$(grep -- '-glibc-[^/]*-bin$' "$paths" | head -n 1)
+	if [ -n "$gbin" ] && [ "$("$dump" --ls --path="/${gbin#/nix/store/}/bin" "$tmp.img" | awk '$2 == 1' | wc -l)" -lt 5 ]; then die "the new store image fails the glibc-bin check"; fi
+	mv "$tmp.img" "$STATE/$img"; rm -f "$tmp.tar"; trap - EXIT
+	find "$STATE" -maxdepth 1 -name 'store-*.img' ! -name "$img" -delete
+}
+
+lock_holder() { cat "$LOCK/owner" 2>/dev/null; }
+host_free_gb() { echo $(( $(free_kb "$STATE") / 1048576 )); }
+
 cmd_status() {
 	pid=$(vzvm_pid)
 	[ -n "$pid" ] && echo "vzvm: running (pid $pid)" || echo "vzvm: not running"
 	if lsof -nP -iTCP:31022 -sTCP:LISTEN >/dev/null 2>&1; then echo "ssh port 31022: listening"; else echo "ssh port 31022: closed"; fi
-	if $SSH true 2>/dev/null; then echo "login as builder: ok"; else echo "login as builder: failed (expected while stopped or still booting)"; fi
-	[ -f "$STATE/nixos.qcow2" ] && echo "disk: $STATE/nixos.qcow2 ($(human "$(used_of "$STATE/nixos.qcow2")") used)" || echo "disk: none in $STATE (archived? see: tools/builder.sh restore)"
+	if $SSH true 2>/dev/null; then
+		echo "login as builder: ok"
+		if $SSH 'ls /run/current-system/sw/bin >/dev/null' 2>/dev/null; then echo "guest userland: ok"; else echo "guest userland: BROKEN (store image? see the header of tools/builder.sh)"; fi
+		echo "guest disk: $($SSH "df -h /nix/.rw-store | awk 'NR==2 {print \$3 \" used, \" \$4 \" free of \" \$2}'" 2>/dev/null) (Nix GCs itself below 8 GB free)"
+	else echo "login as builder: failed (expected while stopped or still booting)"; fi
+	[ -f "$STATE/nixos.qcow2" ] && echo "disk: $STATE/nixos.qcow2 ($(human "$(used_of "$STATE/nixos.qcow2")") used on the Mac)" || echo "disk: none in $STATE (archived? see: tools/builder.sh restore)"
+	echo "host free: $(host_free_gb) GB (builds refuse below $MIN_HOST_FREE_GB GB)"
+	[ -d "$LOCK" ] && echo "build lock: held by $(lock_holder)" || echo "build lock: free"
+}
+
+healthy() { [ -n "$(vzvm_pid)" ] && $SSH 'ls /run/current-system/sw/bin >/dev/null' 2>/dev/null; }
+
+cmd_build() {
+	wait=0; who=${BUILDER_WHO:-$(whoami)@$$}
+	while [ $# -gt 0 ]; do case "$1" in --wait) wait=1; shift ;; --who) who=$2; shift 2 ;; *) break ;; esac; done
+	[ $# -gt 0 ] || die "usage: tools/builder.sh build [--wait] [--who NAME] <nix build arguments>"
+	healthy || die "the builder is not running or not healthy; run: tools/builder.sh status"
+	[ "$(host_free_gb)" -ge "$MIN_HOST_FREE_GB" ] || die "only $(host_free_gb) GB free on the Mac (need $MIN_HOST_FREE_GB); free space before building"
+	# mkdir is atomic: whoever creates the lock directory owns it. A lock whose owner process is gone is stale and taken over.
+	until mkdir "$LOCK" 2>/dev/null; do
+		opid=$(sed -n 's/.* pid \([0-9]*\) .*/\1/p' "$LOCK/owner" 2>/dev/null)
+		if [ -n "$opid" ] && ! kill -0 "$opid" 2>/dev/null; then say "removing a stale lock ($(lock_holder))"; rm -rf "$LOCK"; continue; fi
+		[ "$wait" = 1 ] || die "busy: build lock held by $(lock_holder); retry later or pass --wait"
+		say "waiting for the build lock (held by $(lock_holder))"; sleep 30
+	done
+	echo "$who pid $$ since $(date '+%Y-%m-%d %H:%M:%S') : nix build $*" > "$LOCK/owner"
+	trap 'rm -rf "$LOCK"' EXIT INT TERM
+	say "lock taken by $who; nix build $*"
+	nix build "$@"
 }
 
 cmd_start() {
@@ -57,6 +122,7 @@ cmd_start() {
 	[ -f "$STATE/nixos.qcow2" ] || echo "note: no nixos.qcow2 in $STATE: the launcher will create a fresh EMPTY VM (restore the archive first if you want the old one)"
 	cd "$STATE" || exit 1
 	[ -x result-linux-builder/bin/create-builder ] || $NIX build "$REPO#packages.aarch64-darwin.linux-builder" -o result-linux-builder || exit 1
+	ensure_store_image
 	# from INSIDE the state directory: the disk (nixos.qcow2, store-*.img, vzvm.json, keys/) is found relative to the working directory
 	nohup ./result-linux-builder/bin/create-builder > "$STATE/builder.log" 2>&1 &
 	echo "started (log: $STATE/builder.log); waiting for the guest to accept logins..."
@@ -207,7 +273,8 @@ case "${1:-status}" in
 status) cmd_status ;;
 start) cmd_start ;;
 stop) cmd_stop ;;
+build) shift; cmd_build "$@" ;;
 archive) shift; cmd_archive "$@" ;;
 restore) shift; cmd_restore "$@" ;;
-*) echo "usage: $0 status|start|stop|archive [-n] [--delete-local [--yes]]|restore [-n] [--from DIR] [--to DIR] [--force]" >&2; exit 2 ;;
+*) echo "usage: $0 status|start|stop|build [--wait] [--who NAME] ARGS...|archive [-n] [--delete-local [--yes]]|restore [-n] [--from DIR] [--to DIR] [--force]" >&2; exit 2 ;;
 esac

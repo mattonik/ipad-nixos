@@ -4151,6 +4151,17 @@
           virtualisation.cores = 4;
           virtualisation.darwin-builder.memorySize = 8 * 1024;
           virtualisation.darwin-builder.diskSize = 40 * 1024;
+          # Automatic GC by the guest's nix-daemon. The profile defaults (start
+          # at 1 GB free, stop at 3 GB) are smaller than one kernel build, so the
+          # disk filled up mid-build and the guest stopped booting (2026-11-03).
+          # The daemon collects between build steps, which avoids the GC-during-build
+          # corruption seen with a manual nix-collect-garbage (2026-09-25).
+          virtualisation.darwin-builder.min-free = 8 * 1024 * 1024 * 1024;
+          virtualisation.darwin-builder.max-free = 15 * 1024 * 1024 * 1024;
+          # The guest's / (and so /tmp) is a RAM tmpfs that only fits one kernel
+          # build. Build directories go on the 40 GB disk instead.
+          systemd.tmpfiles.rules = [ "d /nix/.rw-store/build-tmp 0755 root root -" ];
+          nix.settings.build-dir = "/nix/.rw-store/build-tmp";
         }];
       };
     };
