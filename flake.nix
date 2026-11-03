@@ -1098,6 +1098,26 @@
             installPhase = "mkdir -p $out/bin && cp touch-diag $out/bin/touch-diag";
           };
 
+          # touchdemo (boot/touchdemo.c): on-screen touch demo and test screens (DRM dumb buffer or fbdev, no GPU), docs/touchdemo.md.
+          touchdemoPkg = pkgsCrossMusl.stdenv.mkDerivation {
+            name = "touchdemo";
+            dontUnpack = true;
+            buildPhase = "$CC -static -O2 -Wall -Wextra -Werror -o touchdemo ${./boot/touchdemo.c} -lm";
+            installPhase = "mkdir -p $out/bin && cp touchdemo $out/bin/touchdemo";
+          };
+
+          # Off-hardware check of touchdemo: a native build replays boot/touchdemo-test.replay headless and
+          # boot/touchdemo-check.py checks the summary and screenshot pixels. The screenshots are kept in $out.
+          touchdemoCheck = pkgs.runCommand "touchdemo-check" {
+            nativeBuildInputs = [ pkgs.stdenv.cc pkgs.python3 pkgs.gzip ];
+          } ''
+            cc -O2 -Wall -Wextra -Werror -o touchdemo ${./boot/touchdemo.c} -lm
+            gzip -dc ${pkgs.terminus_font}/share/consolefonts/ter-v32n.psf.gz > ter-v32n.psf
+            mkdir -p "$out"
+            python3 ${./boot/touchdemo-check.py} ./touchdemo ${./boot/touchdemo-test.replay} ${./boot/touchdemo-zero.replay} \
+              ter-v32n.psf "$out" | tee "$out/log"
+          '';
+
           # uartpeek: READ-ONLY dump of UART3/UART5 registers 0x00..0x3c (boot/uartpeek.c) for the Bluetooth baud-register investigation; run-time tool only.
           uartpeekPkg = pkgsCrossMusl.stdenv.mkDerivation {
             name = "uartpeek";
@@ -1224,6 +1244,12 @@
               cp ${kernel.modules}/lib/modules/${kernel.modDirVersion}/kernel/net/wireless/cfg80211.ko overlay/lib/modules/cfg80211.ko
               cp ${kernel.modules}/lib/modules/${kernel.modDirVersion}/kernel/drivers/net/wireless/broadcom/brcm80211/brcmutil/brcmutil.ko overlay/lib/modules/brcmutil.ko
               cp ${kernel.modules}/lib/modules/${kernel.modDirVersion}/kernel/drivers/net/wireless/broadcom/brcm80211/brcmfmac/brcmfmac.ko overlay/lib/modules/brcmfmac.ko
+              # Touch demo (docs/touchdemo.md): always in the image, started at boot only with j81.touchdemo=... .
+              cp ${touchdemoPkg}/bin/touchdemo overlay/usr/bin/touchdemo
+              cp ${./boot/touchdemo-screen.sh} overlay/usr/bin/touchdemo-screen
+              chmod 755 overlay/usr/bin/touchdemo overlay/usr/bin/touchdemo-screen
+              sed -i 's|^loop_forever$|[ -x /usr/bin/touchdemo-screen ] \&\& /usr/bin/touchdemo-screen >/var/log/touchdemo.log 2>\&1 \&\nloop_forever|' "overlay/$hook"
+              grep -q touchdemo-screen "overlay/$hook"
               '' else ""}
               echo 'root:x:0:0:root:/root:/bin/sh' > overlay/etc/passwd
               echo 'root:x:0:' > overlay/etc/group
@@ -1436,6 +1462,8 @@
         uartpeek-static = uartpeekPkg;
         hciscan-static = hciscanPkg;
         touch-diag-static = touchDiagStaticPkg;
+        touchdemo = touchdemoPkg;
+        touchdemo-check = touchdemoCheck;
         # Driver reload loop (docs/kmod-reload.md).
         hoolock-wifi-kmod-kernel = hoolockWifiKmodKernel;
         orchard-j81-touch-kernel = orchardJ81TouchKernel;
@@ -3580,6 +3608,17 @@
           touchModule = true;
           kernel = orchardJ81TouchKernel;
           bootargsExtra = "pcie_aspm=off fbcon=font:TER16x32";
+        };
+
+        # The same image booting straight into the touch demo (docs/touchdemo.md): j81.touchdemo=1 starts PAINT,
+        # j81.dashboard=0 keeps the text dashboard from running underneath. Kernel and initramfs equal m1n1-orchard-touch's.
+        m1n1-orchard-touch-demo = mkJ81BasePayload {
+          name = "m1n1-orchard-touch-demo";
+          wifi = true;
+          dashboard = true;
+          touchModule = true;
+          kernel = orchardJ81TouchKernel;
+          bootargsExtra = "pcie_aspm=off fbcon=font:TER16x32 j81.touchdemo=1 j81.dashboard=0";
         };
 
         # TEST ONLY: the production Wi-Fi base plus a boot-time gpio-hog driving AP GPIO 164 (Bluetooth BT_WAKE) high, for the Bluetooth bring-up

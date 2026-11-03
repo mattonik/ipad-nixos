@@ -1,0 +1,20 @@
+# touchdemo replay with --zero-axes (apple_z2 reporting 0..0 axis ranges): start in GRID, touch two opposite
+# corners to establish the seen range (the first lands mid-screen and must press nothing), then sweep the outer ring.
+home
+down 0 1 60 60 800
+frame
+up 0
+frame
+down 0 2 1476 1988 800
+frame
+up 0
+frame
+down 0 3 60 60 800
+frame
+drag 0 1476 60 0 24
+drag 0 1476 1988 0 32
+drag 0 60 1988 0 24
+drag 0 60 60 0 32
+up 0
+frame
+shot zero-grid.ppm
