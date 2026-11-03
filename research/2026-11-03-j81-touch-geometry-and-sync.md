@@ -29,3 +29,23 @@ The sampler made no writes. `touch-diag dsync-restore` restored GPIO55 exactly t
 ## Implication
 
 The specific “GPIO55 has no changing signal under Linux” idea is weakened. The higher-value question is why the firmware's runtime data is zero on the function-1 path, and whether the 30 Hz signal matches iPadOS at the controller. A native iPadOS GPIO55/ATN timing trace or a verified way to inspect the runtime pointer and structure would distinguish incorrect sync timing from firmware initialization or report-transport failure. Do not write guessed values to report `0xa1` or copy the 14745×19657 descriptor into the shipped driver on this evidence.
+
+## Read-only iPadOS reference (later on 2026-11-03)
+
+After a forced reboot from the RAM-booted Linux image, the same J81 booted its installed iPadOS **15.8.5**. Martin unlocked it, trusted the Mac, and confirmed that taps and swipes work normally. The standard USB diagnostics relay, queried through `pymobiledevice3 diagnostics ioregistry --ioclass AppleMultitouchN1SPI`, exposed these non-identifying runtime properties:
+
+| Property | Live iPadOS value |
+| --- | --- |
+| `IOClass` | `AppleMultitouchN1SPI` |
+| `Family ID`, interface, sensor rows × columns | 22, 1, 40 × 30 |
+| `Constructed Firmware Version` | `0x0382.bin` |
+| `Sensor Region Param` (`0xa1`) | `00 00 05 00 00 02` |
+| `Sensor Surface Descriptor` (`0xd9`) | `99 39 00 00 c9 4c 00 00 90 ff 90 ff ac 38 e2 4b` |
+| Surface width × height | 14745 × 19657 |
+| `IOPowerManagement.CurrentPowerState`, `ResetCount` | 1, 0 |
+
+The descriptor and region parameters stayed identical in a second IORegistry query after swiping. This is the strongest direct reference yet for the expected J81 runtime data. It matches the nonzero Linux function-2/3 discovery and differs from the all-zero Linux function-1 replies. The installed iPadOS is 15.8.5; the 19H422 firmware tested under Linux was extracted from 15.8.8 and also identified itself as `0x382`.
+
+The same read-only USB relay supplied syslog. A second, synchronized swipe capture contained **106 `backboardd(MultitouchHID)` dispatch events** (54 with `Touching=1`, 52 with `Touching=0`) over about 30 seconds. This verifies that native touch reporting works on the panel. The full IORegistry and syslog captures, including potentially identifying material, are kept only in ignored private artifacts; this note contains no calibration bytes or device identifiers.
+
+The diagnostics service exposes the ADT `function-display_sync` record and GPIO provider metadata, but **not GPIO55's live pad register or waveform**. Thus this software-only, non-jailbroken path gives runtime touch reference values and events, not the requested electrical timing comparison. Reading GPIO55 during iPadOS would require a privileged on-device method or a passive physical probe; a rootless jailbreak would modify the iPadOS installation and was not used.

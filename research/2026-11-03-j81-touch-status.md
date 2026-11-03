@@ -56,8 +56,10 @@ through `tools/builder.sh build --wait --who <thread>`.
 
 The [firmware and GPIO55 follow-up](2026-11-03-j81-touch-geometry-and-sync.md) found that
 `0xa1`/`0xd9` read runtime RAM, while GPIO55 function 1 exposes a stable 30 Hz digital
-signal in this Linux boot. Determine why that route leaves the runtime reports zero;
-the correct iPadOS sync waveform and the firmware's initialization path remain unknown.
+signal in Linux. A read-only iPadOS 15.8.5 USB query confirmed family 22, nonzero `0xa1`
+and `0xd9`, and normal touch events on this unit. Determine why the Linux function-1
+route leaves runtime reports zero; the iPadOS GPIO55 waveform and the firmware's
+initialization path remain unknown.
 An iPadOS trace of GPIO55 (display sync) and ATN during a real touch would help, but needs a
 logic analyzer (the no-new-hardware rule applies). Before upstreaming: turn the `spi_apple`
 change into a kernel patch (it fixes S5L full duplex in general) and report the findings to
