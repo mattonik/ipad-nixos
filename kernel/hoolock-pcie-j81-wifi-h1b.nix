@@ -121,6 +121,9 @@ let
     patch -d "$out" -p1 < ${./patches/0120-hci-bcm-j81-bcm4350c2-match.patch}
     patch -d "$out" -p1 < ${./patches/0121-t7001-air2-pmic-gpio-and-bluetooth.patch}
     patch -d "$out" -p1 < ${./patches/0122-dt-bindings-gpio-apple-pmic-gpio-reserved-ranges-min-items.patch}
+    # Wi-Fi cleanup W2: the PCIe DART window as the pin's five-cell iommu-map specifier; drops apple,iova-window/-rebase and apple,pci-alias
+    # from the DT, so the 0063/0064/0076/0080 paths are no longer taken (research/2026-11-01-orchardlinux-org-review.md).
+    patch -d "$out" -p1 < ${./patches/0123-t7001-air2-pcie-dart-five-cell-iommu-map.patch}
   '';
   buildArgs = builtins.removeAttrs args [ "source" "hoolockConfig" "runCommand" ];
 in
