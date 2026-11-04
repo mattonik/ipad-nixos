@@ -467,3 +467,23 @@ branch; it does not follow that they are irrelevant to other loaders. Its
 parsing does not make the package an ELF merely because path strings mention
 `.elf`, nor does it establish compatibility with Linux's separate PowerVR
 firmware container. No firmware was executed or sent to the iPad.
+
+## Follow-up: META slave-port register overlap
+
+The 8.1 firmware event handler at `0xffffff800329f6cc` has an event-6 path
+that polls RGX `+0xa18` for mask `0x05000000`, then writes `+0xa10` and
+`+0xa08` for two META thread register-bank addresses. The pinned Linux
+PowerVR definitions identify those same offsets as META slave-port control
+and data registers; its ready and global-idle bits are `0x01000000` and
+`0x04000000`. The two META addresses selected by Apple are `0x04800000`
+and `0x04801000`, matching Linux's `META_CR_CTRLREG_BASE(0)` and `(1)`.
+This is specific cross-version evidence that at least this low-level META
+register mechanism is shared, not proof that firmware boot, commands, or
+memory layouts are compatible.
+
+Each 8.1 poll requests 10-microsecond delays up to a roughly 100-millisecond
+counter threshold. The code logs a timeout and then continues into later
+operations, including more register writes. A diagnostic or future port
+should not infer that continuing after a wedged META port is safe from this
+Apple recovery path. The event meaning and complete call context remain
+unresolved; this is not a verified power-up sequence. No MMIO was accessed.
