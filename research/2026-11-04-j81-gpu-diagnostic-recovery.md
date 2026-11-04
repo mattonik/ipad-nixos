@@ -108,3 +108,20 @@ software and erases data: https://support.apple.com/en-au/108925.
 A future run needs a separately reviewed payload and explicit authorization
 for its power/GPC writes and reads. Record failures and update this procedure
 from observed results rather than calling it proven in advance.
+
+## Control boot result: 2026-11-04
+
+With the user's go-ahead, the J81 was detected in DFU, entered PongoOS,
+and booted the existing `artifacts/live/gcroot-clean-production` control
+payload. The uploaded `m1n1-linux.bin` SHA-256 was
+`b3206c51c096d9e0cb47473cdcd88157acf677388805eb3532df071ce7315781`,
+matching its stored manifest. PongoOS disconnected during `bootm`; this was
+followed by a visible Linux console, a successful ping and a working telnet
+shell at `172.16.42.1`. The shell reported Linux `7.3.0-rc1` and `rootfs` as
+the root mount. The observed mount list contained no internal-storage mount.
+
+This verifies the control boot and shell on that run. It does **not** verify
+physical force restart, booting the stock OS afterward, GPU diagnostic
+recovery, watchdog behavior, or the GPU power sequence. No GPU register
+access was made. The experimental diagnostic payload is still to be built and
+reviewed.
