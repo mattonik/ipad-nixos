@@ -487,3 +487,19 @@ operations, including more register writes. A diagnostic or future port
 should not infer that continuing after a wedged META port is safe from this
 Apple recovery path. The event meaning and complete call context remain
 unresolved; this is not a verified power-up sequence. No MMIO was accessed.
+
+## Follow-up: 15.8.8 firmware package comparison
+
+In 19H422, the J81 `AGXFirmwareKextG4G` method at
+`0xfffffff0069820c0` returns its `__TEXT.__const` image at
+`0xfffffff0059ab9c8`, length `0x1cbb4`. Interpreting that private image
+with the **8.1 record-link and type-0 source-range rules** yields a
+self-consistent chain: the first-record offset is again `0x1190`, all 88
+links and checked type-0 source ranges remain inside the returned span,
+and the low-five-bit type counts are 67 type 0, 13 type 4, two type 5,
+one type 3 and five type 16. The respective type-0 and type-4 lengths sum
+to 109,996 and 26,280 bytes. This is strong evidence that the two releases
+retain a related container structure, not proof that all record meanings,
+destinations, host protocols or firmware binaries are interchangeable.
+The 15.8.8 loader has not yet been traced at the record level. No firmware
+bytes are recorded here and neither image was executed.
