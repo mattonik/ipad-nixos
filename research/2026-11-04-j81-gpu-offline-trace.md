@@ -441,3 +441,29 @@ not a drop-in loader for an Apple image. Do not remove those validation
 checks or assume that adding a filename or overriding the GPU-ID check
 makes Apple's firmware compatible. No image was executed or submitted to
 the GPU.
+
+## Follow-up: 12B410 firmware package structure
+
+The G4G firmware-kext method at `0xffffff8002e391e4` returns a pointer to
+its `__TEXT.__const` at `0xffffff8002e39327` and a length of `0x16cd8`.
+This identifies the **specific image span**, rather than assuming that the
+`.elf` build-path strings denote separate embedded ELF files. The
+`AGXMetaFirmware` loader described above expects the image's first-record
+offset at byte 8, follows relative record links, and ends when a link equals
+`0xffffffff`.
+
+A private, read-only bounds check of that span found 80 distinct linked
+records: 58 of type 0, 14 of type 4, two of type 5, one of type 3, and five
+whose low five type bits are 16. Every link stayed inside the returned span;
+the type-0 source ranges also stayed inside it. Under the 8.1 loader's
+interpretation, type-0 records specify a total of 85,980 copied bytes and
+type-4 records specify 14,028 zero-filled bytes. These counts are static
+structural observations, not a full validation of destinations, execution,
+firmware integrity, or runtime compatibility. The original blob remains in
+ignored private storage and no bytes are included in this note.
+
+The loader ignores the observed type-16 records through its optional-record
+branch; it does not follow that they are irrelevant to other loaders. Its
+parsing does not make the package an ELF merely because path strings mention
+`.elf`, nor does it establish compatibility with Linux's separate PowerVR
+firmware container. No firmware was executed or sent to the iPad.
