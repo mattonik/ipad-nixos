@@ -82,6 +82,19 @@ pressed a button.
 
 ## Hardware status
 
-Not yet run on the iPad (2026-11-03). Things to confirm on the first boot: that `simpledrm` accepts `SETCRTC`
-and `DIRTYFB` (otherwise it falls back to fbdev, shown as `fbdev` in the panel), the report rate (the live module
-test measured about 97/s), the latency, the X/Y orientation in GRID, and what `TOUCH_MAJOR` units look like.
+**First boot, 2026-11-04: works.** Payload `m1n1-orchard-touch-demo` (private
+`j81-orchard-touch-demo-20261104T082414Z`, run id `c1ad1c07…`, touch firmware 15.8.8) booted straight into PAINT;
+Martin drew with several fingers ("works like a charm", video `IMG_4699.MOV` in the project library). From the
+device:
+
+- display backend `drm` (simpledrm 1.0.0 on `87d0de000.framebuffer`): `SETCRTC` and `DIRTYFB` work, no fbdev fallback;
+- `iPad5,3 Touchscreen` on `/dev/input/event1`, axes X `0..1535` and Y `0..2047` (no zero range), 32 slots;
+- after 567 s: 2,462 reports, 27,736 events, 73 contacts, **5 fingers at once**, kernel-to-app latency 0.15 ms
+  average, raw range seen x `0..1520` y `17..2030`, `TOUCH_MAJOR` up to 3216, 1,509 touch interrupts;
+- `dmesg`: 2 `touch frame error` (-74/-75) with one failed resynchronisation, both recovered on their own.
+
+Two fixes from that run (same day): the Orchard defconfig has only the 8x16 console font, so
+`fbcon=font:TER16x32` falls back and the panel text was tiny (text is now drawn 2x under 24 px); and `EVIOCGABS`
+answers for every axis code, so the panel claimed a pressure axis (axes now come from `EVIOCGBIT`).
+
+Still open: the Y orientation check in GRID (top-left target), and whether `TOUCH_MAJOR` is really in 0.01 mm.

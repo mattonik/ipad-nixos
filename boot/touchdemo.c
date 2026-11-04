@@ -360,8 +360,11 @@ static void frame_rect(uint32_t *buf, struct rect r, int t, uint32_t c)
 
 /* ---- text ----------------------------------------------------------------- */
 
-static int text_w(const char *s, int scale) { return (int)strlen(s) * (F.data ? F.w : 8) * scale; }
-static int line_h(int scale) { return (F.data ? F.h : 16) * scale; }
+/* Text is drawn at twice the size when the font is under 24 px tall (the Orchard defconfig has only the 8x16
+ * console font, so fbcon=font:TER16x32 falls back to it), so the panels read the same either way. */
+static int text_scale(void) { return F.data && F.h < 24 ? 2 : 1; }
+static int text_w(const char *s, int scale) { return (int)strlen(s) * (F.data ? F.w : 8) * scale * text_scale(); }
+static int line_h(int scale) { return (F.data ? F.h : 16) * scale * text_scale(); }
 
 static void draw_text(uint32_t *buf, int x, int y, const char *s, uint32_t fg, int scale)
 {
@@ -369,6 +372,7 @@ static void draw_text(uint32_t *buf, int x, int y, const char *s, uint32_t fg, i
 
 	if (!F.data)
 		return;
+	scale *= text_scale();
 	for (; *s; s++, x += F.w * scale) {
 		unsigned char ch = (unsigned char)*s;
 		const unsigned char *g;
@@ -766,12 +770,17 @@ static const char *abs_name(int code)
 
 static void read_axes(void)
 {
+	unsigned long absbits[BIT_WORDS(ABS_CNT)] = { 0 };
 	int i;
 
+	/* EVIOCGABS answers for every code, so the capability bits say which axes the device really has. */
+	if (touch_fd >= 0)
+		ioctl(touch_fd, EVIOCGBIT(EV_ABS, sizeof(absbits)), absbits);
 	for (i = 0; i < AX_COUNT; i++) {
 		struct input_absinfo ai;
 
-		if (touch_fd < 0 || ioctl(touch_fd, EVIOCGABS(axis_codes[i]), &ai) < 0) {
+		if (touch_fd < 0 || !TEST_BIT(axis_codes[i], absbits) ||
+		    ioctl(touch_fd, EVIOCGABS(axis_codes[i]), &ai) < 0) {
 			if (touch_fd >= 0)
 				ax[i].present = 0;
 			continue;
