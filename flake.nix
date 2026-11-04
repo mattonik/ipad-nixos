@@ -850,6 +850,8 @@
             echo 'CONFIG_PCIE_APPLE_T7000_DEVICE_WAKE_TEST=y' >> "$out"
             # D2207 PMIC GPIO provider (patches 0110-0118): Bluetooth power enable on GPIO 2 for hci_bcm's shutdown-gpios.
             echo 'CONFIG_GPIO_APPLE_D2365=y' >> "$out"
+            # BLE keyboards and mice: bluetoothd's HOG plugin creates the input device through /dev/uhid.
+            echo 'CONFIG_UHID=y' >> "$out"
             # 16x32 console font (selected with fbcon=font:TER16x32): the 1536x2048 screen is unreadable at the default 8x16.
             echo 'CONFIG_FONTS=y' >> "$out"
             echo 'CONFIG_FONT_TER16x32=y' >> "$out"

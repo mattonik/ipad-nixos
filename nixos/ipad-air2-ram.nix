@@ -71,7 +71,11 @@ in
     environment = { IDLE_SECS = "120"; DIM = "100"; };
     serviceConfig = { ExecStart = "${pkgs.busybox}/bin/sh ${j81Tools}/bin/backlight-idle"; Restart = "on-failure"; RestartSec = 5; };
   };
-  environment.systemPackages = (with pkgs; [ iw wpa_supplicant iproute2 busybox i2c-tools ]) ++ [ j81Tools touchDiag ];
+  environment.systemPackages = (with pkgs; [ iw wpa_supplicant iproute2 busybox i2c-tools evtest ]) ++ [ j81Tools touchDiag ];
+  # Bluetooth: the kernel brings hci0 up at boot (hci_bcm on UART3, patchram copied in from the private /lib/firmware by stage 1).
+  # bluetoothd + bluetoothctl for pairing; BLE HID (HOG) needs CONFIG_UHID in the kernel. No GUI, no audio.
+  hardware.bluetooth.enable = true;
+  hardware.bluetooth.powerOnBoot = true;
 
   # Keep the closure small: this is a RAM-resident system on a 2 GB tablet.
   documentation.enable = false;
