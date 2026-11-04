@@ -270,3 +270,41 @@ that supplied object for `sgx` still need to be traced.
 
 No hardware access occurred. The timeout path, exact controller association,
 and recovery after a partial power/GPC transition remain open.
+
+## Follow-up: GPU ID interpretation and pinned Linux support
+
+The pinned Linux `drivers/gpu/drm/imagination/pvr_device.c` supports two
+identity layouts. Its legacy path reads 32-bit `CORE_REVISION` at `+0x20`
+and `CORE_ID` at `+0x18`: B and V are the revision's bits 23:16 and 15:8;
+N and C are the low 16 bits of CORE_ID split into the upper and lower
+bytes. This is consistent with the 8.1 G4G identification routine's two
+32-bit reads. Raw values should be preserved, not only a decoded string.
+
+The same Linux driver first tries a **64-bit packed BVNC at `+0x20`**:
+B, V, N, C occupy successive 16-bit fields from most to least significant.
+It falls back to the legacy path if packed B is zero. Therefore the two
+32-bit reads proposed in the earlier feasibility note are sufficient for a
+legacy decode, but **do not by themselves capture the full packed format**.
+This does not establish which layout J81 exposes, nor does it establish that
+an additional `+0x24` or 64-bit MMIO access is safe; width and access
+prerequisites need separate justification before any hardware plan.
+
+The 12B410 G4G static initializer at `0xffffff800328fb2c` constructs two
+match entries labelled `G4G A0` and `G4G A1`: branch/version bytes `7,3`
+and `7,5`, with packed table constants `0x07030803` and `0x07050803`.
+The matching routine at `0xffffff80032933cc` normally matches branch and
+version, and has fallbacks. These entries provide useful candidates, not a
+measurement of which revision is fitted to this iPad or a guarantee that
+the table's full constants equal its hardware BVNC.
+
+In the project's pinned Linux source, `pvr_gpu_support_level` explicitly
+lists only `33.15.11.3`, `36.52.104.182`, and `36.53.104.796` as supported.
+Other IDs are classified unknown and rejected by default. The experimental
+support switch can bypass that check, but it does not supply missing feature
+data, compatible firmware, or an Apple platform implementation. The driver
+constructs a firmware filename from the full BVNC and firmware ABI version;
+identifying the GPU alone therefore cannot establish that its firmware or
+host protocol is compatible.
+
+This is a source and binary comparison only. No extra register read, driver
+load, or hardware operation was performed.
