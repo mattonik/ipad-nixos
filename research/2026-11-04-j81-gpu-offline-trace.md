@@ -51,9 +51,9 @@ that import. Findings below distinguish the evidence from what remains open.
 
 ## Remaining gate before a hardware test
 
-The Fender-like `reg[1]` mapping, any required performance-state write,
-provider identity at the power call, and the order of the first RGX access
-are not yet established. In particular, the clock/power calls above must not
+The initial trace did not establish the `reg[1]` mapping, performance-state
+write, provider identity, or first RGX access. The follow-up below resolves
+much of the probe sequence. The clock/power calls above must not
 be treated as a complete register-level recipe. No boot or MMIO access was
 performed. Powering a domain or setting a performance state is a write even
 if the intended GPU identity operations are reads. Do not attempt the proposed
@@ -101,9 +101,9 @@ register and the earlier A10 analogy, but not that all of the probe's other
 writes are unnecessary. The standalone GPC state-change path has a timeout;
 the probe's two polling loops do not visibly have one.
 
-The next offline task is to trace the pre-power virtual callback and the
-provider's exact gate/error behavior, then design a bounded test and recovery
-procedure. These writes and waits can hang or affect the GPU, so the proposed
+The remaining offline task is to trace the performance controller's exact
+gate/error behavior and design a bounded test and recovery procedure.
+These writes and waits can hang or affect the GPU, so the proposed
 hardware operation is not fully read-only and still needs explicit go-ahead.
 
 ### Pre-power callback resolved
