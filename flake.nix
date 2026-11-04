@@ -1099,6 +1099,13 @@
             installPhase = "mkdir -p $out/bin && cp uartpeek $out/bin/uartpeek";
           };
 
+          gpuPmgrPeekPkg = pkgsCrossMusl.stdenv.mkDerivation {
+            name = "gpu-pmgr-peek";
+            dontUnpack = true;
+            buildPhase = "$CC -static -O2 -Wall -Wextra -Werror -o gpu-pmgr-peek ${./boot/gpu-pmgr-peek.c}";
+            installPhase = "mkdir -p $out/bin && cp gpu-pmgr-peek $out/bin/gpu-pmgr-peek";
+          };
+
           # hciscan: bring hciN up and print only COUNTS of classic/LE devices (boot/hciscan.c); for payloads without BlueZ userland, run-time tool only.
           hciscanPkg = pkgsCrossMusl.stdenv.mkDerivation {
             name = "hciscan";
@@ -1419,6 +1426,7 @@
         bt-userland-static = btUserlandPkg;
         pinpoke-static = pinpokePkg;
         uartpeek-static = uartpeekPkg;
+        gpu-pmgr-peek-static = gpuPmgrPeekPkg;
         hciscan-static = hciscanPkg;
         touch-diag-static = touchDiagStaticPkg;
         # Driver reload loop (docs/kmod-reload.md).
