@@ -134,3 +134,41 @@ return value. It does not access MMIO or power hardware. Together with the
 property-only `+0x790` callback, this closes the two previously identified
 pre-power call sites inside this probe. It does not prove what the bootloader
 or earlier system initialization has done before the probe runs.
+
+## Follow-up: controller dispatch and cleanup uncertainty
+
+The `AppleARMIODevice` methods do not directly toggle the PMGR register.
+In this kernelcache the clock wrapper at `0xffffff80026656d8` selects the
+requested `clock-gates` array entry and dispatches to its controller at
+vtable slot `+0x558`; the power wrapper at `0xffffff8002665788` selects
+`power-gates` and dispatches to controller slot `+0x560`, passing through
+its output pointer. Both return `0xe00002c7` if the requested array index
+is absent.
+
+The `AppleARMPerformanceController` constructor identifies its instance
+vtable at `0xffffff8002695870`. Its clock slot `+0x558` points to
+`0xffffff800266c17c`, which checks and tracks device state, then dispatches
+further virtual operations; it is not a simple register write. Its power
+slot `+0x560` points to `0xffffff800266c404`, which returns `0xe00002c7`
+without writing the output pointer. The `AppleT7000PerformanceController`
+instance vtable at `0xffffff80031f2090` inherits both of those entries. Its
+clock-path virtual operations include `0xffffff80031ea1c8`, whose code
+updates per-device reference counts and recursively handles dependencies,
+and `0xffffff80031ea424`, which applies queued changes. This reinforces that
+unconditionally switching a raw gate off after a diagnostic could interfere
+with other users or preexisting state.
+
+This does **not** yet prove the actual controller object used for J81's
+`sgx` provider: the captured PMGR compatible string is `pmgr1,t7001`, while
+the 12B410 T7000 controller personality names `pmgr,t7000`. The provider
+association and matching behavior still need to be traced. If that exact
+T7000 controller handles the call, its inherited power hook leaves the
+probe's zero-initialized output unchanged on unsupported, so the probe's
+conditional power/clock unwind is skipped. That is a conditional deduction,
+not proof that the target's controller or cleanup behaves that way.
+
+The pinned Linux `pmgr-pwrstate` driver already implements a managed power
+domain with a target-state poll and a 100-microsecond timeout; `ps_gfx` is
+present but has no GPU consumer. This is a candidate foundation for a later
+bounded diagnostic, not evidence that it reproduces all of iOS's clock,
+reference-count, GPC, or recovery behavior. No test code or boot was made.
