@@ -503,3 +503,17 @@ retain a related container structure, not proof that all record meanings,
 destinations, host protocols or firmware binaries are interchangeable.
 The 15.8.8 loader has not yet been traced at the record level. No firmware
 bytes are recorded here and neither image was executed.
+
+### 15.8.8 record-walker cross-check
+
+The 19H422 G4G driver's instructions at `0xfffffff00668fc40` confirm that
+its loader reads the first record offset from image `+8`, follows the next
+offset at record `+4` until `0xffffffff`, masks the record type with
+`0x1f`, and handles types 0 and 4 while calculating image regions. For
+type 0 it reads the referenced 16-bit length and subtracts six; for type 4
+it reads the size directly from record `+0xc`. A later walk at
+`0xfffffff00668ffbc` again follows the linked records and branches by the
+masked type. This confirms the basic cross-release container interpretation
+at instruction level, beyond the earlier structural fit. It still does not
+establish that all record types, address mapping, firmware ABI, or failure
+handling match between releases.
