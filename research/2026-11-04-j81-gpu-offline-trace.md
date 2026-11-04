@@ -172,3 +172,26 @@ domain with a target-state poll and a 100-microsecond timeout; `ps_gfx` is
 present but has no GPU consumer. This is a candidate foundation for a later
 bounded diagnostic, not evidence that it reproduces all of iOS's clock,
 reference-count, GPC, or recovery behavior. No test code or boot was made.
+
+## Follow-up: how to resolve the provider mismatch
+
+`AppleT7001IO::start` at `0xffffff8003181414` obtains the `arm-io`
+provider's `function-clock_gate` and `function-power_gate` properties and
+installs callbacks for them. In the captured J81 ADT both properties point
+to phandle `0x1a`, which belongs to the `pmgr` node; their four-character
+function selectors differ. This gives a concrete additional route through
+the target's `arm-io` platform functions to trace. It does not establish
+that the `sgx` provider's `AppleARMIODevice` gate calls take that route, nor
+which controller instance ultimately handles them.
+
+The apparent compatible-name mismatch also compares two inputs whose exact
+firmware-version relationship has not been established: the 12B410 kernel
+and a separately captured J81 ADT. The matching 12B410 IPSW includes
+`DeviceTree.j81ap.im4p`, but its payload is encrypted. The next conclusive
+static check is to obtain its public decryption key, decode that exact
+version's device tree, and compare the PMGR node and `arm-io` gate functions
+with the kext personalities. In parallel, trace the assignment of the GPU
+`AppleARMIODevice`'s controller pointer and the callback dispatch to the
+PMGR handler. A live iOS IORegistry class/provider tree, if one already
+exists, could independently confirm actual runtime matching; it is not
+required and no new hardware run has been requested or performed.
