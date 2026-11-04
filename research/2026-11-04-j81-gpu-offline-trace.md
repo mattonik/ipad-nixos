@@ -316,6 +316,10 @@ load, or hardware operation was performed.
 
 ## Provider-to-PMGR dispatch: resolved static path
 
+**Correction:** The later “T7000 power callback override” section finds
+that the T7000 controller installs its own callback before parent startup.
+The default-stub deduction in this section is not the normal T7000 path.
+
 The 12B410 `AppleARMIO` child publisher at `0xffffff8002665130` invokes its
 `+0x570` child factory as `(this, this, child)`; the factory at
 `0xffffff8002665074` forwards the second argument into the new
@@ -357,3 +361,30 @@ Apple probe means the preceding clock request had no effect, or that a raw
 power-off write reproduces Apple cleanup. Trace any callback replacement and
 actual gate behavior before choosing a Linux diagnostic's ownership and
 failure policy. No hardware was accessed.
+
+## T7000 power callback override: correction and cleanup flag
+
+The T7000 startup at `0xffffff80031e6fc8` stores
+`0xffffff80031e7bbc` into the power callback field `this+0x2a8` **before**
+calling its parent startup. The parent only substitutes the vtable default
+if that field is null. Consequently the default `0xe00002c7` stub identified
+above is not the normal initialized T7000 callback, and the earlier
+unsupported-return / always-skipped-unwind deduction must not be used.
+
+The installed callback at `0xffffff80031e7bbc` initializes a non-null output
+to zero, tests a software bitmap indexed by the device ID, sets the output
+to one if its bit was set, clears that bit, and returns success. The callback
+itself contains no MMIO access and does not use its enable argument. The
+bitmap can be set by the PMGR state-transition routine at
+`0xffffff80031eb4b4`: after a transition, when the state register's bit 8
+is set, it records the corresponding nonzero device ID. The Linux PMGR
+header names bit 8 `WAS_PWRGATED`. This supports interpreting the output as
+a **consumable recorded power-gating indication**, not a direct read of the
+current power state or a generic ownership count. Further analysis is
+needed to establish all bitmap initialization, writers and call ordering.
+
+In the G4G probe, a nonzero callback output triggers the later power-off
+then clock-off calls; a zero leaves that conditional unwind unexecuted. The
+actual result depends on the bit recorded for GFX at runtime. No Linux
+cleanup procedure should assume either result from the static trace alone.
+No hardware access occurred.
