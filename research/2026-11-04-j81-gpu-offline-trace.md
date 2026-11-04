@@ -237,3 +237,36 @@ private device-tree data are reproduced here.
 Next, trace the 8.1 provider-controller pointer and compare the 15.8.8
 Fender polling implementation and timeout policy at instruction level. No
 hardware or MMIO access was performed.
+
+## Follow-up: iPadOS 15 Fender wait and 8.1 provider construction
+
+In 19H422 `AGXG4G`, the G4G Fender performance-state setter at
+`0xfffffff006698d94` reads `Fender+0x1000` until bit 4 clears, calling the
+kernel's `IODelay(10)` between reads. Its loop counter and timeout diagnostic
+indicate a nominal **30,000 ms** delay budget. On success it writes
+`state | 0x10` to `+0x1000`, reads the same register back, and stores the
+requested state in software. On timeout it enters a logging/failure path
+instead of proceeding to the normal write; the ultimate failure handler is
+not yet resolved. The budget is based on requested delays, not a guarantee
+of exact elapsed wall time.
+
+Another 15.8.8 Fender routine at `0xfffffff00669c238` writes either `0x20`
+or zero to `+0x20000` and, for the enable case, polls bit 5 there and then
+bit 4 at `+0x1000`, again using bounded `IODelay(10)` loops and reporting a
+30,000 ms timeout. This confirms that newer G4G has additional Fender
+coordination; it does not establish that this routine runs in the 8.1 probe
+or that either write should be added to a diagnostic. A diagnostic should
+choose and explain its own bounded timeout and error handling, not copy
+Apple's nominal 30-second busy wait or assume it is safe for every state.
+
+For the 8.1 GPU provider, `AppleARMIODevice` initialization at
+`0xffffff8002665ab0` saves its supplied first argument at `this+0x88`, then
+loads `clock-gates` and `power-gates`. The provider wrappers subsequently
+invoke the saved object's `+0x558` and `+0x560` slots. Its constructor path
+at `0xffffff8002665080` forwards a caller-supplied object into that
+initializer. This resolves where the controller pointer is stored and shows
+it is injected during construction, but the source and runtime class of
+that supplied object for `sgx` still need to be traced.
+
+No hardware access occurred. The timeout path, exact controller association,
+and recovery after a partial power/GPC transition remain open.
