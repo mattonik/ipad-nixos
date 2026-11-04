@@ -105,3 +105,22 @@ The next offline task is to trace the pre-power virtual callback and the
 provider's exact gate/error behavior, then design a bounded test and recovery
 procedure. These writes and waits can hang or affect the GPU, so the proposed
 hardware operation is not fully read-only and still needs explicit go-ahead.
+
+### Pre-power callback resolved
+
+G4G vtable slot `+0x790` resolves to `0xffffff80032861c4`. It initializes
+its GPC-present flag to true, and clears it only if a nonzero `no-gpc`
+property is supplied; it similarly reads `model-slow`. It performs no MMIO
+access itself. The captured J81 `sgx` node has no `no-gpc`, so this path
+selects both GPC bit-4 polling loops. The parent probe called before this
+callback is still unresolved; this finding does not establish the first
+register access in the entire driver lifecycle.
+
+The exact 12B410 provider implementations at `0xffffff80026656d8` and
+`0xffffff8002665788` check the index against their respective gate-array
+counts and forward the selected ID to the performance controller; an
+out-of-range index returns `0xe00002c7`. In the G4G probe, the return codes
+from the two enabling calls are not checked before the GPC accesses. A
+future diagnostic should explicitly handle failures and use bounded waits;
+the original implementation's unbounded loops are not a suitable recovery
+strategy.
