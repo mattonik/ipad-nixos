@@ -552,3 +552,19 @@ requires its own firmware info header, version/feature metadata and ABI,
 and constructs shared host/firmware state; those requirements and Apple's
 protocol still need separate comparison. The kernel checks must not be
 bypassed just because the inner stream is recognizable.
+
+### META LDR configuration targets
+
+The 27 identical `Config/Write` entries in the two private G4G images target
+27 distinct addresses in the META address space. Cross-checking addresses
+against the pinned Linux META definitions identifies targets including
+`META_CR_TXPRIVEXT` (`0x048000e8`), `META_CR_MMCU_LOCAL_EBCTRL`
+(`0x04830600`), data- and instruction-cache control (`0x04830018` and
+`0x04830020`), and the defined data/instruction cache partition ranges
+(`0x04830200`–`0x04830238`). Linux's META boot code also constructs a boot
+configuration entry for `0x040000c0`. These correspondences strengthen the
+case that the LDR stream describes real META initialization shared across
+this hardware family; they do not prove that all addresses, values, ordering,
+cache setup, or the firmware ABI are safe or interchangeable on Linux.
+They are META-space targets, not established ARM physical MMIO addresses.
+No config value or firmware byte is reproduced, and none was executed.
