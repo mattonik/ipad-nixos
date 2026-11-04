@@ -417,3 +417,27 @@ that all surrounding clocks, voltage, firmware, or platform setup are
 unnecessary. The bit's actual value remains unknown without runtime
 observation, and the matching driver path's other bitmap writers have not
 been exhaustively ruled out. No hardware access occurred.
+
+## Follow-up: firmware image handling versus Linux
+
+The 12B410 `AGXMetaFirmware` preparation path calls routines at
+`0xffffff800329fa14` and `0xffffff800329fbe8`. The former walks a linked
+sequence of image records using offsets relative to the input image and
+computes aligned allocation regions. The latter walks corresponding records,
+copies certain data payloads into a mapped buffer and verifies the copy,
+zero-fills other regions, and collects entries from another record type.
+Some record types cause failure. This establishes Apple-specific structured
+loading behavior, but the input format, full bounds and host/firmware ABI
+remain to be decoded; it does not prove the records are a standard format.
+A scan of the full 12B410 G4G firmware-kext range found no ELF magic even
+though its build-path strings end in `.elf`. Those names describe build
+inputs and do not prove an ELF file is embedded unchanged.
+
+The project's pinned Linux `pvr_fw_validate()` instead requires a particular
+firmware info header in the final 4 KiB, a valid layout table, the driver's
+open-source firmware flag, supported version fields, and an exact BVNC
+match. Its META path is therefore evidence about related hardware mechanics,
+not a drop-in loader for an Apple image. Do not remove those validation
+checks or assume that adding a filename or overriding the GPU-ID check
+makes Apple's firmware compatible. No image was executed or submitted to
+the GPU.
