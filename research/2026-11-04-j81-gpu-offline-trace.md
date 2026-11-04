@@ -420,6 +420,11 @@ been exhaustively ruled out. No hardware access occurred.
 
 ## Follow-up: firmware image handling versus Linux
 
+**Correction:** The later “META LDR format identified” section shows that
+the record structure matches the META LDR format documented in the pinned
+Linux source. The earlier description of the structure as Apple-specific is
+superseded; the firmware ABI and Linux container requirements remain distinct.
+
 The 12B410 `AGXMetaFirmware` preparation path calls routines at
 `0xffffff800329fa14` and `0xffffff800329fbe8`. The former walks a linked
 sequence of image records using offsets relative to the input image and
@@ -463,7 +468,7 @@ firmware integrity, or runtime compatibility. The original blob remains in
 ignored private storage and no bytes are included in this note.
 
 The loader ignores the observed type-16 records through its optional-record
-branch; it does not follow that they are irrelevant to other loaders. Its
+branch; the later META LDR comparison identifies these as comment blocks. Its
 parsing does not make the package an ELF merely because path strings mention
 `.elf`, nor does it establish compatibility with Linux's separate PowerVR
 firmware container. No firmware was executed or sent to the iPad.
@@ -517,3 +522,33 @@ masked type. This confirms the basic cross-release container interpretation
 at instruction level, beyond the earlier structural fit. It still does not
 establish that all record types, address mapping, firmware ABI, or failure
 handling match between releases.
+
+## META LDR format identified
+
+The pinned Linux `drivers/gpu/drm/imagination/pvr_rogue_meta.h` explicitly
+describes the **META LDR format**. Its header places `sl_data` at byte 8;
+its level-one records contain a 16-bit command and length, a relative next
+link at byte 4, and command data beginning at byte 8. Its level-two blocks
+have a 16-bit tag and length, with the payload at byte 4. Those fields match
+the 8.1 Apple loader and the two privately checked firmware images. The
+Linux definitions identify type 0 as `LoadMem`, 3 as `StartThreads`, 4 as
+`ZeroMem`, 5 as `Config`, and bit `0x10` as a comment marker. Linux's
+`process_ldr_command_stream()` contains corresponding command handling.
+This corrects the earlier suggestion that the record structure itself was
+Apple-specific and identifies a meaningful reuse candidate.
+
+A bounds-checked offline metadata comparison found that each image has two
+configuration blocks containing 27 commands total, all type 2 (`Write`) in
+the Linux definitions. Their configuration payloads are byte-identical
+between the two releases. Each image also has one 32-byte `StartThreads`
+payload; those payloads differ. This is structural evidence only: thread
+addresses, memory mapping and the meaning or safe execution of configuration
+writes have not been validated. Neither the commands nor their payload bytes
+were executed or published.
+
+The shared LDR command format does **not** establish that the stock Linux
+PowerVR driver can load or run Apple's firmware. The pinned driver also
+requires its own firmware info header, version/feature metadata and ABI,
+and constructs shared host/firmware state; those requirements and Apple's
+protocol still need separate comparison. The kernel checks must not be
+bypassed just because the inner stream is recognizable.
