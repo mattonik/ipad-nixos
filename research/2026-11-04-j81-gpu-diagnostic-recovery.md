@@ -125,3 +125,21 @@ physical force restart, booting the stock OS afterward, GPU diagnostic
 recovery, watchdog behavior, or the GPU power sequence. No GPU register
 access was made. The experimental diagnostic payload is still to be built and
 reviewed.
+
+## Control-system inspection: 2026-11-04
+
+On the still-running control boot, ping and the telnet shell responded; the
+kernel reported `7.3.0-rc1` and approximately 57 minutes uptime. The root
+mount was `rootfs`, and the observed mount list contained no internal storage.
+`/dev/dri` exposed only `card0`; its driver symlink identified
+`simple-framebuffer` and `fb0` reported `simpledrmdrmfb`. There was no GPU
+render node in that listing.
+
+The platform device at PMGR `power-controller@20320` was bound to
+`apple-pmgr-pwrstate`. Its device runtime-PM sysfs values were `auto`,
+`unsupported`, and `disabled` for `control`, `runtime_status`, and
+`runtime_enabled` respectively. These are the **controller device's Linux
+runtime-PM bookkeeping**, not a read of the GFX domain's actual hardware
+power state. The boot command line contains `pd_ignore_unused` and
+`clk_ignore_unused`. No GPU, GPC, or PMGR register was read or written during
+this inspection, and no firmware or workload was submitted.
