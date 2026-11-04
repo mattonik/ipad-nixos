@@ -59,3 +59,49 @@ performed. Powering a domain or setting a performance state is a write even
 if the intended GPU identity operations are reads. Do not attempt the proposed
 ID read until its prerequisites and recovery behavior are understood and the
 user separately authorizes the hardware test.
+
+## Follow-up: the G4G probe and GPC mapping
+
+The G4G class constructor sets its vtable pointer to `0xffffff80032aefa0`;
+its probe slot at `+0x2a0` points to `0xffffff80032935a0`. The following
+is a static reconstruction of that probe, not a tested Linux recipe:
+
+1. The probe examines the provider's `reg` property length. With two
+   16-byte entries, it selects resource index 0 for the RGX registers and
+   index 1 for GPC. This matches the two regions in the captured J81 ADT:
+   `0x201000000` and `0x201e00000` respectively. It maps the RGX resource
+   before the calls below; mapping is not itself a register access.
+2. After a parent-class probe and a virtual callback whose side effects
+   have not yet been traced, it calls provider slots `+0x560` with
+   `(1, 0)`, then `+0x568` with `(1, &out, 0)`. The G4G personality names
+   `AppleARMIODevice` as provider, and the previously resolved slots in this
+   exact kernelcache are `enableDeviceClock` and `enableDevicePower`.
+   This is much stronger evidence for the gate calls than the earlier
+   transition routine alone, though the first callback remains untraced.
+3. If resource 1 maps successfully, it writes 32-bit values in this order:
+   GPC `+0x10000 = 0xffff0000`, `+0x0 = 0x40000000`, and
+   `+0x1000 = 0x11`. When the GPC-present flag is set it polls bit 4 of
+   `+0x1000` until clear, without a visible timeout in this path. The
+   target `sgx` node has no `no-gpc` property, but the flag's initialization
+   path must be confirmed for this exact probe.
+4. The probe then invokes vtable slot `+0x800`. For G4G that resolves to
+   `0xffffff80032933cc`, which calls slot `+0x810`; G4G resolves that slot
+   to `0xffffff800328de68`. That function reads 32-bit RGX `+0x20` and
+   `+0x18`, in that order, and combines fields for the driver's GPU match.
+   The observed order is more specific than the original proposed ID read.
+5. After the match callback, if GPC was mapped, the probe writes
+   `GPC+0x1000 = 0x10` and, when the same flag is set, again waits for bit 4
+   to clear. If the power hook's output says it should unwind, it calls the
+   power-off hook then the clock-off hook. The exact meaning of that output
+   and error recovery need tracing before imitating this cleanup.
+
+Separately, `AppleGPCController` at `0xffffff80032a1bc8` waits for bit 4
+of GPC `+0x1000` to clear, then writes `state | 0x10`. This confirms the
+register and the earlier A10 analogy, but not that all of the probe's other
+writes are unnecessary. The standalone GPC state-change path has a timeout;
+the probe's two polling loops do not visibly have one.
+
+The next offline task is to trace the pre-power virtual callback and the
+provider's exact gate/error behavior, then design a bounded test and recovery
+procedure. These writes and waits can hang or affect the GPU, so the proposed
+hardware operation is not fully read-only and still needs explicit go-ahead.
