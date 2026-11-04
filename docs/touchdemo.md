@@ -97,4 +97,20 @@ Two fixes from that run (same day): the Orchard defconfig has only the 8x16 cons
 `fbcon=font:TER16x32` falls back and the panel text was tiny (text is now drawn 2x under 24 px); and `EVIOCGABS`
 answers for every axis code, so the panel claimed a pressure axis (axes now come from `EVIOCGBIT`).
 
-Still open: the Y orientation check in GRID (top-left target), and whether `TOUCH_MAJOR` is really in 0.01 mm.
+**Orchard main, 2026-11-04: works, 0 frame errors.** Payload `m1n1-orchard-main-touch-demo`: Orchard `d214e53`'s
+own apple-4k kernel (`kernel/orchard-main.nix`: torvalds `cee9395` + all 417 patches of `kernel/series/apple-4k` +
+`kernel/configs/apple-4k/config`, no local patches; GCC instead of Orchard's clang-19), private
+`j81-orchard-main-touch-demo-20261104T095348Z`, run id `27e37011…`, touch firmware 15.8.8
+(`b9b4a072…`). In 161.5 s: 6,843 reports, 99,850 events, 149 contacts, 5 fingers at once, latency 0.03 ms,
+6,959 touch interrupts, **no `touch frame error` and no failed resynchronisation**. Raw range seen x `13..1535`
+y `0..2018`. GRID targets (Martin: the dots landed "in the middle of the circle almost"):
+
+| Target | Offset of the mean reported position |
+|---|---|
+| top-left (96, 96) | dx -0.3, dy -7.5 px (15 samples) |
+| bottom-right (1440, 1952) | dx -10.4, dy +8.9 px (10 samples) |
+
+At about 10 px/mm that is under 1.4 mm, so the DT's `touchscreen-inverted-y` (from the iPad 5) is right for the
+Air 2 and no axis swap or flip is needed. Reported upstream as the evidence for J81 `touch = "working"` in Orchard.
+
+Still open: whether `TOUCH_MAJOR` is really in 0.01 mm; J82; suspend/resume.
