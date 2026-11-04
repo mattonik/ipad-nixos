@@ -38,6 +38,16 @@
       url = "github:OrchardLinux/linux/df7c930f80abd32a054617cd30ea450b7acfb3e0";
       flake = false;
     };
+    # Orchard main after PRs #57/#60 (kernel/orchard-main.nix): its patch series, config and upstream lock, and that
+    # upstream commit itself, so its J81 touch can be tested on the exact code without local patches.
+    orchardMain = {
+      url = "github:OrchardLinux/orchard/d214e537e60a901b1e746974d4ec93fea1b9e041";
+      flake = false;
+    };
+    orchardUpstreamLinux = {
+      url = "github:torvalds/linux/cee9395acd8043be0644b25c34bfa86623f2b935";
+      flake = false;
+    };
     # Separate, isolated pin for research/j81-long-term-subsystems.md's
     # internal-storage check: Hoolock's own `ans1` branch (ANS1/ASP storage
     # controller support), 27 commits ahead of the hoolockLinux pin above.
@@ -898,6 +908,11 @@
           orchardJ81TouchKernel = pkgsCross.callPackage ./kernel/orchard-j81-touch.nix {
             source = inputs.orchardLinux;
           };
+          orchardMainKernel = pkgsCross.callPackage ./kernel/orchard-main.nix {
+            orchard = inputs.orchardMain;
+            upstream = inputs.orchardUpstreamLinux;
+            git = pkgs.git;
+          };
           # One out-of-tree module build against hoolockWifiKmodKernel: src holds the C files and a Kbuild file.
           # Rebuilds only the module (seconds), never the kernel. Same toolchain and make flags as the kernel itself.
           mkJ81Kmod = { name, src }: pkgsCross.stdenv.mkDerivation {
@@ -1467,6 +1482,7 @@
         # Driver reload loop (docs/kmod-reload.md).
         hoolock-wifi-kmod-kernel = hoolockWifiKmodKernel;
         orchard-j81-touch-kernel = orchardJ81TouchKernel;
+        orchard-main-kernel = orchardMainKernel;
         j81-kmod-spi-apple = mkJ81Kmod { name = "spi-apple"; src = j81KmodStockSrc.spi-apple; };
         j81-kmod-apple_z2 = mkJ81Kmod { name = "apple_z2"; src = j81KmodStockSrc.apple_z2; };
         j81-kmod-src-spi-apple = j81KmodStockSrc.spi-apple;
@@ -3608,6 +3624,17 @@
           touchModule = true;
           kernel = orchardJ81TouchKernel;
           bootargsExtra = "pcie_aspm=off fbcon=font:TER16x32";
+        };
+
+        # Orchard main's exact kernel (no local patches) booting into the touch demo: the hardware proof for J81 touch
+        # in Orchard (docs/touchdemo.md). Same initramfs recipe as m1n1-orchard-touch-demo.
+        m1n1-orchard-main-touch-demo = mkJ81BasePayload {
+          name = "m1n1-orchard-main-touch-demo";
+          wifi = true;
+          dashboard = true;
+          touchModule = true;
+          kernel = orchardMainKernel;
+          bootargsExtra = "pcie_aspm=off fbcon=font:TER16x32 j81.touchdemo=1 j81.dashboard=0";
         };
 
         # The same image booting straight into the touch demo (docs/touchdemo.md): j81.touchdemo=1 starts PAINT,

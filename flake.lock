@@ -390,6 +390,40 @@
         "type": "github"
       }
     },
+    "orchardMain": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1793775493,
+        "narHash": "sha256-52KNJhaU9YBglPgbA4z5J8BzpjKOKfnx9kae4ZLIFR4=",
+        "owner": "OrchardLinux",
+        "repo": "orchard",
+        "rev": "d214e537e60a901b1e746974d4ec93fea1b9e041",
+        "type": "github"
+      },
+      "original": {
+        "owner": "OrchardLinux",
+        "repo": "orchard",
+        "rev": "d214e537e60a901b1e746974d4ec93fea1b9e041",
+        "type": "github"
+      }
+    },
+    "orchardUpstreamLinux": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1788122080,
+        "narHash": "sha256-zpFE8Y9OC9uZB/l2HS8vrRMWBpPG6e1GXfGO50BNj/M=",
+        "owner": "torvalds",
+        "repo": "linux",
+        "rev": "cee9395acd8043be0644b25c34bfa86623f2b935",
+        "type": "github"
+      },
+      "original": {
+        "owner": "torvalds",
+        "repo": "linux",
+        "rev": "cee9395acd8043be0644b25c34bfa86623f2b935",
+        "type": "github"
+      }
+    },
     "root": {
       "inputs": {
         "devenv": "devenv",
@@ -403,6 +437,8 @@
         "nixpkgs": "nixpkgs",
         "nixpkgsBuilder": "nixpkgsBuilder",
         "orchardLinux": "orchardLinux",
+        "orchardMain": "orchardMain",
+        "orchardUpstreamLinux": "orchardUpstreamLinux",
         "rust-overlay": "rust-overlay"
       }
     },
