@@ -388,3 +388,32 @@ then clock-off calls; a zero leaves that conditional unwind unexecuted. The
 actual result depends on the bit recorded for GFX at runtime. No Linux
 cleanup procedure should assume either result from the static trace alone.
 No hardware access occurred.
+
+## Follow-up: matching 8.1 GFX clock record and cleanup flag
+
+The 12B410 J81 PMGR tree uses a 44-byte `device-clocks` record format,
+not the `devices`/`ps-regs` format in the later captured tree. The table
+loader at `0xffffff80031e9af4` reads byte 3 as the device ID, bytes 8–11
+as up to four dependent device IDs, and bytes 12–15 as up to four PMGR
+power-state indices. The `GFX` record has ID `0x7c`, no nonzero dependent
+IDs, and power-state index **100** (`0x64`). No other record in this 8.1
+table lists that index. The controller maps index 100 to GFX ID `0x7c`;
+its state-register calculation `0x20000 + 100 * 8` independently yields
+`+0x20320`. This confirms the address in the actual 8.1 source tree, not
+just in the later captured description.
+
+The T7000 PMGR startup zeroes both the index-to-ID table and the bitmap,
+then populates the index-to-ID table from the `device-clocks` records. Its
+state transition routine at `0xffffff80031eb4b4` records GFX's bit when a
+transition involving state index 100 observes the `WAS_PWRGATED` bit and
+index 100 maps to device ID `0x7c`. The power callback consumes and clears
+that GFX bit. That is the source of the probe's conditional cleanup flag;
+it is not a direct read of the PMGR register at callback time.
+
+The clock implementation can alter reference counts and queues, while the
+PMGR state-transition code polls for target/actual state equality with no
+visible timeout. The record's lack of dependent device IDs does not prove
+that all surrounding clocks, voltage, firmware, or platform setup are
+unnecessary. The bit's actual value remains unknown without runtime
+observation, and the matching driver path's other bitmap writers have not
+been exhaustively ruled out. No hardware access occurred.
