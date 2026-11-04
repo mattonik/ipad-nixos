@@ -195,3 +195,45 @@ with the kext personalities. In parallel, trace the assignment of the GPU
 PMGR handler. A live iOS IORegistry class/provider tree, if one already
 exists, could independently confirm actual runtime matching; it is not
 required and no new hardware run has been requested or performed.
+
+## Follow-up: matching iOS 8.1 tree and iPadOS 15.8.8 drivers
+
+The matching 12B410 J81 device tree was decrypted locally using the public
+key already saved under the ignored `firmware/j81-12B410/keys/`. Its PMGR
+compatible is **`pmgr,t7000`**, exactly matching the 12B410
+`AppleT7000PerformanceController` personality. Its GPU compatible is
+`gpu,t7001`, and its clock and power gate arrays both select ID `0x7c`.
+Its `arm-io` gate functions both reference the PMGR node. Thus the earlier
+compatible mismatch arose from comparing the 8.1 kernel with a different
+captured ADT; it is not evidence of a mismatch within the 8.1 release.
+The exact `sgx` controller-pointer assignment is still untraced, so this
+establishes a matching candidate, not the runtime object's identity.
+
+For comparison, the NAS IPSW's BuildManifest associates J81 with
+`kernelcache.release.ipad5b` in iPadOS 15.8.8 (19H422). Its decompressed
+kernelcache SHA-256 is
+`832cd980f257e6205b8ec131abea2a8470f3a3455f2c7039c890a091149c7389`.
+The private extracted kernelcache and decoded 8.1 device tree remain under
+ignored `artifacts/live/private/gpu-offline/`.
+
+The newer kernelcache separates `com.apple.AGXG4G`,
+`com.apple.AGXFirmwareKextG4G`, `com.apple.driver.ApplePMGR`, and
+`com.apple.driver.AppleT7001PMGR`. Its `AGXG4G_A0` personality matches
+`gpu,t7001` on `AppleARMIODevice`; its `AppleT7001PMGR` personality matches
+`pmgr1,t7001`, the compatible in the separately captured J81 ADT. This is
+consistent with a driver/device-tree naming change across releases, without
+assuming the capture's exact OS version.
+
+Target-specific 15.8.8 G4G driver strings explicitly identify the second
+register block as GPC/Fender terminology, including `AGXFenderCommon`'s
+GPC performance-state operation and `agxk_fender_meta.cpp`. They also name
+`pollFenderReg` and contain a timeout diagnostic with register, mask, and
+elapsed time. These are useful cross-version leads for bounded polling, not
+yet proof of the particular wait limits, the exact 15.8.8 register sequence,
+or equivalence to the 8.1 probe. The newer G4G firmware kext also contains
+build paths for G4G `METAFW` t0 and t1 images. No firmware bytes or raw
+private device-tree data are reproduced here.
+
+Next, trace the 8.1 provider-controller pointer and compare the 15.8.8
+Fender polling implementation and timeout policy at instruction level. No
+hardware or MMIO access was performed.
