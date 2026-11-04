@@ -124,3 +124,13 @@ from the two enabling calls are not checked before the GPC accesses. A
 future diagnostic should explicitly handle failures and use bounded waits;
 the original implementation's unbounded loops are not a suitable recovery
 strategy.
+
+### Parent probe resolved
+
+The parent probe pointer at `0xffffff80032ad1c0` resolves to the kernel
+symbol `IOService::probe` at `0xffffff80023aee84`. Its entire body is a
+single return instruction, preserving the incoming `this` pointer as the
+return value. It does not access MMIO or power hardware. Together with the
+property-only `+0x790` callback, this closes the two previously identified
+pre-power call sites inside this probe. It does not prove what the bootloader
+or earlier system initialization has done before the probe runs.
