@@ -224,8 +224,8 @@ The newer kernelcache separates `com.apple.AGXG4G`,
 consistent with a driver/device-tree naming change across releases, without
 assuming the capture's exact OS version.
 
-Target-specific 15.8.8 G4G driver strings explicitly identify the second
-register block as GPC/Fender terminology, including `AGXFenderCommon`'s
+Target-specific 15.8.8 G4G driver strings connect GPC and Fender terminology,
+including `AGXFenderCommon`'s
 GPC performance-state operation and `agxk_fender_meta.cpp`. They also name
 `pollFenderReg` and contain a timeout diagnostic with register, mask, and
 elapsed time. These are useful cross-version leads for bounded polling, not
