@@ -1,0 +1,66 @@
+# touchdemo off-hardware replay (boot/touchdemo-check.py runs it on a 1536x2048 headless screen).
+# down SLOT ID X Y MAJOR | move SLOT X Y | drag SLOT X Y 0 STEPS | up SLOT | frame | home | shot FILE
+
+# PAINT: two fingers with different tracking IDs draw two strokes.
+down 0 7 200 600 900
+frame
+drag 0 1300 600 0 20
+down 1 8 768 900 600
+frame
+drag 1 768 1700 0 20
+shot paint.ppm
+up 0
+up 1
+frame
+
+# GRID: sweep the whole outer ring of cells, then tap the eight targets slightly off centre.
+home
+down 0 20 60 60 800
+frame
+drag 0 1476 60 0 24
+drag 0 1476 1988 0 32
+drag 0 60 1988 0 24
+drag 0 60 60 0 32
+up 0
+frame
+down 0 21 100 90 800
+frame
+up 0
+frame
+down 0 22 768 100 800
+frame
+up 0
+frame
+down 0 23 1440 96 800
+frame
+up 0
+frame
+down 0 24 1440 1024 800
+frame
+up 0
+frame
+down 0 25 1440 1952 800
+frame
+up 0
+frame
+down 0 26 768 1952 800
+frame
+up 0
+frame
+down 0 27 96 1952 800
+frame
+up 0
+frame
+down 0 28 96 1024 800
+frame
+up 0
+frame
+shot grid.ppm
+
+# EVENTS: the readout with one finger down.
+home
+down 0 30 500 1500 700
+frame
+shot events.ppm
+up 0
+frame
