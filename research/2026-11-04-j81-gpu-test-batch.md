@@ -1,10 +1,9 @@
 # J81 GPU test batch: preparation
 
-2026-11-04. This is the start of a staged diagnostic, not a GPU driver or a
-hardware result. Do not execute a stage until its capture, ownership and
+2026-11-04. This is a staged diagnostic, not a GPU driver. The first PMGR
+observation was run as recorded below. Do not execute a stage until its capture, ownership and
 recovery requirements in `research/2026-11-04-j81-gpu-diagnostic-recovery.md`
-have been reviewed. The first-stage binary is built but has not been copied
-to or executed on the iPad.
+have been reviewed.
 
 ## Orchard comparison
 
@@ -56,14 +55,14 @@ open/mmap failure, acknowledgement rejection, and decoding against a fake
 memory page. A socket-pair test checks that the collector persists the marker
 before acknowledging and rejects incomplete or stale completion. These do not
 test real hardware, `/dev/mem` permission, telnet transport, the selected
-kernel or bus behavior.
+kernel or bus behavior; the later run below is separate evidence.
 
 `boot/gpu_pmgr_capture.py` is a dedicated live collector for this one
 stage: after it has written and fsynced the marker to a new private host log,
 it sends `READ` and waits for the result. The existing
 `boot/ipad_telnet_run.py` buffers output until completion and must not be used
-as this collector. The handshake and transport have only been simulated;
-the binary must first be staged at `/tmp/gpu-pmgr-peek` on the intended
+as this collector. The handshake and transport were exercised in the run
+below; the binary must first be staged at `/tmp/gpu-pmgr-peek` on the intended
 control boot and checked against the approved hash. No unattended run or
 automatic recovery is established. Confirm operator availability and the
 device's recovery path before any eventual MMIO read.
@@ -77,3 +76,29 @@ rollback after failure, and handle the possibility that one MMIO access never
 returns. A GPU firmware upload or workload is outside this first batch. The
 existing G4G LDR findings suggest a related firmware container, not an already
 compatible Linux firmware ABI.
+
+## Stage 1 result: 2026-11-04
+
+On the already-running verified control boot, the user authorized tests on
+the iPad. The PMGR driver was already bound to `power-controller@20320`;
+its probe reads the same state word through regmap. The test binary was
+copied into RAM at `/tmp/gpu-pmgr-peek` and its SHA-256 matched the build
+above. An invalid-argument check exited 2; a `NO` handshake exited 1 after
+the pre-read marker without reading the register. Both checks left the
+system responsive.
+
+The live host collector then saved the pre-read marker and acknowledged the
+single read. It recorded:
+
+```text
+raw=0x00000300 target=0 actual=0 auto=0 reset=0
+```
+
+The iPad responded to ping and the shell afterward. This is one observation
+on this control boot: the PMGR fields report target and actual state 0 and
+bits 8 and 9 set; Linux labels those bits `WAS_PWRGATED` and
+`WAS_CLKGATED`. It does not reveal when those indications arose, prove the
+entire GPU is safe to touch, or establish recovery from a hang. No power
+transition, Fender or GPU-core register access, firmware upload, or GPU
+workload occurred. The raw host capture remains private under
+`artifacts/live/private/gpu-observations/`.
