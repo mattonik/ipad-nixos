@@ -137,6 +137,11 @@ or earlier system initialization has done before the probe runs.
 
 ## Follow-up: controller dispatch and cleanup uncertainty
 
+**Correction:** The later “Provider-to-PMGR dispatch” section traces an
+intervening `AppleT7001IO` and platform-function path. The base controller
+slots discussed below are not the directly established GPU gate path; the
+conditional cleanup deduction based on them is superseded.
+
 The `AppleARMIODevice` methods do not directly toggle the PMGR register.
 In this kernelcache the clock wrapper at `0xffffff80026656d8` selects the
 requested `clock-gates` array entry and dispatches to its controller at
@@ -308,3 +313,47 @@ host protocol is compatible.
 
 This is a source and binary comparison only. No extra register read, driver
 load, or hardware operation was performed.
+
+## Provider-to-PMGR dispatch: resolved static path
+
+The 12B410 `AppleARMIO` child publisher at `0xffffff8002665130` invokes its
+`+0x570` child factory as `(this, this, child)`; the factory at
+`0xffffff8002665074` forwards the second argument into the new
+`AppleARMIODevice` initializer, which stores it at `this+0x88`. The matching
+J81 `arm-io,t7001` personality is `AppleT7001IO`; its instance vtable at
+`0xffffff80031820f0` keeps that child factory and overrides gate slots
+`+0x558` and `+0x560` with `0xffffff8003181b64` and
+`0xffffff8003181bf0`. Thus, when the normal child-publishing path handles
+`sgx`, its provider calls go first to **AppleT7001IO**, not directly to
+the performance controller. This corrects the abbreviated dispatch
+interpretation above.
+
+The T7001IO overrides obtain the `function-clock_gate` and
+`function-power_gate` platform-function objects identified during its
+start and invoke their slot `+0x78`. The 8.1 J81 `arm-io` device tree
+points both function properties at the matching `pmgr,t7000` node. The
+8.1 `AppleARMPerformanceControllerFunctionClockGate` and `...PowerGate`
+classes implement slot `+0x78` as tail calls to the resolved performance
+controller's `+0x680` and `+0x688` slots respectively. For the T7000
+controller those slots are `0xffffff800266aaa8` and
+`0xffffff800266aae4`: they dispatch through a common workloop gate using
+cached clock and power callback pointers.
+
+The performance controller's startup routine at `0xffffff8002667a6c`
+initializes those callback pointers from its own vtable slots `+0x558` and
+`+0x560` when no prior callbacks are installed. The T7000 instance vtable
+has `0xffffff800266c17c` and `0xffffff800266c404` in those slots: the
+latter returns `0xe00002c7` without writing the output. Therefore, **if**
+the normal matching and default-callback initialization take this path, the
+probe's power call returns unsupported, leaves its zero-initialized output
+at zero, and its conditional clock/power unwind is skipped. The clock call
+still goes through the reference-counted controller path. This conclusion
+is stronger than the earlier direct-vtable deduction, but remains a static
+result: callback replacement, platform-function resolution, and actual
+runtime state have not been observed on the device.
+
+Practical consequence: do not assume that a failed power-hook return in the
+Apple probe means the preceding clock request had no effect, or that a raw
+power-off write reproduces Apple cleanup. Trace any callback replacement and
+actual gate behavior before choosing a Linux diagnostic's ownership and
+failure policy. No hardware was accessed.
