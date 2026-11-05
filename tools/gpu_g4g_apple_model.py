@@ -44,6 +44,10 @@ def build_model(data):
             "global-alias": {"type": None, "confidence": "unresolved", "reason": "alias may target code or data"},
             "local/global-low": {"type": None, "confidence": "unresolved", "reason": "Apple segment ownership is not recovered"},
         },
+        "apple_segment_mapping": {
+            "2": {"linux_object": "META_BOOTLOADER", "confidence": "strong", "reason": "starts at 0xc0000000"},
+            "3": {"linux_object": None, "confidence": "unresolved", "reason": "high alias ownership is not recovered"},
+        },
         "unresolved": [
             "physical allocation backing each META bucket",
             "Apple shared-memory address translation",

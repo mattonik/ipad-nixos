@@ -74,6 +74,12 @@ This narrows the Linux mapping work to two concrete alias segments plus the
 ordinary low/global and core-code buckets; it does not yet identify the
 physical backing or whether slot 2 is code or data.
 
+The slot-2 ambiguity is now resolved: its only range starts at `0xc0000000`,
+which is Linux's `ROGUE_FW_BOOTLDR_DEVV_ADDR_0`. The model therefore maps
+Apple slot 2 to the Linux META bootloader object with strong confidence. Slot
+3 remains unresolved and is the only high-alias segment still needing an
+ownership trace.
+
 The model now emits Linux mapping candidates: `core-code` and `core-data` map
 to `FW_COREMEM_CODE`/`FW_COREMEM_DATA` as candidates, while the low/global and
 global-alias buckets remain explicitly unresolved. This is intentional: those
