@@ -22,5 +22,7 @@ int main(int argc, char **argv) {
  if(printf("stage=after-bridge-first value=0x80010004\n")<0||fflush(stdout))goto out;
  rc=0;
 out: printf("stage=finished rc=%d\n",rc); fflush(stdout);
- if(bridge!=MAP_FAILED)munmap(bridge,0x1000); if(gpc!=MAP_FAILED)munmap(gpc,0x2000); close(fd); return rc;
+ if(bridge!=MAP_FAILED) munmap(bridge,0x1000);
+ if(gpc!=MAP_FAILED) munmap(gpc,0x2000);
+ close(fd); return rc;
 }
