@@ -19,10 +19,12 @@ def main():
     assert model["zero_actions"][0]["action"] == "skip"
     assert model["config_write_count"] == 1
     assert len(model["thread_records"]) == 1
+    assert model["thread_stack_candidates"][0]["address"] == 0x1000
     assert model["linux_mapping_candidates"]["core-code"]["type"] == "FW_COREMEM_CODE"
     assert model["linux_mapping_candidates"]["local/global-low"]["type"] is None
     assert model["apple_segment_mapping"]["2"]["linux_object"] == "META_BOOTLOADER"
     assert model["apple_segment_mapping"]["0"]["linux_object"] == "FW_DATA"
+    assert model["apple_segment_mapping"]["1"]["confidence"] == "unresolved"
     print("PASS: Apple G4G model is allocation-free and execution-disabled")
 
 

@@ -77,12 +77,13 @@ This narrows the Linux mapping work to four concrete segments plus the
 core-code bucket; it does not yet prove the ownership of slot 1.
 
 Slot 0 starts at `0x10000000`, Linux's META data base, so it maps strongly to
-`FW_DATA`. Slot 2 starts at `0xc0000000`, Linux's
+`FW_DATA`. The thread-0 record's third word is also `0x10000000`. Slot 2 starts at `0xc0000000`, Linux's
 `ROGUE_FW_BOOTLDR_DEVV_ADDR_0`, so it maps strongly to the META bootloader.
 Slot 3's `0xe0000000` alias masks to `0x60000000`, Linux's uncached META data
-alias, and also maps strongly to `FW_DATA`. Slot 1 starts at `0x20000000` and
-is currently only a tentative `FW_CODE` candidate; this is now the primary
-remaining segment-ownership question.
+alias, and also maps strongly to `FW_DATA`. Slot 1 starts at `0x20000000`, and
+the thread-1 record's third word points at that exact base. That is evidence
+for a private-data/stack allocation, not proof of code; its Linux owner remains
+unresolved because the generic driver exposes only one `FW_DATA` allocation.
 
 The model now emits Linux mapping candidates: `core-code` and `core-data` map
 to `FW_COREMEM_CODE`/`FW_COREMEM_DATA` as candidates, while the low/global and

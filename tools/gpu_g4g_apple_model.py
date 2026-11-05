@@ -14,6 +14,12 @@ def build_model(data):
     buckets = defaultdict(lambda: {"regions": 0, "bytes": 0, "min": None, "max_end": None})
     segments = defaultdict(lambda: {"regions": 0, "bytes": 0})
     zero_actions = []
+    thread_records = [r["threads"] for r in report["records"] if r["kind"] == "start"]
+    thread_stack_candidates = [
+        {"thread_id": thread_id, "address": third}
+        for group in thread_records
+        for thread_id, second, third, flags in group
+    ]
     for record in report["records"]:
         if record["kind"] not in ("load", "zero"):
             continue
@@ -36,7 +42,8 @@ def build_model(data):
         "buckets": dict(sorted(buckets.items())),
         "apple_segments": dict(sorted(segments.items())),
         "zero_actions": zero_actions,
-        "thread_records": [r["threads"] for r in report["records"] if r["kind"] == "start"],
+        "thread_records": thread_records,
+        "thread_stack_candidates": thread_stack_candidates,
         "config_write_count": report["config_writes"],
         "linux_mapping_candidates": {
             "core-code": {"type": "FW_COREMEM_CODE", "confidence": "candidate"},
@@ -46,7 +53,7 @@ def build_model(data):
         },
         "apple_segment_mapping": {
             "0": {"linux_object": "FW_DATA", "confidence": "strong", "reason": "starts at 0x10000000"},
-            "1": {"linux_object": "FW_CODE (candidate)", "confidence": "tentative", "reason": "0x20000000 code-like segment"},
+            "1": {"linux_object": None, "confidence": "unresolved", "reason": "thread 1 third word points at 0x20000000; private-data/stack ownership is not recovered"},
             "2": {"linux_object": "META_BOOTLOADER", "confidence": "strong", "reason": "starts at 0xc0000000"},
             "3": {"linux_object": "FW_DATA (uncached alias)", "confidence": "strong", "reason": "0xe0000000 masks to 0x60000000, Linux data cache alias"},
         },
