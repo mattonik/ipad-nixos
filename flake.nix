@@ -1127,6 +1127,13 @@
             installPhase = "mkdir -p $out/bin && cp gpu-bridge-first $out/bin/gpu-bridge-first";
           };
 
+          gpuBridgeSegmentPkg = pkgsCrossMusl.stdenv.mkDerivation {
+            name = "gpu-bridge-segment";
+            dontUnpack = true;
+            buildPhase = "$CC -static -O2 -Wall -Wextra -Werror -o gpu-bridge-segment ${./boot/gpu-bridge-segment.c}";
+            installPhase = "mkdir -p $out/bin && cp gpu-bridge-segment $out/bin/gpu-bridge-segment";
+          };
+
           gpuBridgeSimLivePkg = pkgsCrossMusl.stdenv.mkDerivation {
             name = "gpu-bridge-sim-live";
             dontUnpack = true;
@@ -1515,6 +1522,7 @@
         gpu-bridge-sim-live-static = gpuBridgeSimLivePkg;
         gpu-bridge-peek-static = gpuBridgePeekPkg;
         gpu-bridge-first-static = gpuBridgeFirstPkg;
+        gpu-bridge-segment-static = gpuBridgeSegmentPkg;
         hciscan-static = hciscanPkg;
         touch-diag-static = touchDiagStaticPkg;
         # Driver reload loop (docs/kmod-reload.md).
