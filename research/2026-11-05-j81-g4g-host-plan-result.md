@@ -43,6 +43,24 @@ and thread-control registers such as `0x048000e8` and the `0x04830200` range.
 The report confirms the inner stream is structurally usable, but every plan
 operation remains marked `review-only` and `execution_allowed=false`.
 
+## Region buckets
+
+The host-plan generator now classifies each region without interpreting its
+payload. The real image contains:
+
+| META address class | Load | Zero |
+|---|---:|---:|
+| low/local-global | 50 | 7 |
+| global alias | 5 | 4 |
+| core code (`0x80000000`–`0x81ffffff`) | 3 | 3 |
+| core data (`0x82000000`–`0x83ffffff`) | 0 | 0 |
+
+No region crosses the core-code boundary. This sharply narrows the offline
+adapter: it needs separate handling for three core-code loads and three
+Apple-skipped core-code zero ranges, while the remaining low/global records
+can be compared against Linux's ordinary firmware segments. It still does
+not establish which physical allocation backs any bucket.
+
 ## Decision
 
 This is enough to start an offline Apple-host-layout adapter and comparison

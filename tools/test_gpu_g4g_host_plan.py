@@ -13,9 +13,11 @@ def main():
     assert plan["payload_bytes_included"] is False
     assert plan["regions"] == [{
         "kind": "load", "address": 0x1000, "length": 4,
+        "address_class": "local/global-low", "crosses_core_code_end": False,
         "address_domain": "unresolved-meta-address", "action": "review-only",
     }, {
         "kind": "zero", "address": 0x2000, "length": 8,
+        "address_class": "local/global-low", "crosses_core_code_end": False,
         "address_domain": "unresolved-meta-address", "action": "review-only",
     }]
     assert plan["config_writes"] == [{"address": 0x1234, "value": 5, "action": "review-only"}]

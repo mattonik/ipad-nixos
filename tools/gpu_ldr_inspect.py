@@ -148,6 +148,15 @@ def summarize_ranges(data):
 
 def host_report(data):
     """Return LDR metadata needed for an offline Apple/Linux host comparison."""
+    def address_class(address):
+        if 0x80000000 <= address < 0x82000000:
+            return "core-code"
+        if 0x82000000 <= address < 0x84000000:
+            return "core-data"
+        if address & 0x80000000:
+            return "global-alias"
+        return "local/global-low"
+
     inspect(data)
     u16 = lambda offset: struct.unpack_from("<H", data, offset)[0]
     u32 = lambda offset: struct.unpack_from("<I", data, offset)[0]
@@ -160,8 +169,10 @@ def host_report(data):
             records.append({"kind": "comment"})
         elif kind == 0:
             block = u32(position + 12)
-            records.append({"kind": "load", "address": u32(position + 8),
-                            "length": u16(block + 2) - 6})
+            address, length = u32(position + 8), u16(block + 2) - 6
+            records.append({"kind": "load", "address": address, "length": length,
+                            "address_class": address_class(address),
+                            "crosses_core_code_end": address < 0x82000000 < address + length})
         elif kind == 3:
             block = u32(position + 8)
             length = u16(block + 2) - 6
@@ -169,10 +180,12 @@ def host_report(data):
                        for offset in range(0, length, 16)]
             records.append({"kind": "start", "threads": threads})
         elif kind == 4:
-            records.append({"kind": "zero", "address": u32(position + 8),
-                            "length": u32(position + 12),
-                            "apple81_core_guard": 0x80000000 <= u32(position + 8) < 0x8000c000,
-                            "apple15_core_guard": apple15_skips_zero(u32(position + 8))})
+            address, length = u32(position + 8), u32(position + 12)
+            records.append({"kind": "zero", "address": address, "length": length,
+                            "address_class": address_class(address),
+                            "crosses_core_code_end": address < 0x82000000 < address + length,
+                            "apple81_core_guard": 0x80000000 <= address < 0x8000c000,
+                            "apple15_core_guard": apple15_skips_zero(address)})
         elif kind == 5:
             block = u32(position + 8)
             length = u16(block + 2) - 6

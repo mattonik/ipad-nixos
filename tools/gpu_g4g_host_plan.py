@@ -21,6 +21,8 @@ def build_plan(data):
                 "kind": kind,
                 "address": record["address"],
                 "length": record["length"],
+                "address_class": record["address_class"],
+                "crosses_core_code_end": record["crosses_core_code_end"],
                 "address_domain": "unresolved-meta-address",
                 "action": "review-only",
             })

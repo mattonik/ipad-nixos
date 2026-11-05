@@ -41,7 +41,9 @@ class LdrTests(unittest.TestCase):
         self.assertEqual(report["config_writes"], 1)
         self.assertEqual(report["thread_entries"], 1)
         self.assertTrue(report["linux_host_requirements"]["explicit_start_thread_handling_required"])
-        self.assertEqual(report["records"][0], {"kind": "load", "address": 0x1000, "length": 4})
+        self.assertEqual(report["records"][0], {"kind": "load", "address": 0x1000, "length": 4,
+                                                 "address_class": "local/global-low",
+                                                 "crosses_core_code_end": False})
         self.assertEqual(report["records"][2]["writes"], [{"address": 0x1234, "value": 5}])
         self.assertNotIn("test", str(report))
 
