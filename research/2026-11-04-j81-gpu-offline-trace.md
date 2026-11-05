@@ -635,12 +635,16 @@ structure receiving the thread-1 pair at `+0x200` and `+0x204`.
 
 Later, `0xffffff800329d7d8` passes the second, correspondingly offset value
 through driver virtual method `+0x140` with argument `1`, then stores the
-32-bit result at `+0x5c` in another object-held structure. This is consistent
-with CPU-side initialization and a second address view of the same allocation,
-but the allocation/mapping types and the encoded address's final consumer
-remain unresolved. The vtable calls and common offset are observed facts;
-calling the second base a GPU address or assuming firmware access would be an
-inference requiring further evidence. No hardware or firmware was touched.
+32-bit result at `+0x5c` in another object-held structure. The recovered
+`0xffffff80032998d8` setup routine also contains several independent calls to
+the allocator, each followed by its own `+0x90` mapping call and `+0x140`
+address-view call. Thus the safe conclusion is **multiple allocation classes,
+each potentially exposing more than one address view**; it is not evidence
+that the two observed bases belong to one allocation. The allocation/mapping
+types and each encoded address's final consumer remain unresolved. The vtable
+calls and common offsets are observed facts; calling any returned value a GPU
+address or assuming firmware access would be an inference requiring further
+evidence. No hardware or firmware was touched.
 
 ### Core-memory zero handling differs
 
