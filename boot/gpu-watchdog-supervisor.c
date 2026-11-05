@@ -26,17 +26,18 @@ static void simulated_child(int stalled)
 int main(int argc, char **argv)
 {
 	int fd, timeout = 20, disable = WDIOS_DISABLECARD, pin[2], pout[2], status, n = 0, saw_finish = 0;
-	int simulation, stalled, bridge_sim = 0, bridge_peek = 0;
+	int simulation, stalled, bridge_sim = 0, bridge_peek = 0, bridge_first = 0;
 	pid_t child;
 	FILE *in, *out;
 	char line[512], reply[128], expected[64];
 	struct watchdog_info info;
 	if (argc == 2 && (!strcmp(argv[1], "--simulate-ok") || !strcmp(argv[1], "--simulate-stall"))) {
 		simulation = 1; stalled = !strcmp(argv[1], "--simulate-stall");
-	} else if (argc == 3 && (!strcmp(argv[1], "--bridge") || !strcmp(argv[1], "--simulate-bridge") || !strcmp(argv[1], "--bridge-peek")) && strlen(argv[2]) == 64 &&
+	} else if (argc == 3 && (!strcmp(argv[1], "--bridge") || !strcmp(argv[1], "--simulate-bridge") || !strcmp(argv[1], "--bridge-peek") || !strcmp(argv[1], "--bridge-first")) && strlen(argv[2]) == 64 &&
 	           strspn(argv[2], "0123456789abcdef") == 64) {
 		simulation = stalled = 0; bridge_sim = !strcmp(argv[1], "--simulate-bridge");
 		bridge_peek = !strcmp(argv[1], "--bridge-peek");
+		bridge_first = !strcmp(argv[1], "--bridge-first");
 	} else return 2;
 	if (pipe(pin) || pipe(pout)) return 1;
 	if (puts("stage=before-watchdog-open") == EOF || fflush(stdout) ||
@@ -61,6 +62,8 @@ int main(int argc, char **argv)
 		if (simulation) simulated_child(stalled);
 		if (bridge_peek)
 			execl("/tmp/gpu-bridge-peek-run", "gpu-bridge-peek-run", argv[2], (char *)NULL);
+		else if (bridge_first)
+			execl("/tmp/gpu-bridge-first-run", "gpu-bridge-first-run", argv[2], (char *)NULL);
 		else if (bridge_sim)
 			execl("/tmp/gpu-bridge-sim-live-run", "gpu-bridge-sim-live-run", argv[2], (char *)NULL);
 		else

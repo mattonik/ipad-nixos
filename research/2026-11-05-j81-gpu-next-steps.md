@@ -49,7 +49,14 @@ temperature is not available from the observed battery sensor.
    stage or lost connection is indeterminate: record the last checkpoint,
    stop, and recover physically as needed. A returned value is an
    observation, not proof that subsequent writes are safe.
-4. **Decide the write experiment from evidence.** Analyze the returned
+4. **Prepare the smallest write experiment.** Prepared offline in this
+   commit: `gpu-bridge-first` writes only `0x80010004` to `0x201f00018`
+   after the same PMGR, kernel, RAM-root, and GPC-state gates, and runs under
+   the progress-gated watchdog as `--bridge-first`. It does not read back or
+   retry the write. The static test confirms it is one-shot and storage-free.
+   Do not stage or run it on hardware until a fresh boot and an explicit risk
+   decision are recorded.
+5. **Decide the write experiment from evidence.** Analyze the returned
    value and its read side effects against both J81 Apple device trees and
    the Apple PMGR code. Independently review the first high-bit bridge
    control write, ordering, shared-fabric implications, failure behavior,
