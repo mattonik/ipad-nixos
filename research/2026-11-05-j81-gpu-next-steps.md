@@ -22,15 +22,15 @@ temperature is not available from the observed battery sensor.
 
 ## Sequence
 
-1. **Complete the read-only observer.** Finish a host collector for
-   `gpu-bridge-peek` that validates the staged binary and wrapper hashes,
-   test-kernel identity, power-domain ownership and GPC state. Persist and
-   fsync each marker before its acknowledgement; allow only one GPC state
-   read and one 32-bit read at `0x201f00018`. Integrate it with the
-   progress-gated watchdog supervisor. Test normal completion, wrong or
-   out-of-order markers, failed hash/state checks, lost host, and a stalled
-   child without accessing MMIO. Verify the watchdog is disabled on clean
-   completion and deliberately left armed on an indeterminate failure.
+1. **Complete the read-only observer.** Done offline in this commit:
+   `boot/gpu_bridge_peek_capture.py` validates all three staged binary hashes,
+   persists and fsyncs every checkpoint before acknowledgement, and accepts
+   only one GPC state read plus one 32-bit read at `0x201f00018`. Its host test
+   covers normal completion, malformed ordering/results, persistence, and hash
+   rejection without MMIO. The device wrapper still gates the test-kernel
+   identity, RAM root, power ownership, and one-shot state. The remaining
+   validation is the real device's live preflight; no hardware read has been
+   run by this change.
 2. **Verify the current device and operator recovery.** Recheck payload,
    kernel and module identities, RAM root, absence of internal-storage
    mounts, GFX runtime ownership, exact PMGR word, one-shot guards, host
@@ -38,6 +38,10 @@ temperature is not available from the observed battery sensor.
    restart controls are accessible. If the boot has changed or a guard is
    consumed, stop and use a fresh verified test boot rather than bypassing
    a gate. Do not assume a watchdog resets a wedged bus.
+   Once this preflight is captured, use `boot/gpu_bridge_peek_capture.py` with
+   the exact probe, supervisor, and `/tmp/gpu-bridge-peek-run` SHA-256 values
+   from that boot. It refuses malformed hashes and never retries an incomplete
+   session.
 3. **First new hardware observation, only when the read is judged within
    the user's damage-risk limit.** Run the supervised single bridge read.
    A matching Apple table and an analogous A9 access do not prove A8X read

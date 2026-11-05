@@ -29,6 +29,7 @@ HOST_TESTS = (
     "boot/test_gpu_id_once.py",
     "boot/test_gpu_bridge_once.py",
     "boot/test_gpu_bridge_capture.py",
+    "boot/test_gpu_bridge_peek_capture.py",
     "boot/test_gpu_id_capture.py",
     "boot/test_gpu_gpc_init.py",
     "boot/test_gpu_gpc_init_capture.py",
