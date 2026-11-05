@@ -1106,6 +1106,76 @@
             installPhase = "mkdir -p $out/bin && cp gpu-pmgr-peek $out/bin/gpu-pmgr-peek";
           };
 
+          gpuBridgeOncePkg = pkgsCrossMusl.stdenv.mkDerivation {
+            name = "gpu-bridge-once";
+            dontUnpack = true;
+            buildPhase = "$CC -static -O2 -Wall -Wextra -Werror -o gpu-bridge-once ${./boot/gpu-bridge-once.c}";
+            installPhase = "mkdir -p $out/bin && cp gpu-bridge-once $out/bin/gpu-bridge-once";
+          };
+
+          gpuBridgePeekPkg = pkgsCrossMusl.stdenv.mkDerivation {
+            name = "gpu-bridge-peek";
+            dontUnpack = true;
+            buildPhase = "$CC -static -O2 -Wall -Wextra -Werror -o gpu-bridge-peek ${./boot/gpu-bridge-peek.c}";
+            installPhase = "mkdir -p $out/bin && cp gpu-bridge-peek $out/bin/gpu-bridge-peek";
+          };
+
+          gpuBridgeSimLivePkg = pkgsCrossMusl.stdenv.mkDerivation {
+            name = "gpu-bridge-sim-live";
+            dontUnpack = true;
+            buildPhase = "$CC -static -O2 -Wall -Wextra -Werror -I ${./boot} -o gpu-bridge-sim-live ${./boot/gpu-bridge-sim-live.c}";
+            installPhase = "mkdir -p $out/bin && cp gpu-bridge-sim-live $out/bin/gpu-bridge-sim-live";
+          };
+
+          gpuWatchdogSupervisorPkg = pkgsCrossMusl.stdenv.mkDerivation {
+            name = "gpu-watchdog-supervisor";
+            dontUnpack = true;
+            buildPhase = "$CC -D_GNU_SOURCE -static -O2 -Wall -Wextra -Werror -o gpu-watchdog-supervisor ${./boot/gpu-watchdog-supervisor.c}";
+            installPhase = "mkdir -p $out/bin && cp gpu-watchdog-supervisor $out/bin/gpu-watchdog-supervisor";
+          };
+
+          watchdogControlTestPkg = pkgsCrossMusl.stdenv.mkDerivation {
+            name = "watchdog-control-test";
+            dontUnpack = true;
+            buildPhase = "$CC -D_GNU_SOURCE -static -O2 -Wall -Wextra -Werror -o watchdog-control-test ${./boot/watchdog-control-test.c}";
+            installPhase = "mkdir -p $out/bin && cp watchdog-control-test $out/bin/watchdog-control-test";
+          };
+
+          gpuBridgeMapPkg = pkgsCrossMusl.stdenv.mkDerivation {
+            name = "gpu-bridge-map";
+            dontUnpack = true;
+            buildPhase = "$CC -static -O2 -Wall -Wextra -Werror -o gpu-bridge-map ${./boot/gpu-bridge-map.c}";
+            installPhase = "mkdir -p $out/bin && cp gpu-bridge-map $out/bin/gpu-bridge-map";
+          };
+
+          gpuBridgeSimPkg = pkgsCrossMusl.stdenv.mkDerivation {
+            name = "gpu-bridge-sim";
+            dontUnpack = true;
+            buildPhase = "$CC -static -O2 -Wall -Wextra -Werror -I ${./boot} -o gpu-bridge-sim ${./boot/test-gpu-bridge-sim.c}";
+            installPhase = "mkdir -p $out/bin && cp gpu-bridge-sim $out/bin/gpu-bridge-sim";
+          };
+
+          gpuIdOncePkg = pkgsCrossMusl.stdenv.mkDerivation {
+            name = "gpu-id-once";
+            dontUnpack = true;
+            buildPhase = "$CC -static -O2 -Wall -Wextra -Werror -o gpu-id-once ${./boot/gpu-id-once.c}";
+            installPhase = "mkdir -p $out/bin && cp gpu-id-once $out/bin/gpu-id-once";
+          };
+
+          gpuGpcInitPkg = pkgsCrossMusl.stdenv.mkDerivation {
+            name = "gpu-gpc-init";
+            dontUnpack = true;
+            buildPhase = "$CC -static -O2 -Wall -Wextra -Werror -o gpu-gpc-init ${./boot/gpu-gpc-init.c}";
+            installPhase = "mkdir -p $out/bin && cp gpu-gpc-init $out/bin/gpu-gpc-init";
+          };
+
+          gpuGpcPeekPkg = pkgsCrossMusl.stdenv.mkDerivation {
+            name = "gpu-gpc-peek";
+            dontUnpack = true;
+            buildPhase = "$CC -static -O2 -Wall -Wextra -Werror -o gpu-gpc-peek ${./boot/gpu-gpc-peek.c}";
+            installPhase = "mkdir -p $out/bin && cp gpu-gpc-peek $out/bin/gpu-gpc-peek";
+          };
+
           # hciscan: bring hciN up and print only COUNTS of classic/LE devices (boot/hciscan.c); for payloads without BlueZ userland, run-time tool only.
           hciscanPkg = pkgsCrossMusl.stdenv.mkDerivation {
             name = "hciscan";
@@ -1427,6 +1497,16 @@
         pinpoke-static = pinpokePkg;
         uartpeek-static = uartpeekPkg;
         gpu-pmgr-peek-static = gpuPmgrPeekPkg;
+        gpu-gpc-peek-static = gpuGpcPeekPkg;
+        gpu-gpc-init-static = gpuGpcInitPkg;
+        gpu-id-once-static = gpuIdOncePkg;
+        gpu-bridge-once-static = gpuBridgeOncePkg;
+        gpu-bridge-sim-static = gpuBridgeSimPkg;
+        gpu-bridge-map-static = gpuBridgeMapPkg;
+        watchdog-control-test-static = watchdogControlTestPkg;
+        gpu-watchdog-supervisor-static = gpuWatchdogSupervisorPkg;
+        gpu-bridge-sim-live-static = gpuBridgeSimLivePkg;
+        gpu-bridge-peek-static = gpuBridgePeekPkg;
         hciscan-static = hciscanPkg;
         touch-diag-static = touchDiagStaticPkg;
         # Driver reload loop (docs/kmod-reload.md).

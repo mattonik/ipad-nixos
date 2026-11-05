@@ -143,3 +143,164 @@ runtime-PM bookkeeping**, not a read of the GFX domain's actual hardware
 power state. The boot command line contains `pd_ignore_unused` and
 `clk_ignore_unused`. No GPU, GPC, or PMGR register was read or written during
 this inspection, and no firmware or workload was submitted.
+
+
+## Recovery following the first GPU revision-read timeout: 2026-11-05
+
+After the guarded `0x201000020` read failed to return before the host
+deadline, the user reported that the iPad restarted and was placed in
+DFU. The Mac observed Apple USB product `0x1227` (DFU). After the user
+started the PongoOS handoff, the Mac observed `0x4141` and uploaded the
+previously booted control payload, whose `m1n1-linux.bin` matched
+`b3206c51c096d9e0cb47473cdcd88157acf677388805eb3532df071ce7315781`.
+The bootm handoff disconnected PongoOS, then USB networking returned.
+The shell reported Linux `7.3.0-rc1`, `rootfs` as root, and kernel-notes
+SHA-256 `7933908f2a1ede1ab65c3c2ae35a00de2a14bc63b7bfed30d8aaad3232a1768f`;
+the test-only `gpu_pmgr_once` module was absent.
+
+This confirms that this device reached DFU and the known-good Linux
+control boot after the timed-out read. The user reported a restart;
+we did not independently observe the Apple logo or a usable stock iOS
+boot. The control boot is not evidence that the original register read
+safely completed or that recovery is guaranteed in future. No repeat
+GPU, GPC, or bridge experiment was performed during recovery.
+
+
+The user subsequently clarified that they successfully rebooted into
+iOS after the timed-out GPU read, before entering DFU. Together with the
+subsequent verified Linux control boot, this establishes both recoveries
+for this one incident; it does not establish repeatability or guarantee
+recovery from a future fault.
+
+
+## Control-boot watchdog inventory: 2026-11-05
+
+Read-only inspection of the running control image found an
+`apple-watchdog` platform driver bound to `20e027000.watchdog` and
+`/dev/watchdog` and `/dev/watchdog0` device nodes. The sysfs class
+entry exposes only its device number and generic power/uevent files on
+this build; it exposes no state or timeout fields. These facts do not
+show the watchdog is armed, that it runs during a fabric stall, or
+that it can recover the RGX-read hang. The watchdog device was not
+opened or configured, and no restart was attempted. A watchdog must
+not be counted as a recovery mechanism without a separately designed
+and observed experiment.
+
+
+The pinned Hoolock kernel's `drivers/watchdog/apple_wdt.c` uses watchdog
+1 for its normal machine reset and exposes start, stop, ping and timeout
+operations. Its probe reads the enable bit and sets the default timeout,
+but the running image's limited sysfs interface does not reveal whether
+it is currently armed. The driver's intended reset behavior is not a
+measurement that the counter or reset path will function during the
+observed GPU/fabric stall. No watchdog handle was opened or armed.
+
+
+## Watchdog disarm and expiry experiment: 2026-11-05
+
+On the known-good control kernel (`/sys/kernel/notes` SHA-256
+`7933908f2a1ede1ab65c3c2ae35a00de2a14bc63b7bfed30d8aaad3232a1768f`),
+root was RAM-backed, no `/dev/` filesystem was mounted, and the battery
+reported 79% and charging. The known-good control payload matched SHA-256
+`b3206c51c096d9e0cb47473cdcd88157acf677388805eb3532df071ce7315781`.
+The static `watchdog-control-test` binary matched SHA-256
+`73bc6d32151d8c26f6a107a732a459f8f084f9f9447b1d4e99918a91ecee0823`.
+Its host-side simulated tests passed.
+
+The host persisted and acknowledged each pre-open marker. The check
+mode obtained watchdog support and a 20-second timeout, wrote the magic
+close character, and reported a successful close. More than 23 seconds
+later the same Linux boot, identified by uptime and kernel notes,
+remained responsive. This supports disarm on this run, not a guarantee
+for future runs. The capture is private at
+`artifacts/live/private/gpu-observations/2026-11-05-watchdog-check-01.log`.
+
+The expiry mode then armed a 20-second timeout and intentionally stopped
+feeding it. The host captured the armed marker but received no more data
+for 35 seconds; a subsequent connection to the Linux shell failed. No
+new iPad USB identity was visible at the initial check. This is
+**indeterminate**, not confirmation that the watchdog reset succeeded,
+that iOS booted, or that the watchdog could recover a GPU bus hang. The
+user was asked for the physical display state. Do not repeat the test
+until device state is established. Private capture:
+`artifacts/live/private/gpu-observations/2026-11-05-watchdog-expire-01.log`.
+
+
+The user subsequently reported that the iPad was showing the **iOS
+lock screen** after the expiry experiment. Together with the captured
+armed marker and loss of the Linux connection, this is consistent with
+the watchdog-triggered restart reaching iOS. The host did not capture
+the reset instant or independently identify the iOS USB device, so
+this does not by itself establish the precise cause or timing. The
+check was on a responsive system; it does not prove a watchdog will
+recover a stalled GPU transaction or that a future reset is guaranteed.
+
+
+The expiry-test program deliberately does not feed the watchdog and is
+not suitable to wrap the multi-stage GPU diagnostic. A GPU-specific
+supervisor would need bounded, independently verified progress and a
+feeding policy that stops on stalled progress; otherwise it could
+reset during an ordinary long operation or continue feeding despite a
+wedged GPU access. Neither such a supervisor nor recovery from a GPU
+bus stall has been verified.
+
+
+## Progress-gated watchdog supervisor prepared
+
+`boot/gpu-watchdog-supervisor.c` supervises either an explicitly selected
+bridge wrapper or a synthetic control child. It arms the watchdog only
+after a host checkpoint, proxies the existing read/write acknowledgements,
+and refreshes the watchdog only when the host acknowledges a completed
+stage. The bridge host collector persists and validates each expected
+stage before sending the numbered refresh acknowledgement. A missing
+completion or acknowledgement leaves the watchdog unrefreshed. The
+supervisor disables the watchdog only after a successful child exit,
+success marker and at least one acknowledged completion.
+
+The static ARM64 build's SHA-256 is
+`ebf05195bc4682cee63515f8a63b61e5096ad1ea1a9a7e464246770572c6c44a`.
+Host tests with a fake watchdog exercise completion, an unresponsive child
+and a wrong acknowledgement. The collector's synthetic tests cover
+ordered persistent acknowledgements, including the 68-completion bridge
+protocol. Device control modes simulate child progress and a child stall
+without accessing GPU, GPC, bridge or PMGR registers. The stall mode is
+intended to let the watchdog expire and may restart the device. It has
+not yet been run on hardware.
+
+A software after-write marker is not a hardware readback. A watchdog
+that recovers a deliberately stalled software child on a responsive
+system may not recover a CPU or fabric stalled in GPU MMIO. The supervisor
+does not establish that bridge replay or any GPU transition is safe.
+
+
+### Supervisor control tests on the iPad
+
+The user put the device in DFU, and the previously verified control
+payload was loaded through PongoOS. Linux reported the expected control
+kernel-notes SHA-256 and RAM root, with no `/dev/` filesystem mounted.
+The staged supervisor matched its build hash and refused invalid
+arguments before opening the watchdog.
+
+The synthetic-success mode completed its host-persisted stage handshake,
+received one `FEED 1`, disabled the watchdog and exited. More than
+23 seconds later the same Linux boot was still responsive, supporting
+that the watchdog was disarmed. Private host capture:
+`artifacts/live/private/gpu-observations/2026-11-05-supervisor-ok-01.log`.
+
+The synthetic-stall mode then acknowledged one completed simulated stage
+and intentionally stopped producing progress. The host persisted all
+expected markers and then lost the connection after the watchdog interval.
+The result is **reset unconfirmed** until a new boot or display state is
+observed; the user has been asked what the screen shows. Private capture:
+`artifacts/live/private/gpu-observations/2026-11-05-supervisor-stall-01.log`.
+Neither test issued a PMGR, GPC, bridge or GPU-core MMIO access. A
+software-child stall does not replicate a blocked GPU bus transaction.
+
+
+The user subsequently reported the iPad was at the iOS lock screen
+after the supervised simulated-stall test. Together with the captured
+armed watchdog, acknowledged synthetic completion and loss of Linux
+connectivity, this is consistent with the watchdog restarting the
+control system. The host did not independently observe the reset edge
+or identify the iOS USB device. This was a userspace stall, not a GPU
+MMIO bus hang, and does not establish recovery from one.
