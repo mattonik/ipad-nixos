@@ -43,6 +43,7 @@ class LdrTests(unittest.TestCase):
         self.assertTrue(report["linux_host_requirements"]["explicit_start_thread_handling_required"])
         self.assertEqual(report["records"][0], {"kind": "load", "address": 0x1000, "length": 4,
                                                  "address_class": "local/global-low",
+                                                 "apple_segment_index": None,
                                                  "crosses_core_code_end": False})
         self.assertEqual(report["records"][2]["writes"], [{"address": 0x1234, "value": 5}])
         self.assertNotIn("test", str(report))

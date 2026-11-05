@@ -12,6 +12,7 @@ from gpu_ldr_inspect import host_report
 def build_model(data):
     report = host_report(data)
     buckets = defaultdict(lambda: {"regions": 0, "bytes": 0, "min": None, "max_end": None})
+    segments = defaultdict(lambda: {"regions": 0, "bytes": 0})
     zero_actions = []
     for record in report["records"]:
         if record["kind"] not in ("load", "zero"):
@@ -22,6 +23,10 @@ def build_model(data):
         bucket["bytes"] += record["length"]
         bucket["min"] = start if bucket["min"] is None else min(bucket["min"], start)
         bucket["max_end"] = end if bucket["max_end"] is None else max(bucket["max_end"], end)
+        if record["apple_segment_index"] is not None:
+            segment = segments[str(record["apple_segment_index"])]
+            segment["regions"] += 1
+            segment["bytes"] += record["length"]
         if record["kind"] == "zero":
             zero_actions.append({"address": start, "length": record["length"],
                                  "action": "skip" if record["apple81_core_guard"] else "zero"})
@@ -29,6 +34,7 @@ def build_model(data):
         "execution_allowed": False,
         "payload_bytes_included": False,
         "buckets": dict(sorted(buckets.items())),
+        "apple_segments": dict(sorted(segments.items())),
         "zero_actions": zero_actions,
         "thread_records": [r["threads"] for r in report["records"] if r["kind"] == "start"],
         "config_write_count": report["config_writes"],

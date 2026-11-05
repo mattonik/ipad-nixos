@@ -22,6 +22,7 @@ def build_plan(data):
                 "address": record["address"],
                 "length": record["length"],
                 "address_class": record["address_class"],
+                "apple_segment_index": record["apple_segment_index"],
                 "crosses_core_code_end": record["crosses_core_code_end"],
                 "address_domain": "unresolved-meta-address",
                 "action": "review-only",

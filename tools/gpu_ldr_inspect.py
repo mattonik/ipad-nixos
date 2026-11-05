@@ -157,6 +157,10 @@ def host_report(data):
             return "global-alias"
         return "local/global-low"
 
+    def apple_segment_index(address):
+        # Apple G4G uses the four 16-byte layout slots for high META ranges.
+        return (address >> 29) & 3 if address >= 0x88000000 else None
+
     inspect(data)
     u16 = lambda offset: struct.unpack_from("<H", data, offset)[0]
     u32 = lambda offset: struct.unpack_from("<I", data, offset)[0]
@@ -172,6 +176,7 @@ def host_report(data):
             address, length = u32(position + 8), u16(block + 2) - 6
             records.append({"kind": "load", "address": address, "length": length,
                             "address_class": address_class(address),
+                            "apple_segment_index": apple_segment_index(address),
                             "crosses_core_code_end": address < 0x82000000 < address + length})
         elif kind == 3:
             block = u32(position + 8)
@@ -183,6 +188,7 @@ def host_report(data):
             address, length = u32(position + 8), u32(position + 12)
             records.append({"kind": "zero", "address": address, "length": length,
                             "address_class": address_class(address),
+                            "apple_segment_index": apple_segment_index(address),
                             "crosses_core_code_end": address < 0x82000000 < address + length,
                             "apple81_core_guard": 0x80000000 <= address < 0x8000c000,
                             "apple15_core_guard": apple15_skips_zero(address)})

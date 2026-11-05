@@ -61,6 +61,19 @@ Apple-skipped core-code zero ranges, while the remaining low/global records
 can be compared against Linux's ordinary firmware segments. It still does
 not establish which physical allocation backs any bucket.
 
+The Apple four-slot selector is now modeled exactly for high META ranges:
+`apple_segment_index = (address >> 29) & 3` when the address is at least
+`0x88000000`. On the real image only two slots are used:
+
+| Apple slot | Regions | Bytes |
+|---:|---:|---:|
+| 2 | 1 | 56 |
+| 3 | 8 | 4,096 |
+
+This narrows the Linux mapping work to two concrete alias segments plus the
+ordinary low/global and core-code buckets; it does not yet identify the
+physical backing or whether slot 2 is code or data.
+
 The model now emits Linux mapping candidates: `core-code` and `core-data` map
 to `FW_COREMEM_CODE`/`FW_COREMEM_DATA` as candidates, while the low/global and
 global-alias buckets remain explicitly unresolved. This is intentional: those
