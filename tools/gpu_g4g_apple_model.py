@@ -45,6 +45,8 @@ def build_model(data):
             "local/global-low": {"type": None, "confidence": "unresolved", "reason": "Apple segment ownership is not recovered"},
         },
         "apple_segment_mapping": {
+            "0": {"linux_object": "FW_DATA", "confidence": "strong", "reason": "starts at 0x10000000"},
+            "1": {"linux_object": "FW_CODE (candidate)", "confidence": "tentative", "reason": "0x20000000 code-like segment"},
             "2": {"linux_object": "META_BOOTLOADER", "confidence": "strong", "reason": "starts at 0xc0000000"},
             "3": {"linux_object": "FW_DATA (uncached alias)", "confidence": "strong", "reason": "0xe0000000 masks to 0x60000000, Linux data cache alias"},
         },

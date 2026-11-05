@@ -65,6 +65,13 @@ class LdrTests(unittest.TestCase):
         self.assertTrue(apple15_skips_zero(0x8000bfff))
         self.assertFalse(apple15_skips_zero(0x8000c000))
 
+    def test_apple_segment_slots(self):
+        report = host_report(fixture())
+        self.assertEqual(report["records"][0]["apple_segment_index"], None)
+        data = fixture()
+        struct.pack_into("<I", data, 24, 0x10000000)
+        self.assertEqual(host_report(data)["records"][0]["apple_segment_index"], 0)
+
     def test_cycle_is_rejected(self):
         data = fixture()
         struct.pack_into("<I", data, 88, 16)

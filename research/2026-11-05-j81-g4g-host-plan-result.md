@@ -61,26 +61,28 @@ Apple-skipped core-code zero ranges, while the remaining low/global records
 can be compared against Linux's ordinary firmware segments. It still does
 not establish which physical allocation backs any bucket.
 
-The Apple four-slot selector is now modeled exactly for high META ranges:
-`apple_segment_index = (address >> 29) & 3` when the address is at least
-`0x88000000`. On the real image only two slots are used:
+The Apple four-slot selector is now modeled exactly: for addresses at least
+`0x08000000`, except the `0x80000000`–`0x87ffffff` core window,
+`apple_segment_index = (address >> 29) & 3`. The real image uses all four
+slots:
 
 | Apple slot | Regions | Bytes |
 |---:|---:|---:|
+| 0 | 44 | 60,452 |
+| 1 | 13 | 14,484 |
 | 2 | 1 | 56 |
 | 3 | 8 | 4,096 |
 
-This narrows the Linux mapping work to two concrete alias segments plus the
-ordinary low/global and core-code buckets; it does not yet identify the
-physical backing or whether the ordinary low ranges are code or data.
+This narrows the Linux mapping work to four concrete segments plus the
+core-code bucket; it does not yet prove the ownership of slot 1.
 
-The slot-2 ambiguity is now resolved: its only range starts at `0xc0000000`,
-which is Linux's `ROGUE_FW_BOOTLDR_DEVV_ADDR_0`. The model therefore maps
-Apple slot 2 to the Linux META bootloader object with strong confidence. Slot
-3 is also resolved strongly: its `0xe0000000` alias masks to `0x60000000`,
-which Linux defines as the uncached META data alias. The remaining ambiguity
-is confined to the ordinary low ranges, notably the `0x10000000` data base and
-the separate `0x20000000` range.
+Slot 0 starts at `0x10000000`, Linux's META data base, so it maps strongly to
+`FW_DATA`. Slot 2 starts at `0xc0000000`, Linux's
+`ROGUE_FW_BOOTLDR_DEVV_ADDR_0`, so it maps strongly to the META bootloader.
+Slot 3's `0xe0000000` alias masks to `0x60000000`, Linux's uncached META data
+alias, and also maps strongly to `FW_DATA`. Slot 1 starts at `0x20000000` and
+is currently only a tentative `FW_CODE` candidate; this is now the primary
+remaining segment-ownership question.
 
 The model now emits Linux mapping candidates: `core-code` and `core-data` map
 to `FW_COREMEM_CODE`/`FW_COREMEM_DATA` as candidates, while the low/global and

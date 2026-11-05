@@ -22,6 +22,7 @@ def main():
     assert model["linux_mapping_candidates"]["core-code"]["type"] == "FW_COREMEM_CODE"
     assert model["linux_mapping_candidates"]["local/global-low"]["type"] is None
     assert model["apple_segment_mapping"]["2"]["linux_object"] == "META_BOOTLOADER"
+    assert model["apple_segment_mapping"]["0"]["linux_object"] == "FW_DATA"
     print("PASS: Apple G4G model is allocation-free and execution-disabled")
 
 

@@ -158,8 +158,11 @@ def host_report(data):
         return "local/global-low"
 
     def apple_segment_index(address):
-        # Apple G4G uses the four 16-byte layout slots for high META ranges.
-        return (address >> 29) & 3 if address >= 0x88000000 else None
+        # Apple G4G uses the four layout slots for addresses >= 0x08000000,
+        # except the 0x80000000..0x87ffffff core-memory window.
+        if address < 0x08000000 or 0x80000000 <= address < 0x88000000:
+            return None
+        return (address >> 29) & 3
 
     inspect(data)
     u16 = lambda offset: struct.unpack_from("<H", data, offset)[0]
