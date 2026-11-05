@@ -45,6 +45,22 @@ and runtime-state preflight. It must not add a bridge write, GPC access,
 firmware upload, or renderer. A failed or missing preflight means stop and use
 a fresh verified RAM boot.
 
+## Four-stage completion audit
+
+This is the status of the four work groups used for the GPU plan:
+
+| Stage | Scope | Status |
+|---|---|---|
+| 1 | Static G4G/G5P comparison, iOS 8.1/15 evidence, and SoC address model | **Complete for offline evidence** |
+| 2 | Linux META host layout, second address view, thread start, and alive handshake | **Incomplete** — slot 1 is now identified as a thread-data/stack candidate, but its Linux allocation and shared-memory ownership remain unresolved |
+| 3 | Guarded read-only hardware observation | **Prepared, not complete** — the payloads and recovery path are tested; a fresh operator-present preflight and one-shot read are still required |
+| 4 | Firmware execution, GPU jobs, and rendering | **Blocked** — do not attempt until stages 2 and 3 produce a bounded result |
+
+Therefore the project is not at stage 4 yet. The next useful milestone is to
+finish stage 2 offline; if that cannot resolve the second allocation, run only
+the stage-3 preflight/read with the operator present. No stage-4 artifact is
+safe to build around guessed mappings.
+
 ## What is still required for a hardware firmware test
 
 The next code change must make the simulator produce a complete Linux firmware
