@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parent.parent
 # Explicit list: newly added test scripts are reviewed before auto-execution.
 HOST_TESTS = (
     "tools/test_gpu_ldr_inspect.py",
+    "tools/test_gpu_g4g_host_plan.py",
     "tools/test_audit_gpu_bridge_plan.py",
     "tools/test_audit_gpu_tuner.py",
     "boot/test_gpu_bridge_map.py",
