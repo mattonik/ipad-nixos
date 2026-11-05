@@ -16,6 +16,7 @@ def main():
     assert model["buckets"]["local/global-low"]["bytes"] == 4
     assert model["buckets"]["core-code"]["bytes"] == 8
     assert model["apple_segments"] == {}
+    assert model["apple_segment_extents"] == {}
     assert model["zero_actions"][0]["action"] == "skip"
     assert model["config_write_count"] == 1
     assert len(model["thread_records"]) == 1

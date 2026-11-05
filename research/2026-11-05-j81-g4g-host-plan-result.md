@@ -76,6 +76,22 @@ slots:
 This narrows the Linux mapping work to four concrete segments plus the
 core-code bucket; it does not yet prove the ownership of slot 1.
 
+The recovered Apple layout calculator (`0xffffff800329fa14`) tracks each
+slot's minimum address and maximum end, then aligns the span before packing
+the slots into a firmware allocation. The metadata-only model now reproduces
+those extents for the real image (using the observed 4 KiB alignment):
+
+| Slot | Raw span | 4 KiB aligned span | Address range |
+|---:|---:|---:|---|
+| 0 | 60,456 | 61,440 | `0x10000000`–`0x1000eb28` |
+| 1 | 14,488 | 16,384 | `0x20000000`–`0x20003898` |
+| 2 | 56 | 4,096 | `0xc0000000`–`0xc0000038` |
+| 3 | 4,096 | 4,096 | `0xe0001000`–`0xe0002000` |
+
+This is a packed-allocation contract candidate, not a physical mapping: the
+Apple base offsets, core-memory contribution, and Linux object ownership still
+need to be recovered before any firmware load.
+
 Slot 0 starts at `0x10000000`, Linux's META data base, so it maps strongly to
 `FW_DATA`. The thread-0 record's third word is also `0x10000000`. Slot 2 starts at `0xc0000000`, Linux's
 `ROGUE_FW_BOOTLDR_DEVV_ADDR_0`, so it maps strongly to the META bootloader.

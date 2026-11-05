@@ -36,11 +36,27 @@ def build_model(data):
         if record["kind"] == "zero":
             zero_actions.append({"address": start, "length": record["length"],
                                  "action": "skip" if record["apple81_core_guard"] else "zero"})
+    extents = {}
+    for record in report["records"]:
+        slot = record.get("apple_segment_index")
+        if slot is None or record["kind"] not in ("load", "zero"):
+            continue
+        start, end = record["address"], record["address"] + record["length"]
+        extent = extents.setdefault(str(slot), {"min": start, "max_end": end,
+                                                "raw_bytes": 0, "regions": 0})
+        extent["min"] = min(extent["min"], start)
+        extent["max_end"] = max(extent["max_end"], end)
+        extent["raw_bytes"] += record["length"]
+        extent["regions"] += 1
+    for extent in extents.values():
+        extent["raw_span"] = extent["max_end"] - extent["min"]
+        extent["aligned_span_4k"] = (extent["raw_span"] + 0xfff) & ~0xfff
     return {
         "execution_allowed": False,
         "payload_bytes_included": False,
         "buckets": dict(sorted(buckets.items())),
         "apple_segments": dict(sorted(segments.items())),
+        "apple_segment_extents": dict(sorted(extents.items())),
         "zero_actions": zero_actions,
         "thread_records": thread_records,
         "thread_stack_candidates": thread_stack_candidates,
