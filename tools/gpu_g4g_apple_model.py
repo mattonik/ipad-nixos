@@ -32,6 +32,12 @@ def build_model(data):
         "zero_actions": zero_actions,
         "thread_records": [r["threads"] for r in report["records"] if r["kind"] == "start"],
         "config_write_count": report["config_writes"],
+        "linux_mapping_candidates": {
+            "core-code": {"type": "FW_COREMEM_CODE", "confidence": "candidate"},
+            "core-data": {"type": "FW_COREMEM_DATA", "confidence": "candidate"},
+            "global-alias": {"type": None, "confidence": "unresolved", "reason": "alias may target code or data"},
+            "local/global-low": {"type": None, "confidence": "unresolved", "reason": "Apple segment ownership is not recovered"},
+        },
         "unresolved": [
             "physical allocation backing each META bucket",
             "Apple shared-memory address translation",

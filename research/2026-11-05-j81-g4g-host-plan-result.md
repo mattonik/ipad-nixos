@@ -61,6 +61,12 @@ Apple-skipped core-code zero ranges, while the remaining low/global records
 can be compared against Linux's ordinary firmware segments. It still does
 not establish which physical allocation backs any bucket.
 
+The model now emits Linux mapping candidates: `core-code` and `core-data` map
+to `FW_COREMEM_CODE`/`FW_COREMEM_DATA` as candidates, while the low/global and
+global-alias buckets remain explicitly unresolved. This is intentional: those
+aliases can select different Apple segment owners, and guessing `FW_CODE` or
+`FW_DATA` would make a later firmware test unsafe.
+
 The new allocation model computes the metadata-only bucket extents:
 
 | Bucket | Regions | Total bytes | Address span |

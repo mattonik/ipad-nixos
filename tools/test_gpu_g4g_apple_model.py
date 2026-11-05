@@ -18,6 +18,8 @@ def main():
     assert model["zero_actions"][0]["action"] == "skip"
     assert model["config_write_count"] == 1
     assert len(model["thread_records"]) == 1
+    assert model["linux_mapping_candidates"]["core-code"]["type"] == "FW_COREMEM_CODE"
+    assert model["linux_mapping_candidates"]["local/global-low"]["type"] is None
     print("PASS: Apple G4G model is allocation-free and execution-disabled")
 
 
