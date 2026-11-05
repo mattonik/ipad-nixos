@@ -8,7 +8,7 @@ import unittest
 from unittest.mock import patch
 from pathlib import Path
 
-from gpu_ldr_inspect import apple15_skips_zero, inspect, summarize_ranges
+from gpu_ldr_inspect import apple15_skips_zero, host_report, inspect, summarize_ranges
 
 
 def fixture():
@@ -34,6 +34,16 @@ class LdrTests(unittest.TestCase):
         self.assertEqual(counts, {"load": 1, "zero": 1, "config": 1, "start": 1, "comment": 1})
         self.assertEqual((copied, zeroed, config, threads), (4, 8, 1, 1))
         self.assertEqual(summarize_ranges(fixture()), (2, False, 1, 1, 1, 0, 0, 0, 0, 0))
+
+    def test_host_report_contains_metadata_only(self):
+        report = host_report(fixture())
+        self.assertEqual(report["load_bytes"], 4)
+        self.assertEqual(report["config_writes"], 1)
+        self.assertEqual(report["thread_entries"], 1)
+        self.assertTrue(report["linux_host_requirements"]["explicit_start_thread_handling_required"])
+        self.assertEqual(report["records"][0], {"kind": "load", "address": 0x1000, "length": 4})
+        self.assertEqual(report["records"][2]["writes"], [{"address": 0x1234, "value": 5}])
+        self.assertNotIn("test", str(report))
 
     def test_overlapping_ranges_disable_membership_classification(self):
         data = fixture()
@@ -104,6 +114,10 @@ class LdrTests(unittest.TestCase):
             result = subprocess.run(command + ["--offset", "6", "--size", "256"], capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn("records=5", result.stdout)
+            self.assertNotIn("test", result.stdout)
+            result = subprocess.run(command + ["--offset", "6", "--size", "256", "--report"], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn('"segment_setup_required": true', result.stdout)
             self.assertNotIn("test", result.stdout)
             result = subprocess.run(command + ["--offset", "6", "--size", "257"], capture_output=True, text=True)
             self.assertNotEqual(result.returncode, 0)

@@ -3,6 +3,7 @@
 import argparse
 from bisect import bisect_right
 from collections import Counter
+import json
 from pathlib import Path
 import struct
 
@@ -145,11 +146,65 @@ def summarize_ranges(data):
             sum(in_skipped_zero(t[1], True) for t in threads))
 
 
+def host_report(data):
+    """Return LDR metadata needed for an offline Apple/Linux host comparison."""
+    inspect(data)
+    u16 = lambda offset: struct.unpack_from("<H", data, offset)[0]
+    u32 = lambda offset: struct.unpack_from("<I", data, offset)[0]
+    records = []
+    position = u32(8)
+    while position != 0xffffffff:
+        command = u16(position)
+        kind = command & 0xf
+        if command & 0x10:
+            records.append({"kind": "comment"})
+        elif kind == 0:
+            block = u32(position + 12)
+            records.append({"kind": "load", "address": u32(position + 8),
+                            "length": u16(block + 2) - 6})
+        elif kind == 3:
+            block = u32(position + 8)
+            length = u16(block + 2) - 6
+            threads = [list(struct.unpack_from("<IIII", data, block + 4 + offset))
+                       for offset in range(0, length, 16)]
+            records.append({"kind": "start", "threads": threads})
+        elif kind == 4:
+            records.append({"kind": "zero", "address": u32(position + 8),
+                            "length": u32(position + 12),
+                            "apple81_core_guard": 0x80000000 <= u32(position + 8) < 0x8000c000,
+                            "apple15_core_guard": apple15_skips_zero(u32(position + 8))})
+        elif kind == 5:
+            block = u32(position + 8)
+            length = u16(block + 2) - 6
+            writes = [
+                {"address": u32(block + 4 + offset + 4),
+                 "value": u32(block + 4 + offset + 8)}
+                for offset in range(0, length, 12)
+            ]
+            records.append({"kind": "config", "writes": writes})
+        position = u32(position + 4)
+    loads = [r for r in records if r["kind"] == "load"]
+    zeros = [r for r in records if r["kind"] == "zero"]
+    return {
+        "records": records,
+        "load_bytes": sum(r["length"] for r in loads),
+        "zero_bytes": sum(r["length"] for r in zeros),
+        "config_writes": sum(len(r["writes"]) for r in records if r["kind"] == "config"),
+        "thread_entries": sum(len(r.get("threads", [])) for r in records if r["kind"] == "start"),
+        "linux_host_requirements": {
+            "segment_setup_required": bool(loads),
+            "explicit_start_thread_handling_required": any(r["kind"] == "start" for r in records),
+            "zero_guard_review_required": any(r.get("apple81_core_guard") or r.get("apple15_core_guard") for r in zeros),
+        },
+    }
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("image", type=Path)
     parser.add_argument("--offset", type=lambda x: int(x, 0), default=0)
     parser.add_argument("--size", type=lambda x: int(x, 0))
+    parser.add_argument("--report", action="store_true", help="print host-layout metadata as JSON")
     args = parser.parse_args()
     try:
         with args.image.open("rb") as stream:
@@ -166,6 +221,9 @@ def main():
          ios15_core_zero, field1_skipped_81, field1_skipped_15) = summarize_ranges(data)
     except (OSError, ValueError, struct.error) as error:
         parser.exit(1, f"invalid LDR image: {error}\n")
+    if args.report:
+        print(json.dumps(host_report(data), sort_keys=True))
+        return
     print(f"records={sum(counts.values())} load={counts['load']} zero={counts['zero']} "
           f"start={counts['start']} config={counts['config']} comment={counts['comment']}")
     print(f"load_bytes={copied} zero_bytes={zeroed} config_writes={config} thread_entries={threads}")
