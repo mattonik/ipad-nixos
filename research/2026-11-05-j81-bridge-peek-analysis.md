@@ -17,6 +17,13 @@ name the `0x80010000` bits or provide an A8X-specific readback contract. The
 Orchard A9 sources in this checkout likewise contain no matching A8X bridge
 definition.
 
+One Orchard artifact does add a useful cross-generation warning: its J71t
+`power-r41.inc` replay table writes `0x80010005` at bridge 8 `+0x18`, then
+uses ordinary values on bridge 9. Thus the low nibble is not a universal
+"enable" bit and the `4` versus `5` difference may encode a generation- or
+bridge-specific command. The artifact is a diagnostic patch, not proof that
+either value is valid on J81.
+
 ## Consequence
 
 Do not replay `0x80010004`, the remaining 66-entry tables, or the GPC init
