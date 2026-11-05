@@ -61,6 +61,18 @@ Apple-skipped core-code zero ranges, while the remaining low/global records
 can be compared against Linux's ordinary firmware segments. It still does
 not establish which physical allocation backs any bucket.
 
+The new allocation model computes the metadata-only bucket extents:
+
+| Bucket | Regions | Total bytes | Address span |
+|---|---:|---:|---|
+| low/local-global | 57 | 74,936 | `0x10000000`–`0x20003898` |
+| global alias | 9 | 4,152 | `0xc0000000`–`0xe0002000` |
+| core code | 6 | 20,920 | `0x80000000`–`0x8000c288` |
+
+It produces 3 `skip` and 11 `zero` actions under the Apple 8.1 guard. These
+are allocation requirements and policy decisions only; the model deliberately
+does not choose physical backing, translate addresses, or start threads.
+
 ## Decision
 
 This is enough to start an offline Apple-host-layout adapter and comparison
