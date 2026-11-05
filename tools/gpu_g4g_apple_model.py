@@ -46,7 +46,7 @@ def build_model(data):
         },
         "apple_segment_mapping": {
             "2": {"linux_object": "META_BOOTLOADER", "confidence": "strong", "reason": "starts at 0xc0000000"},
-            "3": {"linux_object": None, "confidence": "unresolved", "reason": "high alias ownership is not recovered"},
+            "3": {"linux_object": "FW_DATA (uncached alias)", "confidence": "strong", "reason": "0xe0000000 masks to 0x60000000, Linux data cache alias"},
         },
         "unresolved": [
             "physical allocation backing each META bucket",

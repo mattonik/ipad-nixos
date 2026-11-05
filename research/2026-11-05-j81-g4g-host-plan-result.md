@@ -72,13 +72,15 @@ The Apple four-slot selector is now modeled exactly for high META ranges:
 
 This narrows the Linux mapping work to two concrete alias segments plus the
 ordinary low/global and core-code buckets; it does not yet identify the
-physical backing or whether slot 2 is code or data.
+physical backing or whether the ordinary low ranges are code or data.
 
 The slot-2 ambiguity is now resolved: its only range starts at `0xc0000000`,
 which is Linux's `ROGUE_FW_BOOTLDR_DEVV_ADDR_0`. The model therefore maps
 Apple slot 2 to the Linux META bootloader object with strong confidence. Slot
-3 remains unresolved and is the only high-alias segment still needing an
-ownership trace.
+3 is also resolved strongly: its `0xe0000000` alias masks to `0x60000000`,
+which Linux defines as the uncached META data alias. The remaining ambiguity
+is confined to the ordinary low ranges, notably the `0x10000000` data base and
+the separate `0x20000000` range.
 
 The model now emits Linux mapping candidates: `core-code` and `core-data` map
 to `FW_COREMEM_CODE`/`FW_COREMEM_DATA` as candidates, while the low/global and
