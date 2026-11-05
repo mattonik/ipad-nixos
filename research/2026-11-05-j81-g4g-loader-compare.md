@@ -28,3 +28,10 @@ boot arguments, but that equivalence is insufficient: region mapping, guarded
 zero behavior, thread start, and the firmware-alive handshake remain separate
 requirements.
 
+The follow-on `tools/gpu_g4g_loader_sim.py` is now a runnable compatibility
+artifact. On the real image it emits 58 load reviews, 11 zero reviews, 3
+Apple-skipped zeros, 27 config reviews, and one thread review while reporting
+`execution_allowed=false`, `firmware_bytes_copied=false`, and
+`mmio_operations=0`. It is the test harness for the eventual host-layout
+adapter, not a firmware loader.
+
