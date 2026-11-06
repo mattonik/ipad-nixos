@@ -39,7 +39,7 @@ def assess(data, view_plan):
         "unresolved": [
             "J81 META-address to Linux GPU-address mapping",
             "A8X META boot-descriptor ownership and image-to-slot binding",
-            "DART mappings and command-buffer ABI",
+            "private accelerator wrapper +0x90 mapping policy and DART ownership",
         ],
     }
 
