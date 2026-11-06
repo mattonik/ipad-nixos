@@ -39,7 +39,7 @@ def assess(data, view_plan):
             "J81 META-address to Linux GPU-address mapping",
             "A8X firmware image identity and boot descriptor ownership",
             "DART mappings and command-buffer ABI",
-            "AGXFirmwareKextG4G start/match implementation after registration",
+            "AGXFirmwareKextG4G superclass/provider start side effects",
         ],
     }
 
