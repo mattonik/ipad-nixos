@@ -60,3 +60,9 @@ J81 path needs an Apple view mapper and the `+0x210` registration hook before
 the firmware can see the copied image. The existing layout audit proves that
 the records fit candidate allocations, but not that those allocations are
 visible in the required Apple views.
+
+The disassembly also makes the callback ABI explicit: the mapped view's `+0x80`
+returns the runtime base, and vtable `+0x210` is called as
+`(accelerator, base + packed_offset, index)` for indices 0 through 3. This is a
+registration callback, not an RGX MMIO access; it runs before LDR copy/verify
+and before the boot-descriptor writes.
