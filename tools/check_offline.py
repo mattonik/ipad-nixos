@@ -27,6 +27,7 @@ HOST_TESTS = (
     "tools/test_gpu_g4g_view_compare.py",
     "tools/test_gpu_g4g_extract_view_requirements.py",
     "tools/test_gpu_g4g_allocation_model.py",
+    "tools/test_gpu_g4g_dart_plan.py",
     "tools/test_gpu_apple_clock_model.py",
     "tools/test_audit_gpu_bridge_plan.py",
     "tools/test_audit_gpu_tuner.py",
