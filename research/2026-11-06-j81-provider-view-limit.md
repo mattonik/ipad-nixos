@@ -1,7 +1,9 @@
 # J81 provider-view static limit
 
-The Apple allocator helpers show that `+0x140` returns a mapped address view
-from each kernel memory object. The four values passed through accelerator
+The Apple allocator helpers show that each resource first becomes an
+`IOMemoryDescriptor` and an `IOMemoryMap` (`createMappingInTask(..., 0x101,
+...)`), then the accelerator's private `+0x90` view selector (`0x90007`)
+returns the mapped address view. The four values passed through accelerator
 vtable `+0x210` are therefore runtime virtual addresses derived from separate
 allocation objects, not constants encoded in the firmware image or device
 tree.
