@@ -65,6 +65,40 @@ def build_model(data):
             extent = extents[candidate["segment"]]
             candidate["packed_offset"] = (extent["packed_offset_4k"] +
                                            address - extent["min"])
+    core_end = max((r["address"] + r["length"] for r in report["records"]
+                    if r["kind"] in ("load", "zero") and r["address_class"] == "core-code"),
+                   default=0x80000000)
+    candidate_entries = {
+        slot: {"type": mapping["linux_object"], "base": extent["min"],
+               "alloc_offset": extent["packed_offset_4k"],
+               "alloc_size": extent["aligned_span_4k"]}
+        for slot, extent in extents.items()
+        for mapping in [
+            {"linux_object": "FW_DATA" if slot in ("0", "3") else
+             "FW_DATA (second entry)" if slot == "1" else "META_BOOTLOADER"}
+        ]
+    }
+    candidate_entries["core-code"] = {
+        "type": "FW_COREMEM_CODE", "base": 0x80000000,
+        "alloc_offset": 0, "alloc_size": (core_end - 0x80000000 + 0xfff) & ~0xfff,
+    }
+    fit = []
+    for record in report["records"]:
+        if record["kind"] not in ("load", "zero"):
+            continue
+        if record["kind"] == "zero" and record["apple81_core_guard"]:
+            fit.append({"kind": "zero", "action": "skip", "fits": True})
+            continue
+        slot = "core-code" if record["address_class"] == "core-code" else str(record["apple_segment_index"])
+        entry = candidate_entries.get(slot)
+        if entry is None:
+            fit.append({"kind": record["kind"], "action": "unmapped", "fits": False})
+            continue
+        address = record["address"] if slot == "core-code" else record["address"] & 0x7fffffff
+        offset = entry["alloc_offset"] + address - entry["base"]
+        fit.append({"kind": record["kind"], "action": "map", "slot": slot,
+                    "offset": offset, "length": record["length"],
+                    "fits": 0 <= offset and offset + record["length"] <= entry["alloc_offset"] + entry["alloc_size"]})
     core_loads = [r for r in report["records"]
                   if r["kind"] == "load" and r["address_class"] == "core-code"
                   and r["address"] < 0x8000c000]
@@ -81,6 +115,14 @@ def build_model(data):
             "load_bytes": sum(r["length"] for r in core_loads),
             "skipped_zero_bytes": sum(r["length"] for r in core_zeros),
             "loader_rule": "count load records below 0x8000c000; skip guarded zero records",
+        },
+        "candidate_linux_layout": {
+            "execution_allowed": False,
+            "entries": candidate_entries,
+            "records": fit,
+            "fit_count": sum(item["fits"] for item in fit),
+            "record_count": len(fit),
+            "all_fit": all(item["fits"] for item in fit),
         },
         "zero_actions": zero_actions,
         "thread_records": thread_records,

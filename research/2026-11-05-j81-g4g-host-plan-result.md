@@ -99,6 +99,11 @@ offset `0x0f000` (the start of slot 1). This is strong evidence that slot 1 is
 a thread-private data/stack region, but it still does not identify the Linux
 firmware section type or its shared-memory lifetime.
 
+Using the tentative entries, the execution-disabled candidate validator maps
+all 72 non-comment load/zero records: `72/72 fit`. This checks only address
+arithmetic and packed extents; it does not prove Linux allocator behavior,
+cache policy, or the firmware-alive protocol.
+
 The same calculator treats core code separately: it counts only `LoadMem`
 records starting below `0x8000c000` and skips the guarded `ZeroMem` records.
 For this image that is 12,080 load bytes and 8,840 skipped-zero bytes. This
