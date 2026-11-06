@@ -59,9 +59,19 @@ execution, not the 44-byte record description.
 
 The parser/validator is therefore complete, and the execution-disabled model
 now accepts `--tree=...` to decode and cross-check the raw record directly.
-The full offline suite passes (85 passed, 7 environment-dependent skips). The
-next offline task is to inventory the Linux clock/reset provider interfaces
-that could represent the Apple state action. Only after that mapping is
+The full offline suite passes (85 passed, 7 environment-dependent skips).
+
+The Linux provider inventory is also now closed for the current tree: the
+only Apple PMGR provider is `drivers/pmdomain/apple/pmgr-pwrstate.c`, which
+exposes one generic power domain and one reset controller per node. It has no
+`device-clocks` parser, clock-provider registration, bridge-selector handling,
+or provider busy-count action. The J81 GFX node consequently has only the
+PMGR `power-controller@20320` resource and the test marker; there is no Linux
+clock consumer/provider edge to invoke Apple's record.
+
+This narrows the implementation boundary: a future bring-up patch must add a
+separate Apple clock-state/provider layer rather than extending the existing
+one-register PMGR power-domain callback. Only after that mapping is
 independently checked should a hardware test be considered. That test would be
 an explicit MMIO-write approval point and is therefore deferred here.
 
