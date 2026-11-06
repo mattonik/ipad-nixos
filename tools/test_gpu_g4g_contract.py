@@ -19,5 +19,8 @@ result = assess(synthetic, {"complete": False})
 assert result["execution_allowed"] is False
 assert result["alive_state_model"] == "FIRMWARE_READY"
 assert result["firmware_handshake_ready"] is False
+assert result["mmio_operations"] == 0
+assert result["firmware_bytes_copied"] is False
+assert result["sequence"][-1] == "meta-handshake-review"
 assert "DART mappings and command-buffer ABI" in result["unresolved"]
 print("PASS: G4G contract assessment remains execution-disabled")

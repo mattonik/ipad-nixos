@@ -16,6 +16,16 @@ def assess(data, view_plan):
     layout_ready = bool(view_plan.get("complete"))
     return {
         "execution_allowed": False,
+        "sequence": [
+            "ldr-review",
+            "meta-start-model",
+            "alive-event-0",
+            "controller-ready-model",
+            "interrupt-disable-review",
+            "meta-handshake-review",
+        ],
+        "mmio_operations": 0,
+        "firmware_bytes_copied": False,
         "loader_records": len(report["records"]),
         "view_layout_complete": layout_ready,
         "alive_state_model": state["state"],

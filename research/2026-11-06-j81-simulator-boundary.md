@@ -1,7 +1,9 @@
 # J81 G4G simulator boundary
 
 The repository can run the recovered sequence as a host-side, execution-free
-model. On the private J81 image, the current simulator reviewed 58 load records,
+model. `tools/gpu_g4g_contract.py` now exposes the reviewed sequence explicitly:
+LDR review, META start, synthetic alive events, interrupt-disable review, and
+META handshake review. On the private J81 image, the current simulator reviewed 58 load records,
 11 zero records, 27 config writes, three Apple-8.1 guarded zero skips, and one
 thread record. It copied no firmware bytes and issued zero MMIO operations.
 The alive-contract model also reaches `FIRMWARE_READY` using synthetic
