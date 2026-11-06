@@ -17,7 +17,7 @@ def sha256(data: bytes) -> str:
 
 def stage(host: str, remote: str, data: bytes) -> None:
     encoded = base64.b64encode(gzip.compress(data, 9)).decode()
-    scratch = remote.replace("/", "_") + ".gz.b64"
+    scratch = "/tmp/" + remote.rsplit("/", 1)[-1] + ".gz.b64"
     marker = "__GPU_STAGE_DONE__"
     with socket.create_connection((host, 23), 5) as sock:
         sock.settimeout(0.2)
