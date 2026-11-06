@@ -22,7 +22,8 @@ assert result["firmware_handshake_ready"] is False
 assert result["mmio_operations"] == 0
 assert result["firmware_bytes_copied"] is False
 assert result["sequence"][-1] == "final-property-hook-review"
+assert "firmware-object-resource-init-review" in result["sequence"]
 assert "firmware-service-registration-review" in result["sequence"]
-assert "J81 firmware-object final +0xc0 hook and concrete vptr provenance" in result["unresolved"]
+assert "AGXFirmwareKextG4G start/match implementation after registration" in result["unresolved"]
 assert "DART mappings and command-buffer ABI" in result["unresolved"]
 print("PASS: G4G contract assessment remains execution-disabled")

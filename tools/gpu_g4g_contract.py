@@ -25,6 +25,7 @@ def assess(data, view_plan):
             "meta-handshake-review",
             "gpc-control-list-review",
             "boot-descriptor-review",
+            "firmware-object-resource-init-review",
             "firmware-service-registration-review",
             "final-property-hook-review",
         ],
@@ -38,7 +39,7 @@ def assess(data, view_plan):
             "J81 META-address to Linux GPU-address mapping",
             "A8X firmware image identity and boot descriptor ownership",
             "DART mappings and command-buffer ABI",
-            "J81 firmware-object final +0xc0 hook and concrete vptr provenance",
+            "AGXFirmwareKextG4G start/match implementation after registration",
         ],
     }
 
