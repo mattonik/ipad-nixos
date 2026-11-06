@@ -55,3 +55,11 @@ Fender `state` read because the PMGR lease was not active. No write occurred;
 the boot was consumed fail-closed. The status wrapper now requires
 `runtime_status=active` and `runtime_usage=1` before loading the module or
 touching Fender.
+
+The guarded status capture then succeeded after a fresh PMGR cycle. Logs:
+`artifacts/live/gpu/pmgr-cycle-status-20261106.log` (SHA-256
+`5c1d1267b9193fd6e4b258df7cbd68f3b25d0b434f91fc5636a8fca19b374bb6`) and
+`artifacts/live/gpu/fender-status-20261106b.log` (SHA-256
+`e278754813a8292fdbfeac8f19900f974856d0e7f8c51fbd1e582513054fed5a`). The
+read-only baseline was state `0x00000000`, control `0x00000000`, hold
+`0x00000000`, `rc=0`.
