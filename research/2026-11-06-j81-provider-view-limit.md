@@ -2,11 +2,12 @@
 
 The Apple allocator helpers show that each resource first becomes an
 `IOMemoryDescriptor` and an `IOMemoryMap` (`createMappingInTask(..., 0x101,
-...)`), then the accelerator's private `+0x90` view selector (`0x90007`)
-returns the mapped address view. The four values passed through accelerator
-vtable `+0x210` are therefore runtime virtual addresses derived from separate
-allocation objects, not constants encoded in the firmware image or device
-tree.
+...)`). The retained map object's `+0x80` resolves to
+`IOMemoryMap::getVirtualAddress`; the accelerator's private `+0x90` selector
+(`0x90007`) is a separate view/policy operation. The four values passed
+through accelerator vtable `+0x210` are therefore runtime virtual addresses
+derived from separate allocation objects, not constants encoded in the
+firmware image or device tree.
 
 This is the current offline ceiling: static analysis recovers the packed
 offsets and the object/view call sequence, but cannot recover the runtime base
