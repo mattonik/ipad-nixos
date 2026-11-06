@@ -6,7 +6,7 @@ from pathlib import Path
 HEX = re.compile(r"[0-9a-f]{64}\Z")
 FIXED = (("initial-state", 0x1000, "read", 0), ("reset", 0x20000, "write", 0),
          ("reset-state", 0x1000, "write", 0x10), ("hold", 0x20000, "write", 0x20),
-         ("hold-confirm", 0x20000, "read", 0x20), ("setup-mask", 0x10000, "write", 0xffff0000),
+         ("hold-confirm", 0x20000, "read", 0), ("setup-mask", 0x10000, "write", 0xffff0000),
          ("setup-control", 0, "write", 0x40000000), ("request-state", 0x1000, "write", 0x11))
 
 def capture(sock, path, binary_hash, timeout):
@@ -51,7 +51,8 @@ def capture(sock, path, binary_hash, timeout):
                         if line != before: raise RuntimeError("unexpected Fender checkpoint")
                         sock.sendall(b"ACCESS\n"); step += 1; continue
                     match = re.fullmatch(rb"stage=after-" + name.encode() + rb" value=0x([0-9a-f]{8})", line)
-                    if not match or int(match.group(1), 16) != expected: raise RuntimeError("Fender checkpoint mismatch")
+                    actual = int(match.group(1), 16) if match else None
+                    if actual != (0x20 if name == "hold-confirm" else expected): raise RuntimeError("Fender checkpoint mismatch")
                     step += 1
                     if name == "reset": poll_kind = "reset-clear"
                     elif name == "reset-state": poll_kind = "reset-zero"
