@@ -3,6 +3,7 @@
 
 from dataclasses import dataclass
 import json
+from pathlib import Path
 import sys
 
 
@@ -15,6 +16,38 @@ class GfxClockRecord:
 
 
 RECORD = GfxClockRecord()
+BRIDGE_BASES = {9: 0x201F00000, 10: 0x201F80000}
+EXPECTED_TABLE_SHA256 = "b3818d986ab8a731bd769f56473970db58ae531f41b17b7dd316cfb2465140d4"
+
+
+def validate_bridge_plan(plan: dict) -> dict:
+    """Validate the recovered tables without treating them as executable."""
+    if plan.get("bridge_index") != 2 or plan.get("selectors") != [9, 10]:
+        raise ValueError("unexpected Apple GFX bridge metadata")
+    if plan.get("table_sha256") != EXPECTED_TABLE_SHA256:
+        raise ValueError("unexpected Apple GFX table digest")
+    writes = plan.get("writes", [])
+    by_selector = {selector: [w for w in writes if w.get("selector") == selector]
+                   for selector in (9, 10)}
+    if any(len(entries) != 33 for entries in by_selector.values()):
+        raise ValueError("Apple GFX selectors must contain 33 pairs each")
+    addresses = []
+    for selector, entries in by_selector.items():
+        expected_base = BRIDGE_BASES[selector]
+        for entry, write in enumerate(entries):
+            if write.get("entry") != entry:
+                raise ValueError(f"selector {selector}: non-contiguous entry")
+            offset = int(write["offset"], 16)
+            address = int(write["address"], 16)
+            if offset & 3 or not 0 <= offset < 0x81000:
+                raise ValueError(f"selector {selector}: invalid offset")
+            if address != expected_base + offset:
+                raise ValueError(f"selector {selector}: address mapping mismatch")
+            addresses.append(address)
+    if len(set(addresses)) != len(addresses):
+        raise ValueError("Apple GFX bridge addresses overlap")
+    return {"selectors": {str(k): len(v) for k, v in by_selector.items()},
+            "addresses": len(addresses), "table_sha256": plan["table_sha256"]}
 
 
 def model(enable: bool, *, clock_ref: int = 1) -> dict:
@@ -44,7 +77,12 @@ def model(enable: bool, *, clock_ref: int = 1) -> dict:
 
 def main() -> int:
     enable = "--disable" not in sys.argv[1:]
-    print(json.dumps(model(enable), indent=2, sort_keys=True))
+    plan_arg = next((arg for arg in sys.argv[1:] if arg.startswith("--plan=")), None)
+    output = model(enable)
+    if plan_arg:
+        plan = json.loads(Path(plan_arg.split("=", 1)[1]).read_text())
+        output["bridge_plan_validation"] = validate_bridge_plan(plan)
+    print(json.dumps(output, indent=2, sort_keys=True))
     return 0
 
 
