@@ -45,3 +45,18 @@ known, another RGX read or a render attempt would only repeat the established
 hang boundary.
 
 Source checked locally; no firmware bytes or hardware access were added.
+
+## J81-specific host contract found offline
+
+The 8.1 `AGXG4G` preparation routine at `0xffffff800329e63c` takes a
+different route. It maps an Apple memory view with selector `0x70007`, obtains
+the returned view offset through its `+0x80` method, and calls the accelerator
+vtable's `+0x210` hook four times with the packed firmware-view offsets. It
+then copies/verifies the LDR records and appends the six-word boot descriptor
+and translated object addresses.
+
+That is the concrete reason a generic META loader cannot be enabled yet: the
+J81 path needs an Apple view mapper and the `+0x210` registration hook before
+the firmware can see the copied image. The existing layout audit proves that
+the records fit candidate allocations, but not that those allocations are
+visible in the required Apple views.
