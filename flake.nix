@@ -1545,6 +1545,7 @@
         hoolock-wifi-kmod-kernel = hoolockWifiKmodKernel;
         j81-kmod-spi-apple = mkJ81Kmod { name = "spi-apple"; src = j81KmodStockSrc.spi-apple; };
         j81-kmod-apple_z2 = mkJ81Kmod { name = "apple_z2"; src = j81KmodStockSrc.apple_z2; };
+        j81-kmod-gpu-fender-status = mkJ81Kmod { name = "gpu-fender-status"; src = ./kernel/gpu-fender-status; };
         j81-kmod-src-spi-apple = j81KmodStockSrc.spi-apple;
         j81-kmod-src-apple_z2 = j81KmodStockSrc.apple_z2;
         uartpoke-static = uartpokePkg;
