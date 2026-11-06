@@ -18,6 +18,7 @@ For J81, the analogous safe deliverable is therefore the existing private,
 hash-checked `AGXFirmwareKextG4G` extraction plus the execution-disabled
 host-plan/simulator. The remaining blocker is still the host allocation and
 thread-start contract: the real image's Apple slot 1 begins at `0x20000000`
-and thread 1 points at that exact base, while Linux's generic META driver
-exposes only one `FW_DATA` allocation. No firmware upload is justified by this
-PR.
+and thread 1 points at that exact base. Orchard's generic META driver can pack
+multiple `FW_DATA` layout entries into one allocation, so slot 1 is a viable
+second-entry candidate; its exact section metadata and shared-memory lifetime
+are still unproven. No firmware upload is justified by this PR.

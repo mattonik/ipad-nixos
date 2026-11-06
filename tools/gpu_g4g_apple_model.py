@@ -94,7 +94,7 @@ def build_model(data):
         },
         "apple_segment_mapping": {
             "0": {"linux_object": "FW_DATA", "confidence": "strong", "reason": "starts at 0x10000000"},
-            "1": {"linux_object": None, "confidence": "unresolved", "reason": "thread 1 third word points at 0x20000000; private-data/stack ownership is not recovered"},
+            "1": {"linux_object": "FW_DATA (second layout entry candidate)", "confidence": "tentative", "reason": "thread 1 third word points at 0x20000000; Linux can pack multiple FW_DATA entries into one allocation"},
             "2": {"linux_object": "META_BOOTLOADER", "confidence": "strong", "reason": "starts at 0xc0000000"},
             "3": {"linux_object": "FW_DATA (uncached alias)", "confidence": "strong", "reason": "0xe0000000 masks to 0x60000000, Linux data cache alias"},
         },

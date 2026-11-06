@@ -111,12 +111,13 @@ Slot 0 starts at `0x10000000`, Linux's META data base, so it maps strongly to
 Slot 3's `0xe0000000` alias masks to `0x60000000`, Linux's uncached META data
 alias, and also maps strongly to `FW_DATA`. Slot 1 starts at `0x20000000`, and
 the thread-1 record's third word points at that exact base. That is evidence
-for a private-data/stack allocation, not proof of code; its Linux owner remains
-unresolved because the generic driver exposes only one ordinary `FW_DATA`
-allocation. The iOS 8.1 initializer separately allocates several buffers and
-obtains paired views for each, so a future adapter must model allocation
-classes explicitly rather than aliasing every Apple segment to one Linux
-object.
+for a private-data/stack allocation, not proof of code. Orchard's Linux
+layout table can contain multiple `FW_DATA` entries; `pvr_fw.c` sums them into
+one data allocation and maps each by `base_addr`/`alloc_offset`. Slot 1 is
+therefore a tentative second-`FW_DATA` entry, not necessarily a new Linux
+object. The iOS 8.1 initializer still allocates several other independent
+buffers, so allocation classes and shared-memory lifetime remain explicit
+follow-up work.
 
 The model now emits Linux mapping candidates: `core-code` and `core-data` map
 to `FW_COREMEM_CODE`/`FW_COREMEM_DATA` as candidates, while the low/global and
