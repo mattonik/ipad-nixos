@@ -11,8 +11,8 @@ arch/arm64/boot/dts/apple/t7001-j81.dtb: /soc/serial@20a0d4000/gauge: failed to 
 # Patch 0007/0008: compatible added to spi-apple.c but not to apple,spi.yaml.
 arch/arm64/boot/dts/apple/t7001-j81.dtb: /soc/spi@20a08c000: failed to match any schema with compatible: ['apple,s5l8960x-spi']
 
-# Patch 0089/0090: J81 DART option properties, undocumented test toggles read from the DT.
-arch/arm64/boot/dts/apple/t7001-j81.dtb: iommu@602002000 (apple,t7000-dart): 'apple,diag-config', 'apple,error-reflector', 'apple,fetch-config', 'apple,ios-pte', 'apple,pci-alias' do not match any of the regexes: '^pinctrl-[0-9]+$' [from schema $id: http://devicetree.org/schemas/iommu/apple,dart.yaml]
+# Patch 0089/0090: J81 DART option properties, undocumented test toggles read from the DT (apple,pci-alias dropped by 0123).
+arch/arm64/boot/dts/apple/t7001-j81.dtb: iommu@602002000 (apple,t7000-dart): 'apple,diag-config', 'apple,error-reflector', 'apple,fetch-config', 'apple,ios-pte' do not match any of the regexes: '^pinctrl-[0-9]+$' [from schema $id: http://devicetree.org/schemas/iommu/apple,dart.yaml]
 
 # Patch 0010: apple,pmic.yaml does not allow a charger child.
 arch/arm64/boot/dts/apple/t7001-j81.dtb: pmic@3c (apple,arabela-pmic): 'charger' does not match any of the regexes: '^backlight(@[0-9a-f]+)?$', '^nvmem(@[0-9a-f]+)?$', '^pinctrl-[0-9]+$', '^rtc(@[0-9a-f]+)?$' [from schema $id: http://devicetree.org/schemas/mfd/apple,pmic.yaml]
@@ -27,4 +27,8 @@ arch/arm64/boot/dts/apple/t7001-j81.dtb: serial@20a0d4000 (apple,s5l-uart): Unev
 arch/arm64/boot/dts/apple/t7001-j81.dtb: touch-diag@0 (rohm,dh2228fv): 'spi-cpol', 'spi-cs-hold-delay-ns', 'spi-cs-setup-delay-ns' do not match any of the regexes: '^pinctrl-[0-9]+$' [from schema $id: http://devicetree.org/schemas/trivial-devices.yaml]
 
 # Patch 0090: Wi-Fi endpoint sits on bus 1 but its root port has no bus-range; harmless at runtime (Linux assigns buses), worth a bus-range = <1 1> later.
-arch/arm64/boot/dts/apple/t7001.dtsi:471.24-475.7: Warning (pci_device_bus_num): /soc/pcie@610000000/pci@1,0/network@0,0: PCI bus number 1 out of range, expected (0 - 0)
+arch/arm64/boot/dts/apple/t7001.dtsi:476.24-480.7: Warning (pci_device_bus_num): /soc/pcie@610000000/pci@1,0/network@0,0: PCI bus number 1 out of range, expected (0 - 0)
+
+# Patch 0123: five-cell iommu-map (stream, window base, window length), the form the pinned apple-dart of_xlate parses and
+# OrchardLinux's J81 DT uses. pci-iommu.yaml assumes a one-cell specifier and reads the window base as the entry length.
+arch/arm64/boot/dts/apple/t7001-j81.dtb: pcie@610000000 (apple,t7000-pcie): iommu-map:1:0: 2147483648 is greater than the maximum of 65535 [from schema $id: http://devicetree.org/schemas/pci/pci-iommu.yaml]

@@ -1,0 +1,79 @@
+From: Claude <noreply@anthropic.com>
+Subject: [PATCH] arm64: dts: apple: t7001: describe the PCIe DART window in iommu-map (Wi-Fi cleanup W2)
+
+Use the pinned kernel's own five-cell DART specifier (stream, window base, window
+length; apple-dart.c of_xlate) for the PCIe IOVA window, as OrchardLinux's J81 port
+does (micro23's J81 boot, 2026-10-29: Wi-Fi with no DART faults). With the window in
+the specifier the S5L8960X domain rebases IOVAs to the window start (mask = ~dma_min),
+the same model A indexing as before.
+
+Drop the properties that drove our parallel mechanism: apple,iova-window and
+apple,iova-rebase on the PCIe node (0063/0064) and apple,pci-alias on the DART
+(0080). Without apple,iova-window the 0063/0064/0076/0080 code paths are not taken;
+removing that code is a later step once this runs on hardware. This also answers the
+open question whether the raw-index alias mapping is needed.
+
+---
+--- a/arch/arm64/boot/dts/apple/t7001.dtsi
++++ b/arch/arm64/boot/dts/apple/t7001.dtsi
+@@ -368,7 +368,8 @@
+ 			 */
+ 			compatible = "apple,t7000-dart", "apple,s5l8960x-dart";
+ 			reg = <0x6 0x02002000 0x0 0x00200000>;
+-			#iommu-cells = <1>;
++			/* DART stream, then the IOVA window: base (2 cells) and length (2 cells). */
++			#iommu-cells = <5>;
+ 			interrupt-parent = <&aic>;
+ 			interrupts = <AIC_IRQ 216 IRQ_TYPE_LEVEL_HIGH>;
+ 			power-domains = <&ps_pcie>;
+@@ -418,7 +419,11 @@
+ 			 * driver's MSI domain. iommu-map is kept from 0032-0039,
+ 			 * unchanged.
+ 			 */
+-			iommu-map = <0x100 &dart_apcie1 0 1>;
++			/*
++			 * Stream 0, IOVA window [0x80000000, 0xbffff000): the ADT dart-apcie1 vm-offset and vm-size,
++			 * ending at the MSI doorbell page. The DART driver rebases IOVAs to the window start.
++			 */
++			iommu-map = <0x100 &dart_apcie1 0 0x0 0x80000000 0x0 0x3ffff000 1>;
+ 			iommu-map-mask = <0xff00>;
+ 
+ 			bus-range = <0 4>;
+--- a/arch/arm64/boot/dts/apple/t7001-air2.dtsi
++++ b/arch/arm64/boot/dts/apple/t7001-air2.dtsi
+@@ -240,20 +240,6 @@
+ 	 * mappings never use it, and the MSI domain composes messages to it.
+ 	 */
+ 	apple,msi-doorbell = <0x0 0xbffff000>;
+-
+-	/*
+-	 * IOVA window the PCIe DART translates in Apple's configuration (ADT dart-apcie1
+-	 * vm-offset 0x80000000, vm-size 0x3ffff000); it ends at the doorbell page above.
+-	 * The DART restricts DMA mappings of the devices behind this controller to it.
+-	 */
+-	apple,iova-window = <0x0 0x80000000 0x0 0xbffff000>;
+-
+-	/*
+-	 * Apple's PTE indexing: IOVAs are rebased to the window start (endpoint-visible 0x80000000
+-	 * is DART page 0). Without this property the raw indexing is used inside the same window.
+-	 * TEST selection between the two models; see research/2026-10-06-pcie-msi-delivery-review.md.
+-	 */
+-	apple,iova-rebase;
+ 
+ 	/*
+ 	 * The controller's 32 hardware MSI vectors are AIC lines 224..255 (ADT
+@@ -270,14 +256,12 @@
+  * J81 PCIe DART (dart-apcie1) options, all proven on hardware (research/2026-10-07-wifi-h1b-modelA-run.md runs 33-38). Without them the first
+  * device DMA read faults and, with no error reflector, silently resets the SoC.
+  *   apple,ios-pte                Apple's S5L8960X entry format: directory |3, leaf |3 (bits 1+0).
+- *   apple,pci-alias              also map every page at the raw (un-rebased) index.
+  *   apple,error-reflector        ADT error-reflector 0x20ffff000 >> 12, written first (Apple's start-up order).
+  *   apple,fetch-config           ADT fetch-config.
+  *   apple,diag-config            ADT diag-config.
+  */
+ &dart_apcie1 {
+ 	apple,ios-pte;
+-	apple,pci-alias;
+ 	apple,error-reflector = <0x0020ffff>;
+ 	apple,fetch-config = <0x000e0303>;
+ 	apple,diag-config = <0x00000100>;
