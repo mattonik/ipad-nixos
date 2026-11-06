@@ -14,10 +14,12 @@ records into candidate Linux allocations (`all_fit=true`):
 
 The arithmetic fit result is useful but not sufficient for a firmware boot.
 Orchard's `pvr_fw.c` accepts only `FW_CODE`, `FW_DATA`, `FW_COREMEM_CODE`, and
-`FW_COREMEM_DATA` layout types; Apple's slot 2 is a separate
-`META_BOOTLOADER` region with no matching Linux layout type. Therefore the
-candidate is **not Linux-compatible yet**, despite all 72 records fitting its
-packed extents. The physical
+`FW_COREMEM_DATA` layout types. Its META path explicitly expects the
+bootloader segment to be preconfigured and writes boot configuration through
+the `FW_CODE` allocation; Apple's slot 2 is a separate `META_BOOTLOADER`
+region. Therefore the candidate is **not Linux-compatible yet**: slot 2 needs
+an explicit preconfigured-segment/boot-conf translation, despite all 72
+records fitting the packed extents. The physical
 allocation behind each META bucket, Apple shared-memory address translation,
 and ownership of the thread-start/alive handshake remain unresolved. The
 model therefore remains execution-disabled; no firmware or device action is

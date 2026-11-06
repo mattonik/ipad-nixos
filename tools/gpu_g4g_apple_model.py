@@ -128,7 +128,7 @@ def build_model(data):
             "supported_types": ["FW_CODE", "FW_DATA", "FW_COREMEM_CODE", "FW_COREMEM_DATA"],
             "unsupported_apple_segments": ["2"],
             "compatible": False,
-            "reason": "Apple META_BOOTLOADER has no matching Orchard layout type",
+            "reason": "Apple META_BOOTLOADER must use a preconfigured bootloader segment",
         },
         "zero_actions": zero_actions,
         "thread_records": thread_records,
