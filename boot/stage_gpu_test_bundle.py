@@ -18,7 +18,7 @@ def sha256(data: bytes) -> str:
 def stage(host: str, remote: str, data: bytes) -> None:
     encoded = base64.b64encode(gzip.compress(data, 9)).decode()
     scratch = "/tmp/" + remote.rsplit("/", 1)[-1] + ".gz.b64"
-    marker = "__GPU_STAGE_DONE__"
+    expected = sha256(data)
     with socket.create_connection((host, 23), 5) as sock:
         sock.settimeout(0.2)
         time.sleep(0.25)
@@ -32,10 +32,10 @@ def stage(host: str, remote: str, data: bytes) -> None:
             sock.sendall(f"printf %s {encoded[pos:pos + 768]} >> {scratch}\n".encode())
             time.sleep(0.01)
         time.sleep(1)
-        sock.sendall(f"base64 -d {scratch} | gzip -dc > {remote} && chmod 700 {remote} && sha256sum {remote}; echo {marker}\n".encode())
+        sock.sendall(f"base64 -d {scratch} | gzip -dc > {remote} && chmod 700 {remote} && sha256sum {remote}\n".encode())
         output = b""
         deadline = time.monotonic() + max(20, len(encoded) / 1000)
-        while time.monotonic() < deadline and marker.encode() not in output:
+        while time.monotonic() < deadline and expected.encode() not in output:
             try:
                 chunk = sock.recv(65536)
             except (TimeoutError, socket.timeout):
@@ -43,9 +43,9 @@ def stage(host: str, remote: str, data: bytes) -> None:
             if not chunk:
                 break
             output += chunk
-    if marker.encode() not in output or sha256(data).encode() not in output:
+    if expected.encode() not in output:
         raise SystemExit(f"staging failed for {remote}: {output[-500:].decode(errors='replace')}")
-    print(f"staged {remote} sha256={sha256(data)}")
+    print(f"staged {remote} sha256={expected}")
 
 
 def main() -> int:
