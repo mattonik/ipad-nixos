@@ -19,6 +19,8 @@ The first routines after the alive wait operate on the META status/control
 window and invoke firmware-object callbacks. This is still firmware control
 plane work, not a GPU render submission path.
 
-The next meaningful static target is the implementation behind the firmware
-object's `+0x1c0` call in `0xffffff800329eb28`, followed by the first method
-that writes a command/ring address rather than META handshake state.
+The firmware object's `+0x1c0` call in `0xffffff800329eb28` is also resolved by
+the kernelcache symbol table: it is `IOService::disableInterrupt(int)`, called
+after the META preparation steps. It is interrupt hygiene, not command or DART
+setup. The next meaningful static target is the first method that writes a
+command/ring address rather than META handshake state.
