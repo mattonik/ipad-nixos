@@ -19,8 +19,9 @@ The next candidate must be one-shot and fail closed in this order:
 6. Only after every checkpoint succeeds may a separate read-only RGX identity
    step be considered. A failed checkpoint consumes the boot and forbids retry.
 
-This plan is execution-disabled. It still needs a kernel-side PMGR off/on
-consumer that matches the exact test kernel ABI; the current `gpu-pmgr-once`
-module intentionally exposes only the single power-on request. No hardware
-test is authorized until that module and the complete checkpoint collector are
-built and host-tested.
+The PMGR off/on prerequisite is now covered by the separate
+`gpu-pmgr-cycle.ko`/`gpu-pmgr-cycle-run.sh` candidate and has already been
+hardware-verified once. The complete post-cycle Fender checkpoint collector
+and one-shot binary are packaged as `gpu-fender-wake`; see
+`research/2026-11-06-j81-fender-wake-test-ready.md`. This plan remains
+execution-disabled until an operator is present for the reset/hold experiment.
