@@ -25,6 +25,10 @@ Build when the shared builder has at least 15 GB free on the Mac:
   -o artifacts/live/gpu-fender-wake
 ```
 
+Built successfully on 2026-11-06. The static ARM64 binary is
+`artifacts/live/gpu-fender-wake/bin/gpu-fender-wake` with SHA-256
+`24b7b0fd69affaeb1e708ec5d4b96d2b899275dc63342581c92b1ae2fe86e331`.
+
 After the existing PMGR cycle capture succeeds in the same boot, the host
 collector is `boot/gpu_fender_wake_capture.py`; its log is append-only and
 must be retained under `artifacts/live/gpu/`. Do not run this unattended: it
