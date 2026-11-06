@@ -18,7 +18,8 @@ The assessment still reports `firmware_handshake_ready=false` because the
 four-view layout is not complete and these gates remain unresolved:
 
 1. J81 META-address to Linux GPU-address mapping.
-2. A8X firmware image identity and boot-descriptor ownership.
+2. A8X META boot-descriptor ownership and image-to-slot binding (image family
+   is now identified as `g4g_a0_t0`/`g4g_a0_t1`).
 3. DART mappings and command-buffer ABI.
 
 This is useful progress: the image is structurally parseable and its modeled

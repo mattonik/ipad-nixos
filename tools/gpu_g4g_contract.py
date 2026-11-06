@@ -38,7 +38,7 @@ def assess(data, view_plan):
         "firmware_handshake_ready": loader_ready and layout_ready and state["state"] == "FIRMWARE_READY",
         "unresolved": [
             "J81 META-address to Linux GPU-address mapping",
-            "A8X firmware image identity and boot descriptor ownership",
+            "A8X META boot-descriptor ownership and image-to-slot binding",
             "DART mappings and command-buffer ABI",
         ],
     }
