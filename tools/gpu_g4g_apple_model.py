@@ -51,12 +51,23 @@ def build_model(data):
     for extent in extents.values():
         extent["raw_span"] = extent["max_end"] - extent["min"]
         extent["aligned_span_4k"] = (extent["raw_span"] + 0xfff) & ~0xfff
+    core_loads = [r for r in report["records"]
+                  if r["kind"] == "load" and r["address_class"] == "core-code"
+                  and r["address"] < 0x8000c000]
+    core_zeros = [r for r in report["records"]
+                  if r["kind"] == "zero" and r["address_class"] == "core-code"
+                  and r["apple81_core_guard"]]
     return {
         "execution_allowed": False,
         "payload_bytes_included": False,
         "buckets": dict(sorted(buckets.items())),
         "apple_segments": dict(sorted(segments.items())),
         "apple_segment_extents": dict(sorted(extents.items())),
+        "apple_core_code_accounting": {
+            "load_bytes": sum(r["length"] for r in core_loads),
+            "skipped_zero_bytes": sum(r["length"] for r in core_zeros),
+            "loader_rule": "count load records below 0x8000c000; skip guarded zero records",
+        },
         "zero_actions": zero_actions,
         "thread_records": thread_records,
         "thread_stack_candidates": thread_stack_candidates,

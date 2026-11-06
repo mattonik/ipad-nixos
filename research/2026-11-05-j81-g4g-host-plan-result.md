@@ -92,6 +92,12 @@ This is a packed-allocation contract candidate, not a physical mapping: the
 Apple base offsets, core-memory contribution, and Linux object ownership still
 need to be recovered before any firmware load.
 
+The same calculator treats core code separately: it counts only `LoadMem`
+records starting below `0x8000c000` and skips the guarded `ZeroMem` records.
+For this image that is 12,080 load bytes and 8,840 skipped-zero bytes. This
+matches the recovered Apple rule and must not be replaced by Linux's generic
+core-data zeroing behavior.
+
 Slot 0 starts at `0x10000000`, Linux's META data base, so it maps strongly to
 `FW_DATA`. The thread-0 record's third word is also `0x10000000`. Slot 2 starts at `0xc0000000`, Linux's
 `ROGUE_FW_BOOTLDR_DEVV_ADDR_0`, so it maps strongly to the META bootloader.
