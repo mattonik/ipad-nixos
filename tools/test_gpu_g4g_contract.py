@@ -33,4 +33,5 @@ assert "firmware-service-registration-review" in result["sequence"]
 assert "descriptor-backed map address materialization and DART ownership" in result["unresolved"]
 assert "A8X META boot-descriptor ownership and image-to-slot binding" in result["unresolved"]
 assert "J81 META_BOOTLOADER slot 2 versus generic FW_DATA mapping" in result["unresolved"]
+assert "J81 segment 3 global/alias ownership and address-view conversion" in result["unresolved"]
 print("PASS: G4G contract assessment remains execution-disabled")

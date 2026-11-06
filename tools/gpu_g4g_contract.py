@@ -45,6 +45,7 @@ def assess(data, view_plan):
             "J81 META-address to Linux GPU-address mapping",
             "A8X META boot-descriptor ownership and image-to-slot binding",
             "J81 META_BOOTLOADER slot 2 versus generic FW_DATA mapping",
+            "J81 segment 3 global/alias ownership and address-view conversion",
             "J81 core MMIO window versus four 0x90007 resource windows",
             "descriptor-backed map address materialization and DART ownership",
         ],
