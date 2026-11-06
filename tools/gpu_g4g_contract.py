@@ -26,6 +26,7 @@ def assess(data, view_plan):
             "gpc-control-list-review",
             "boot-descriptor-review",
             "firmware-object-resource-init-review",
+            "firmware-kext-start-review",
             "firmware-service-registration-review",
             "final-property-hook-review",
         ],
@@ -39,7 +40,6 @@ def assess(data, view_plan):
             "J81 META-address to Linux GPU-address mapping",
             "A8X firmware image identity and boot descriptor ownership",
             "DART mappings and command-buffer ABI",
-            "AGXFirmwareKextG4G superclass/provider start side effects",
         ],
     }
 
