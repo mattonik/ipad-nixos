@@ -7,11 +7,11 @@ The next iOS 8.1 AGX routines clarify the sequencing after the LDR copy:
    object with selector `0x70007`, registers four address views through vtable
    `+0x210`, and invokes the CPU copy/verify routine.
 3. `0xffffff800329e894` waits for the firmware-alive callback. On success it
-   calls the accelerator hook at vtable `+0x1e0`, then the vtable `+0x6d8`
-   entry. The latter resolves to `0xffffff800328fa28`, which only returns the
-   class string `AGXFirmwareKextG4G`; the `+0x1e0` target remains an external
-   base-class method. The routine then logs `GPU firmware booted successfully`
-   and marks the firmware alive.
+   calls vtable `+0x1e0`, which resolves from the preserved kernelcache symbol
+   table to `IORegistryEntry::getName`, then calls `+0x6d8`, which resolves to
+   `0xffffff800328fa28` and only returns the class string
+   `AGXFirmwareKextG4G`. The routine then logs `GPU firmware booted
+   successfully` and marks the firmware alive.
 
 The wait routine itself only polls the host callback and the existing META
 status path; it does not discover or program a DART aperture. The neighboring
@@ -20,6 +20,7 @@ startup routines write META control/status offsets such as `0xa08`, `0xa10`,
 Those writes are a later boot/handshake boundary, not evidence that the four
 LDR views are GPU IOVAs.
 
-This narrows the next static target to the unresolved base-class `+0x1e0`
-method and the first post-alive command path. No firmware was executed and no
+This removes both hooks from the GPU bring-up sequence: they are identity/logging
+calls, not power, clock, DART, or command operations. The remaining static
+target is the first post-alive command path. No firmware was executed and no
 hardware state changed.
