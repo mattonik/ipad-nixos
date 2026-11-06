@@ -34,6 +34,18 @@ def build_plan(packed_offsets=EXPECTED_OFFSETS, view_bases=None, ownership=None,
     }
 
 
+def compare_plans(left, right):
+    """Diff two synthetic plans without declaring them hardware-compatible."""
+    differences = []
+    for lview, rview in zip(left["registrations"], right["registrations"]):
+        for field in ("packed_offset", "base_address", "ownership", "cache_mode"):
+            if lview[field] != rview[field]:
+                differences.append({"index": lview["index"], "field": field,
+                                    "left": lview[field], "right": rview[field]})
+    return {"compatible": not differences and left["complete"] and right["complete"],
+            "differences": differences, "execution_allowed": False}
+
+
 if __name__ == "__main__":
     assert not build_plan()["complete"]
     print("PASS: four-view plan remains execution-disabled")
