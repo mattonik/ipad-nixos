@@ -5,7 +5,7 @@ then varies only the provenance attributes:
 
 | attribute | Apple-side placeholder | Orchard-side placeholder |
 |---|---|---|
-| ownership | `apple-runtime` | `orchard-fw-object` |
+| ownership | `physical_io` | `orchard_fw_object` |
 | cache mode | `unknown` | `uncached` |
 
 It reports eight differences (ownership and cache mode for four views) and
