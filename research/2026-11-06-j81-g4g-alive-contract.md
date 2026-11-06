@@ -37,3 +37,19 @@ alive notification must be adapted to Linux's shared FWIF state or explicitly
 replaced by a J81-specific completion path. It is not safe to claim the
 generic Linux boot wait is compatible merely because both paths expose an
 “alive” result.
+
+## Offline adapter boundary
+
+The smallest defensible Linux-side adapter is therefore a three-state
+contract, without any MMIO assumptions:
+
+1. `META_STARTED`: accept only the existing Linux `firmware_started` result;
+2. `APPLE_EVENT_0`: translate an event-0 notification into the recorded alive
+   latch and retain its payload for diagnostics;
+3. `FIRMWARE_READY`: set the success result only after the controller-specific
+   readiness predicate has passed, then publish the normal FWIF state.
+
+An event-0 notification by itself must not be treated as firmware readiness.
+Timeouts, event types other than 0, or a missing controller predicate remain
+failures. This gives the future host adapter an explicit testable boundary
+while keeping firmware execution disabled.
