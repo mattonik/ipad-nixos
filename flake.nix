@@ -1190,6 +1190,13 @@
             installPhase = "mkdir -p $out/bin && cp gpu-gpc-init $out/bin/gpu-gpc-init";
           };
 
+          gpuFenderWakePkg = pkgsCrossMusl.stdenv.mkDerivation {
+            name = "gpu-fender-wake";
+            dontUnpack = true;
+            buildPhase = "$CC -static -O2 -Wall -Wextra -Werror -o gpu-fender-wake ${./boot/gpu-fender-wake.c}";
+            installPhase = "mkdir -p $out/bin && cp gpu-fender-wake $out/bin/gpu-fender-wake";
+          };
+
           gpuGpcPeekPkg = pkgsCrossMusl.stdenv.mkDerivation {
             name = "gpu-gpc-peek";
             dontUnpack = true;
@@ -1520,6 +1527,7 @@
         gpu-pmgr-peek-static = gpuPmgrPeekPkg;
         gpu-gpc-peek-static = gpuGpcPeekPkg;
         gpu-gpc-init-static = gpuGpcInitPkg;
+        gpu-fender-wake-static = gpuFenderWakePkg;
         gpu-id-once-static = gpuIdOncePkg;
         gpu-bridge-once-static = gpuBridgeOncePkg;
         gpu-bridge-sim-static = gpuBridgeSimPkg;
