@@ -15,4 +15,7 @@ def build_plan(mapped_bases, backing_bases, iova_bases=None):
     return {"execution_allowed": False, "complete": complete,
             "registrations": [{"index": i, "mapped": mapped[i], "backing": backing[i], "iova": iovas[i]}
                               for i in range(4)],
-            "unresolved": [] if complete else ["four explicit DART IOVA assignments", "GPU DART aperture/stream identity"]}
+            "unresolved": [] if complete else [
+                "four explicit DART IOVA assignments",
+                "GPU DART ownership: J81 SGX has no ADT iommu-parent/DART binding; determine whether it bypasses DART",
+            ]}
