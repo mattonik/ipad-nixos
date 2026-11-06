@@ -2,6 +2,8 @@
 """Build an execution-disabled Apple four-view registration plan."""
 
 EXPECTED_OFFSETS = (0x00000, 0x0F000, 0x13000, 0x14000)
+PROVEN_J81_VIEW_COUNT = len(EXPECTED_OFFSETS)
+IOS15_DESCRIPTOR_HINT_COUNT = 8
 
 
 def build_plan(packed_offsets=EXPECTED_OFFSETS, view_bases=None, ownership=None,
@@ -24,6 +26,12 @@ def build_plan(packed_offsets=EXPECTED_OFFSETS, view_bases=None, ownership=None,
     return {
         "execution_allowed": False,
         "complete": complete,
+        "descriptor_contract": {
+            "proven_j81_view_count": PROVEN_J81_VIEW_COUNT,
+            "ios15_hint_count": IOS15_DESCRIPTOR_HINT_COUNT,
+            "selected_count": PROVEN_J81_VIEW_COUNT,
+            "execution_allowed": False,
+        },
         "registrations": [
             {"index": index, "packed_offset": offset, "base_address": base,
              "ownership": owner, "cache_mode": cache}

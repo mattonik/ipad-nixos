@@ -15,6 +15,12 @@ def main():
     assert ready["execution_allowed"] is False
     assert ready["registrations"][1]["packed_offset"] == 0xF000
     assert ready["registrations"][0]["cache_mode"] == "uncached"
+    assert ready["descriptor_contract"] == {
+        "proven_j81_view_count": 4,
+        "ios15_hint_count": 8,
+        "selected_count": 4,
+        "execution_allowed": False,
+    }
     assert build_plan(view_bases=(0, 1, 2, 3))["complete"] is False
     print("PASS: four-view plan validates and fails closed")
 
