@@ -52,7 +52,7 @@ This is the status of the four work groups used for the GPU plan:
 | Stage | Scope | Status |
 |---|---|---|
 | 1 | Static G4G/G5P comparison, iOS 8.1/15 evidence, and SoC address model | **Complete for offline evidence** |
-| 2 | Linux META host layout, allocation classes, thread start, and alive handshake | **Improved but incomplete** — slot 1 is a defensible second-`FW_DATA` layout-entry candidate because Linux can pack multiple data entries; Apple’s other allocations, shared-memory ownership, and alive handshake remain unresolved |
+| 2 | Linux META host layout, allocation classes, thread start, and alive handshake | **Improved but incomplete** — slot 1 is a defensible second-`FW_DATA` layout-entry candidate, and Apple’s event-backed alive wait is now characterized; adapting it to Linux’s shared FWIF state and proving allocation lifetime remain unresolved |
 | 3 | Guarded read-only hardware observation | **Prepared, not complete** — the payloads and recovery path are tested; a fresh operator-present preflight and one-shot read are still required |
 | 4 | Firmware execution, GPU jobs, and rendering | **Blocked** — do not attempt until stages 2 and 3 produce a bounded result |
 
