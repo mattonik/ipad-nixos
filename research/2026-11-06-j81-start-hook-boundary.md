@@ -1,10 +1,11 @@
 # J81 derived start-hook boundary
 
 The final call in `0xffffff800329d7d8` is an indirect call through the
-object's vtable at offset `+0xc0` (`[x19] + 0xc0`). The apparent base vtable
-at `0xffffff80032b2d70` has `0xffffff800238dc04` in that slot. The kernelcache
-symbol table resolves that address to `___cxa_pure_virtual`, not to a GPU
-operation.
+object's vtable at offset `+0xc0` (`[x19] + 0xc0`). The constructors in this
+class store `0xffffff80032b2d80` (the data table at `0xffffff80032b2d70`
+plus the Itanium header) as the object vptr; its `+0xc0` entry is
+`0xffffff800238dc04`. The kernelcache symbol table resolves that address to
+`___cxa_pure_virtual`, not to a GPU operation.
 
 This means the routine is a descriptor-builder/base-class method. Its fixed
 class values, optional controller value, bootloader address, and translated
