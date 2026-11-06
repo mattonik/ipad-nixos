@@ -57,9 +57,10 @@ def main() -> int:
     for group in ("binaries", "modules", "wrappers"):
         allowed.update(f"{group}/{name}" for name in manifest[group])
     for name in args.names:
-        if name not in allowed:
+        canonical = name.replace("bin/", "binaries/", 1) if name.startswith("bin/") else name
+        if canonical not in allowed:
             parser.error(f"not in bundle manifest: {name}")
-        path = args.bundle / name
+        path = args.bundle / canonical
         stage(args.host, "/tmp/" + path.name, path.read_bytes())
     return 0
 
