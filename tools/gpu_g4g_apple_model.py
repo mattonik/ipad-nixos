@@ -56,6 +56,15 @@ def build_model(data):
         extent["aligned_span_4k"] = (extent["raw_span"] + 0xfff) & ~0xfff
         extent["packed_offset_4k"] = packed_offset
         packed_offset += extent["aligned_span_4k"]
+    for candidate in thread_stack_candidates:
+        address = candidate["address"] & 0x7fffffff
+        candidate["normalized_address"] = address
+        candidate["segment"] = next((slot for slot, extent in extents.items()
+                                      if extent["min"] <= address < extent["max_end"]), None)
+        if candidate["segment"] is not None:
+            extent = extents[candidate["segment"]]
+            candidate["packed_offset"] = (extent["packed_offset_4k"] +
+                                           address - extent["min"])
     core_loads = [r for r in report["records"]
                   if r["kind"] == "load" and r["address_class"] == "core-code"
                   and r["address"] < 0x8000c000]
