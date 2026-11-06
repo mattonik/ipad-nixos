@@ -124,6 +124,12 @@ def build_model(data):
             "record_count": len(fit),
             "all_fit": all(item["fits"] for item in fit),
         },
+        "linux_layout_compatibility": {
+            "supported_types": ["FW_CODE", "FW_DATA", "FW_COREMEM_CODE", "FW_COREMEM_DATA"],
+            "unsupported_apple_segments": ["2"],
+            "compatible": False,
+            "reason": "Apple META_BOOTLOADER has no matching Orchard layout type",
+        },
         "zero_actions": zero_actions,
         "thread_records": thread_records,
         "thread_stack_candidates": thread_stack_candidates,

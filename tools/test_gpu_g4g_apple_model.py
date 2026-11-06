@@ -28,6 +28,8 @@ def main():
     assert model["linux_mapping_candidates"]["local/global-low"]["type"] is None
     assert model["apple_segment_mapping"]["2"]["linux_object"] == "META_BOOTLOADER"
     assert model["apple_segment_mapping"]["0"]["linux_object"] == "FW_DATA"
+    assert model["linux_layout_compatibility"]["compatible"] is False
+    assert model["linux_layout_compatibility"]["unsupported_apple_segments"] == ["2"]
     assert model["apple_segment_mapping"]["1"]["confidence"] == "tentative"
     print("PASS: Apple G4G model is allocation-free and execution-disabled")
 
