@@ -111,6 +111,11 @@ def build_model(data):
         "buckets": dict(sorted(buckets.items())),
         "apple_segments": dict(sorted(segments.items())),
         "apple_segment_extents": dict(sorted(extents.items())),
+        "apple_view_registration": [
+            {"index": int(slot), "packed_offset_4k": extent["packed_offset_4k"],
+             "base_address": None, "execution_allowed": False}
+            for slot, extent in sorted(extents.items(), key=lambda item: int(item[0]))
+        ],
         "apple_core_code_accounting": {
             "load_bytes": sum(r["length"] for r in core_loads),
             "skipped_zero_bytes": sum(r["length"] for r in core_zeros),

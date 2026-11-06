@@ -30,6 +30,7 @@ def main():
     assert model["apple_segment_mapping"]["0"]["linux_object"] == "FW_DATA"
     assert model["linux_layout_compatibility"]["compatible"] is False
     assert model["linux_layout_compatibility"]["unsupported_apple_segments"] == ["2"]
+    assert [view["packed_offset_4k"] for view in model["apple_view_registration"]] == []
     assert model["apple_segment_mapping"]["1"]["confidence"] == "tentative"
     print("PASS: Apple G4G model is allocation-free and execution-disabled")
 
