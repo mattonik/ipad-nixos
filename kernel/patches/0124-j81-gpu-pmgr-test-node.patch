@@ -1,0 +1,10 @@
+--- a/arch/arm64/boot/dts/apple/t7001-j81.dts
++++ b/arch/arm64/boot/dts/apple/t7001-j81.dts
+@@ -12,3 +12,7 @@
+ 	compatible = "apple,j81", "apple,t7001", "apple,arm-platform";
+ 	model = "Apple iPad Air 2 (Wi-Fi)";
+ };
++
++&ps_gfx {
++	experimental,j81-gpu-test-no-poweroff;
++};
