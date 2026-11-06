@@ -3,7 +3,7 @@
 The repository can run the recovered sequence as a host-side, execution-free
 model. `tools/gpu_g4g_contract.py` now exposes the reviewed sequence explicitly:
 LDR review, META start, synthetic alive events, interrupt-disable review, META
-handshake review, and GPC control-list review. On the private J81 image, the current simulator reviewed 58 load records,
+handshake review, GPC control-list review, and boot-descriptor review. On the private J81 image, the current simulator reviewed 58 load records,
 11 zero records, 27 config writes, three Apple-8.1 guarded zero skips, and one
 thread record. It copied no firmware bytes and issued zero MMIO operations.
 The alive-contract model also reaches `FIRMWARE_READY` using synthetic

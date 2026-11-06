@@ -24,6 +24,7 @@ def assess(data, view_plan):
             "interrupt-disable-review",
             "meta-handshake-review",
             "gpc-control-list-review",
+            "boot-descriptor-review",
         ],
         "mmio_operations": 0,
         "firmware_bytes_copied": False,
