@@ -38,7 +38,7 @@ def capture(sock, path, binary_hash, timeout):
                         value = int(line.rsplit(b"=", 1)[1], 16)
                         done = value == 0 if poll_kind == "reset-zero" else not value & 0x10
                         if done:
-                            poll_kind = "wake" if poll_kind == "reset-zero" else None
+                            poll_kind = None
                             poll_count = 0
                         elif poll_count >= 63: raise RuntimeError("Fender poll limit reached")
                         else: poll_count += 1
