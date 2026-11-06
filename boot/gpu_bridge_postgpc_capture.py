@@ -33,7 +33,7 @@ def capture(sock, path, probe_hash, timeout):
                     if stage >= len(STAGES) or line != STAGES[stage]: raise RuntimeError("unexpected checkpoint")
                     sock.sendall(b"READ\n"); stage += 1
                 elif line.startswith(b"stage=after-"):
-                    if stage == 1 and line != b"stage=after-pmgr-read raw=0x000003ff": raise RuntimeError("unexpected PMGR state")
+                    if stage == 1 and not line.startswith(b"stage=after-pmgr-read raw=0x000003ff "): raise RuntimeError("unexpected PMGR state")
                     if stage == 2 and line != b"stage=after-gpc-state raw=0x00000001": raise RuntimeError("unexpected GPC state")
                     if stage == 3 and line != b"stage=after-gpc-control raw=0x40000000": raise RuntimeError("unexpected GPC control")
                     if stage in (4,5) and not re.fullmatch(rb"stage=after-bridge-(?:18|1c) raw=0x[0-9a-f]{8}", line): raise RuntimeError("unexpected bridge result")
