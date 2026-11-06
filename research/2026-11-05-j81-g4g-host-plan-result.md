@@ -81,16 +81,17 @@ slot's minimum address and maximum end, then aligns the span before packing
 the slots into a firmware allocation. The metadata-only model now reproduces
 those extents for the real image (using the observed 4 KiB alignment):
 
-| Slot | Raw span | 4 KiB aligned span | Address range |
-|---:|---:|---:|---|
-| 0 | 60,456 | 61,440 | `0x10000000`–`0x1000eb28` |
-| 1 | 14,488 | 16,384 | `0x20000000`–`0x20003898` |
-| 2 | 56 | 4,096 | `0xc0000000`–`0xc0000038` |
-| 3 | 4,096 | 4,096 | `0xe0001000`–`0xe0002000` |
+| Slot | Normalized range (`address & 0x7fffffff`) | Raw span | Aligned span | Packed offset |
+|---:|---|---:|---:|---:|
+| 0 | `0x10000000`–`0x1000eb28` | 60,456 | 61,440 | `0x00000` |
+| 1 | `0x20000000`–`0x20003898` | 14,488 | 16,384 | `0x0f000` |
+| 2 | `0x40000000`–`0x40000038` | 56 | 4,096 | `0x13000` |
+| 3 | `0x60001000`–`0x60002000` | 4,096 | 4,096 | `0x14000` |
 
-This is a packed-allocation contract candidate, not a physical mapping: the
-Apple base offsets, core-memory contribution, and Linux object ownership still
-need to be recovered before any firmware load.
+This reproduces the loader's local address normalization and packed offsets.
+It is still only a contract candidate, not a physical mapping: the Apple
+allocation base, core-memory contribution, and Linux object ownership remain
+to be recovered before any firmware load.
 
 The same calculator treats core code separately: it counts only `LoadMem`
 records starting below `0x8000c000` and skips the guarded `ZeroMem` records.

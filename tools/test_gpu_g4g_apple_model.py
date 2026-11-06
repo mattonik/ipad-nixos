@@ -18,6 +18,7 @@ def main():
     assert model["apple_segments"] == {}
     assert model["apple_segment_extents"] == {}
     assert model["apple_core_code_accounting"]["load_bytes"] == 0
+    assert model["apple_segment_extents"] == {}
     assert model["zero_actions"][0]["action"] == "skip"
     assert model["config_write_count"] == 1
     assert len(model["thread_records"]) == 1

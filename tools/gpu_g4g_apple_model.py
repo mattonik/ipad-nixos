@@ -41,16 +41,21 @@ def build_model(data):
         slot = record.get("apple_segment_index")
         if slot is None or record["kind"] not in ("load", "zero"):
             continue
-        start, end = record["address"], record["address"] + record["length"]
+        start = record["address"] & 0x7fffffff
+        end = start + record["length"]
         extent = extents.setdefault(str(slot), {"min": start, "max_end": end,
                                                 "raw_bytes": 0, "regions": 0})
         extent["min"] = min(extent["min"], start)
         extent["max_end"] = max(extent["max_end"], end)
         extent["raw_bytes"] += record["length"]
         extent["regions"] += 1
-    for extent in extents.values():
+    packed_offset = 0
+    for slot in sorted(extents, key=int):
+        extent = extents[slot]
         extent["raw_span"] = extent["max_end"] - extent["min"]
         extent["aligned_span_4k"] = (extent["raw_span"] + 0xfff) & ~0xfff
+        extent["packed_offset_4k"] = packed_offset
+        packed_offset += extent["aligned_span_4k"]
     core_loads = [r for r in report["records"]
                   if r["kind"] == "load" and r["address_class"] == "core-code"
                   and r["address"] < 0x8000c000]
