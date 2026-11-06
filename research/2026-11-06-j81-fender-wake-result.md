@@ -49,3 +49,9 @@ command submission, and a display-facing buffer path. The absent J81
 reused. The next meaningful milestone is a read-only status module plus
 offline reconstruction of the A8X firmware handshake; rendering comes only
 after that handshake and a controlled command-buffer test exist.
+
+Status-read boundary: a fresh-boot status-only attempt hung at the first
+Fender `state` read because the PMGR lease was not active. No write occurred;
+the boot was consumed fail-closed. The status wrapper now requires
+`runtime_status=active` and `runtime_usage=1` before loading the module or
+touching Fender.
