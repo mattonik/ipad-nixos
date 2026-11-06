@@ -23,6 +23,7 @@ def assess(data, view_plan):
             "controller-ready-model",
             "interrupt-disable-review",
             "meta-handshake-review",
+            "gpc-control-list-review",
         ],
         "mmio_operations": 0,
         "firmware_bytes_copied": False,
