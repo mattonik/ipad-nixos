@@ -22,6 +22,7 @@ HOST_TESTS = (
     "tools/test_gpu_g4g_loader_compare.py",
     "tools/test_gpu_g4g_apple_model.py",
     "tools/test_gpu_g4g_loader_sim.py",
+    "tools/test_gpu_g4g_alive_contract.py",
     "tools/test_gpu_apple_clock_model.py",
     "tools/test_audit_gpu_bridge_plan.py",
     "tools/test_audit_gpu_tuner.py",
