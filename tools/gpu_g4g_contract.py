@@ -25,6 +25,7 @@ def assess(data, view_plan):
             "meta-handshake-review",
             "gpc-control-list-review",
             "boot-descriptor-review",
+            "firmware-service-registration-review",
             "final-property-hook-review",
         ],
         "mmio_operations": 0,
