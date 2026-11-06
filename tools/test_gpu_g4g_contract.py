@@ -23,6 +23,8 @@ assert result["mmio_operations"] == 0
 assert result["firmware_bytes_copied"] is False
 assert result["sequence"][-1] == "final-property-hook-review"
 assert "firmware-object-resource-init-review" in result["sequence"]
+assert "meta-bootloader-slot-review" in result["sequence"]
+assert "j81-resource-window-review" in result["sequence"]
 assert "firmware-kext-start-review" in result["sequence"]
 assert "private-map-wrapper-review" in result["sequence"]
 assert "provider-map-init-review" in result["sequence"]
@@ -30,4 +32,5 @@ assert "provider-map-address-review" in result["sequence"]
 assert "firmware-service-registration-review" in result["sequence"]
 assert "descriptor-backed map address materialization and DART ownership" in result["unresolved"]
 assert "A8X META boot-descriptor ownership and image-to-slot binding" in result["unresolved"]
+assert "J81 META_BOOTLOADER slot 2 versus generic FW_DATA mapping" in result["unresolved"]
 print("PASS: G4G contract assessment remains execution-disabled")

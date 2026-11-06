@@ -25,6 +25,8 @@ def assess(data, view_plan):
             "meta-handshake-review",
             "gpc-control-list-review",
             "boot-descriptor-review",
+            "meta-bootloader-slot-review",
+            "j81-resource-window-review",
             "firmware-object-resource-init-review",
             "firmware-kext-start-review",
             "private-map-wrapper-review",
@@ -42,6 +44,8 @@ def assess(data, view_plan):
         "unresolved": [
             "J81 META-address to Linux GPU-address mapping",
             "A8X META boot-descriptor ownership and image-to-slot binding",
+            "J81 META_BOOTLOADER slot 2 versus generic FW_DATA mapping",
+            "J81 core MMIO window versus four 0x90007 resource windows",
             "descriptor-backed map address materialization and DART ownership",
         ],
     }
