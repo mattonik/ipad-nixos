@@ -32,3 +32,20 @@ the earlier attempt hung the device. The one-shot guard consumed this boot.
 Next offline step: use this exact sequence as the foundation for a kernel-side
 Fender driver, then add only a read-only status/reporting path before any
 future RGX experiment.
+
+That read-only module is now built as
+`artifacts/live/gpu-fender-status/gpu-fender-status.ko` (SHA-256
+`96d29d0351529e67cbb3290f0de363ca0f15763ae03d85cf060f9d5761dbceec`, commit
+`7c1032b`). It exposes `state`, `control`, and `hold` under
+`/sys/devices/gpu-fender-status/`; it contains no MMIO writes and no RGX
+mapping.
+
+## Distance to rendering
+
+The power/reset foundation is now proven, but this is not yet a renderer. The
+remaining blockers are the J81 firmware/boot protocol, GPU memory/DART setup,
+command submission, and a display-facing buffer path. The absent J81
+`gfx-kf`/A7-IOP node means Orchard's A10 firmware transport cannot simply be
+reused. The next meaningful milestone is a read-only status module plus
+offline reconstruction of the A8X firmware handshake; rendering comes only
+after that handshake and a controlled command-buffer test exist.
