@@ -1,4 +1,5 @@
-from gpu_apple_clock_model import model, validate_bridge_plan
+from gpu_apple_clock_model import find_gfx_record, model, validate_bridge_plan
+import base64
 
 
 on = model(True)
@@ -29,4 +30,11 @@ plan = {
     ],
 }
 assert validate_bridge_plan(plan)["addresses"] == 66
+raw = bytearray(44)
+raw[3:7] = bytes([0x7c, 0x06, 9, 10])
+raw[12:16] = bytes([100, 0, 0, 0])
+raw[28:32] = b"GFX\0"
+tree = {"pmgr": {"device-clocks": base64.b64encode(raw).decode()}}
+decoded = find_gfx_record(tree)
+assert decoded["record_index"] == 0 and decoded["power_state_indices"] == (100, 0, 0, 0)
 print("PASS: Apple J81 GFX clock-state model ordering")

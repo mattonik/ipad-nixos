@@ -31,20 +31,37 @@ Evidence from `artifacts/live/private/gpu-offline/`:
   from the current Linux path: the existing J81 driver only reaches the PMGR
   power-state register and never parses or applies the Apple clock provider.
 
+The existing `tools/audit_gpu_bridge_plan.py` now provides an independent
+parser/validator for the private iOS 8.1 tree and captured J81 ADT. The real
+inputs pass with this exact GFX record:
+
+```
+record index: 79 / 82
+raw:         0000007c06090a00000000006400000000000000000000000000000047465800000000000000000000000000
+device id:   0x7c (GFX)
+flags:       0x06
+selectors:   9, 10
+dependencies: none
+power index: 100 (0x64)
+bridge tables: 33 pairs each; SHA-256 b3818d986ab8a731bd769f56473970db58ae531f41b17b7dd316cfb2465140d4
+```
+
 ## Interpretation for the current hardware result
 
 The successful PMGR transition (`0x300 -> 0x3ff`) followed by a persistent GPC
 state of zero is consistent with the GPU domain being powered without the
-Apple clock-provider action. The static evidence does **not** justify guessing
-clock register offsets or issuing writes on the iPad: the J81 `device-clocks`
-provider record table is still missing from the Linux DT/runtime path.
+Apple clock-provider action. The J81 record metadata itself is already
+recovered in the earlier clock-ordering and bridge-plan notes; what is missing
+from the Linux DT/runtime path is the provider object and its state-machine
+execution, not the 44-byte record description.
 
 ## Next offline step
 
-Recover the J81 `device-clocks` record table from the decrypted iOS 8.1
-ApplePMGR/AGX image (or a matching Apple device tree), then add a parser-only
-fixture that emits the exact clock ids, flags, dependencies, and register
-pairs. Only after that table is independently checked should a hardware test
-be considered. That test would be an explicit MMIO-write approval point and is
-therefore deferred here.
+The parser/validator is therefore complete, and the execution-disabled model
+now accepts `--tree=...` to decode and cross-check the raw record directly.
+The full offline suite passes (85 passed, 7 environment-dependent skips). The
+next offline task is to inventory the Linux clock/reset provider interfaces
+that could represent the Apple state action. Only after that mapping is
+independently checked should a hardware test be considered. That test would be
+an explicit MMIO-write approval point and is therefore deferred here.
 
