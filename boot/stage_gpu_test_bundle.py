@@ -60,7 +60,9 @@ def main() -> int:
         canonical = name.replace("bin/", "binaries/", 1) if name.startswith("bin/") else name
         if canonical not in allowed:
             parser.error(f"not in bundle manifest: {name}")
-        path = args.bundle / canonical
+        group, item = canonical.split("/", 1)
+        directory = "bin" if group == "binaries" else group
+        path = args.bundle / directory / item
         stage(args.host, "/tmp/" + path.name, path.read_bytes())
     return 0
 
