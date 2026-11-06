@@ -21,6 +21,7 @@ assert result["alive_state_model"] == "FIRMWARE_READY"
 assert result["firmware_handshake_ready"] is False
 assert result["mmio_operations"] == 0
 assert result["firmware_bytes_copied"] is False
-assert result["sequence"][-1] == "boot-descriptor-review"
+assert result["sequence"][-1] == "subclass-start-hook-review"
+assert any(item.startswith("derived J81 vtable +0xc0 start hook") for item in result["unresolved"])
 assert "DART mappings and command-buffer ABI" in result["unresolved"]
 print("PASS: G4G contract assessment remains execution-disabled")
