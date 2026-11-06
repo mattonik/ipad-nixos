@@ -32,6 +32,15 @@ descriptor offsets `0x130..0x154`, paired with a six-word metadata record at
 `DAT_ffffff80032b32f8`.  No direct register write or firmware execution is
 in this routine; it is construction of host-side boot metadata.
 
+The AGX vtable data gives a useful boundary marker: the static table at
+`0xffffff80032b3008` contains `FUN_ffffff800329d7d8` at the `+0xc0` slot and
+`FUN_ffffff800329d49c` at `+0xa8`.  This identifies the slot numbers used by
+the preparation/start sequence, but does **not** prove that the runtime object
+keeps this exact vtable (the initializer calls `+0xc0` after changing object
+state, so a subclass/overridden table is possible).  Treating the static slot
+as the final firmware-start implementation would be circular; the concrete
+runtime vtable remains a separate unresolved boundary.
+
 Implication for Linux: the existing model can safely reserve `0x201000000`
 as the core MMIO window and must not present it as one of the four
 `0x90007` firmware/resource mappings.  The four auxiliary regions still need
