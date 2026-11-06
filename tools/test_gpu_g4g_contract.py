@@ -24,7 +24,8 @@ assert result["firmware_bytes_copied"] is False
 assert result["sequence"][-1] == "final-property-hook-review"
 assert "firmware-object-resource-init-review" in result["sequence"]
 assert "firmware-kext-start-review" in result["sequence"]
+assert "private-map-wrapper-review" in result["sequence"]
 assert "firmware-service-registration-review" in result["sequence"]
-assert "private accelerator wrapper +0x90 mapping policy and DART ownership" in result["unresolved"]
+assert "provider-created map object policy and DART ownership" in result["unresolved"]
 assert "A8X META boot-descriptor ownership and image-to-slot binding" in result["unresolved"]
 print("PASS: G4G contract assessment remains execution-disabled")

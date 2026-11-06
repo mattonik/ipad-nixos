@@ -27,6 +27,7 @@ def assess(data, view_plan):
             "boot-descriptor-review",
             "firmware-object-resource-init-review",
             "firmware-kext-start-review",
+            "private-map-wrapper-review",
             "firmware-service-registration-review",
             "final-property-hook-review",
         ],
@@ -39,7 +40,7 @@ def assess(data, view_plan):
         "unresolved": [
             "J81 META-address to Linux GPU-address mapping",
             "A8X META boot-descriptor ownership and image-to-slot binding",
-            "private accelerator wrapper +0x90 mapping policy and DART ownership",
+            "provider-created map object policy and DART ownership",
         ],
     }
 
