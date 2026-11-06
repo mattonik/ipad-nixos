@@ -20,6 +20,12 @@ This is more specific than the earlier generic “alive handshake unresolved”
 label, but it is not a recipe for Linux: the provider event source, event
 payload, and success-byte producer are Apple object/interrupt plumbing.
 
+The same 8.1 host setup writes a six-entry boot descriptor containing
+`0x400000000`, `0x500000000`, `0x100000000`, `0x100000000`, `0x600000000`,
+and `0x700000000`, followed by the `0xe1c0000000` bootloader address. These
+values are concrete Apple-side boot arguments, but their field meanings and
+relationship to Linux's generated META boot-argument list are not established.
+
 Orchard's Linux META driver uses a different contract. It allocates the FWIF
 connection/sysinit objects, starts META, and polls
 `fwif_sysinit->firmware_started` until `FW_BOOT_TIMEOUT_USEC`; later health is
