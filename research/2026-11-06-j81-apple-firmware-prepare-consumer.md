@@ -15,4 +15,11 @@ address-view/descriptor consumer that must be resolved before an Orchard
 adapter can be designed. The LDR parser and packed extents alone are not
 enough.
 
+The adjacent `0xffffff800329fbe8` routine is a CPU-side copy/verify loop: for
+each LDR record it computes an offset from the parsed four-view ranges, obtains
+the mapped preparation object's host pointer, copies bytes into it, and compares
+the result. It does not program a GPU register, DART table, or firmware DMA
+descriptor. This narrows the DART question: any GPU translation setup must be
+owned by a later boot/command path, not by the LDR transport itself.
+
 No firmware was executed and no hardware state was changed.
