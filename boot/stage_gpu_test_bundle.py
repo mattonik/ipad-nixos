@@ -32,7 +32,7 @@ def stage(host: str, remote: str, data: bytes) -> None:
             sock.sendall(f"printf %s {encoded[pos:pos + 768]} >> {scratch}\n".encode())
             time.sleep(0.01)
         time.sleep(1)
-        sock.sendall(f"base64 -d {scratch} | gzip -d > {remote} && chmod 700 {remote} && sha256sum {remote}; echo {marker}\n".encode())
+        sock.sendall(f"base64 -d {scratch} | gzip -dc > {remote} && chmod 700 {remote} && sha256sum {remote}; echo {marker}\n".encode())
         output = b""
         deadline = time.monotonic() + max(20, len(encoded) / 1000)
         while time.monotonic() < deadline and marker.encode() not in output:
