@@ -25,7 +25,7 @@ def assess(data, view_plan):
             "meta-handshake-review",
             "gpc-control-list-review",
             "boot-descriptor-review",
-            "subclass-start-hook-review",
+            "final-property-hook-review",
         ],
         "mmio_operations": 0,
         "firmware_bytes_copied": False,
@@ -37,7 +37,7 @@ def assess(data, view_plan):
             "J81 META-address to Linux GPU-address mapping",
             "A8X firmware image identity and boot descriptor ownership",
             "DART mappings and command-buffer ABI",
-            "derived J81 vtable +0xc0 start hook (base slot is ___cxa_pure_virtual)",
+            "J81 firmware-object final +0xc0 hook and concrete vptr provenance",
         ],
     }
 
