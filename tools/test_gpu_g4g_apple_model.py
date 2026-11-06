@@ -13,6 +13,12 @@ def main():
     struct.pack_into("<I", data, 44, 0x8000BFF0)
     model = build_model(data)
     assert model["execution_allowed"] is False
+    assert model["descriptor_contract"] == {
+        "proven_j81_view_count": 4,
+        "observed_apple_segment_count": 0,
+        "ios15_hint_count": 8,
+        "execution_allowed": False,
+    }
     assert model["buckets"]["local/global-low"]["bytes"] == 4
     assert model["buckets"]["core-code"]["bytes"] == 8
     assert model["apple_segments"] == {}

@@ -108,6 +108,12 @@ def build_model(data):
     return {
         "execution_allowed": False,
         "payload_bytes_included": False,
+        "descriptor_contract": {
+            "proven_j81_view_count": 4,
+            "observed_apple_segment_count": len(extents),
+            "ios15_hint_count": 8,
+            "execution_allowed": False,
+        },
         "buckets": dict(sorted(buckets.items())),
         "apple_segments": dict(sorted(segments.items())),
         "apple_segment_extents": dict(sorted(extents.items())),
