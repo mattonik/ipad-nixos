@@ -1,8 +1,17 @@
 #!/usr/bin/env python3
 import os,socket,sys,time
 from pathlib import Path
+import re
+
+SHA256 = re.compile(r"[0-9a-f]{64}\Z")
+
+def _args(argv):
+ if len(argv) != 5 or any(not SHA256.fullmatch(value) for value in argv[2:]):
+  raise SystemExit("usage: gpu_bridge_segment_capture.py LOG PROBE_SHA256 SUPERVISOR_SHA256 WRAPPER_SHA256")
+ return Path(argv[1]), argv[2:]
+
 def main():
- log=Path(sys.argv[1]);probe,supervisor,wrapper=sys.argv[2:5];fd=os.open(log,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+ log,(probe,supervisor,wrapper)=_args(sys.argv);fd=os.open(log,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
  with os.fdopen(fd,'wb',buffering=0) as o,socket.create_connection(('172.16.42.1',23),5) as s:
   s.sendall((f'test "$(sha256sum /tmp/gpu-watchdog-supervisor|cut -d " " -f1)" = {supervisor} && test "$(sha256sum /tmp/gpu-bridge-segment-run|cut -d " " -f1)" = {wrapper} && /tmp/gpu-watchdog-supervisor --bridge-segment {probe}\n').encode());b=b'';i=0;end=time.monotonic()+60
   while time.monotonic()<end:
