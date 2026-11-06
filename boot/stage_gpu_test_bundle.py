@@ -65,7 +65,8 @@ def main() -> int:
         group, item = canonical.split("/", 1)
         directory = "bin" if group == "binaries" else group
         path = args.bundle / directory / item
-        stage(args.host, "/tmp/" + path.name, path.read_bytes())
+        remote_name = path.stem if group == "wrappers" and path.suffix == ".sh" else path.name
+        stage(args.host, "/tmp/" + remote_name, path.read_bytes())
     return 0
 
 
