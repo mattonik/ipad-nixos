@@ -781,6 +781,16 @@ target. The A12X path currently has neither. This doesn't change the
 recommendation above: if continuing at all, the Air 2/T7001 path with a
 UART/JTAG accessory remains the far better-evidenced bet.
 
+**2026-10-30 addendum**: this September assessment is now historical. The
+first gate remains closed -- public usbliter8 still has no T8027 target --
+but two important references now make an A12X port materially less
+speculative: `0cyn/l41ka` contains an incomplete public T8027 scaffold, and
+`kieroid/badapple` boots a broad mainline-Linux stack on sibling A12/T8020
+hardware. OrchardLinux can eventually package such a port, but its current
+profiles remain checkm8-based and contain no T8027 device. The current audit,
+hardware assessment and staged go/no-go plan are in
+`research/2026-10-30-a12x-a12z-usbliter8-orchard.md`.
+
 ## Round 7: complete historical stack as a control (2026-09-06)
 
 The earlier analysis correctly identified `konradybcio`'s tree as the

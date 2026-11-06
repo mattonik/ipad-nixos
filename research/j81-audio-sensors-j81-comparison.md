@@ -49,3 +49,23 @@ layout.** The survey's topology assumptions therefore carry over to J81 as
   indices: **evidence** (private J81 ADT).
 - Which ALS part(s) are populated, codec/amplifier part numbers on J81, and
   every power sequence: **unknown**.
+
+## Offline CT819 probe trace (2026-11-02)
+
+The archived iPadOS 15.8.8 iPad5,3 kernelcache includes
+`com.apple.driver.AppleEmbeddedLightSensor` with an `AppleCT819` personality:
+`IONameMatch = als,ct819`, `IOProviderClass = AppleARMIICDevice`. This matches
+both J81 ALS ADT nodes. The prelinked kext's text is at
+`0xfffffff005c83000`; its `AppleCT819` instance constructor at
+`0xfffffff005c921a8` installs vtable `0xfffffff006d83770`.
+
+Its probe at `0xfffffff005c922a4` first issues a one-byte I2C read using
+command byte `0x80` and a one-byte receive buffer. It treats transport success
+as detection; the returned byte is not compared with a chip ID. It then calls
+the ADT `function-int_status` provider if present and rejects a sensor whose
+interrupt line is already asserted. Consequently, an address ACK alone would
+be weaker evidence than Apple's own probe, and a forced Linux `i2cdetect`
+scan is unnecessary. A later hardware check should address only J81's two
+declared addresses (`0x29`, `0x49`) after I2C2 is enabled, perform this bounded
+read and inspect each corresponding interrupt line. No live sensor bus was
+accessed in this analysis.

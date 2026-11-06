@@ -2429,6 +2429,14 @@ would be a fundamentally different, much larger, and far less certain
 project than anything done here. The T7001/Air 2 path remains the
 better-evidenced one to continue.
 
+Current A12X/A12Z note (2026-10-30): the preceding paragraph is retained as
+the September decision record. There is still no public, working T8027
+SecureROM exploit, but an incomplete T8027 scaffold in `l41ka` and a working
+A12/T8020 Linux reference in `badapple` now define a credible research path.
+OrchardLinux is a possible later integration layer, not the missing exploit.
+See `research/2026-10-30-a12x-a12z-usbliter8-orchard.md` for the current audit
+and its staged go/no-go plan.
+
 ### What to get
 
 The well-documented, checkm8-generation-specific tool for this is the
