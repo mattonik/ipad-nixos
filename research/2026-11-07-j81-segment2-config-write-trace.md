@@ -10,8 +10,10 @@ same `+0x5d8` output pointer. The routine later appends terminators and puts
 translated buffer/range addresses in the preparation descriptor. The later
 descriptor consumer/start handoff remains unresolved.
 
-The G4G image has a 56-byte segment-2 load at `0x40000000`; the offline layout
-puts it at packed offset `0x13000`. Thus slot 2 has bytes in the host-side
+The G4G image has a 56-byte segment-2 load at raw LDR address `0xc0000000`.
+Apple's host copy path masks its global-alias bit, producing normalized
+address `0x40000000`; the offline layout puts it at candidate staging offset
+`0x13000`. Thus slot 2 has bytes in the host-side
 `0x70007` preparation object and is one of the four packed views passed through
 the `+0x210` registration call. Its exact device-visible address and any
 preconfigured bootloader mapping are still unknown. The separate
@@ -46,7 +48,7 @@ owner of any preexisting mapping remain unproven.
 
 The J81 descriptor builder independently stores `0xe1c0000000` at descriptor
 offset `+0x210` (`ios81-thread-use.c`, `FUN_ffffff800329d7d8`), while the
-G4G image's slot-2 address is `0x40000000`. Those values match public Rogue
+G4G image's normalized slot-2 address is `0x40000000`. Those values match public Rogue
 defaults (`RGXFW_BOOTLDR_META_ADDR` and `RGXFW_BOOTLDR_DEVV_ADDR`), but do not
 prove Apple's `+0x210` maps the packed image bytes to that address. The
 segment-emitter method's branch is a useful lead, not proof that this method
