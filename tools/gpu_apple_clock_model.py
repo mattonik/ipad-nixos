@@ -129,6 +129,56 @@ def model(enable: bool, *, clock_ref: int = 1) -> dict:
     return {"enable": enable, "record": RECORD.__dict__, "actions": actions}
 
 
+def model_soc_busy_transition(*, enable: bool, busy_refs: int,
+                              runtime_mode: bool | None,
+                              setup_enabled: bool | None,
+                              display_resolved: bool | None,
+                              display_result: int | None,
+                              current_mcc_mode: int | None,
+                              busy_mcc_mode: int | None,
+                              fb_mcc_mode: int = 4) -> dict:
+    """Model Apple's conditional 8.1 display/cache action; never touches MMIO.
+
+    `display_result` is 0 for success, nonzero for failure, or None if unknown.
+    None MCC modes preserve the source's unresolved comparison.
+    """
+    if busy_refs < 0 or (not enable and busy_refs == 0):
+        raise ValueError("invalid SoC-busy reference count")
+    after = busy_refs + (1 if enable else -1)
+    result = {"busy_refs_before": busy_refs, "busy_refs_after": after,
+              "actions": []}
+    edge = (enable and busy_refs == 0) or (not enable and busy_refs == 1)
+    gates = (runtime_mode, setup_enabled, display_resolved)
+    taken = False if not edge or False in gates else (
+        None if None in gates else True)
+    if not taken:
+        result["actions"].append({"kind": "display-cache", "taken": taken,
+                                  "gates": gates, "edge": edge})
+        return result
+
+    state = 0 if enable else 1
+    desired = busy_mcc_mode if enable else fb_mcc_mode
+    actions = result["actions"]
+    actions.extend([
+        {"kind": "pmgr-event", "event": "0x2700c001", "cache_id": 0x75,
+         "state": state},
+        {"kind": "display-idle-call", "state": state,
+         "result": display_result},
+    ])
+    if display_result in (None, 0):
+        call = (None if display_result is None or desired is None or
+                current_mcc_mode is None else desired != current_mcc_mode)
+        actions.append({"kind": "mcc-control-call", "mode": desired,
+                        "called": call,
+                        "effect": "unknown: guarded by Apple +0x958 and +0x978"})
+        if display_result == 0:
+            actions.append({"kind": "provider-cache-state-update",
+                            "cache_id": 0x75, "state": state})
+    actions.append({"kind": "pmgr-event", "event": "0x2700c002",
+                    "cache_id": 0x75, "result": display_result})
+    return result
+
+
 def main() -> int:
     enable = "--disable" not in sys.argv[1:]
     plan_arg = next((arg for arg in sys.argv[1:] if arg.startswith("--plan=")), None)

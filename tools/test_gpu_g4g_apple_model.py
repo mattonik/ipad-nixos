@@ -34,6 +34,16 @@ def main():
     assert model["linux_mapping_candidates"]["local/global-low"]["type"] is None
     assert model["apple_segment_mapping"]["2"]["linux_object"] == "META_BOOTLOADER"
     assert model["apple_segment_mapping"]["0"]["linux_object"] == "FW_DATA"
+    assert model["meta_init_address_translation"] == {
+        "input": "IOMemoryMap task virtual address plus parsed offset",
+        "subtract": 0xE1C0000000,
+        "region_values": [0x40000000, 0xC0000000],
+        "region_selection": "0xc0000000 when arg2 is zero or byte at this+0x5cc is nonzero; otherwise 0x40000000",
+        "result_domain": "META init field; GPU DVA status unresolved",
+        "result_field_bits": 32,
+        "execution_allowed": False,
+    }
+    assert "Linux equivalent for Apple's META-init address translation" in model["unresolved"]
     assert model["linux_layout_compatibility"]["compatible"] is False
     assert model["linux_layout_compatibility"]["unsupported_apple_segments"] == ["2"]
     assert [view["packed_offset_4k"] for view in model["apple_view_registration"]] == []

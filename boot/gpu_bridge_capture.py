@@ -31,13 +31,18 @@ def plan_steps(data):
     return steps
 
 
-def capture(sock, path, binary_hash, data, timeout, supervised=False, supervisor_hash=None, simulate_bridge=False):
+def capture(sock, path, binary_hash, data, timeout, supervised=False, supervisor_hash=None, simulate_bridge=False,
+            cycle_payload=False, cycle_wrapper_hash=None):
     if not re.fullmatch(r"[0-9a-f]{64}", binary_hash):
         raise ValueError("invalid binary hash")
     if simulate_bridge and not supervised:
         raise ValueError("simulation requires supervisor")
     if supervised and (not supervisor_hash or not re.fullmatch(r"[0-9a-f]{64}", supervisor_hash)):
         raise ValueError("invalid supervisor hash")
+    if cycle_payload and (not supervised or not cycle_wrapper_hash or not re.fullmatch(r"[0-9a-f]{64}", cycle_wrapper_hash)):
+        raise ValueError("cycle payload requires supervised mode and wrapper hash")
+    if cycle_payload and simulate_bridge:
+        raise ValueError("cycle payload cannot be simulated")
     steps = plan_steps(data)
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     deadline = time.monotonic() + timeout
@@ -47,11 +52,12 @@ def capture(sock, path, binary_hash, data, timeout, supervised=False, supervisor
         try: os.fsync(directory)
         finally: os.close(directory)
         command = (f"test \"$(sha256sum /tmp/gpu-watchdog-supervisor | cut -d ' ' -f 1)\" = {supervisor_hash} && "
-                   f"/tmp/gpu-watchdog-supervisor {'--simulate-bridge' if simulate_bridge else '--bridge'} {binary_hash}"
+                   f"/tmp/gpu-watchdog-supervisor {'--simulate-bridge' if simulate_bridge else '--bridge-cycle' if cycle_payload else '--bridge'} {binary_hash}"
                    if supervised else f"/tmp/gpu-bridge-once-run {binary_hash}")
         if supervised:
-            wrapper = '/tmp/gpu-bridge-sim-live-run' if simulate_bridge else '/tmp/gpu-bridge-once-run'
-            wrapper_hash = SIM_WRAPPER_SHA if simulate_bridge else BRIDGE_WRAPPER_SHA
+            wrapper = ('/tmp/gpu-bridge-sim-live-run' if simulate_bridge else
+                       '/tmp/gpu-bridge-once-cycle-run' if cycle_payload else '/tmp/gpu-bridge-once-run')
+            wrapper_hash = SIM_WRAPPER_SHA if simulate_bridge else cycle_wrapper_hash if cycle_payload else BRIDGE_WRAPPER_SHA
             command = (f"test \"$(sha256sum {wrapper} | cut -d ' ' -f 1)\" = {wrapper_hash} && " + command)
         sock.sendall((command + "\n").encode())
         while time.monotonic() < deadline:
@@ -110,12 +116,13 @@ def capture(sock, path, binary_hash, data, timeout, supervised=False, supervisor
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument("log",type=Path);p.add_argument("binary_sha256");p.add_argument("plan",type=Path)
-    p.add_argument("--timeout",type=float,default=60);p.add_argument("--supervised",action="store_true");p.add_argument("--supervisor-sha256");p.add_argument("--simulate-bridge",action="store_true");args=p.parse_args()
+    p.add_argument("--timeout",type=float,default=60);p.add_argument("--supervised",action="store_true");p.add_argument("--supervisor-sha256");p.add_argument("--simulate-bridge",action="store_true")
+    p.add_argument("--cycle-payload", action="store_true"); p.add_argument("--cycle-wrapper-sha256"); args=p.parse_args()
     if not 1 <= args.timeout <= 300:p.error("timeout must be between 1 and 300 seconds")
     try:
         data=args.plan.read_bytes()
         with socket.create_connection(("172.16.42.1",23),timeout=5) as sock:
-            capture(sock,args.log,args.binary_sha256,data,args.timeout,args.supervised,args.supervisor_sha256,args.simulate_bridge)
+            capture(sock,args.log,args.binary_sha256,data,args.timeout,args.supervised,args.supervisor_sha256,args.simulate_bridge,args.cycle_payload,args.cycle_wrapper_sha256)
     except (OSError, RuntimeError, ValueError) as error:
         p.exit(1,f"capture failed: {error}; do not retry this boot\n")
     label = "Simulated bridge protocol" if args.simulate_bridge else "Bridge write sequence"

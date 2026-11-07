@@ -35,24 +35,22 @@ before AGX prepares the firmware, while the host emits tuples for other
 segments. It makes the boot-preprovision hypothesis more plausible than
 assuming that Apple forgot slot 2.
 
-This is still a cross-generation ABI comparison. The Apple preparation
-routine's runtime `+0x210` target remains unknown, and its static table
-candidate does not identify the owner of the boot mapping. The public Linux
-comment describes Rogue behavior, not Apple's boot chain. No J81 register
-write, constructor/vtable provenance, or A8X firmware-visible mapping for
-slot 2 was found in this pass. Do not infer a Linux implementation or copy
-its setup sequence into J81 from this evidence.
+This is still a cross-generation ABI comparison. Apple runtime dispatch is
+resolved: the installed `AGXMetaFirmware` `+0x210` slot calls the emitter, and
+that emitter skips slot 2. The owner/source of any earlier boot mapping and
+the A8X firmware-visible mapping remain unknown. The public Linux comment
+describes Rogue behavior, not Apple's boot chain. No J81 register write or
+reset-state evidence for slot 2 was found in this pass. Do not infer a Linux
+implementation or copy its setup sequence into J81 from this evidence.
 
 ## Dispatch status
 
-The callable `+0x210` candidate in the best-matching static table remains
-`FUN_ffffff80032a0f30`, whose body receives the packed pointer, walks five
-static records against the receiver map array at `+0x578`, and calls two
-opaque thunks. That behavior is compatible with a preparation/mapping helper,
-but the thunks prevent concluding whether it establishes the slot-2 mapping.
-The segment emitter `FUN_ffffff800329fea0` remains at table offset `+0x248`;
-no recovered callsite or dynamic-type evidence ties it to the four `+0x210`
-calls. Thus neither runtime dispatch nor mapping ownership is closed.
+The runtime `+0x210` target is `FUN_ffffff800329fea0`, proven by the installed
+vptr/address point `0xffffff80032b3040` and table word at `0xffffff80032b3250`.
+It appends segment tuples for indices 0, 1 and 3 and returns for index 2. The
+different `FUN_ffffff80032a0f30` result came from incorrectly indexing the
+vtable group start. Neither the resolved emitter nor the static image shows
+who established slot 2's mapping.
 
 Evidence: `artifacts/live/private/gpu-offline/firmware-prepare.c`,
 `firmware-layout.c`, and `ios81-agx-disasm.txt` at

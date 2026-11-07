@@ -44,9 +44,10 @@ protocol using the same META boot address, but the helper boundary alone does
 not prove that the command word is a PC value. It is not a write to
 `0x04850020..0x0485002c` and does not establish the segment mapping.
 
-The J81 preparation routine still emits no visible segment-2 tuple, and its
-best static `+0x210` table candidate remains an unresolved helper with opaque
-mapping thunks. The known descriptor field `0xe1c0000000` and normalized
+The J81 preparation routine calls its constructor-resolved `+0x210` emitter
+for indices 0..3; the emitter returns immediately for index 2, so no slot-2
+tuple enters this generated command buffer. The known descriptor field
+`0xe1c0000000` and normalized
 firmware segment-2 load address `0x40000000` (raw LDR destination
 `0xc0000000`) match public Rogue's bootloader defaults,
 but no local disassembly located an earlier J81 write of the slot-2
@@ -60,10 +61,10 @@ Treat slot 2 as a boot-owned address window in the working model, not as a
 known AGX setup operation. Existing data supports the PC address and a public
 Rogue pattern of leaving the boot segment preconfigured. It does **not** yet
 support implementing a J81 slot-2 map, assuming a reset default, or deciding
-which software component provisions it. To close that gap offline, recover
-the exact J81 META segment-2 register writes or reset-state description from
-an Apple boot-stage/kernel path, or establish the `+0x210` runtime target and
-its opaque thunk effects. Hardware probing is outside this evidence.
+which software component provisions it. To close that gap offline, recover the exact J81 META segment-2 register writes
+or reset-state description from an Apple boot-stage/kernel path, or identify
+the downstream consumer/source of the preexisting mapping. Hardware probing
+is outside this evidence.
 
 Evidence: local `ios81-gpc-helpers.c`, `gpc-link.c`, and
 `ios81-agx-disasm.txt` around `0xffffff800329eb88`,

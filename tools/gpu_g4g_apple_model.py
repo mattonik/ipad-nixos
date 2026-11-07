@@ -144,6 +144,15 @@ def build_model(data):
         "zero_actions": zero_actions,
         "thread_records": thread_records,
         "thread_stack_candidates": thread_stack_candidates,
+        "meta_init_address_translation": {
+            "input": "IOMemoryMap task virtual address plus parsed offset",
+            "subtract": 0xE1C0000000,
+            "region_values": [0x40000000, 0xC0000000],
+            "region_selection": "0xc0000000 when arg2 is zero or byte at this+0x5cc is nonzero; otherwise 0x40000000",
+            "result_domain": "META init field; GPU DVA status unresolved",
+            "result_field_bits": 32,
+            "execution_allowed": False,
+        },
         "config_write_count": report["config_writes"],
         "linux_mapping_candidates": {
             "core-code": {"type": "FW_COREMEM_CODE", "confidence": "candidate"},
@@ -159,7 +168,7 @@ def build_model(data):
         },
         "unresolved": [
             "physical allocation backing each META bucket",
-            "Apple shared-memory address translation",
+            "Linux equivalent for Apple's META-init address translation",
             "firmware-alive and thread-start ownership",
         ],
     }

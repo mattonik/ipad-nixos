@@ -2,8 +2,8 @@
 
 `FUN_ffffff800329e63c` allocates and maps an aligned firmware-preparation
 object with selector `0x70007`, then points `param_1[0xbb]` (byte offset
-`+0x5d8`) at the mapped host buffer plus `0x200`. It calls an unresolved
-accelerator vtable method at `+0x210` four times with packed offsets and
+`+0x5d8`) at the mapped host buffer plus `0x200`. It calls the installed
+`AGXMetaFirmware` vtable slot `+0x210` four times with packed offsets and
 indices 0..3, then runs `FUN_ffffff800329fbe8`. That CPU-side parser copies and
 verifies LDR records; Config records append register/value pairs through the
 same `+0x5d8` output pointer. The routine later appends terminators and puts
@@ -15,8 +15,9 @@ Apple's host copy path masks its global-alias bit, producing normalized
 address `0x40000000`; the offline layout puts it at candidate staging offset
 `0x13000`. Thus slot 2 has bytes in the host-side
 `0x70007` preparation object and is one of the four packed views passed through
-the `+0x210` registration call. Its exact device-visible address and any
-preconfigured bootloader mapping are still unknown. The separate
+the `+0x210` call. The resolved callee returns immediately for index 2, so it
+emits no segment-2 tuple into this command buffer. Its exact device-visible
+address and any preconfigured bootloader mapping are still unknown. The separate
 `0x90007` resource-registration loop handles four auxiliary records and skips
 its fifth core-MMIO record; it does not establish the mapping of this packed
 segment-2 image region.
@@ -38,13 +39,18 @@ jumps directly to the return. This implementation emits no tuple for any of
 the four `0x04850020..0x0485002c` registers. It writes a host-side command
 buffer; it does not itself perform MMIO.
 
-The disassembly's static table word at `0xffffff80032b3250` points to this
-function. The firmware-preparation routine separately calls a vtable method at
-`+0x210` four times, with the four packed offsets and indices 0..3, but that
-runtime target is unresolved. Do not equate it with this emitter on current
-evidence. The established finding is narrower: Apple contains a segment-config
-emitter implementation that deliberately omits segment 2; its callsite and the
-owner of any preexisting mapping remain unproven.
+The table word at `0xffffff80032b3250` points to this function. The
+`AGXMetaFirmware` constructor installs address point `0xffffff80032b3040`,
+making that word its `+0x210` entry; the four preparation calls therefore
+invoke this emitter with indices 0..3. Index 2 is deliberately omitted from
+the emitted register/value stream. This proves Apple does not configure
+segment 2 through this emitter in the traced path; it does not prove where a
+usable segment-2 translation is installed or who owns it.
+
+The G4G LDR metadata report's explicit Config writes also contain no target in
+`0x04850020..0x0485002c`; they therefore do not fill this tuple in the image's
+parsed Config stream. This was checked from record metadata only, without
+reading or executing firmware payloads.
 
 The J81 descriptor builder independently stores `0xe1c0000000` at descriptor
 offset `+0x210` (`ios81-thread-use.c`, `FUN_ffffff800329d7d8`), while the

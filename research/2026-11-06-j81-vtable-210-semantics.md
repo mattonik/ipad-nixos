@@ -9,12 +9,12 @@ x2 = index 0..3
 ```
 
 The slot is invoked four times before the Apple LDR copy/verify routine with
-four packed-view pointers and indices 0..3. The call shape suggests a
-registration operation, but the callee is not proven from the call site. The
-static base AGX table has `FUN_ffffff80032a0f30` at `+0x210` and the known
-segment-config emitter `FUN_ffffff800329fea0` at `+0x248`; the table and
-runtime-object caveats are documented in
-[`2026-11-07-j81-segment2-vtable-slot-proof.md`](2026-11-07-j81-segment2-vtable-slot-proof.md).
+four packed-view pointers and indices 0..3. Constructor evidence identifies
+the receiver as `AGXMetaFirmware` with installed vptr `0xffffff80032b3040`;
+address-point slot `+0x210` is `FUN_ffffff800329fea0`, the segment-config
+emitter. Earlier group-start indexing incorrectly assigned the unrelated
+`FUN_ffffff80032a0f30` to this runtime slot. See
+[`2026-11-07-j81-staging-map-runtime-consumer.md`](2026-11-07-j81-staging-map-runtime-consumer.md).
 The four offsets come from the initializer's host layout calculator
 (`param + 0x524`).
 

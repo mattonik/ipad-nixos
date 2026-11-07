@@ -56,7 +56,7 @@ def main() -> int:
     args = parser.parse_args()
     manifest = json.loads((args.bundle / "MANIFEST.json").read_text())
     allowed = set()
-    for group in ("binaries", "modules", "wrappers"):
+    for group in ("binaries", "modules", "wrappers", "data"):
         allowed.update(f"{group}/{name}" for name in manifest[group])
     for name in args.names:
         canonical = name.replace("bin/", "binaries/", 1) if name.startswith("bin/") else name

@@ -1,4 +1,6 @@
-from gpu_apple_clock_model import find_gfx_record, model, validate_bridge_plan
+from gpu_apple_clock_model import (find_gfx_record, model,
+                                  model_soc_busy_transition,
+                                  validate_bridge_plan)
 import base64
 import hashlib
 import struct
@@ -23,6 +25,50 @@ assert [a["kind"] for a in off["actions"]] == [
     "provider-busy-transition", "flush-power-state", "pmgr-state",
 ]
 assert model(True, clock_ref=0)["blocked"] == "no-clock-reference"
+
+gated = model_soc_busy_transition(
+    enable=True, busy_refs=0, runtime_mode=False, setup_enabled=True,
+    display_resolved=True, display_result=0, current_mcc_mode=4,
+    busy_mcc_mode=3)
+assert gated["busy_refs_after"] == 1
+assert gated["actions"] == [{"kind": "display-cache", "taken": False,
+                              "gates": (False, True, True), "edge": True}]
+
+gate_unknown = model_soc_busy_transition(
+    enable=True, busy_refs=0, runtime_mode=None, setup_enabled=True,
+    display_resolved=True, display_result=0, current_mcc_mode=4,
+    busy_mcc_mode=3)
+assert gate_unknown["actions"][0]["taken"] is None
+
+busy = model_soc_busy_transition(
+    enable=True, busy_refs=0, runtime_mode=True, setup_enabled=True,
+    display_resolved=True, display_result=0, current_mcc_mode=4,
+    busy_mcc_mode=3)
+assert [action["kind"] for action in busy["actions"]] == [
+    "pmgr-event", "display-idle-call", "mcc-control-call",
+    "provider-cache-state-update", "pmgr-event"]
+assert busy["actions"][2]["called"] is True
+
+unchanged = model_soc_busy_transition(
+    enable=False, busy_refs=1, runtime_mode=True, setup_enabled=True,
+    display_resolved=True, display_result=0, current_mcc_mode=4,
+    busy_mcc_mode=3)
+assert unchanged["actions"][2]["called"] is False
+
+unknown = model_soc_busy_transition(
+    enable=True, busy_refs=0, runtime_mode=True, setup_enabled=True,
+    display_resolved=True, display_result=None, current_mcc_mode=None,
+    busy_mcc_mode=None)
+assert unknown["actions"][2]["called"] is None
+assert unknown["actions"][-1]["event"] == "0x2700c002"
+try:
+    model_soc_busy_transition(
+        enable=False, busy_refs=0, runtime_mode=True, setup_enabled=True,
+        display_resolved=True, display_result=0, current_mcc_mode=4,
+        busy_mcc_mode=3)
+    raise AssertionError("unbalanced busy release accepted")
+except ValueError:
+    pass
 plan = {
     "bridge_index": 2,
     "selectors": [9, 10],

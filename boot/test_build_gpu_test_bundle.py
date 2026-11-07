@@ -14,7 +14,8 @@ assert len(data["binaries"]) >= 10
 assert len(data["modules"]) == 3
 assert any("read-only" in item["access"] for item in data["binaries"].values())
 assert any("MMIO writes" in item["access"] for item in data["binaries"].values())
-for group in ("binaries", "modules", "wrappers"):
+for group in ("binaries", "modules", "wrappers", "data"):
     for record in data[group].values():
         assert len(record["sha256"]) == 64
+assert data["data"]["gfx-bridge-plan.bin"]["sha256"] == "1c7b3839da2e7aa914a393e914a7a427c12190293ba5d2b50fe06cf4d8df6435"
 print("PASS: GPU staging bundle manifest and access labels")

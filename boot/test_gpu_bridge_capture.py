@@ -20,16 +20,16 @@ except ValueError:pass
 else:raise AssertionError('short plan accepted')
 
 
-def run(path,limit,wrong=False,supervised=False,simulate=False):
+def run(path,limit,wrong=False,supervised=False,simulate=False,cycle=False):
     host,device=socket.socketpair();errors=[]
     def peer():
         try:
-            command = (b'/tmp/gpu-watchdog-supervisor --simulate-bridge ' if simulate else b'/tmp/gpu-watchdog-supervisor --bridge ') if supervised else b'/tmp/gpu-bridge-once-run '
+            command = (b'/tmp/gpu-watchdog-supervisor --simulate-bridge ' if simulate else b'/tmp/gpu-watchdog-supervisor --bridge-cycle ' if cycle else b'/tmp/gpu-watchdog-supervisor --bridge ') if supervised else b'/tmp/gpu-bridge-once-run '
             received=device.recv(512)
             assert (command+b'a'*64+b'\n') in received
             if supervised:
                 assert b'b'*64 in received
-                expected_wrapper = m.SIM_WRAPPER_SHA if simulate else m.BRIDGE_WRAPPER_SHA
+                expected_wrapper = m.SIM_WRAPPER_SHA if simulate else 'c'*64 if cycle else m.BRIDGE_WRAPPER_SHA
                 assert expected_wrapper.encode() in received
             if supervised:
                 device.sendall(b'stage=before-watchdog-open\r\n');assert device.recv(20)==b'ARM\n'
@@ -54,7 +54,7 @@ def run(path,limit,wrong=False,supervised=False,simulate=False):
         finally:device.close()
     t=threading.Thread(target=peer);t.start();failed=False
     try:
-        with host:m.capture(host,path,'a'*64,plan,10,supervised,'b'*64 if supervised else None,simulate)
+        with host:m.capture(host,path,'a'*64,plan,10,supervised,'b'*64 if supervised else None,simulate,cycle,'c'*64 if cycle else None)
     except RuntimeError:failed=True
     t.join();assert not errors,errors
     assert failed == (limit<len(steps) or wrong)
@@ -64,8 +64,10 @@ with tempfile.TemporaryDirectory() as d:
     p=Path(d)
     run(p/'complete',67)
     run(p/'supervised',67,supervised=True)
+    run(p/'cycle-payload',67,supervised=True,cycle=True)
     run(p/'simulated',67,supervised=True,simulate=True)
     run(p/'supervised-partial',4,supervised=True)
+    run(p/'cycle-partial',4,supervised=True,cycle=True)
     run(p/'partial',4)
     run(p/'wrong',67,True)
     assert (p/'complete').stat().st_mode & 0o777 == 0o600

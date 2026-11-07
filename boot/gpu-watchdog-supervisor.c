@@ -27,18 +27,24 @@ int main(int argc, char **argv)
 {
 	int fd, timeout = 20, disable = WDIOS_DISABLECARD, pin[2], pout[2], status, n = 0, saw_finish = 0;
 	int simulation, stalled, bridge_sim = 0, bridge_peek = 0, bridge_first = 0, bridge_segment = 0;
+	int bridge_cycle = 0, gpc_init_cycle = 0, postgpc_cycle = 0;
+	int core_revision_cycle = 0;
 	pid_t child;
 	FILE *in, *out;
 	char line[512], reply[128], expected[64];
 	struct watchdog_info info;
 	if (argc == 2 && (!strcmp(argv[1], "--simulate-ok") || !strcmp(argv[1], "--simulate-stall"))) {
 		simulation = 1; stalled = !strcmp(argv[1], "--simulate-stall");
-	} else if (argc == 3 && (!strcmp(argv[1], "--bridge") || !strcmp(argv[1], "--simulate-bridge") || !strcmp(argv[1], "--bridge-peek") || !strcmp(argv[1], "--bridge-first") || !strcmp(argv[1], "--bridge-segment")) && strlen(argv[2]) == 64 &&
+	} else if (argc == 3 && (!strcmp(argv[1], "--bridge") || !strcmp(argv[1], "--simulate-bridge") || !strcmp(argv[1], "--bridge-peek") || !strcmp(argv[1], "--bridge-first") || !strcmp(argv[1], "--bridge-segment") || !strcmp(argv[1], "--bridge-cycle") || !strcmp(argv[1], "--gpc-init-cycle") || !strcmp(argv[1], "--postgpc-cycle") || !strcmp(argv[1], "--core-revision-cycle")) && strlen(argv[2]) == 64 &&
 	           strspn(argv[2], "0123456789abcdef") == 64) {
 		simulation = stalled = 0; bridge_sim = !strcmp(argv[1], "--simulate-bridge");
 		bridge_peek = !strcmp(argv[1], "--bridge-peek");
 		bridge_first = !strcmp(argv[1], "--bridge-first");
 		bridge_segment = !strcmp(argv[1], "--bridge-segment");
+		bridge_cycle = !strcmp(argv[1], "--bridge-cycle");
+		gpc_init_cycle = !strcmp(argv[1], "--gpc-init-cycle");
+		postgpc_cycle = !strcmp(argv[1], "--postgpc-cycle");
+		core_revision_cycle = !strcmp(argv[1], "--core-revision-cycle");
 	} else return 2;
 	if (pipe(pin) || pipe(pout)) return 1;
 	if (puts("stage=before-watchdog-open") == EOF || fflush(stdout) ||
@@ -67,6 +73,14 @@ int main(int argc, char **argv)
 			execl("/tmp/gpu-bridge-first-run", "gpu-bridge-first-run", argv[2], (char *)NULL);
 		else if (bridge_segment)
 			execl("/tmp/gpu-bridge-segment-run", "gpu-bridge-segment-run", argv[2], (char *)NULL);
+		else if (bridge_cycle)
+			execl("/tmp/gpu-bridge-once-cycle-run", "gpu-bridge-once-cycle-run", argv[2], (char *)NULL);
+		else if (gpc_init_cycle)
+			execl("/tmp/gpu-gpc-init-cycle-run", "gpu-gpc-init-cycle-run", argv[2], (char *)NULL);
+		else if (postgpc_cycle)
+			execl("/tmp/gpu-bridge-postgpc-cycle-run", "gpu-bridge-postgpc-cycle-run", argv[2], (char *)NULL);
+		else if (core_revision_cycle)
+			execl("/tmp/gpu-core-revision-once-cycle-run", "gpu-core-revision-once-cycle-run", argv[2], (char *)NULL);
 		else if (bridge_sim)
 			execl("/tmp/gpu-bridge-sim-live-run", "gpu-bridge-sim-live-run", argv[2], (char *)NULL);
 		else
@@ -79,7 +93,7 @@ int main(int argc, char **argv)
 	while (fgets(line, sizeof(line), out)) {
 		if (!strchr(line, '\n') || fputs(line, stdout) == EOF || fflush(stdout)) fail_closed();
 		if (!strncmp(line, "stage=before-", 13)) {
-			const char *ack = !strncmp(line, "stage=before-pmgr-read ", 23) ? "READ\n" : "ACCESS\n";
+			const char *ack = (!strncmp(line, "stage=before-pmgr-read ", 23) || strstr(line, " width=32")) ? "READ\n" : "ACCESS\n";
 			if (!fgets(reply, sizeof(reply), stdin) || strcmp(reply, ack) ||
 			    fputs(ack, in) == EOF || fflush(in)) fail_closed();
 		} else if (!strncmp(line, "stage=after-", 12)) {

@@ -14,7 +14,13 @@ active record is allocated with the alignment derived from the global page
 shift, mapped through `0xffffff800329d6a4`, retained at object offsets
 `0x578 + index * 8`, and given a translated view at `0x5a0 + index * 8`.
 
-`0xffffff80032998d8` then performs the firmware-object resource initializer:
+`0xffffff80032998d8` then performs the firmware-object resource initializer.
+For the constructor-installed `AGXMetaFirmware` address point
+`0xffffff80032b3040`, its `+0x208` call resolves through table word
+`0xffffff80032b3248` to `FUN_ffffff800329d0c4` (not the group-start
+candidate `FUN_ffffff800329f1a4`). That target stores fixed resource geometry
+constants into receiver fields; it is not the segment-2 mapping setup. The
+initializer then:
 
 1. calls the object vtable at `+0x208`;
 2. copies the resource count/stride state into object fields at `0x380` and

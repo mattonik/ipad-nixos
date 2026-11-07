@@ -77,11 +77,12 @@ J81's producer.
 
 ## Evidence needed to close the device-address boundary
 
-The next useful evidence is a static trace of the mapper/descriptor methods
-behind `32a6018`, `329a690`, and `329a6b4`, plus any firmware-init object that
-publishes the mapped allocation's device address. A complete matching J81 META
-image with its load map would then allow tracing writes to `base+0x60`, event
-type 0, and its interrupt/doorbell sequence. Until that bridge exists, keep
+The `32a6018` import stub and `329a660` allocator are now traced to the
+IOAccelerator wrapper allocator. The next useful evidence is the concrete
+runtime vtable targets for wrapper `+0x90` and backing object `+0x140`, plus
+any firmware-init object that publishes the returned value. A complete matching
+J81 META image with its load map would then allow tracing writes to
+`base+0x60`, event type 0, and its interrupt/doorbell sequence. Until that bridge exists, keep
 134/138 as shared-drain candidates and do not invent a Linux producer protocol
 or equate the CPU pointer with a device address.
 
@@ -95,3 +96,76 @@ imports); `tools/gpu_ldr_inspect.py` and
 `2026-11-07-j81-meta-slot2-raw-address-and-staging.md` (LDR image limits);
 [newer G17P event ABI](https://github.com/mischa85/apple-gpu-firmware-abi/blob/main/04-events-recovery-memory.md)
 (generation comparison only).
+
+## The ring allocation is an IOAccelerator wrapper, not a direct kernel descriptor factory
+
+Following the indirect branch for `0xffffff800329a660` resolves its callee to
+`0xffffff800326dfa4` in the separately imported `IOAcceleratorFamily2.raw`
+program. The caller stub at `0xffffff80032a6018` loads this external address
+from the AGX import cell at `0xffffff80032ac1d0`. A Ghidra decompilation of
+`326dfa4` shows a wrapper allocator:
+
+1. call provider vtable `+0x608` to obtain a size limit and reject a request
+   larger than that limit;
+2. call provider vtable `+0x5e8` to create the backing object, passing the
+   class-like argument, option/flag argument, size, and provider data;
+3. allocate a wrapper through provider vtable `+0x598`;
+4. store the backing object at wrapper `+0x80`, options at `+0x38`, size at
+   `+0x40`, selector/flags at `+0x88`, and related state at `+0x30`, `+0x70`,
+   and `+0x90`.
+
+The arguments at `329a660` are `(provider, DAT_32ac558, 0, 0, flags, 0x780000)`.
+The returned wrapper is stored at AGX `+0x268`. Therefore the `+0x268` field
+is the retained IOAccelerator wrapper; it is not proven to be a raw
+`IOMemoryDescriptor`. At `329a690`, the caller invokes that wrapper's virtual
+slot `+0x90` with `(task, 0x780000)` and saves the returned object at AGX
+`+0x270`. The next call at `329a6a0` follows the wrapper's `+0x80` backing
+object and dispatches virtual slot `+0x140`; its result is the base saved at
+AGX `+0x158`. Thus the precise chain is wrapper → backing object and map
+handle → backing object's private `+0x140` address method.
+
+The iOS 8.1 kernelcache exports `IOMemoryDescriptor::createMappingInTask`
+at `0xffffff80023e4840` and `IOMemoryMap::getVirtualAddress` at
+`0xffffff80023e4640`; the latter simply loads object field `+0x28`, and its
+vtable slot is `+0x80`. Those public kernel methods do not identify the
+private `+0x90` or `+0x140` targets in this chain. In particular, the AGX
+`+0x140` result cannot be called a CPU `IOMemoryMap` virtual address based on
+slot number or nearby code alone. The call may apply the private wrapper's
+mapping policy, but its target vtable and address domain remain untraced.
+
+This is a meaningful narrowing: `329a660` is now identified as the
+IOAccelerator-family allocation/wrapper helper, and the intervening object
+roles are explicit, while the decisive private `+0x140` method still has no
+resolved callee or address-domain proof. No `createMappingInTask` direct call
+occurs in the shown `329a660`–`329a6b8` sequence. The CPU base is being used to
+form host pointers (`+0x50`, `+0x130`, and other offsets), but proving a GPU
+address still requires resolving the backing object's runtime vtable target
+for `+0x140` and finding where that returned value is published to firmware.
+
+Evidence: `ios81-agx-disasm.txt` at `329a660`–`329a6b8`, `32a6018`, and
+`32ac1d0`; Ghidra `DecompTo.java` against `IOAcceleratorFamily2.raw` at
+`0xffffff800326dfa4` (preserved in `artifacts/live/private/gpu-offline/ios81-ring-allocator.c`); the
+kernelcache's `nm` exports for the public mapping methods; and the prior
+`2026-11-06-j81-iomemorymap-address-getter.md`. All analysis is static; no
+device or firmware was used.
+
+## `AGXMetaFirmware +0x140` is not yet the ring backing-object method
+
+The newly recovered `AGXMetaFirmware` vptr at `0xffffff80032b3040` and its
+`+0x140` translator (`FUN_ffffff800329ff28`) explain a separate call chain:
+preparation passes CPU addresses obtained from `IOMemoryMap::getVirtualAddress`
+through that receiver to produce META-style addresses. The event-ring call
+at `329a6a0` has a different receiver: it reloads the wrapper at AGX `+0x268`,
+loads the backing object stored at wrapper `+0x80`, and calls that object's
+`+0x140`. The allocator at `326dfa4` obtains the backing object dynamically
+from provider vtable `+0x5e8`; it does not set or check that object's vptr.
+No static evidence currently equates it with `AGXMetaFirmware` or proves that
+the event-ring base is passed through `FUN_329ff28`. Therefore the known
+CPU-to-META conversion cannot yet be applied to the ring or its producer-index
+address. The remaining obstruction is the runtime class/vptr returned by
+provider `+0x5e8` and the concrete targets for the wrapper `+0x90` and backing
+object `+0x140` slots.
+
+Cross-reference: `research/2026-11-07-j81-staging-map-runtime-consumer.md`
+(the firmware-object vptr and translator); `ios81-ring-allocator.c`
+(IOAccelerator wrapper helper). Static evidence only.

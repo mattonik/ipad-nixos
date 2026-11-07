@@ -28,9 +28,9 @@ device virtual address `0xe1c0000000` and treats the bootloader/code segment as
 already configured on boot. The J81 descriptor also contains
 `0xe1c0000000`, but this cross-match does not prove that J81 programs the same
 translation or that slot 2 points at the retained preparation allocation.
-Apple's `+0x210` dispatch receives per-slot mapped addresses; its runtime
-target and opaque downstream effects remain unresolved. No physical backing
-or device-visible slot-2 consumer was identified.
+Apple's `+0x210` dispatch receives per-slot mapped addresses and resolves to
+the segment-config emitter, which skips index 2 before appending a tuple. No
+physical backing or device-visible slot-2 consumer was identified.
 
 Evidence: `tools/gpu_ldr_inspect.py`'s metadata-only report for
 `artifacts/live/private/gpu-offline/g4g81-image.bin` (record address, length,

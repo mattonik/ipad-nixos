@@ -77,3 +77,30 @@ the public Linux map is silent on this block. A write/readback would at most
 confirm retention, while still applying an uncharacterized clock-setup
 setting. Do not run it without a register-level A8X contract and recovery
 evidence for a stalled MMIO transaction.
+
+## m1n1 tunables comparison
+
+Asahi's m1n1 has reusable ADT and MMIO plumbing, but not a compatible J81
+bridge-table implementation. Its generic ADT tunables are records containing
+`reg_idx, offset, mask, value` or `offset, size, mask, value`; application
+uses masked writes. Its separate static GPU sequences are SoC-specific
+`offset, clear, set` arrays for T8103, T8112, and T600x, and `power_and_apply`
+enables the block, applies the sequence, then disables it. Neither format nor
+lifecycle matches Apple's J81 GFX action, which selects bridge mappings,
+applies verbatim `(offset, value)` stores, then continues provider/GPC state
+work. The generic ADT address lookup, PMGR power helper, and MMIO primitives
+could be reused as plumbing, but selector lookup/table decoding and Apple
+action order require separate A8X-specific work.
+
+m1n1 also names `PMGRRegs2.CLK_CFG0` at offset `0x40000` (with source bits
+`30:24`) in a different SoC PMGR register aperture. This is an offset
+coincidence, not evidence about J81 `0x201f40000`: J81's physical address is
+resolved from its PMGR bridge-selector mapping, while the public T7001 DTS
+documents only the independent PMGR power-state block at `0x20e020320` for
+`gfx`. Do not transfer the M1 field labels or static tunables to A8X.
+
+Sources: m1n1 [`tunables.c`](https://github.com/AsahiLinux/m1n1/blob/70757dc74c2dac485188acaa2fa7e73be5b108ee/src/tunables.c),
+[`tunables_static.c`](https://github.com/AsahiLinux/m1n1/blob/70757dc74c2dac485188acaa2fa7e73be5b108ee/src/tunables_static.c),
+[`pmgr.c`](https://github.com/AsahiLinux/m1n1/blob/70757dc74c2dac485188acaa2fa7e73be5b108ee/src/pmgr.c),
+and [`hw/pmgr.py`](https://github.com/AsahiLinux/m1n1/blob/70757dc74c2dac485188acaa2fa7e73be5b108ee/proxyclient/m1n1/hw/pmgr.py);
+upstream Linux [`t7001-pmgr.dtsi`](https://github.com/AsahiLinux/linux/blob/6831bc701a6ce059e71e5aaa9488c9195bea6927/arch/arm64/boot/dts/apple/t7001-pmgr.dtsi).

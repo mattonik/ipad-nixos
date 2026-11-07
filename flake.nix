@@ -1225,6 +1225,13 @@
             installPhase = "mkdir -p $out/bin && cp gpu-id-once $out/bin/gpu-id-once";
           };
 
+          gpuCoreRevisionOncePkg = pkgsCrossMusl.stdenv.mkDerivation {
+            name = "gpu-core-revision-once";
+            dontUnpack = true;
+            buildPhase = "$CC -static -O2 -Wall -Wextra -Werror -o gpu-core-revision-once ${./boot/gpu-core-revision-once.c}";
+            installPhase = "mkdir -p $out/bin && cp gpu-core-revision-once $out/bin/gpu-core-revision-once";
+          };
+
           gpuGpcInitPkg = pkgsCrossMusl.stdenv.mkDerivation {
             name = "gpu-gpc-init";
             dontUnpack = true;
@@ -1585,6 +1592,7 @@
         gpu-gpc-init-static = gpuGpcInitPkg;
         gpu-fender-wake-static = gpuFenderWakePkg;
         gpu-id-once-static = gpuIdOncePkg;
+        gpu-core-revision-once-static = gpuCoreRevisionOncePkg;
         gpu-bridge-once-static = gpuBridgeOncePkg;
         gpu-bridge-sim-static = gpuBridgeSimPkg;
         gpu-bridge-map-static = gpuBridgeMapPkg;

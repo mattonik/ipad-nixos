@@ -86,12 +86,80 @@ separate subobject, not proof of the preparation receiver's dynamic class.
 There is no recovered store or code reference assigning
 `0xffffff80032b3008` to the receiver in `FUN_...329e63c`.
 
-Thus neither candidate resolves the preparation receiver's runtime
-`+0x140` target: the constructor-proven table is for another object, while the
-static table matching `+0x208/+0x210` has an incompatible `+0x140` call
-signature and no recovered vptr assignment. This leaves the device-visible
-address mapping, DART ownership, and segment-2 consumer unresolved. The
-follow-up used Java 21/Ghidra 12.1.4 against `AGX.raw` extracted from the
-original iOS 8.1 kernelcache, plus `nm -nm` on that original kernelcache;
-forced decompilation artifacts are in the private offline workspace. No
-firmware execution or hardware access was performed.
+This exclusion is superseded by the address-point correction below: the full
+`AGXMetaFirmware` constructor installs a different address point than either
+group-start table interpretation considered here. The group-start candidates
+remain useful only as context for the initial subobject/base initializer.
+
+## Address-point correction: dynamic `AGXMetaFirmware` receiver resolved
+
+The preceding exclusion used the table start as the object's vptr. That was
+the wrong address point for this class: its constructors install a pointer
+0x38 bytes into the table group at `0xffffff80032b3008`. In particular, the
+group-relative `+0x208 -> FUN_...329f1a4` entry is not the installed object's
+runtime `+0x208` method; the installed method is `FUN_...329d0c4`.
+
+In the original `AGX.raw`, `FUN_ffffff800329d384` registers the metaclass name
+`AGXMetaFirmware` and instance size `0x5f8`. The allocation constructor
+`FUN_ffffff800329d3bc` calls the shared initializer
+`FUN_ffffff8003298cfc` and then overwrites `*this` with
+`PTR_thunk_FUN_ffffff8003298de0_ffffff80032b3040`. The in-place constructors
+`FUN_ffffff800329d40c` and `FUN_ffffff800329d454` do the same. Thus
+`0xffffff80032b3040` (group base + `0x38`) is the installed vptr/address point
+for the full `AGXMetaFirmware` object; the earlier `0x32b2d80` pointer is only
+the transient shared/base initializer value.
+
+Using that installed address point gives the actual slots used by the prepare
+routine at `0xffffff800329e63c`:
+
+| Receiver slot | Resolved entry | Evidence |
+| --- | --- | --- |
+| `+0x140` | `FUN_ffffff800329ff28` | Address point `0x32b3040 + 0x140` |
+| `+0x210` | code at `0xffffff800329fea0` | Address point `0x32b3040 + 0x210` |
+
+The `+0x80` map accessor in the preparation routine is called on the returned
+`IOMemoryMap`, not on this `AGXMetaFirmware` receiver; do not infer it from this
+table. The `+0x140` implementation is the translation the earlier note
+missed. Its
+64-bit result is `(arg1 - 0xe1c0000000) | region`, with `region` selected
+between `0x40000000` and `0xc0000000` using the third argument and the object's
+`+0x5cc` flag. At each identified init-data callsite the result is assigned to
+a 32-bit field, so the observable address is the low 32 bits after this
+unsigned 64-bit subtraction and OR. The preparation caller passes the two
+previously initialized addresses (`param_1[0x1c]`, `param_1[0x2c]`) with flags
+1 and 0, then the staging map address plus its parsed offset with flag 1.
+
+Upstream provenance: the descriptor is created by
+`thunk_EXT_FUN_ffffff800326dfa4`; its vtable `+0x90` is called with the task
+value at device-object `+0x128` and mapping options, and the returned handle
+is subsequently used as an `IOMemoryMap` (including its vtable `+0x80`
+address accessor). The original iOS 8.1 kernelcache exports
+`IOMemoryMap::getVirtualAddress` at `0xffffff80023e4640`. Apple XNU's
+[IOMemoryDescriptor mapping API](https://developer.apple.com/documentation/kernel/iomemorydescriptor/1441859-createmappingintask)
+documents that a mapping is into a specified task and its `IOMemoryMap`
+supplies that task's virtual address. Thus these inputs are task VAs, not
+already translated GPU/DART VAs. The exact virtual target behind the
+descriptor's `+0x90` dispatch is not named by this analysis, and the device
+object's `+0x128` task value is passed through; this static trace does not
+prove that it is `kernel_task`. The translation into 32-bit META-init fields
+is directly proven, while the subsequent hardware/DART ownership or mapping
+that makes those addresses usable remains unproven.
+
+The actual `+0x210` entry begins at `0x329fea0` (inside the end of the preceding
+function as Ghidra's default function boundaries show). It consumes the third
+argument as the descriptor index and appends META register records; it is not
+the static-table candidate `0x32a0f30`. That candidate was indexed from the
+group start and therefore was not a valid substitute for the installed object
+vptr. The helper `0x32a0f30` remains a separate static-table candidate and its
+metadata behavior does not alter this runtime slot resolution.
+
+Reproduction: Java 21/Ghidra 12.1.4, scratch project `agx`, original iOS 8.1
+`AGX.raw` at base `0xffffff8003281000`, and helpers documented in
+`tools/ghidra/README.md`. Decompiled constructors are in private offline
+`j81-near.c`; forced decompilation of `0x329ff28` is in `j81-resolved.c`;
+`ios81-agx-disasm.txt` at `0x329fea0..0x329ff50` confirms the slot body and
+region selection. As a generation-distant architecture comparator, the public
+[Asahi AGX notes](https://asahilinux.org/docs/hw/soc/agx/) describe modern
+AGX UAT and firmware-init address spaces; they support keeping GPU/firmware
+address spaces distinct but do not prove the iOS 8.1 implementation here.
+No firmware was executed and no hardware was accessed.
