@@ -1,9 +1,11 @@
 # UART3 clock source: static result (T7001 / iOS 8.1)
 
 This note answers the clock brief without adding a PMGR write or building a
-kernel. The register capture in `2026-10-11-uart3-register-capture.md` is the
-runtime evidence; the iOS kext disassembly and Hoolock PMGR driver are the
-static evidence.
+kernel. **Correction (2026-11-07):** its cited PMGR sample in
+`2026-10-11-uart3-register-capture.md` read PS indices `0x50..0x59`, not the
+UART device IDs `0x50..0x58`; those samples do not establish UART gate-word
+values. The iOS kext disassembly and Hoolock PMGR driver remain the static
+evidence.
 
 ## What `nclk` is
 
@@ -42,7 +44,7 @@ this kext.
 
 ## PMGR gate register layout
 
-For gate `g`, the captured register is `PMGR + 0x20000 + 8*g`. Hoolock's
+For PS index `i`, its state word is `PMGR + 0x20000 + 8*i`. Hoolock's
 `apple-pmgr-pwrstate.c` gives the following names:
 
 | bits | Hoolock name | meaning |
@@ -58,12 +60,12 @@ For gate `g`, the captured register is `PMGR + 0x20000 + 8*g`. Hoolock's
 | 28 | `AUTO_ENABLE` | automatic enable control |
 | 31 | `RESET` | synchronous reset |
 
-Therefore bits 9:8 are **not** a two-bit UART clock-source selector. The
-observed values (`00` on UART3, `01` on UART5, `10` on UART6, `11` on UART8/9)
-are compatible with per-instance gate history. Bits 28:24 likewise describe
-automatic power management, not a baud divider. The gate register can enable
-or disable the UART clock domain; it does not expose the frequency selection
-needed for 3 Mbaud.
+Therefore bits 9:8 are **not** a two-bit UART clock-source selector. The old
+captured values cannot be assigned to UART instances: they were sampled at
+PS indices `0x50..0x59`. In the iOS 8.1 table, UART device IDs `0x50..0x58`
+map to PS indices `0x34..0x3c`; that capture did not include them. Bits 28:24
+describe automatic power management, not a baud divider. The PMGR state word
+does not expose the frequency selection needed for 3 Mbaud.
 
 ## Which register feeds the baud generator?
 
@@ -94,7 +96,8 @@ likely one of:
 Before any write, take read-only snapshots of:
 
 - UART3 `UCON`, `UFCON`, `+0x28`, `+0x34`, `+0x38`;
-- PMGR gate `0x53` and neighboring UART gates `0x52`, `0x55`, `0x56`, `0x58`;
+- UART3's PMGR power-state index `0x37` and neighboring UART indices `0x36`,
+  `0x39`, `0x3a`, `0x3c` (the iOS table maps UART device IDs to these indices);
 - candidate clock-controller windows discovered from the AppleT7000/AppleARM
   clock provider, if and only if their mapping is independently established.
 

@@ -45,7 +45,7 @@ Sanitized properties observed directly:
 | Parent | `uart3`, `uart-1,samsung` | Bluetooth transport is UART. |
 | UART MMIO | `0x20a0cc000`, size `0x4000` | Matches the implemented `serial3` node. |
 | UART interrupt | AIC hardware IRQ 161 | Matches the implemented node. |
-| UART clock gate | `0x53` | T7001 UART3 gate, separate from radio power. |
+| UART clock-gate device ID | `0x53` | Apple's provider ID for UART3; it maps to PS index `0x37` (register offset `0x201b8`), separate from radio power. |
 | UART pins | TX AP GPIO14 function 2; RTS AP GPIO32 function 2 | Linux needs these two mux entries and RTS/CTS flow control. |
 | Child | `bluetooth`, compatible `bluetooth,n88` | Apple platform identity; not a Linux binding string. |
 | Speed | 3,000,000 baud | Exact operational speed used by the proven `btattach` probe. |
@@ -95,7 +95,7 @@ domain and two temporary 24 MHz `clkref` handles (`uart` and
 live probe establishes that this provisional SoC-side arrangement is enough
 to access UART3.
 
-This does not power the Broadcom radio. UART3 clock gate `0x53`, the
+This does not power the Broadcom radio. UART3 clock-gate device ID `0x53`, the
 `ps_uart3` PMGR domain and D2207 PMIC GPIO2 are three distinct controls.
 
 ### Exact Apple power/reset/wake behavior from Ghidra

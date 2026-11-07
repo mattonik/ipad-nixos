@@ -362,3 +362,27 @@ value through vtable `+0x578` and invokes `+0x580` with either state-specific
 fields or a local swap structure. No direct hardware writes occur in this
 method. The meanings of those guards and the downstream `+0x580` operation are
 not assigned without resolving the runtime vtable owner.
+
+## Weekend Linux control-boot comparison
+
+The saved read-only control-boot inventory at
+`artifacts/live/j81-readonly-20261107T114456Z/` reports `simpledrmdrmfb` on
+`/sys/class/graphics/fb0`, `simple-framebuffer` on the chosen framebuffer
+platform device, and a connected 1536x2048 `card0-Unknown-1` output. The
+recorded DRM/framebuffer owner is therefore Linux simpledrm over the boot
+framebuffer; the snapshot does not expose an Apple display-pipe or MCC
+controller as the owner. This is an inventory result, not proof that the
+hardware block is powered down or that no private service exists elsewhere.
+The saved dmesg contains simpledrm initialization and a PMGR `sync_state()`
+pending message for SPI, but no display-idle or MCC callback trace.
+
+This sharpens the implementation gap: iOS 8.1's GPU-side display callback
+returns after enqueueing `thread_call_enter1`, then its worker may publish
+`MemCacheState` and invoke an internal graphics state callback later. Linux's
+saved inventory shows only the simple framebuffer path and has no corresponding
+captured callback/completion events. A trace of callback acceptance alone would
+not establish whether the queued state transition completed before the first
+RGX transaction. The discriminating software trace must capture both enqueue
+result and worker completion/state dispatch, alongside the PMGR gate, busy-edge,
+and MCC apply observations. The weekend capture was read-only; it contains no
+MCC MMIO or GPU-read observations and does not change the test4 conclusion.

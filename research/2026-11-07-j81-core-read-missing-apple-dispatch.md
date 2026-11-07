@@ -129,3 +129,42 @@ in `t7000-power-gate.c`, `t7000-manual.c`, `t7000-flags.c`,
 `artifacts/live/gpu/clock-cycle-20261107-test4.log`,
 `clock-table-20261107-test4.log`, `gpc-init-20261107-test4.log`,
 `postgpc-bridge-20261107-test4.log`, and `core-revision-20261107-test4.log`.
+
+## PMGR startup baseline and DISP0 record distinction
+
+An additional static trace of the original 12B410 `AppleT7000PerformanceController::start`
+constrains the startup state before G4G can use the provider. `FUN_...31e7cc8`
+scans PMGR power-state indices 32 through 100 (excluding 0x45 and 0x5f),
+reads each register at PMGR `+0x20000 + 8*index`, and sets the controller's
+`+0x770` active-state bitmap when the actual-state nibble is 15. Startup then
+calls `FUN_...31e82f4`: entries marked active are requested at state 15;
+unmarked entries are requested at state 0. This is an Apple startup
+reconciliation based on the hardware state it observes, before G4G's later
+provider clock/power requests.
+
+The framebuffer-cache setup `FUN_...31e8e54` runs after that reconciliation
+and initializes the `+0x98c` feature flag. Therefore G4G's later GFX clock
+request sees the result of setup, although the flag may remain disabled if
+any setup requirement or boot-time override prevents activation.
+
+The matching iOS 8.1 `device-clocks` table resolves a distinction relevant to
+the runtime display-mode input: record ID 28, named `DISP0`, uses PMGR state
+index 86 and special flags `0x0a`; its bit-3 action controls `+0x980`. The
+`disp0` node's direct gate arrays are instead `clock-gates = [112, 118, 116]`
+and `power-gates = [112]`. Thus ID 28 is not one of the display node's direct
+gate-array entries. Its consumer/callsite is not established by this trace,
+so this does not show that the display mode was set before G4G.
+
+The test4 pre-cycle PMGR sample `0x300` shows GFX state index 100 was at 0 in
+that Linux boot before its generic off/on cycle. The cycle then changed the
+state before selector/GPC work, so it cannot reconstruct Apple's software
+bitmap or initial SoC-busy count. No test4 sample covers state index 86 or
+the DISP0 mode. In particular, whether the GFX enable creates a busy-count
+0-to-1 edge remains unknown. These constraints narrow the missing runtime
+inputs but do not establish that the conditional display action caused the
+RGX hang.
+
+Evidence: `t7000-flags.c` (`FUN_...31e6fc8`), `t7000-map.c`
+(`FUN_...31e82f4`), `framebuffer-cache-setup.c` (`FUN_...31e8e54`), the
+original 12B410 `ios81-dt.json` PMGR `device-clocks` bytes, the `disp0`
+node's gate arrays in that tree, and `2026-11-07-j81-core-revision-after-clock-test4.md`.

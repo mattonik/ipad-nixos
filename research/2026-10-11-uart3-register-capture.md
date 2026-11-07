@@ -45,23 +45,35 @@ Caveat found afterwards: with the port held open the last ~4 KB stays in the tty
 **Conclusion:** the UART block's own registers (UCON, UFCON, +0x28, +0x34, +0x38) cannot raise the rate; in every combination it is 24 MHz / (16 x (+0x28 + 1)) minus the slot slowdown. The agent's table is consistent with a **48 MHz** input clock (`0x19` -> 48e6/(16*26) = 115.4 k, `1` -> 1.5 M, `0` -> 3 M, `2` -> 1.0 M), i.e. 2 x `nclk`:
 whatever iOS does, the 3 Mbaud comes from a faster clock into the UART, not from a register mode inside it.
 
-**PMGR clock-gate registers of the UARTs** (`uartpeek pmgr`, read-only window `0x20e020280..0x20e0202cf`; the UART ADT nodes all have `uart-version = 1`, identical `clock-ids = {0x115, 0x4}` and gates `0x50..0x58`):
+**Correction (2026-11-07):** `uartpeek pmgr` reads PMGR *power-state indices*
+`0x50..0x59` at `PMGR + 0x20000 + index*8`; it does not read UART device IDs
+`0x50..0x59`. The earlier UART labels and conclusions below were incorrect.
+The iOS 8.1 44-byte `device-clocks` rows map UART device IDs `0x50..0x58`
+(UART0..UART8) to PS indices `0x34..0x3c`, respectively. Those are outside
+this tool's captured range. UART9 is not a row in this table.
 
-| gate | UART | register (word 0; word 1 is 0 everywhere) |
+The saved values below are the same read-only capture, now correctly labeled
+by PS index and iOS 8.1 table mapping; word 1 was 0 throughout:
+
+| PS index | iOS device record | register word 0 |
 |---|---|---|
-| 0x50 | UART0 | 0x00000200 |
-| 0x51 | UART1 | 0x000000ff |
-| 0x52 | UART2 | 0x1f0000ff |
-| 0x53 | UART3 (Bluetooth) | 0x1f0000ff |
-| 0x54 | UART4 | 0x000000ff |
-| 0x55 | UART5 (battery) | 0x1f0001ff |
-| 0x56 | UART6 | 0x1f0002ff |
-| 0x57 | UART7 | 0x000000ff |
-| 0x58 | UART8 | 0x0f000300 |
-| 0x59 | UART9 | 0x0f000300 |
+| 0x50 | no matching row | 0x00000200 |
+| 0x51 | USBOTG | 0x000000ff |
+| 0x52 | SMX | 0x1f0000ff |
+| 0x53 | SF | 0x1f0000ff |
+| 0x54 | CP | 0x000000ff |
+| 0x55 | DISP_BUSMUX | 0x1f0001ff |
+| 0x56 | DISP0 | 0x1f0002ff |
+| 0x57 | DP | 0x000000ff |
+| 0x58 | DISP1_BUSIF | 0x0f000300 |
+| 0x59 | DISP1 | 0x0f000300 |
 
-Low byte `0xff` reads as power-state target/actual both ON (UART0 `0x200` is off). **Bits 9:8 differ per UART: 00 (UART2/3/4/7/1), 01 (UART5), 10 (UART6), 11 (UART8/9)**, and bits 28:24 vary (`0x1f` on the active ones, `0x0f` on UART8/9).
-Whether bits 9:8 (or 28:24) are a clock mux/divider select, an instance index, or status is unknown; nothing has been written. A PMGR write is a new write category and would need the user's explicit approval.
+The low-byte state interpretation and bit-field description still apply to
+these raw PMGR words. Their distribution is across these power-state indices,
+not across UART instances; the earlier per-UART interpretation of bits 9:8
+and bits 28:24 is withdrawn. The field meanings are the generic PS fields
+listed in `2026-10-11-uart-clock-source.md`; these reads do not establish
+UART-specific clock mux/divider semantics. Nothing has been written.
 
 ## ADT clock table decode (static, by the assistant, 2026-10-11): the UART's baud clock is 24 MHz
 The `arm-io,t7001` node carries `clock-frequencies`, a 96-entry table of little-endian 32-bit frequencies indexed by clock id (entries 0, 1, 3 = 24 MHz, 2 = 798 MHz, 4 = 100 MHz, 17 = 48 MHz, 21 = 24 MHz, ...).
