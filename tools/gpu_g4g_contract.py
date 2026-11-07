@@ -9,18 +9,17 @@ from gpu_ldr_inspect import host_report
 
 def assess(data, view_plan):
     report = host_report(data)
-    state = transition("META_STARTED", "event-0", payload=0)
-    state = transition(state["state"], "controller-ready", controller_ready=True,
-                       payload=state["payload"])
+    state = transition("APPLE_WAITING", "event-0", payload=0)
+    state = transition(state["state"], "waiter-promotes-success", payload=state["payload"])
     loader_ready = bool(report["records"])
     layout_ready = bool(view_plan.get("complete"))
     return {
         "execution_allowed": False,
         "sequence": [
             "ldr-review",
-            "meta-start-model",
-            "alive-event-0",
-            "controller-ready-model",
+            "apple-wait-model",
+            "event-0-callback-model",
+            "waiter-promotes-success-model",
             "interrupt-disable-review",
             "meta-handshake-review",
             "gpc-control-list-review",
@@ -39,10 +38,11 @@ def assess(data, view_plan):
         "firmware_bytes_copied": False,
         "loader_records": len(report["records"]),
         "view_layout_complete": layout_ready,
-        "alive_state_model": state["state"],
-        "firmware_handshake_ready": loader_ready and layout_ready and state["state"] == "FIRMWARE_READY",
+        "apple_alive_model_state": state["state"],
+        "firmware_handshake_ready": False,
         "unresolved": [
             "J81 META-address to Linux GPU-address mapping",
+            "Apple event callback registration/interrupt source and Linux completion adapter",
             "A8X META boot-descriptor ownership and image-to-slot binding",
             "J81 META_BOOTLOADER slot 2 versus generic FW_DATA mapping",
             "J81 segment 3 global/alias ownership and address-view conversion",

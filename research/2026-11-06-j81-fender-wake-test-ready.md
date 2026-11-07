@@ -9,6 +9,8 @@ The sequence is fail-closed and host-acknowledged: initial state zero, reset
 zero-state poll, hold (`+0x20000=0x20`) with readback, then the known wake
 writes (`+0x10000=0xffff0000`, `+0=0x40000000`, `+0x1000=0x11`) and a bounded
 final poll. A one-shot guard consumes the boot on any attempt.
+The final poll checks only bit 4; success does not mean that the low state
+bits reached 1. This sequence leaves the hold request asserted.
 
 Offline validation:
 

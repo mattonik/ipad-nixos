@@ -1,5 +1,8 @@
 from gpu_apple_clock_model import find_gfx_record, model, validate_bridge_plan
 import base64
+import hashlib
+import struct
+import gpu_apple_clock_model
 
 
 on = model(True)
@@ -11,12 +14,14 @@ assert on["record"] == {
 }
 assert [a["kind"] for a in on["actions"]] == [
     "pmgr-state", "flush-power-state", "special-action", "special-action",
-    "gpc-setup-and-poll",
+    "provider-busy-transition", "gpc-setup-and-poll",
 ]
 assert [a.get("selector") for a in on["actions"] if "selector" in a] == [9, 10]
 
 off = model(False)
-assert [a.get("selector") for a in off["actions"] if "selector" in a] == [10, 9]
+assert [a["kind"] for a in off["actions"]] == [
+    "provider-busy-transition", "flush-power-state", "pmgr-state",
+]
 assert model(True, clock_ref=0)["blocked"] == "no-clock-reference"
 plan = {
     "bridge_index": 2,
@@ -29,7 +34,19 @@ plan = {
         for selector in (9, 10) for entry in range(33)
     ],
 }
+digest = hashlib.sha256(b"".join(struct.pack("<II", entry * 4, 0) for entry in range(33))).hexdigest()
+plan["table_sha256"] = digest
+original_digest = gpu_apple_clock_model.EXPECTED_TABLE_SHA256
+gpu_apple_clock_model.EXPECTED_TABLE_SHA256 = digest
 assert validate_bridge_plan(plan)["addresses"] == 66
+plan["writes"][0]["value"] = "0x1"
+try:
+    validate_bridge_plan(plan)
+    raise AssertionError("modified table accepted")
+except ValueError:
+    pass
+finally:
+    gpu_apple_clock_model.EXPECTED_TABLE_SHA256 = original_digest
 raw = bytearray(44)
 raw[3:7] = bytes([0x7c, 0x06, 9, 10])
 raw[12:16] = bytes([100, 0, 0, 0])

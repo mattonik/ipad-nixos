@@ -1,27 +1,26 @@
 #!/usr/bin/env python3
-"""Model the recovered G4G alive handshake without hardware or firmware."""
+"""Model the observed iOS 8.1 event latch and host-side success promotion."""
 
-STATES = ("META_STARTED", "APPLE_EVENT_0", "FIRMWARE_READY", "FAILED")
+STATES = ("APPLE_WAITING", "APPLE_EVENT_0", "APPLE_HOST_ACCEPTED", "FAILED")
 
 
-def transition(state, event, controller_ready=False, payload=None):
-    """Return the next state and retained event payload; fail closed."""
+def transition(state, event, payload=None):
+    """Apply one observed callback/waiter step; no META-start claim is made."""
     if state not in STATES:
         raise ValueError(f"unknown state: {state}")
-    if state in ("FIRMWARE_READY", "FAILED"):
+    if state in ("APPLE_HOST_ACCEPTED", "FAILED"):
         return {"state": state, "payload": payload, "error": None}
     if event == "timeout":
         return {"state": "FAILED", "payload": payload, "error": "timeout"}
-    if state == "META_STARTED" and event == "event-0":
+    if state == "APPLE_WAITING" and event == "event-0":
         return {"state": "APPLE_EVENT_0", "payload": payload, "error": None}
-    if state == "APPLE_EVENT_0" and event == "controller-ready" and controller_ready:
-        return {"state": "FIRMWARE_READY", "payload": payload, "error": None}
+    if state == "APPLE_EVENT_0" and event == "waiter-promotes-success":
+        return {"state": "APPLE_HOST_ACCEPTED", "payload": payload, "error": None}
     return {"state": "FAILED", "payload": payload, "error": "unexpected-event"}
 
 
 if __name__ == "__main__":
-    state = transition("META_STARTED", "event-0", payload=0)
-    state = transition(state["state"], "controller-ready", controller_ready=True,
-                       payload=state["payload"])
-    assert state["state"] == "FIRMWARE_READY"
+    state = transition("APPLE_WAITING", "event-0", payload=0)
+    state = transition(state["state"], "waiter-promotes-success", payload=state["payload"])
+    assert state["state"] == "APPLE_HOST_ACCEPTED"
     print("PASS: G4G alive contract is execution-free")

@@ -2,8 +2,10 @@
 """Execution-disabled model of Apple's J81 GFX clock-state ordering."""
 
 from dataclasses import dataclass
+import hashlib
 import json
 from pathlib import Path
+import struct
 import sys
 
 
@@ -70,6 +72,8 @@ def validate_bridge_plan(plan: dict) -> dict:
     if plan.get("table_sha256") != EXPECTED_TABLE_SHA256:
         raise ValueError("unexpected Apple GFX table digest")
     writes = plan.get("writes", [])
+    if len(writes) != 66:
+        raise ValueError("Apple GFX plan must contain exactly 66 pairs")
     by_selector = {selector: [w for w in writes if w.get("selector") == selector]
                    for selector in (9, 10)}
     if any(len(entries) != 33 for entries in by_selector.values()):
@@ -77,6 +81,7 @@ def validate_bridge_plan(plan: dict) -> dict:
     addresses = []
     for selector, entries in by_selector.items():
         expected_base = BRIDGE_BASES[selector]
+        table = bytearray()
         for entry, write in enumerate(entries):
             if write.get("entry") != entry:
                 raise ValueError(f"selector {selector}: non-contiguous entry")
@@ -86,7 +91,13 @@ def validate_bridge_plan(plan: dict) -> dict:
                 raise ValueError(f"selector {selector}: invalid offset")
             if address != expected_base + offset:
                 raise ValueError(f"selector {selector}: address mapping mismatch")
+            try:
+                table.extend(struct.pack("<II", offset, int(write["value"], 16)))
+            except (KeyError, TypeError, ValueError, struct.error) as error:
+                raise ValueError(f"selector {selector}: invalid table value") from error
             addresses.append(address)
+        if hashlib.sha256(table).hexdigest() != EXPECTED_TABLE_SHA256:
+            raise ValueError(f"selector {selector}: table digest mismatch")
     if len(set(addresses)) != len(addresses):
         raise ValueError("Apple GFX bridge addresses overlap")
     return {"selectors": {str(k): len(v) for k, v in by_selector.items()},
@@ -106,12 +117,12 @@ def model(enable: bool, *, clock_ref: int = 1) -> dict:
             {"kind": "flush-power-state", "index": RECORD.power_state_index},
             {"kind": "special-action", "selector": RECORD.selectors[0]},
             {"kind": "special-action", "selector": RECORD.selectors[1]},
+            {"kind": "provider-busy-transition", "enable": True},
             {"kind": "gpc-setup-and-poll", "required_state": 1},
         ]
     else:
         actions = [
-            {"kind": "special-action", "selector": RECORD.selectors[1]},
-            {"kind": "special-action", "selector": RECORD.selectors[0]},
+            {"kind": "provider-busy-transition", "enable": False},
             {"kind": "flush-power-state", "index": RECORD.power_state_index},
             {"kind": "pmgr-state", "state": 0},
         ]

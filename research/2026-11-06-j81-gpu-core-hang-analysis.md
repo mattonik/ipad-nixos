@@ -17,14 +17,15 @@ has a reset-generation gate and an explicit core-request/GPC-0 edge before a
 later GPC-1 release.
 
 Our successful `gpu-gpc-init` reproduced the three Fender writes and poll but
-did not reproduce that full reset-generation/wrapper ownership contract. The
-GPU-core hang is therefore best classified as **missing wake/reset sequencing**,
-not evidence that `0x201000000` is the wrong address.
+did not reproduce that full reset-generation/wrapper ownership contract.
+Missing wake/reset sequencing is one hypothesis for the GPU-core hang; the
+evidence does not establish its cause or rule out an address mismatch.
 
 Decision: do not retry `0x201000020`, read `0x201000018`, upload firmware, or
 render. The next candidate must be a separately gated, one-shot Fender
 reset/wake state machine that records the PMGR off/on generation and the
-core-request/GPC-0/GPC-1 edges before any RGX read. No such candidate is being
-run automatically.
+core-request/GPC-0/GPC-1 edges before any RGX read. The later Fender experiment
+did not release hold and returned raw GPC state 0; its success code only means
+the request bit cleared. See `2026-11-06-j81-fender-wake-result.md`.
 
 Offline validation remains clean: 82 passed, 7 input-dependent skips.

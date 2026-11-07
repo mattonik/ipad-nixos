@@ -24,13 +24,20 @@ PMGR target 15
 flush power-state index 100
 apply selector 9 (abstract only)
 apply selector 10 (abstract only)
+provider busy transition
 GPC setup and bounded poll; require state 1
 ```
 
-Disable reverses selectors 10/9, flushes the power-state index, and returns
-PMGR to state 0. The model rejects a zero clock reference and emits no MMIO
+The clock special-action helper applies the selector tables only on enable;
+disable performs the provider busy transition without replaying the tables,
+then flushes the power-state index and returns PMGR to state 0. The model rejects a zero clock reference and emits no MMIO
 operations. The table validator checks word alignment, each bridge window's
 `0x81000` extent, exact base-plus-offset mapping, and global non-overlap.
+
+The busy transition adjusts a reference count; its display idle-control call
+is conditional on runtime framebuffer-cache state and a 0-to-1 or 1-to-0
+edge. It must not be assumed to run on every GPU clock transition. See the
+framebuffer-cache trace in `2026-11-04-j81-gpu-offline-trace.md`.
 
 The live result (`PMGR actual=15`, `GPC state=0`) means the first four
 abstract prerequisites are not equivalent to a ready GPC on Linux; the final

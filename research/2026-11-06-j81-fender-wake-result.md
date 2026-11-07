@@ -24,8 +24,13 @@ wake poll           0x00000000
 finished            rc=0
 ```
 
-This proves the J81 Fender reset/hold/wake register contract through the
-known-good PMGR cycle. It does **not** prove RGX accessibility, firmware
+The final poll checks only that bit 4 cleared. Its raw value was zero, so the
+successful return does **not** establish GPC state 1 or a completed wake.
+The sequence asserts hold and never releases it before the state request.
+The separate `gpu-gpc-init-cycle-20261106-163034-final.log` capture reached
+state 1 after a PMGR cycle without asserting hold. These different runs are
+consistent with a missing hold release, but do not prove causation.
+Neither result proves RGX accessibility, firmware
 loading, or rendering; the direct RGX identity read remains excluded because
 the earlier attempt hung the device. The one-shot guard consumed this boot.
 
@@ -42,7 +47,8 @@ mapping.
 
 ## Distance to rendering
 
-The power/reset foundation is now proven, but this is not yet a renderer. The
+PMGR acquisition and individual Fender accesses were observed, but a usable
+GPU power/reset sequence has not been proven. This is not yet a renderer. The
 remaining blockers are the J81 firmware/boot protocol, GPU memory/DART setup,
 command submission, and a display-facing buffer path. The absent J81
 `gfx-kf`/A7-IOP node means Orchard's A10 firmware transport cannot simply be

@@ -16,7 +16,9 @@ This is consistent with the J81 audit: Apple slot 2 is a distinct
 allocation.  The arithmetic candidate at `0x40000000` is therefore useful as
 a location hypothesis, but cannot be treated as a normal Linux allocation
 until the preconfigured bootloader segment and the Apple descriptor's
-`0xe1c0000000` field are matched.
+`0xe1c0000000` field are matched. Public Rogue source supplies an exact
+cross-domain candidate for this pair, but J81's programming remains unproven;
+see [the descriptor investigation](2026-11-07-j81-resource-table-and-descriptor-dispatch.md#descriptor-handoff-and-limit).
 
 The G5P implementation is not evidence that the same register numbers or
 firmware apply to G4G.  The reusable result is the contract shape: preserve a

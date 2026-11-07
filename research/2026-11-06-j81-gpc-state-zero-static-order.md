@@ -9,16 +9,17 @@ register addresses match the existing J81 probes:
 3. `FUN_ffffff80032a1f84(...)` writes `0x40000000` to GPC `+0`.
 4. The later GPC start path writes `0x11` to `+0x1000` and polls bit 4 clear.
 
-Our Fender-wake artifact already reproduces those writes and bounded polls. The
-new hardware batch proves the preceding PMGR transition, but the subsequent
-read still returns `+0x1000 = 0x00000000`. This means the remaining unknown is
-not the basic reset/hold/write order. It is either the Apple clock-state action
-that precedes this helper or a missing condition that makes the final `0x11`
-request take effect.
+The Fender-wake artifact reproduces those writes and bounded polls, but keeps
+hold asserted when requesting `0x11`; its final raw poll was zero, and its
+success code checks only bit 4. The separate GPC-init sequence reached state 1
+after a PMGR cycle without asserting hold. Orchard's reference clears hold,
+polls state 0, then requests and polls state 1. This makes a missing hold
+release a testable hypothesis, not proof of the cause. State 1 alone did not
+make the direct RGX read safe.
 
 The same decompilation shows the clock-state path is separate: the special
-clock action updates the provider's clock table and toggles the device-clock
-provider before the GPC helper is called. Therefore another blind GPC write is
-not justified. The next artifact should report the final `+0x1000` value after
-the recovered wake sequence, with a host checkpoint before that read; it must
-remain separate from the existing ID reader and must not touch RGX.
+clock action updates the bridge tables and adjusts a busy counter; conditional
+display-idle coordination may also occur. The prior inference that a missing
+clock action caused the zero state was not established. A separately reviewed
+Fender-only comparison could test the hold-release hypothesis without reading
+RGX, but it would still involve MMIO writes and would not establish RGX safety.

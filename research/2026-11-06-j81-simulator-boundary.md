@@ -6,8 +6,10 @@ LDR review, META start, synthetic alive events, interrupt-disable review, META
 handshake review, GPC control-list review, and boot-descriptor review. On the private J81 image, the current simulator reviewed 58 load records,
 11 zero records, 27 config writes, three Apple-8.1 guarded zero skips, and one
 thread record. It copied no firmware bytes and issued zero MMIO operations.
-The alive-contract model also reaches `FIRMWARE_READY` using synthetic
-`event-0` and `controller-ready` events.
+The alive-contract model reaches `APPLE_HOST_ACCEPTED` by injecting event 0
+and modeling the wait routine's success-byte write. This is only an abstracted
+Apple host path: the producer, callback dispatch, and interrupt delivery are
+unknown, so the aggregate assessment keeps `firmware_handshake_ready=false`.
 
 This is useful for parser/layout/ordering regressions, but it is not an iPad
 GPU simulator: it has no A8X MMIO model, PMGR/clock model, META coprocessor,

@@ -17,7 +17,7 @@ struct.pack_into("<HH", synthetic, 52, 0x10, 16)
 struct.pack_into("<I", synthetic, 56, 0xffffffff)
 result = assess(synthetic, {"complete": False})
 assert result["execution_allowed"] is False
-assert result["alive_state_model"] == "FIRMWARE_READY"
+assert result["apple_alive_model_state"] == "APPLE_HOST_ACCEPTED"
 assert result["firmware_handshake_ready"] is False
 assert result["mmio_operations"] == 0
 assert result["firmware_bytes_copied"] is False

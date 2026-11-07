@@ -10,17 +10,19 @@ Observed metadata:
 LDR records:       80
 load bytes:        85,980
 configuration writes: 27
-modeled alive state:  FIRMWARE_READY
+modeled Apple host state: APPLE_HOST_ACCEPTED
 execution_allowed:   false
 ```
 
-The assessment still reports `firmware_handshake_ready=false` because the
-four-view layout is not complete and these gates remain unresolved:
+The assessment reports `firmware_handshake_ready=false`: the modeled Apple
+host state is not evidence that Linux delivered event 0. These gates remain
+unresolved:
 
-1. J81 META-address to Linux GPU-address mapping.
-2. A8X META boot-descriptor ownership and image-to-slot binding (image family
+1. Apple callback registration/event producer/interrupt source and the Linux completion adapter.
+2. J81 META-address to Linux GPU-address mapping.
+3. A8X META boot-descriptor ownership and image-to-slot binding (image family
    is now identified as `g4g_a0_t0`/`g4g_a0_t1`).
-3. DART mappings and command-buffer ABI.
+4. DART mappings and command-buffer ABI.
 
 This is useful progress: the image is structurally parseable and its modeled
 alive transition is coherent, but no firmware bytes were copied or executed.

@@ -49,6 +49,41 @@ enabled.  The descriptor's downstream provider consumer and the meaning of
 the six metadata classes remain unresolved, so the simulator stays
 execution-disabled.
 
+## Descriptor handoff and limit
+
+The initializer gives the descriptor two corresponding addresses: the
+address used to fill it at `param_1[0x18] = backing_base + uVar7`, and the
+map-derived address at `param_1[0x23] = map_base + uVar7`. The builder calls
+the accelerator's `+0x140` method on the latter with argument `1` and writes
+the 32-bit result to `param_1[0xf] + 0x5c`, in the first control structure.
+This is a concrete indirect handoff of a translated descriptor address; it
+does not identify the downstream reader, prove the translation's address
+domain, or prove the structure is visible to META. See
+`ios81-init-allocation.c` and `ios81-thread-use.c` in the private offline
+artifacts.
+
+One further handoff is visible in `firmware-prepare.c`: the mapped address
+of the root control structure, `param_1[0x1c]`, is passed through `+0x140`
+with argument `1`, and the 32-bit result is stored in the preparation buffer
+at the offset recorded at `param+0x55c`. The same routine places the translated
+address of this preparation-buffer slot in the boot/config area. This traces
+how a root pointer is packaged, but the available host decompilation does not
+show a dereference of the root's `+0x5c` field or establish that META read it.
+
+Slot 2 remains distinct from this descriptor. A public Rogue META header
+defines the bootloader's META address as `0x40000000` and its device virtual
+address as `0xe1c0000000` (the high and low words are `0xe1` and
+`0xc0000000`), the exact pair seen in the J81 image and descriptor. A separate
+public Rogue implementation calls `0xe1c0000000` the firmware heap base and
+requires firmware code at the heap start for bootloader lookup. This is a
+strong cross-driver mapping hypothesis, not proof that J81 configures the
+same mapping, maps the same bytes, or uses the same startup ABI. The `+0x5c`
+reader and J81 segment programming remain unresolved.
+
+Sources: [Rogue 1.17 META header](https://chromium.googlesource.com/chromiumos/third_party/kernel/+/f66be639e83bf9b6fe6e57d5fc84029958022f3c/drivers/gpu/drm/img-rogue/1.17/rgx_meta.h),
+[Rogue heap layout](https://chromium.googlesource.com/chromiumos/third_party/kernel/+/refs/heads/firmware-fizz-10139.117.B-chromeos-4.4/drivers/gpu/drm/img-rogue/1.9/rgxheapconfig.h),
+and [Android 3.18 Rogue initialization](https://android.googlesource.com/kernel/mediatek/+/android-mtk-3.18/drivers/staging/imgtec/rogue/rgxinit.c).
+
 Evidence: `artifacts/live/private/gpu-offline/ios81-agx-disasm.txt` at
 `0xffffff80032b32f8`, `ios81-memory-registration.c`, and
 `ios81-thread-use.c`. No firmware or hardware access was performed.
