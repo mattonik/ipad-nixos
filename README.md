@@ -87,7 +87,7 @@ nix build .#packages.x86_64-linux.m1n1-hoolock-control \
 This Hoolock Linux 7.3-rc1 payload booted successfully on J81 on 2026-09-08.
 CDC-ECM works in both directions at `172.16.42.1`; the postmarketOS debug shell
 is reachable by telnet on port 23. Keep the historical payload as a control.
-The verified Bluetooth and touch milestones are on topic branches; see the [current hardware status](docs/project-status.md) for branch names and limits.
+Bluetooth and J81 touch support are present on `main`; see the [current hardware status](docs/project-status.md) for the tested payloads and remaining limits.
 
 The current J81 hardware recipe uses the generic `result` link so the payload
 selected for DFU testing is unambiguous:
@@ -149,13 +149,13 @@ ipad-nixos/
 | Subsystem | Status | Evidence and scope |
 |---|---|---|
 | Wi-Fi | **Working on `main`** | BCM4350 scan, WPA2 association, DHCP, ping and HTTP; production boot auto-connects on 5 GHz. See [Wi-Fi bring-up](research/2026-10-10-wifi-bringup-root-cause-and-permanent-fix.md). |
-| Bluetooth | **Working on `claude/bt-merged-stack-fix`** | Boot-time UART3/serdev initialization and private patchram; classic inquiry found 2 devices and a 20-second LE scan found 29 advertisers. Pairing, connection and coexistence under load are unverified. This code is not in `main`. |
-| Touch | **Working on `j81-touch-core`** | Five-finger multitouch verified on hardware; a 161.5-second run on Orchard main kernel had no frame errors. J82 and suspend/resume remain untested. This code is not in `main`. |
+| Bluetooth | **Working on `main`** | UART3/serdev initialization is present on `main`; the `wifi-touch-kmod-BT1` payload with private patchram booted and scanned 2 classic devices and 29 LE advertisers. Pairing, connection and coexistence under load are unverified. |
+| Touch | **Working on `main`** | Five-finger multitouch verified on the Orchard main kernel; a 161.5-second run had no frame errors. J81 touch support and tooling are present on `main`; J82 and suspend/resume remain untested. |
 | GPU | **Bring-up in progress on `main`** | Test4 checkpointed all 66 planned bridge-table stores and read back two bridge words; the first RGX core-ID read stalled. The other 64 entries were not read back, and firmware execution, job submission and rendering remain unverified. See the [test4 readback boundary](research/2026-11-07-j81-test4-raw-readback-boundary.md). |
 
 These are subsystem demonstrations on the iPad Air 2 Wi-Fi model (J81), not a
-complete tablet experience. The Bluetooth and touch implementations remain on
-their named branches.
+complete tablet experience. The results apply to the specific payloads and
+private firmware noted above.
 
 ### Verified
 
@@ -184,14 +184,14 @@ bus or peripheral can probe.
 |---------|--------|---------|
 | 4 KiB pages | `ARM64_4K_PAGES` | Required by the documented A7–A8X bring-up |
 | Apple drivers | `COMPILE_TEST` | Unlocks drivers gated on `ARCH_APPLE` |
-| Touch | `TOUCHSCREEN_APPLE_Z2` | J81 multitouch verified on `j81-touch-core`; not integrated into `main` |
+| Touch | `TOUCHSCREEN_APPLE_Z2` | J81 support and touchdemo tooling are on `main`; five-finger run verified with Orchard's main kernel |
 | SPI | `SPI_APPLE` | M-series path exists; T7001 variant still needs a clean port |
 | Display | `DRM_SIMPLEDRM` | Framebuffer initialized by pongoOS |
 | USB | `USB_DWC2` | Synopsys DWC2 OTG (Lightning port) |
 | USB Ethernet | `USB_CONFIGFS_ECM` | Host communication via USB gadget |
 | Serial | `SERIAL_SAMSUNG` | Apple UART (Samsung S3C compatible) |
 | WiFi | `BRCMFMAC` | BCM4350 PCIe; end-to-end J81 networking verified on `main` |
-| Bluetooth | `BT_BCM` | J81 boot-time UART3/serdev and patchram work on `claude/bt-merged-stack-fix`; not integrated into `main` |
+| Bluetooth | `BT_BCM` | J81 UART3/serdev support is on `main`; boot and scans verified using private patchram in the BT1 payload |
 
 Full config in [kernel/default.nix](kernel/default.nix).
 
@@ -286,8 +286,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 Areas where help is needed:
 - **Hardware testing** — boot on different iPad models and report results
 - **Device trees** — improve/fix DTBs for specific board IDs
-- **Touch** — integrate the verified J81 support from `j81-touch-core` into `main`
-- **Bluetooth** — integrate the verified J81 support from `claude/bt-merged-stack-fix` and test pairing
+- **Touch** — validate J81 support on the standard payload; test J82 and suspend/resume
+- **Bluetooth** — test pairing, connection and Wi-Fi coexistence under load
 - **GPU** — continue GXA6850 bring-up; no firmware execution or rendering is verified yet
 - **NixOS modules** — build out the userland (GUI, networking, power management)
 - **Documentation** — improve guides, add troubleshooting

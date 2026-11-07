@@ -5,17 +5,16 @@ history; this section supersedes any older status statements that conflict.
 
 ## Current J81 hardware status, 2026-11-07
 
-| Subsystem | Verified state | Branch and limits |
+| Subsystem | Verified state | Implementation and limits |
 |---|---|---|
 | Wi-Fi | BCM4350 scans, associates with WPA2, gets DHCP, pings and downloads over HTTP; production payload auto-connects on 5 GHz. | `main`; see the [bring-up record](../research/2026-10-10-wifi-bringup-root-cause-and-permanent-fix.md). |
-| Bluetooth | UART3/serdev powers the BCM4350-family controller at boot, loads private patchram, and scans find nearby classic and LE devices. | `claude/bt-merged-stack-fix` only; pairing, connection and Wi-Fi coexistence under load are unverified. [Hardware record](https://github.com/mattonik/ipad-nixos/blob/claude/bt-merged-stack-fix/research/2026-11-02-bt-uart3-pinmux-lead.md). |
-| Touch | Five-finger multitouch works on J81. A 161.5-second run on Orchard main kernel reported 6,843 frames and zero frame errors. | `j81-touch-core` only; J82 and suspend/resume are untested. [Hardware record and limits](https://github.com/mattonik/ipad-nixos/blob/j81-touch-core/docs/touchdemo.md#hardware-status). |
+| Bluetooth | UART3/serdev support on `main` powers the BCM4350-family controller at boot and loads private patchram. The BT1 payload scan found 2 classic devices and 29 LE advertisers. | Pairing, connection and Wi-Fi coexistence under load are unverified. [Hardware record](../research/2026-11-02-bt-uart3-pinmux-lead.md). |
+| Touch | J81 support and touchdemo tooling are on `main`. Five-finger multitouch works; a 161.5-second run on Orchard main kernel reported 6,843 frames and zero frame errors. | J82 and suspend/resume are untested. [Hardware record and limits](touchdemo.md#hardware-status). |
 | GPU | Test4 checkpointed all 66 planned bridge-table stores; post-GPC reads confirmed bridge words `0x201f00018 = 0x80010004` and `0x201f0001c = 0x00010001`. | `main`; only those two bridge words were read back. The first RGX core-ID read stalled with no completion checkpoint; the cause is unknown. Firmware execution, job submission and rendering remain unverified. See the [test4 readback boundary](../research/2026-11-07-j81-test4-raw-readback-boundary.md). |
 
-Bluetooth and touch status describes tested topic-branch payloads, not the
-current `main` checkout. Each result is a subsystem milestone; none establishes
-a complete tablet experience. Hardware testing is limited to the iPad Air 2
-Wi-Fi model (J81).
+These results describe the specific tested payloads and private firmware noted
+above. Each result is a subsystem milestone; none establishes a complete tablet
+experience. Hardware testing is limited to the iPad Air 2 Wi-Fi model (J81).
 
 ## Current status, 2026-10-04
 
