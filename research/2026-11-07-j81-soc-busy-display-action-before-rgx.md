@@ -170,20 +170,20 @@ the flag is zero. The performance-controller setup at `0x2e55c5c` reads
 `soc-tuning`; if enabled it resolves `function-mcc_ctrl` into `+0x8d0` and
 loads `mcc-config-disp-on` / `mcc-config-disp-off` into `+0x8c0` / `+0x8c4`.
 
-The mode apply routine uses the controller's mapped base at `self+0x98` and
-selected row at `self+0xa8`. For mode 1 it writes `0x1110` to mapped offset
-`0x850`, composes offsets `0x838` and `0x83c` from row fields, reads the
-current five-bit mode from `0x834`, replaces the five-bit mode in `0x830`
-with row field 0, sets bit 0 in `0x800`, and sets or clears bit 8 in `0x830`
-according to row field 4. The routine reads `0x834` but does not write it.
-It then calls helper `0x2e54128`. For mode 0 it clears bit 0 in `0x800`,
-clears the five-bit mode field and sets bit 8 in `0x830`, then calls helper
-`0x2e54090(self,0,0)`. The helpers perform read-modify-write operations with
-the controller's serialized MMIO access guard at `self+0xf8`. This pins the
-8.1 MCC side effect to actual controller register writes; the offsets are
-relative to Apple's mapped block and their undocumented hardware semantics
-are not inferred here. The start-time `-disable_mcc` value and all runtime
-mode selections remain unknown for test4.
+The startup enable routine uses the controller's mapped base at `self+0x98`
+and the config-data pointer at `self+0xa8`. Its argument 1 is an enable flag,
+not configuration index 1: it applies the first 20-byte record (index 0).
+That path writes `0x1110` to mapped offset `0x850`, forms `0x838` from record
+words 2 and 3, forms `0x83c` from word 4, reads `0x834`, replaces the low
+five-bit field at `0x830` with record word 0 and sets/clears bit 8 there from
+word 1, sets bit 0 at `0x800`, then calls helper `0x2e54128`. The routine
+reads `0x834` but does not write it. A separate numeric configuration
+selector uses `index * 20` from `self+0xa8`; its index 4 input addresses
+bytes 80–99 of the J81 table, as described below. The selected field values
+and helper writes are documented at instruction level in
+`research/2026-11-07-j81-mcc-ios81-record-stride.md`; undocumented hardware
+semantics are not inferred. The start-time `-disable_mcc` value and runtime
+callback outcomes remain unknown for test4.
 
 The `AppleH7GADBE0` image contains the `AppleMobileADBE0` and
 `AppleDisplayPipeSetSystemIdleStateFunction::callFunction` diagnostic/name
@@ -211,12 +211,11 @@ result in `research/2026-11-07-j81-core-revision-after-clock-test4.md`.
 
 ## DT config-data and the decision before the first RGX read
 
-Decoded the saved iOS 8.1 J81 DT `mcc.config-data` as 220 bytes: five
-44-byte rows, each eleven little-endian u32 values. The first three rows are
-`[0x10, 0, 0x95f, 1, 10, 10, 1000, 100000, 100, 0x55, 0x11]`; the last
-two are identical except word 1 is 1. This is the
-DT-provided table; without the 8.1 MCC parser's row-field mapping, do not
-assign semantic names to those words. PMGR separately supplies
+The saved iOS 8.1 J81 DT `mcc.config-data` is 220 bytes. An initial offline
+decode grouped it as five 44-byte records; that grouping is superseded by
+the original iOS 8.1 consumer disassembly. The consumer divides the property
+length by 20 and indexes it with a 20-byte stride, giving eleven records.
+PMGR separately supplies
 `fb-caching=1`, `mcc-config-fb-caching=4`, `disp-fb-mcache-id=117`,
 `function-dispidle_ctrl={phandle:disp0,function:ADPi}`, and
 `function-mcc_ctrl={phandle:mcc,function:Mem$}`. The MCC node is
@@ -246,7 +245,7 @@ display/MCC coordination **not reproduced and runtime applicability
 unknown**; do not add guessed MCC writes before RGX identification. The DT
 decode was performed offline from the saved tree; no device was accessed.
 
-## MCC register window and mode-4 row (offline address audit)
+## MCC register window and mode-4 selector (offline address audit)
 
 The saved iOS 8.1 tree places `mcc` directly under `arm-io`, with
 `reg={addr:0,size:0x200000}`. The `arm-io` node has two `ranges` entries;
@@ -258,34 +257,34 @@ confirmed before any access. The PMGR provider's separate mapping is described
 by PMGR `reg` entries; SoC-busy RMWs at provider-base `+0x20290` and `+0x20298`
 are not MCC-relative writes.
 
-The MCC `config-data` is 220 bytes, exactly five 44-byte little-endian rows:
+The MCC `config-data` is 220 bytes, which the original 12B410 MCC consumer
+parses as eleven 20-byte records (five little-endian u32s per record). For
+example, record 0 is `[0x10, 0, 0x95f, 1, 10]`. Numeric selector index 4
+uses byte offset `4 * 20 = 80`, yielding:
 
 ```
-0: [0x10, 0, 0x95f, 1, 10, 10, 1000, 100000, 100, 0x55, 0x11]
-1: [0x10, 0, 0x95f, 1, 10, 10, 1000, 100000, 100, 0x55, 0x11]
-2: [0x10, 0, 0x95f, 1, 10, 10, 1000, 100000, 100, 0x55, 0x11]
-3: [0x10, 1, 0x95f, 1, 10, 10, 1000, 100000, 100, 0x55, 0x11]
-4: [0x10, 1, 0x95f, 1, 10, 10, 1000, 100000, 100, 0x55, 0x11]
+4: [0x55, 0x11, 0x10, 0, 0x95f]
 ```
 
-If requested numeric mode `4` indexes the table directly, the selected row is
-the final tuple. The PMGR request value `4` is proven; direct row-index
-semantics are not proven by the available 8.1 parser disassembly. The traced
-controller apply structure is: enable writes `0x1110` to mapped `+0x850`,
-forms `+0x838` and `+0x83c` from selected-row data, RMWs `+0x830` with the
-row's 5-bit field and its field-4-controlled bit 8, sets bit 0 at `+0x800`,
-reads (but does not write) `+0x834`, then calls serialized helper
-`0x2e54128`. Disable clears bit 0 at `+0x800`, clears the 5-bit mode field
-and sets bit 8 at `+0x830`, then calls helper `0x2e54090(self,0,0)`.
-Because the row-field mapping and helper's write/poll body are absent from the
-available 8.1 artifacts, exact numeric values for `+0x838`, `+0x83c`, and the
-final `+0x830` word for mode 4 remain unknown.
+The startup enable call `FUN_ffffff8002e53924(self, 1)` is distinct from
+numeric selector index 1. It applies record 0, then helper
+`FUN_ffffff8002e54128` performs the writes listed in
+`research/2026-11-07-j81-mcc-ios81-record-stride.md`. The separate numeric
+selector at `FUN_ffffff8002e54300` uses `index * 0x14`, bounds-checks the
+index against `length / 20`, and takes record fields 0 and 1 to update the
+low mode field and bit 8 of mapped `+0x830`. The PMGR config value 4 is
+therefore a valid numeric selector input for the 11-record table and
+addresses the record shown above. Field names and physical meaning remain
+unknown. These instruction-derived effects do not establish runtime values,
+boot ordering across services, or that test4 executed the callback.
 
 The analysis establishes code-initialized software state, not power-on
-register contents. Controller startup loads the table, checks `-disable_mcc`,
-and may invoke its enable path; later tuner setup loads display-on and
-display-off selectors. No initial MCC MMIO values, startup-selected row,
-boot-argument value, or test4 MCC state were captured. Test4's last known
+register contents. MCC service startup loads the table, checks `-disable_mcc`,
+and if clear applies record 0 before creating its timer event source. Later
+the PMGR GFX busy-edge callback may request numeric selector 4. No initial
+MCC MMIO values, boot-argument value, or test4 MCC state were captured, and
+the service start order relative to G4G or AppleMobileADBE0 remains unknown.
+Test4's last known
 event before its incomplete core revision read was the host-requested read of
 `0x201000020`; it contains no MCC observation, so the stall cannot be
 correlated with mode 4 or a specific MCC write sequence.

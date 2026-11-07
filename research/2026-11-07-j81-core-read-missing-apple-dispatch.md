@@ -70,16 +70,24 @@ cannot tell whether the bit would be set in the test4 boot.
 
 Test4's captured PMGR order is informative: the cycle preflight read was
 `0x300` (target/actual 0, with bits 8 and 9 set); the generic Linux off/on
-cycle then produced `0x3ff` (target/actual 15, history bits clear). The pinned
-Linux `apple_pmgr_ps_set()` clears both history bits while writing each target
-and does not maintain Apple's private bitmap. Then test4 performed all 33
+cycle then produced `0x3ff` (target/actual 15, with bits 8 and 9 also set).
+In the pinned Linux definitions, those bits are `WAS_PWRGATED` (bit 8) and
+`WAS_CLKGATED` (bit 9). `apple_pmgr_ps_set()` masks both bits to zero in its
+write value for each target transition, but the later raw readback has both
+bits set again. The source shows the values Linux requests and the captures
+show the subsequent reads; they do not establish whether zero writes clear
+these status bits or when a transition may set them again. Linux also does
+not maintain Apple's private software bitmap. Then test4 performed all 33
 selector-9 writes, all 33 selector-10 writes, GPC state/control setup and
 state-1 poll, the post-GPC bridge reads, and finally attempted the one core
 read at `0x201000020`. No Apple `enableDeviceClock` or `enableDevicePower`
 callback ran, and no checkpoint exposes the callback's out value. Therefore
-the initial PMGR `0x300` cannot be treated as proof that Apple's later local
-`was_gated` would be 1: the Linux cycle cleared the hardware history bits
-without capturing them into the Apple software bitmap. The test also contains
+the initial PMGR `0x300` cannot be treated as proof of Apple's later local
+`was_gated` output: Linux's generic transition and raw PMGR flags do not
+populate or reveal Apple's private per-device bitmap. Although test4 later
+read both hardware flag bits set in `0x3ff`, that does not establish that
+Apple's startup transition logic had recorded device ID 124 in its bitmap.
+The test also contains
 no evidence of the callback-driven conditional unwind (power-off then
 clock-off) after the matcher.
 
@@ -167,4 +175,8 @@ RGX hang.
 Evidence: `t7000-flags.c` (`FUN_...31e6fc8`), `t7000-map.c`
 (`FUN_...31e82f4`), `framebuffer-cache-setup.c` (`FUN_...31e8e54`), the
 original 12B410 `ios81-dt.json` PMGR `device-clocks` bytes, the `disp0`
-node's gate arrays in that tree, and `2026-11-07-j81-core-revision-after-clock-test4.md`.
+node's gate arrays in that tree, the pinned
+`linux-src/drivers/pmdomain/apple/pmgr-pwrstate.c` definitions and write path,
+and test4 captures `clock-cycle-20261107-test4.log` and
+`core-revision-20261107-test4.log` summarized in
+`2026-11-07-j81-core-revision-after-clock-test4.md`.

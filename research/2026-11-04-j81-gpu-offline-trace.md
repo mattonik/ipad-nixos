@@ -1253,6 +1253,12 @@ used by this method. This does not establish the current Linux register
 value, that executing the writes is side-effect-free, or equivalence of
 all other policy actions.
 
+This five-record interpretation is specific to the 15.8.8 consumer. The
+matching 12B410 iOS 8.1 bytes are parsed by that older consumer as eleven
+20-byte records; see `research/2026-11-07-j81-mcc-ios81-record-stride.md`.
+The shared DT byte string does not imply that the two OS versions use the
+same record stride or selector semantics.
+
 The newer tree's `function-dispidle_ctrl` phandle `0x5a` resolves to
 `disp0`, compatible `adbe0,t7000`; the 15.8.8 kext personality matches
 `AppleMobileADBE0`. The display driver's
