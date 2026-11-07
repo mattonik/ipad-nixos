@@ -19,6 +19,25 @@ The clock and bridge setup is not itself the entire Apple provider call.
 
 ## Exact SoC-busy transition
 
+The private Ghidra C uses `long *` for the PMGR object, so array-style
+expressions in its decompilation are eight-byte slots rather than byte
+offsets: `param_1[0x12a]` is byte `+0x950` (busy count), `[0x12d]` is
+`+0x968` (cached MCC mode), `[0x131]` is `+0x988` (configured mode),
+`[0x132]` is `+0x990` (display callback pointer), and `[0x130]` is
+`+0x980` (DISP0 mode). The byte offsets below use the actual object layout.
+
+In `AppleT7000PerformanceController::start`, the driver explicitly clears
+`+0x98c`, calls setup `FUN_ffffff80031e8e54`, and stores its returned
+enabled/disabled result back to `+0x98c`. Setup itself clears the flag first,
+then enables it only after the configured properties and display function
+resolve. The start/setup path does not write `+0x980`; the DISP0 flag-bit-3
+action is the visible writer. Start does not explicitly assign busy count
+`+0x950` or cached mode `+0x968`, so their initial values before G4G are not
+established by these excerpts. A separate start helper,
+`FUN_ffffff80031e87c8`, conditionally initializes `+0x95c` from
+`mcc-config-disp-on`; details and the selector effect are below. Test4 captures
+none of these Apple object fields.
+
 For GFX record flags `0x06`, the special handler calls the busy routine only
 on clock enable; this routine increments its reference count. The routine
 returns after the count update unless runtime field `+0x980` is nonzero and
@@ -39,22 +58,36 @@ When enabled, the busy-edge handler first sends PMGR action/event
 `0x2700c001` for cache ID `0x75` with the edge boolean. It calls the display
 idle function with the same boolean. If that call returns success, the
 selected MCC configuration is `+0x95c` on 0→1 and the configured value 4 on
-1→0. If that differs from the cached mode at `+0x12d`, Apple calls
+1→0. If that differs from the cached mode at `+0x968`, Apple calls
 `FUN_ffffff80031eb6a0`, which invokes the cached `function-mcc_ctrl`
 function object only when internal flag `+0x958` is set and object pointer
 `+0x978` exists. It passes `(enable=1, requested_mode)` and records the
 returned mode at `+0x968` only on success. The caller then updates provider
 cache state with `+0x690` and clears the pending bit. Completion sends
-`0x2700c002`. The 8.1 helper itself contains no direct MCC MMIO; the operation
-is delegated through that function object. iPadOS 15's separate MCC driver
-shows an analogous apply path that writes the selected row into its mapped
-MCC register block (notably `+0x794` and adjacent configuration/status
-registers), but this later implementation is not proof of the exact 8.1
-controller-side register writes. The callback's low-level effect and the 8.1
-MCC function object's runtime guards remain unresolved. The low-level
-meaning of the display callback boolean and all its hardware effects remain
-partly opaque, so it should be recorded as 0/1 rather than relabeled
-"active" or "idle".
+`0x2700c002`. The PMGR helper contains no direct MCC MMIO; it delegates
+through the function object. The 8.1 numeric selector is now traced
+statically: it applies the requested row's first two words to mapped `+0x830`
+using the masks described below. The selector's initialized-state guard and
+the function wrapper's return behavior are also known from static code. These
+findings establish code effects, not that the function object or selector ran
+in test4, nor the physical meaning of `+0x830`. The display callback's
+low-level effect and the meaning of its boolean remain partly opaque, so it
+should be recorded as 0/1 rather than relabeled "active" or "idle". iPadOS
+15's separate MCC driver's `+0x794` behavior is not used to infer iOS 8.1.
+
+The `+0x95c` field is not an unconditional constructor default. The saved
+12B410 T7000 disassembly has one direct write: `FUN_ffffff80031e87c8` stores
+the `mcc-config-disp-on` property there at `0xffffff80031e8924`, provided
+`soc-tuning` is nonzero, `function-mcc_ctrl` resolves, and the property
+resolves. The helper is called from `start` (`FUN_ffffff80031e6fc8`). J81's
+device tree has `soc-tuning=1`, binds `function-mcc_ctrl` to `Mem$`, and sets
+`mcc-config-disp-on=3`; if those lookups succeed, start writes 3. The
+allocation/base-construction path is outside the preserved T7000 slice, so
+this does not prove the field is zero when a guard fails, nor does it prove
+the helper completed in test4. The first-busy edge requests the configured
+value from `+0x95c` (3 for the successful J81 setup); its selector's static
+effects are detailed below. J81's `mcc-config-fb-caching=4` feeds `+0x988`
+and is selected on the opposite, last-busy edge (1→0).
 
 The other runtime gate `+0x980` is set by a separate special flag bit 3.
 J81's `DISP0` clock record is the only record with that bit. Therefore the
@@ -63,9 +96,9 @@ provider in that mode and the setup above succeeded.
 
 ## What can be observed, and what test4 observed
 
-The Apple software state to capture is: `+0x12a` busy reference count,
-`+0x980` DISP0 mode, `+0x98c` feature-enabled flag, `+0x132` resolved display
-function, and `+0x12d` last-applied cache mode. At the call boundary, record
+The Apple software state to capture is: `+0x950` busy reference count,
+`+0x980` DISP0 mode, `+0x98c` feature-enabled flag, `+0x990` resolved display
+function, and `+0x968` last-applied cache mode. At the call boundary, record
 whether `0x2700c001`/`0x2700c002` were dispatched, the display callback return,
 and whether MCC apply ran. Relevant hardware-side evidence would include the
 provider/MCC state changes, but reading those undocumented registers is not
@@ -124,10 +157,11 @@ strings name `function-mcc_ctrl` and `_mccEnableCache`. Its startup
 diagnostics show it maps registers, loads `config-data`, and reports a
 maximum config count. It checks boot argument `-disable_mcc`; its message
 says it will skip switching the MCC into cache modes. This is a concrete
-disable condition, but neither that boot argument nor the selected runtime
-config is captured for test4. The 8.1 controller method body and exact
-register writes remain untraced here; iPadOS 15's `+0x794` behavior does
-not prove those writes.
+disable condition, but neither that boot argument nor a runtime selector call
+is captured for test4. The 8.1 numeric selector is now traced statically to
+its exact `+0x830` writes for J81 modes 3 and 4; the register meaning and
+whether either mode was applied in test4 remain unknown. iPadOS 15's `+0x794`
+behavior is separate and is not used to infer the iOS 8.1 writes.
 
 The iOS 8.1 `AppleH7GADBE0` prelink record matches class
 `AppleMobileADBE0` to compatible `adbe0,t7000`, supporting the identity of
@@ -148,11 +182,12 @@ the helper requires internal flag `+0x958` and a non-null object at
 
 The discriminating observation for test4 is an Apple-compatible software
 trace at GFX clock-on that records DISP0's `+0x980` change and writes, the
-GFX busy-edge gate (`+0x98c`, `+0x12a`), display callback return, MCC
+GFX busy-edge gate (`+0x98c`, `+0x950`), display callback return, MCC
 guard/call/result (`+0x958`, `+0x978`, `+0x968`), and the following first
-RGX core read. Existing Linux captures contain none of this state. The 8.1
-MCC and display-controller callback bodies still need focused
-disassembly/xref work before register-level equivalence can be claimed.
+RGX core read. Existing Linux captures contain none of this state. The
+display-controller callback body still needs focused disassembly/xref work;
+the static selector trace establishes MCC code effects but not register
+semantics or runtime equivalence.
 
 ## Focused iOS 8.1 controller disassembly
 
@@ -185,6 +220,37 @@ and helper writes are documented at instruction level in
 semantics are not inferred. The start-time `-disable_mcc` value and runtime
 callback outcomes remain unknown for test4.
 
+The first-busy mode request has a distinct numeric-selector effect. The PMGR
+start helper at `0xffffff80031e87c8` loads J81's `mcc-config-disp-on=3` into
+provider `+0x95c` when its guards succeed. On the 0→1 busy edge,
+`FUN_ffffff80031eb7c0` selects that field and the MCC function wrapper passes
+`(enable=1, mode=3)` to `AppleS5L8960XMemCacheController`'s numeric selector
+`FUN_ffffff8002e54300`. This is separate from MCC service startup applying
+record 0 and separate from mode 4 on the 1→0 edge.
+
+The 220-byte J81 `config-data` is indexed at a 20-byte stride. Selector 3
+therefore reads bytes 60–79, record words
+`[10, 10, 1000, 100000, 100]` (decimal). The selector uses only words 0 and 1;
+it does not consume the record tail or call the startup helper. Its two
+instruction-derived writes to the MCC controller's mapped `+0x830` are:
+
+```text
+first = (old_830 & 0xffffffe0) | 0x0a
+second = (first & 0xfffffeff) | 0x100
+```
+
+Thus the first write replaces bits 4:0 with `01010b` (word 0 is already
+within five bits) and preserves bits 31:5. The second write sets bit 8 because
+word 1 is nonzero, preserving all other bits from the first write. Selector 3
+does not write `+0x838`, `+0x83c`, or any other mapped register itself. These
+are static mask effects only: the old value, call occurrence, startup marker,
+function return, boot argument, and test4 runtime state are not established.
+The function-object wrapper can report success to PMGR even when the selector
+returns before writing because MCC startup left its initialized marker clear;
+see the selector-4 analysis in
+`2026-11-07-j81-mcc-ios81-record-stride.md` for the shared guard/forwarding
+path. No register semantics are inferred from offset `+0x830`.
+
 The `AppleH7GADBE0` image contains the `AppleMobileADBE0` and
 `AppleDisplayPipeSetSystemIdleStateFunction::callFunction` diagnostic/name
 strings, confirming the likely display-side implementation family, but
@@ -196,8 +262,8 @@ display-pipe implementation for this missing 8.1 trace.
 For a single future software trace, the highest-value fields remain the
 boot-argument result for `-disable_mcc`, resolution and return values for
 `function-mcc_ctrl` / `function-dispidle_ctrl`, provider fields `+0x980`,
-`+0x98c`, `+0x12a`, `+0x12d`, MCC guard/object/result `+0x958`, `+0x978`,
-`+0x968`, plus passive before/after observations of mapped MCC offsets
+`+0x98c`, `+0x950`, `+0x968`, `+0x988`, and `+0x990`, MCC guard/object
+`+0x958` / `+0x978`, plus passive before/after observations of mapped MCC offsets
 `0x800`, `0x830`, `0x834`, `0x838`, `0x83c`, and `0x850` around DISP0 and
 GFX clock events. These observations would distinguish callback omission,
 disable gates, and successful apply; static evidence does not show whether
@@ -239,7 +305,7 @@ or MCC service, and reading MCC registers would add unqualified MMIO. The
 smallest useful next diagnostic is a software-only trace in a faithful
 Apple-provider-compatible model that logs, at GFX clock-on, these branch
 inputs/outcomes as known/unknown: DISP0 `+0x980`, setup `+0x98c`, busy
-count `+0x12a`, callback return, MCC disable gate, and MCC request/result.
+count `+0x950`, callback return, MCC disable gate, and MCC request/result.
 For the current Linux test, the correct exclusion is to label Apple
 display/MCC coordination **not reproduced and runtime applicability
 unknown**; do not add guessed MCC writes before RGX identification. The DT
@@ -248,14 +314,18 @@ decode was performed offline from the saved tree; no device was accessed.
 ## MCC register window and mode-4 selector (offline address audit)
 
 The saved iOS 8.1 tree places `mcc` directly under `arm-io`, with
-`reg={addr:0,size:0x200000}`. The `arm-io` node has two `ranges` entries;
-the first maps child address `0` to parent address `0x02000000` for a
-`0x01000000` window. Under standard DT `ranges` translation, the MCC resource
-therefore resolves to `0x02000000..0x021fffff` (2 MiB). This is a static DT
-translation, not a measured bus decode; Apple's resource mapping must be
-confirmed before any access. The PMGR provider's separate mapping is described
-by PMGR `reg` entries; SoC-busy RMWs at provider-base `+0x20290` and `+0x20298`
-are not MCC-relative writes.
+`reg={addr:0,size:0x200000}`. This is Apple ADT. The original kernel's
+`IODTResolveAddressing` / `IODTResolveAddressCell` routines consume the parent
+`ranges` property and combine two raw cells low-word-first. That resolves the
+first window as child `0` to parent `0x200000000`, length `0x100000000`; MCC
+therefore resolves statically to `0x200000000..0x2001fffff` (2 MiB). The old
+`0x02000000` result incorrectly interpreted the raw cells as big-endian
+64-bit words. The original provider's `start` calls
+`IOService::mapDeviceMemoryWithIndex(0,0)` and stores that map's VA at
+`self+0x98`, tying MCC-relative accesses to its resource mapping. This remains
+static code evidence, not a measured bus decode or Linux ownership/access
+contract. PMGR's separate map is described by its own resources; SoC-busy RMWs
+at provider-base `+0x20290` and `+0x20298` are not MCC-relative writes.
 
 The MCC `config-data` is 220 bytes, which the original 12B410 MCC consumer
 parses as eleven 20-byte records (five little-endian u32s per record). For

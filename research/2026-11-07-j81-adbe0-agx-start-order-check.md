@@ -63,6 +63,28 @@ not prove which service starts first. The fresh REA body only confirms that
 the firmware kext's `start` override delegates to generic IOKit start and
 registers its service.
 
+### Prelink personality metadata and local runtime artifacts
+
+The embedded 12B410 `__PRELINK_INFO` XML in
+`artifacts/live/private/gpu-offline/kernelcache` gives `AppleH7GADBE0`'s
+`AppleADBE0-8970X` personality `IOClass=AppleMobileADBE0`,
+`IOProviderClass=AppleARMIODevice`, and `IONameMatch=adbe0,t7000/t7001`;
+it has no `IOProbeScore` or `IOMatchCategory`. AGX's `AGXG4G_A0` personality
+uses the same provider class but matches `gpu`/`sgx` `t7000`/`t7001`, has
+`IOMatchCategory=IOAcceleratorES`, and no `IOProbeScore`. These match separate
+DT children and declare no ordering between their starts. The separate
+`AGXFirmwareKextG4G` personality matches `IOResources`, has category
+`AGXFirmwareKextG4G`, and no `IOProbeScore` or `IOResourceMatch`; this does
+not impose display-before-GPU ordering. The AGX bundle dependencies also do
+not name AppleH7GADBE0 or the firmware kext.
+
+No local runtime artifact supplies the missing timeline. The saved iOS
+IORegistry export `artifacts/live/private/j81-ios-ioregistry.json` is empty;
+`j81-ios-syslog.txt` is from an iPadOS 15 session, not the 12B410 boot; and
+the Nov. 7 `relevant_dmesg.txt` is Linux simpledrm/PMGR output. The artifact
+inventory and its limits are recorded in
+`2026-11-07-j81-ios8-runtime-state-artifact-audit.md`.
+
 The exact unanswered target is the kernel's IOKit matching/publication path
 for these personalities, or an iOS boot-time service-start trace. Static
 inspection here cannot establish runtime scheduling, successful PMGR

@@ -21,12 +21,13 @@ BINARIES = {
     "gpu-gpc-init": ("artifacts/live/gcroot-gpu-gpc-init/bin/gpu-gpc-init", "MMIO writes; guarded"),
     "gpu-bridge-postgpc": ("artifacts/live/gpu-bridge-postgpc/gpu-bridge-postgpc", "read-only; GPC state-1 bridge observation"),
     "gpu-fender-wake": ("artifacts/live/gpu-fender-wake/bin/gpu-fender-wake", "MMIO writes; guarded"),
-    "gpu-watchdog-supervisor": ("artifacts/live/gcroot-gpu-watchdog-supervisor-core-revision/bin/gpu-watchdog-supervisor", "watchdog supervisor; cycle-sequence and one-shot core revision mode"),
+    "gpu-watchdog-supervisor": ("artifacts/live/gcroot-gpu-watchdog-supervisor-mcc/bin/gpu-watchdog-supervisor", "watchdog supervisor; cycle-sequence, core revision, and one-shot MCC read modes"),
 }
 MODULES = {
     "gpu-pmgr-once.ko": ("artifacts/live/private/gpu-test-staging/gpu-pmgr-once.ko", "gpu-pmgr-once payload only"),
     "gpu-pmgr-cycle.ko": ("artifacts/live/gpu-pmgr-cycle/gpu-pmgr-cycle.ko", "gpu-pmgr-cycle payload only"),
     "gpu-fender-status.ko": ("artifacts/live/gpu-fender-status/gpu-fender-status.ko", "gpu-pmgr-cycle payload only"),
+    "j81-mcc-read-once.ko": ("artifacts/live/gcroot-j81-mcc-read-once-module/mcc-read-once.ko", "one-shot read-only MCC module; exact Hoolock 7.3.0-rc1 kernel required"),
 }
 DATA = {
     "gfx-bridge-plan.bin": ("artifacts/live/private/gpu-offline/gfx-bridge-plan.bin", "pinned two-selector table input; SHA-256 checked by the wrapper"),
@@ -38,6 +39,7 @@ WRAPPERS = (
     "gpu-bridge-once-cycle-run.sh", "gpu-core-revision-once-cycle-run.sh",
     "gpu-gpc-init-run.sh", "gpu-gpc-init-cycle-run.sh", "gpu-fender-wake-run.sh",
     "gpu-fender-status-run.sh", "gpu-pmgr-cycle-run.sh",
+    "j81-mcc-read-once-run.sh",
 )
 
 

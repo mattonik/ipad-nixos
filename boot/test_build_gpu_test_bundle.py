@@ -11,7 +11,10 @@ assert manifests, "build the bundle before running this contract"
 manifest = manifests[-1]
 data = json.loads(manifest.read_text())
 assert len(data["binaries"]) >= 10
-assert len(data["modules"]) == 3
+assert len(data["modules"]) == 4
+assert "j81-mcc-read-once.ko" in data["modules"]
+assert "j81-mcc-read-once-run.sh" in data["wrappers"]
+assert "one-shot MCC read modes" in data["binaries"]["gpu-watchdog-supervisor"]["access"]
 assert any("read-only" in item["access"] for item in data["binaries"].values())
 assert any("MMIO writes" in item["access"] for item in data["binaries"].values())
 for group in ("binaries", "modules", "wrappers", "data"):

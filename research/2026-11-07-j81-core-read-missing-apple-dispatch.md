@@ -103,7 +103,7 @@ mode is the runtime enable state maintained by this same special action for
 records with flag bit 3: it is set to 1 on enable and 0 on disable. The J81
 `DISP0` record is the sole record with bit 3. On 0→1 busy, the routine sets
 `bVar2=0` and requests the busy MCC mode (`+0x95c`); on 1→0 it sets
-`bVar2=1` and requests configured `mcc-config-fb-caching` (`+0x131`, J81
+`bVar2=1` and requests configured `mcc-config-fb-caching` (`+0x988`, J81
 value 4). It emits controller event `0x2700c001` for cache ID `0x75`, then
 invokes `function-dispidle_ctrl` with that state. If that call succeeds and
 the desired MCC mode differs from the last applied mode, the controller
