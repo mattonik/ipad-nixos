@@ -4,7 +4,7 @@ Run Linux on old iPads (2011–2017) via the checkm8 bootrom exploit, turning e-
 
 ## What This Is
 
-A reproducible build system that cross-compiles a Linux kernel and minimal userland for iPad hardware. The iPad Air 2 now boots through PongoOS `bootm` and Hoolock m1n1 into Linux 7.3-rc1 with working bidirectional USB networking. RTC and backlight are also verified on hardware. See [the live project status](docs/project-status.md), [the general driver roadmap](docs/plans/2026-09-08-ipad-air2-driver-bringup.md), and the focused [J81 Bluetooth, battery and ADT plan](docs/plans/2026-09-08-j81-bluetooth-battery-adt.md).
+A reproducible build system that cross-compiles a Linux kernel and minimal userland for iPad hardware. The iPad Air 2 boots Linux on hardware; Wi-Fi, Bluetooth and multitouch have each been demonstrated working on J81, while GPU bring-up is active. Evidence spans `main` and topic branches, as detailed in the [current hardware status](docs/project-status.md).
 
 **Primary target:** iPad Air 2 (A8X, 2014) — 3-core ARM64, 2GB RAM, 2048x1536 Retina display.
 
@@ -87,7 +87,7 @@ nix build .#packages.x86_64-linux.m1n1-hoolock-control \
 This Hoolock Linux 7.3-rc1 payload booted successfully on J81 on 2026-09-08.
 CDC-ECM works in both directions at `172.16.42.1`; the postmarketOS debug shell
 is reachable by telnet on port 23. Keep the historical payload as a control.
-Bluetooth and battery work follows the [focused dated plan](docs/plans/2026-09-08-j81-bluetooth-battery-adt.md), including a safe private ADT capture tool.
+The verified Bluetooth and touch milestones are on topic branches; see the [current hardware status](docs/project-status.md) for branch names and limits.
 
 The current J81 hardware recipe uses the generic `result` link so the payload
 selected for DFU testing is unambiguous:
@@ -144,6 +144,19 @@ ipad-nixos/
 
 ## Supported Hardware
 
+### J81 hardware status (2026-11-07)
+
+| Subsystem | Status | Evidence and scope |
+|---|---|---|
+| Wi-Fi | **Working on `main`** | BCM4350 scan, WPA2 association, DHCP, ping and HTTP; production boot auto-connects on 5 GHz. See [Wi-Fi bring-up](research/2026-10-10-wifi-bringup-root-cause-and-permanent-fix.md). |
+| Bluetooth | **Working on `claude/bt-merged-stack-fix`** | Boot-time UART3/serdev initialization and private patchram; classic inquiry found 2 devices and a 20-second LE scan found 29 advertisers. Pairing, connection and coexistence under load are unverified. This code is not in `main`. |
+| Touch | **Working on `j81-touch-core`** | Five-finger multitouch verified on hardware; a 161.5-second run on Orchard main kernel had no frame errors. J82 and suspend/resume remain untested. This code is not in `main`. |
+| GPU | **Bring-up in progress on `main`** | Test4 checkpointed all 66 planned bridge-table stores and read back two bridge words; the first RGX core-ID read stalled. The other 64 entries were not read back, and firmware execution, job submission and rendering remain unverified. See the [test4 readback boundary](research/2026-11-07-j81-test4-raw-readback-boundary.md). |
+
+These are subsystem demonstrations on the iPad Air 2 Wi-Fi model (J81), not a
+complete tablet experience. The Bluetooth and touch implementations remain on
+their named branches.
+
 ### Verified
 
 | Device | SoC | Board ID | DTB | Status |
@@ -171,14 +184,14 @@ bus or peripheral can probe.
 |---------|--------|---------|
 | 4 KiB pages | `ARM64_4K_PAGES` | Required by the documented A7–A8X bring-up |
 | Apple drivers | `COMPILE_TEST` | Unlocks drivers gated on `ARCH_APPLE` |
-| Touch | `TOUCHSCREEN_APPLE_Z2` | Z2 protocol reference; SPI proof, J81 binding/firmware work remain; power rail decoded |
+| Touch | `TOUCHSCREEN_APPLE_Z2` | J81 multitouch verified on `j81-touch-core`; not integrated into `main` |
 | SPI | `SPI_APPLE` | M-series path exists; T7001 variant still needs a clean port |
 | Display | `DRM_SIMPLEDRM` | Framebuffer initialized by pongoOS |
 | USB | `USB_DWC2` | Synopsys DWC2 OTG (Lightning port) |
 | USB Ethernet | `USB_CONFIGFS_ECM` | Host communication via USB gadget |
 | Serial | `SERIAL_SAMSUNG` | Apple UART (Samsung S3C compatible) |
-| WiFi | `BRCMFMAC` | BCM4350 PCIe endpoint; T7000 host and local firmware remain |
-| Bluetooth | `BT_BCM` | BCM4350-family UART3 radio; exact PMU power test, serdev child and local firmware remain |
+| WiFi | `BRCMFMAC` | BCM4350 PCIe; end-to-end J81 networking verified on `main` |
+| Bluetooth | `BT_BCM` | J81 boot-time UART3/serdev and patchram work on `claude/bt-merged-stack-fix`; not integrated into `main` |
 
 Full config in [kernel/default.nix](kernel/default.nix).
 
@@ -273,9 +286,9 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 Areas where help is needed:
 - **Hardware testing** — boot on different iPad models and report results
 - **Device trees** — improve/fix DTBs for specific board IDs
-- **Touch driver** — port the T7001 SPI controller, then adapt and test `apple_z2`
-- **WiFi** — port T7000 PCIe/DART, then document exact BCM4350 firmware extraction
-- **GPU** — no supported GXA6850 kernel/Mesa platform stack exists; native graphics is long-term work
+- **Touch** — integrate the verified J81 support from `j81-touch-core` into `main`
+- **Bluetooth** — integrate the verified J81 support from `claude/bt-merged-stack-fix` and test pairing
+- **GPU** — continue GXA6850 bring-up; no firmware execution or rendering is verified yet
 - **NixOS modules** — build out the userland (GUI, networking, power management)
 - **Documentation** — improve guides, add troubleshooting
 
