@@ -57,19 +57,50 @@ Both methods also make a conditional helper call with action codes
 
 The `AppleARMIODevice` method at `0xfffffff005b2a108` stores its second
 argument to `this+0x88` (`param_1[0x11] = param_2`) before reading the clock
-and power gate arrays, confirming that the slot wrappers use a retained
-backing/controller object. The local iOS15 prelink inventory declares
-`arm-io,t7001` as `AppleT7001IO`, so that class is the expected J81 controller
-given the device-tree parent relationship. This pass did not trace the exact
-call that supplies the `+0x88` argument or read that field from a live object;
-the receiver's runtime vptr and terminal `+0x568/+0x570` targets remain
-unresolved.
+and power gate arrays. This is the base-class path; the T7001 subclass below
+has its own overrides at these two slots.
 
-Likewise, the AGX G4G personality declares `IOProviderClass=AppleARMIODevice`,
-which is a provider-class constraint, not proof of an exact dynamic class.
-The recovered instance table is the base AppleARMIODevice implementation. A
-runtime subclass could override these slots; the local static evidence here
-does not establish the live `sgx` provider's dynamic class or rule out such an
-override. No device/runtime inspection was performed. The earlier 68-entry
-and 22-entry pointer arrays at `0xfffffff006d0d3a8` and
-`0xfffffff006d0d618` remain unattributed and are not used as evidence.
+## AppleT7001IO subclass table and targets
+
+The local iOS 15.8.8 prelink inventory declares `IOClass=AppleT7001IO`,
+`IONameMatch=arm-io,t7001`, and `IOProviderClass=IOPlatformDevice`. The
+embedded `AppleT7001` Mach-O header is at `0xfffffff005a76740` in
+`__PRELINK_TEXT`; this metadata load address is not its code address. Parsing
+that nested Mach-O gives `__TEXT_EXEC` at `0xfffffff006c7b000` (size `0xc38`)
+and `__DATA_CONST` at `0xfffffff006fe3ac0` (size `0xfd8`). They map through the
+outer kernelcache segments to file offsets `0x2127000` and `0x248fac0`.
+
+The `AppleT7001IO` metaclass registration at `0xfffffff006c7ba2c` passes the
+`AppleT7001IO` name (`0xfffffff005a76cf8`), superclass metaclass pointer
+`0xfffffff006fe3ae0`, and instance size `0x120` to the OSMetaClass helper; the
+returned metaclass receives vtable `0xfffffff006fe41a0`. The instance
+constructor at `0xfffffff006c7b038` first calls the base constructor helper,
+then writes `0xfffffff006fe3bb8` to `[this]`. Thus `0x006fe41a0` is the
+metaclass table and `0x006fe3bb8` is the instance table. The superclass
+metaclass pointer identifies the static subclass relationship to
+`AppleARMIODevice`.
+
+The `AppleT7001IO` instance table overrides the requested slots:
+
+| Instance slot | Table entry / target | Behavior |
+|---|---|---|
+| `+0x568` | `0xfffffff006c7b90c` | If byte `this+0xec` is set, return `0xe00002c7`. Otherwise obtain/cache an object at `this+0xf0` through `this+0xd8`'s vtable `+0xe8`, then call the cached object's vtable `+0x80` with `(arg1,arg2,0)`. |
+| `+0x570` | `0xfffffff006c7b998` | Same pattern using byte `this+0xed`, cache at `this+0xf8`, and call the cached object's vtable `+0x80` with `(arg1,arg2,arg3)`. |
+
+The `start` implementation at `0xfffffff006c7b1f0` sets those two flag bytes
+when `no-clock-gate` or `no-power-gate` is present. It resolves and registers
+`function-clock_gate` only when `no-clock-gate` is absent, and similarly
+resolves/registers `function-power_gate` only when `no-power-gate` is absent.
+The wrapper functions above are recovered direct targets for the vtable
+slots. Their final call target remains an indirect `+0x80` on the
+retained/cached backing object; the static cache does not identify that
+object's concrete runtime vtable. No live object was read.
+
+The AGX G4G personality's `IOProviderClass=AppleARMIODevice` is a superclass
+constraint, not runtime proof that the live `sgx` provider is exactly
+`AppleT7001IO`. Static evidence establishes the T7001 subclass registration
+and its overrides; it does not establish that this personality matched that
+class on a device or which concrete object services its indirect `+0x80`
+calls. No device/runtime inspection was performed. The earlier 68-entry and
+22-entry pointer arrays at `0xfffffff006d0d3a8` and `0xfffffff006d0d618` remain
+unattributed and are not used as evidence.
