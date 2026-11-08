@@ -91,6 +91,29 @@ implementation or prove it shares the exact runtime instance used by
 `bcc56c`. Therefore no specific gate class, callback body, register write, or
 hardware side effect can be reported from the available static evidence.
 
+### Review addendum, 2026-11-08: the `+0x160` object is the PMGR command gate
+
+ApplePMGR uses the same object and slot on its own clock-enable path. In
+`0x...bd7a1c`, the code emits trace code `0x2700c001`, then runs the
+power-state change `0x...bd7ad0` through `[pmgr+0x160]` vtable `+0xe8`, and
+then emits `0x2700c002`. The action argument there is a code pointer
+(`2026-11-08-j81-pmgr-2700c00x-are-trace-codes.md`,
+`2026-11-08-j81-ios15-clock-gate-to-pmgr-state.md`). `be3b0c` passes a callback
+function pointer through the same slot. Both match
+`IOCommandGate::runAction(action, arg0, arg1, arg2, arg3)`.
+
+The value that `bcc56c` passes as the first argument, VA
+`0xfffffff006bd6328`, is not in a string section. It lies inside ApplePMGR's
+own `__TEXT_EXEC` (`0xfffffff006bb9000` to `0xfffffff006beda4c`). It is
+therefore most likely the gated action function, called with `arg0 = 1` and
+`arg1 =` the stack block built from `record+0x30`. That makes the `+0x57`
+branch "run `bd6328` under the PMGR work-loop lock" rather than an unknown
+callback. The class name of the `+0x160` object is still inferred from usage,
+not read from a vtable or symbol, and `bd6328` has not been disassembled.
+Disassembling it is the next cheap offline step. It is the only
+not-yet-classified code on GFX's `bd81a8` power-up path, and it runs only for
+`state-config` records with byte `+0x57` set.
+
 In the other branch, the function dereferences the record's `+0x28` pointer,
 including a sequence-counter retry when byte `+0x54` is set. The body does not
 contain an explicit PMGR register accessor in this branch, but the pointer's

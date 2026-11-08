@@ -80,6 +80,12 @@ The effective Linux FDT on the inspected boot has no bridge-settings,
 bridge-reg-index, or state-config properties, so it cannot answer what those
 properties held in Apple's ADT or whether iOS PMGR populated `bcc56c` records
 for GFX ([Linux FDT property check](2026-11-08-j81-linux-fdt-pmgr-properties.md)).
+The only unclassified code left on that path is the `bcc56c` timing
+helper's optional branch. It runs a PMGR action (`0x...bd6328`) under the
+PMGR command gate, and only for `state-config` records with byte `+0x57` set
+([`bcc56c` note](2026-11-08-j81-ios15-bcc56c-timing-accounting.md)). The next
+cheap offline checks are to disassemble `bd6328` and to look in the private
+Pongo ADT capture for `state-config` rows naming GFX (`0x7c`).
 
 
 The next work is to understand the A8X-specific power, reset, wake, and

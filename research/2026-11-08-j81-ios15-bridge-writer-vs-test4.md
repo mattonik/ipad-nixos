@@ -9,9 +9,10 @@ text, and Linux test4 transcript. No device access.
 and selector bytes in order. For each selector it checks that the selected
 state table has a non-null settings pointer, then calls `bd4da8(pmgr,
 selector, state)`. The device record uses selectors 9 then 10. On this path,
-the relevant selection is by `pmgr+0x2680`: format 0 is the legacy
-offset/value-pair writer (`bd40bc`); format 2 or higher selects the other
-writer (`bd49d0`). Both dispatch each resulting 32-bit register store through
+the relevant selection is by `pmgr+0x2680`: any value below 2 (formats 0
+and 1) selects the legacy offset/value-pair writer (`bd40bc`); format 2 or
+higher selects the other writer (`bd49d0`). The test is `cmp w8, #2; b.cc`
+at `0x...bd4da8`. Both dispatch each resulting 32-bit register store through
 the PMGR register-write virtual at vtable `+0x998`. The alternate format has
 separate address synthesis, which has not been resolved here. The saved ADT
 has no `bridge-settings-version` property, so its runtime `+0x2680` value
