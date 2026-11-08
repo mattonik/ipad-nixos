@@ -100,6 +100,13 @@ with a Device-nGnRnE mapping
 remains is what iBoot configures before the kernel, and timing. The next
 offline step is to decrypt J81 iBoot/iBEC 12B410 and search it for
 GFX/RGX setup.
+Done ([iBoot/LLB note](2026-11-08-j81-iboot-llb-gfx-perf-state.md)).
+iBoot never touches the GPU blocks, and it hands the kernel its clock state
+unchanged. LLB programs the GFX PLL perf-state table at `0x20e01c000`
+(state 0 = 0 Hz) and enables it at `0x20e01c200`. The saved ADT shows this
+table is programmed on our boot chain. Nothing in Linux selects a GFX perf
+state, so the GPU may be sitting at 0 Hz. The proposed next check is a
+read-only PMGR read of `0x20e01c200` and the table.
 
 
 The next work is to understand the A8X-specific power, reset, wake, and
