@@ -46,8 +46,9 @@ was not confirmed.
    it boots the kernel, may be missing. Apple's kernel driver would then
    rely on it without doing it itself. This fits all the static evidence
    above. The iBoot and iBEC images for iPad5,3 12B410 are encrypted, but
-   their keys are public in the same source as the kernelcache key
-   (`kernelcache-12b410-source`). Decrypting them and searching for GFX,
+   `api.ipsw.me/v4/keys/ipsw/iPad5,3/12B410` lists keys for both iBoot
+   and iBEC (checked 2026-11-08), from the same source as the kernelcache
+   key. Decrypting them and searching for GFX,
    SGX and `0x201xxxxxx` accesses is the next offline step.
 2. **Timing.** Apple reads identity about 10 µs after the GPC poll. Test4
    read it seconds later from a new process. A GPU that drops back to a
