@@ -19,4 +19,8 @@ as raw AArch64 at base `0xffffff8002593000` (iPad5,3 12B410).
 | `DecompTo.java OUT ADDR...` | decompile the functions containing the addresses to a file |
 | `DecompRangeTo.java OUT START END` | decompile every defined function in a range |
 | `MakeFuncDecomp.java OUT ADDR...` | disassemble, create a function at each address, decompile (for code Ghidra never made a function of) |
+| `FindContaining.java ADDR...` | print the containing function entry point for each address |
+| `PrintRange.java START END` | disassemble and print instructions in an inclusive range, stepping 4 bytes (AArch64) |
 | `find_adr_refs.py RAW BASE TARGET...` | brute-force ADR references to strings (catches what xrefs miss) |
+
+These two scripts expect bare hexadecimal addresses without a `0x` prefix.
