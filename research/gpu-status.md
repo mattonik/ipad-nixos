@@ -86,6 +86,11 @@ PMGR command gate, and only for `state-config` records with byte `+0x57` set
 ([`bcc56c` note](2026-11-08-j81-ios15-bcc56c-timing-accounting.md)). The next
 cheap offline checks are to disassemble `bd6328` and to look in the private
 Pongo ADT capture for `state-config` rows naming GFX (`0x7c`).
+Done: `bd6328` only reads PMGR counter registers, so the `bd81a8` path
+has no unclassified write. GFX is one of the five devices in the iOS 15
+SoC-tuner device set 0, which drives the MCC-config and display-idle
+functions. Its policy only takes the MCC out of framebuffer-caching mode when GFX is
+busy. That is a performance setting and is unlikely to explain the hang ([SoC-tuner note](2026-11-08-j81-ios15-soc-tuner-device-sets.md)).
 
 
 The next work is to understand the A8X-specific power, reset, wake, and
