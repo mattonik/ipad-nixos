@@ -1801,9 +1801,15 @@ existing runtime toggle.
 5. Never delete the `artifacts/live/*` GC roots to save time. Never put
    firmware, NVRAM, calibration, OTP, ROM/RAM dumps, device identifiers, or
    session logs into Git or a Nix derivation.
-6. Before a hardware run, verify the private manifest and use the one-command
-   loader `boot/run_m1n1_debug.sh <payload-dir>`. Record the exact payload and
-   commit any result immediately after the run.
+6. Before claiming that the live boot can run a test, or staging one, run
+   `boot/j81_preflight.sh <test>` (read-only). It checks the kernel, the
+   device-tree guard properties, loaded modules and `/tmp` against what the
+   test needs and prints GO or NO-GO. Add a profile for each new test.
+7. Before a hardware run, verify the private manifest and use the one-command
+   loader `boot/run_m1n1_debug.sh <payload-dir>`. Older Nix payloads without
+   `PRIVATE_MANIFEST.json` (for example `gcroot-gpu-pmgr-once-payload`) fail
+   that check; boot them with the palera1n and `load_m1n1.py` steps the script
+   runs. Record the exact payload and commit any result immediately after the run.
 
 This workflow is intended to turn repeated toggle-only experiments into
 minutes or seconds; source changes still require a kernel build.
