@@ -80,3 +80,10 @@ infer further register behavior from offset similarity alone.
   routine. The local disassembly proves provider memory index 7, but this
   review did not trace the provider descriptor to a physical address or named
   DT resource.
+
+## Correction (2026-11-08)
+
+The index-7 provenance above is wrong for the probe path. The identity read uses
+the global `0xfffffff007a4d8a0`, mapped from provider `reg` index 0. It does not
+use object field `+0x8a0`. See
+[`2026-11-08-j81-ios15-g4g-pre-id-clock-power.md`](2026-11-08-j81-ios15-g4g-pre-id-clock-power.md).
