@@ -82,6 +82,36 @@ the whole cause of the hang. If it is the hardware, a read after power-up
 will show a nonzero selection. So the after-power-up read is the deciding
 check.
 
+## What LLB and iBoot write in this block (offline, same day)
+
+Every constant reference to `0x20e01c000`–`0x20e01dfff` in the decrypted
+12B410 LLB and iBoot:
+
+| Code | Access | Effect |
+|---|---|---|
+| LLB `0x180013adc` (called for states 0–15) | write `0x20e01c000 + n*0x10` and `+4` | Word 0 = `vidx<<24 \| valid<<21 \| fb<<12 \| pre<<4 \| post`. Bit 21 (valid) is set when `fb != 0`. Word `+4` gets one byte from the 20-byte entry (`+16`), probably the SRAM voltage index behind the ADT `perf-states-sram`. |
+| LLB `0x180013020`–`13034` | RMW `0x20e01c200` | Sets bit 31 only. |
+| LLB `0x180013fe4` (tunable batch) | write `0x20e01c300 = 0x40000001` | Unknown meaning. Written together with other SoC tunables. |
+| LLB `0x180013818` (quiesce path) | write `0x20e01c200 = 0` | Clears the control word. |
+| iBoot `0x87a0fcfb0`–`fd01c` | read `0x20e01c000 + n*0x10` | Builds the ADT `perf-states`. |
+| iBoot `0x87a0fc5ec` (DIAGS/MONITOR quiesce only) | write `0x20e01c200 = 0` | Clears the control word. |
+
+So no boot stage writes a state-select field. In `0x20e01c200` only bit 31
+is ever written by software. Today's `0x80000000` is therefore exactly
+LLB's value, and it says nothing about which state is selected. If a
+selection field exists, it is set by hardware or by the GPU firmware.
+Nothing that runs before the ID read writes one.
+
+The decode of bit 21 explains the table: states 1–8 have it set, and
+state 0 and states 9–15 are zero, so they are invalid entries rather than
+real 0 Hz states.
+
+Two words in this block that LLB programs were not read today:
+`0x20e01c300` (`0x40000001` from LLB) and the per-state `+4` words. They
+are in the same 4 KiB page as the words already read, and they are LLB
+outputs, not GPU registers. A read-only extension of the probe could read
+them in the current boot (preflight `perf-peek` = GO).
+
 ## Next
 
 1. Done above, inconclusive on its own.
