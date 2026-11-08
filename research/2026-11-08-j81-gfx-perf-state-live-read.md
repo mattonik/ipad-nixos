@@ -19,7 +19,7 @@ command right after the read.
 |---|---|---|
 | `0x20e020320` (GFX PS) | `0x00000300` | target 0, actual 0 (GFX off) |
 | `0x20e01c200` (control) | `0x80000000` | bit 31 set, all other bits 0 |
-| `0x20e01c000` (state 0) | `0x00000000` | 0 Hz |
+| `0x20e01c000` (state 0) | `0x00000000` | invalid entry (valid bit clear) |
 | `0x20e01c010` (state 1) | `0x6436d063` | 365 MHz, vidx `0x64` |
 | `0x20e01c020` (state 2) | `0x7024b021` | 450 MHz, vidx `0x70` |
 | `0x20e01c030` (state 3) | `0x7027d031` | 500 MHz, vidx `0x70` |
@@ -40,15 +40,14 @@ point: states 9–15 read as zero here, they do not repeat an entry.
 
 ## What it shows
 
-- LLB's table is live in hardware on our boot chain, and the enable bit is
-  set. The GPU clock source is configured; nothing before Linux is missing
-  here.
-- The control word has no bits set except bit 31. If its low bits hold the
-  selected perf state, the selection is state 0, which is 0 Hz. That is an
-  inference: the field layout of `0x20e01c200` is not decoded.
+- The observed table matches the values LLB programs and iBoot reports in
+  the ADT; bit 31 of the control word is set. This confirms the table contents
+  and control value on this boot, not which perf state is selected.
+- The control word has no bits set except bit 31. Its selection-field layout
+  is unknown, so the word does not show that state 0 is selected.
 - GFX was off during this read, so the snapshot does not say what the
-  hardware selects once GFX is powered. That is the one open question this
-  check can still answer.
+  hardware selects once GFX is powered. A separate read after power-up would
+  be needed to answer that.
 
 ## Offline search for the perf-state selector (same day)
 
@@ -75,12 +74,9 @@ state:
   audit: a base pointer plus a table offset would not show up in it.
 
 Reading: on iOS the kernel probably never selects a GFX perf state itself.
-The selection is either made later by the GPU firmware, which runs after
-the ID read, or made by hardware when GFX powers on. If it is the
-firmware, Apple's ID read would also run at state 0, and 0 Hz cannot be
-the whole cause of the hang. If it is the hardware, a read after power-up
-will show a nonzero selection. So the after-power-up read is the deciding
-check.
+The selection may be made later by GPU firmware or by hardware when GFX
+powers on. This snapshot, taken with GFX off, does not establish the selected
+state after power-up or explain the stalled ID read.
 
 ## What LLB and iBoot write in this block (offline, same day)
 
@@ -102,9 +98,8 @@ LLB's value, and it says nothing about which state is selected. If a
 selection field exists, it is set by hardware or by the GPU firmware.
 Nothing that runs before the ID read writes one.
 
-The decode of bit 21 explains the table: states 1–8 have it set, and
-state 0 and states 9–15 are zero, so they are invalid entries rather than
-real 0 Hz states.
+The decode of bit 21 explains the table: states 1–8 have it set, while state
+0 and states 9–15 have zero words and are invalid entries, not 0 Hz states.
 
 Two words in this block that LLB programs were not read today:
 `0x20e01c300` (`0x40000001` from LLB) and the per-state `+4` words. They

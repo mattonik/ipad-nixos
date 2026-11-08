@@ -92,26 +92,21 @@ SoC-tuner device set 0, which drives the MCC-config and display-idle
 functions. Its policy only takes the MCC out of framebuffer-caching mode when GFX is
 busy. That is a performance setting and is unlikely to explain the hang ([SoC-tuner note](2026-11-08-j81-ios15-soc-tuner-device-sets.md)).
 
-Step by step, test4 matched every hardware write Apple's G4G driver makes
-before the ID read (power and clock on device 124, the bridge tables, and
-the GPC mask/control/request/poll), and its read was the same first access
-with a Device-nGnRnE mapping
+Test4 matched the traced pre-ID writes and values (power and clock on device
+124, the bridge tables, and the GPC mask/control/request/poll), but its helper
+processes left seconds between stages versus Apple's 10 µs delay. The ID read
+was the same first access, with a Device-nGnRnE mapping
 ([test4 vs Apple](2026-11-08-j81-test4-vs-apple-pre-id-sequence.md)). What
 remains is what iBoot configures before the kernel, and timing. The next
 offline step is to decrypt J81 iBoot/iBEC 12B410 and search it for
 GFX/RGX setup.
 Done ([iBoot/LLB note](2026-11-08-j81-iboot-llb-gfx-perf-state.md)).
-iBoot never touches the GPU blocks, and it hands the kernel its clock state
-unchanged. LLB programs the GFX PLL perf-state table at `0x20e01c000`
-(state 0 = 0 Hz) and enables it at `0x20e01c200`. The saved ADT shows this
-table is programmed on our boot chain. Nothing in Linux selects a GFX perf
-state, so the GPU may be sitting at 0 Hz. The proposed next check is a
-read-only PMGR read of `0x20e01c200` and the table.
-Done ([live perf-state read](2026-11-08-j81-gfx-perf-state-live-read.md)).
-The table is live in hardware and matches the ADT, and the control word is
-`0x80000000`: enabled, with no other bits set, which plausibly means state 0
-(0 Hz) is selected. GFX was off during the read. The next step is offline:
-find who selects a GFX perf state on iOS before the ID read.
+iBoot does not touch the GPU blocks; LLB programs the GFX perf-state table
+and sets bit 31 at `0x20e01c200`. The all-zero state-0 word has its valid bit
+clear, so it is an invalid entry, not a valid 0 Hz state. The read-only
+snapshot confirmed the table values match the ADT and recorded control word
+`0x80000000` while GFX was off. The control field layout and selected state
+after power-up remain unknown; see the [live perf-state read](2026-11-08-j81-gfx-perf-state-live-read.md).
 
 
 The next work is to understand the A8X-specific power, reset, wake, and

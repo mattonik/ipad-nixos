@@ -63,8 +63,9 @@ own LLB and iBoot (the ADT also carries iBoot-only properties such as
 `original-base-os-version`). So a missing LLB stage is **not** the
 difference between iOS and Linux.
 
-**State 0 is 0 Hz.** With GFX perf state 0 selected, the GPU PLL output is
-off.
+The state-0 table word is all zero and has its valid bit clear. Treat it as
+an invalid entry, not a valid 0 Hz state; neither the selected state nor the
+PLL output follows from this ADT row.
 
 The PMGR `perf-domains` property lists only `SOC` and `CPU`. ApplePMGR's
 perf-state machinery therefore does not manage GFX on J81. The `sgx`
@@ -78,9 +79,8 @@ traced here.
 ## Why this matters for the hang
 
 Test4 powered GFX (PMGR `0x3ff`) and ran GPC init, but nothing in Linux
-selects a GFX perf state. If the GPU is still at perf state 0 (0 Hz),
-an RGX register access would never complete. That would fit the observed
-hang better than any lead traced so far.
+selects a GFX perf state. The selected state after power-up is unknown; this
+table alone does not explain the stalled RGX register access.
 
 Two points argue the other way:
 

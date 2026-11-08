@@ -8,9 +8,10 @@ the same day. No device access.
 
 ## Result
 
-Test4 reproduced every hardware step Apple's driver performs before the
-first GPU ID read, with the same values and in the same order. The two
-remaining differences are timing and what the boot chain leaves behind.
+Test4 used the same pre-ID register operations, values, and ordering traced
+in Apple's driver. Its helper processes leave seconds between stages, versus
+Apple's 10 µs delay before the ID read; what the boot chain leaves behind is
+also unknown.
 
 | # | Apple (iOS 15 G4G probe, `0x...322c`) | Test4 (2026-11-07, same boot) | Same? |
 |---|---|---|---|
