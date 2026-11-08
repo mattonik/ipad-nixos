@@ -37,7 +37,7 @@ static ssize_t read_once_show(struct device *dev, struct device_attribute *attr,
 	return sysfs_emit(buf, "address=0x%llx value=0x%08x\n",
 			  MCC_BASE + MCC_OFFSET, value);
 }
-static DEVICE_ATTR_RO(read_once);
+static DEVICE_ATTR(read_once, 0400, read_once_show, NULL);
 
 static int __init mcc_read_once_init(void)
 {

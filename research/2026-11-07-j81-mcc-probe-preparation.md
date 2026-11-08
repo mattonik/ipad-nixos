@@ -1,6 +1,9 @@
-# J81 MCC one-shot read preparation
+# J81 MCC one-shot read preparation and result
 
-Offline probe design; no device access or MMIO was performed.
+This note preserves the original Nov. 7 offline preparation and records the
+subsequent hardened build and Nov. 8 live result. The original preparation
+section below describes the earlier artifact state; its no-device-access
+statement applies only to that preparation stage.
 
 `kernel/mcc-read-once/` builds a tiny out-of-tree module against the exact
 PMGR-cycle test kernel: Hoolock 7.3.0-rc1 with patch 0123, via its own
@@ -37,18 +40,19 @@ expectations, not Linux expectations: a Linux capture has no established
 MCC initialization or ownership state, so any returned word is observational
 and should not be judged against either value.
 
-Offline checks pass for the mocked module, host capture protocol, shell syntax,
-and the composed watchdog supervisor transcript. The actual module build
-succeeded against the patched Hoolock 7.3.0-rc1 cycle kernel. The built module
-is `artifacts/live/gcroot-j81-mcc-read-once-module/mcc-read-once.ko` with
-SHA-256 `7f7a73305c843f11a5b4311eb3890cbf3e52a23d83992511df3231ae09fe8492`.
-Its embedded vermagic is `7.3.0-rc1 SMP preempt mod_unload aarch64`. This is a
-build artifact only; it has not been loaded or tested on hardware.
+Offline checks passed for the mocked module, host capture protocol, shell
+syntax, and composed watchdog supervisor transcript. The original module was
+built against the patched Hoolock 7.3.0-rc1 cycle kernel. Its artifact was
+`artifacts/live/gcroot-j81-mcc-read-once-module/mcc-read-once.ko`, SHA-256
+`7f7a73305c843f11a5b4311eb3890cbf3e52a23d83992511df3231ae09fe8492`, with
+vermagic `7.3.0-rc1 SMP preempt mod_unload aarch64`. That original artifact
+used sysfs mode `0444`, so any local user could trigger the read by opening the
+endpoint; it was not loaded during the Nov. 7 preparation.
 
 ### Staging bundle
 
-The updated watchdog supervisor was cross-built with the existing Linux
-builder as a static AArch64 binary. SHA-256:
+At the Nov. 7 staging point, the updated watchdog supervisor was cross-built
+with the existing Linux builder as a static AArch64 binary. SHA-256:
 `81ade85aff5811689abaec0c5318d7ba6997bc3ecc9681c95df8088e7271d826`.
 The RAM-staging bundle is
 `artifacts/live/gpu-test-bundle-20261107-mcc`; its manifest includes that
@@ -61,9 +65,24 @@ module's bounded single-read and cleanup behavior, the MCC capture protocol,
 bundle manifest contracts, shell syntax, and every staged file's manifest
 hash. The cross-build needed 64.6 MB of Nix cache dependencies; the builder
 completed despite unavailable cache DNS after those dependencies were fetched.
-Host free space then fell below the builder's 15 GB build floor, so no more
-Nix builds should run until space is available. No iPad access or hardware
-capture was performed.
+Host free space then fell below the builder's 15 GB build floor. No iPad
+access or hardware capture had been performed at that staging point.
+
+### Hardened build and live read (Nov. 8)
+
+The sysfs endpoint was hardened to mode `0400` (only root can trigger the
+read), and the module was rebuilt using the original kernel development
+closure. The resulting module SHA-256 was
+`6f31fbe3e591903310269fc4ddeb9a46ffcadeb8fb96890687ca309b6390f0ea`; this is
+the module hash used by the successful one-shot capture. It supersedes the
+Nov. 7 module hash for the live run; the earlier build and staging manifest
+above are retained as historical records.
+
+The supervised capture read `0x00000000` from `0x200000830`, reached
+`finished rc=0`, and disarmed the watchdog normally. See the
+[Nov. 8 result note](2026-11-08-j81-mcc-read-result.md) for the raw observation
+and conditional selector interpretation. No further device access was
+performed.
 
 Limit: the corrected physical address is static Apple source-derived evidence,
 not a live decode. Linux's current `/proc/iomem` does not list the range. A

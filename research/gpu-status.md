@@ -15,6 +15,12 @@ Imagination GXA6850 (Rogue/G4G generation).
 - GPC initialization reported state 1. The first direct RGX core-ID read did
   not complete. Its cause is unknown; the read does not establish whether the
   GPU is ready or whether the address is correct.
+- A separately guarded, watchdog-supervised MCC read completed on a later
+  Linux RAM boot: `0x200000830 = 0x00000000`. This raw value matches none of
+  the conditional iOS 8.1 low-five-bit/bit-8 write patterns for selectors 0,
+  3, or 4;
+  it does not establish MCC initialization, hardware mode, or prior iOS
+  callback history. See the [MCC read result](2026-11-08-j81-mcc-read-result.md).
 - GPU firmware execution, job submission, and rendering have not been
   demonstrated.
 

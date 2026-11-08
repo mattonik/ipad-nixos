@@ -26,9 +26,9 @@ typedef int atomic_t;
 #define THIS_MODULE ((struct module *)1)
 #define IS_ERR(p) ((p) == (void *)-1)
 #define PTR_ERR(p) (-ENOMEM)
-#define DEVICE_ATTR_RO(n) struct device_attribute dev_attr_##n
+#define DEVICE_ATTR(n, m, show, store) struct device_attribute dev_attr_##n = {.mode = (m)}
 struct device {};
-struct device_attribute {};
+struct device_attribute { unsigned int mode; };
 struct module {};
 static struct device fake_device;
 static struct device_attribute dev_attr_read_once;
@@ -49,6 +49,7 @@ static int sysfs_emit(char *buf, const char *fmt, ...) { va_list ap; va_start(ap
 #include "mcc-read-once.c"
 int main(void) {
   char out[128];
+  assert(dev_attr_read_once.mode == 0400);
   is_j81 = false; assert(mcc_read_once_init() == -ENODEV && creates == 0);
   is_j81 = true; assert(mcc_read_once_init() == 0 && creates == 1 && reads == 0 && pins == 1);
   assert(read_once_show(&fake_device, &dev_attr_read_once, out) > 0);
