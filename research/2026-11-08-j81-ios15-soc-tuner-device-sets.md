@@ -64,14 +64,44 @@ In iOS 15 the same pieces form a separate driver:
   (`cd8adc`) sends four platform-function symbols to vtable slots
   `+0x550`–`+0x568`.
 - `ApplePMGRNub` reads `#device-sets` and each `device-set-%d` at
-  `0x...be245c`–`be24f8`. The decision about which MCC config to request
-  when a device set becomes busy is therefore made on the PMGR side, not in
-  the tuner.
+  `0x...be245c`–`be24f8`, and is the source of the busy states. The policy
+  itself is in the tuner (section 3).
 
 So on iOS 15, GFX busy is one of five inputs to device set 0. When that set's
 busy state changes, PMGR can tell the SoC tuner to switch the MCC config and
 display idle. Linux test4 did none of this. This is the one Apple mechanism
-left that both ties GFX to the MCC and is missing from test4.
+left that both ties GFX to the MCC and is missing from test4. Section 3
+shows what it does.
+
+## 3. The tuner's policy (`0x...cd827c`)
+
+A follow-up trace corrects one claim in section 2: the policy lives in the
+tuner itself, not on the PMGR side. Its tuner-specific methods
+(`cd8bfc`/`cd8c70`/`cd8cbc`/`cd8d08`) are called directly from one update
+routine, `cd827c(this, sets)`. That routine prints "New display state",
+"New MCC config" and "MCC config: %u -> %u". `sets` is a four-word array.
+Taking word *n* to be the busy state of device set *n* (an inference from
+the layout):
+
+| Display (set 2, DISP0) | Set 0 or set 1 busy | Set 3 (MCA audio) busy | MCC config index | `mcc-configs` value | Display idle |
+|---|---|---|---|---|---|
+| on | yes | — | 2 | 3 | off |
+| on | no | — | 3 | 4 (fb-caching) | on |
+| off | — | yes | 1 | 2 | — |
+| off | — | no | 0 | 1 | — |
+
+The values match the iOS 8.1 names `mcc-config-disp-off-audio-on = 2` and
+`mcc-config-fb-caching = 4`. When the display-on state changes, the routine
+also calls a per-set method for every device set (`cd8b94`).
+
+**What this means for GFX:** with the display on, GFX (in set 0) becoming
+busy moves the MCC *out of* framebuffer-caching mode (4) into config 3, and
+turns display idle off. This is a memory-controller performance policy. The
+GPU does not need it to be reachable. A Linux boot that never put the MCC
+into fb-caching mode has nothing to undo. The earlier single read
+`0x200000830 = 0` does not tell us which config the MCC is in. This makes it
+unlikely, though not ruled out, that the tuner explains why the RGX
+register read hangs.
 
 ## Not established
 
@@ -86,8 +116,11 @@ left that both ties GFX to the MCC and is missing from test4.
 
 ## Next offline step
 
-Find the callers of the tuner's platform functions in ApplePMGR and
-ApplePMGRNub, then check whether a GFX busy edge reaches them in iOS 15. Only
+Lower priority now. Section 3 shows the tuner only changes MCC performance
+mode. A stronger lead is state that iBoot leaves behind for GFX or RGX.
+Another is what G4G does between its power enable and the ID read: the GPC
+`0x40000000`/`0x11` writes, the bit-4 poll and the 10 µs delay, which test4's
+GPC state 1 only partly covers. Only
 an MCC register sequence that this produces, and that test4 lacked, would
 justify a new hardware test. The stop rules in
 `2026-11-08-j81-next-mcc-experiment-decision.md` still apply.
