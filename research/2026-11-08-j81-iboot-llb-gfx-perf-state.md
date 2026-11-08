@@ -35,7 +35,8 @@ LLB is what programs the GPU clock:
 - `0x...12fbc`–`12ff0` writes the 16 GFX perf states through
   `0x...13adc`. States 0–8 come from a 20-byte-per-entry table built from
   chip-ID fuse voltages (`chipid_get_gpu_voltage`, `chipid_get_gpu_ram_voltage`).
-  States 9–15 repeat one entry.
+  The code appeared to repeat one entry for states 9–15, but the live read
+  shows them as zero ([live read](2026-11-08-j81-gfx-perf-state-live-read.md)).
 - `0x...12ff4`–`1301c` sets up PLL 5 (`0x20e005000`): wait for bit 25
   clear, clear bit 0 at `+4`, set bit 24 at `+8`.
 - `0x...13020`–`13034` sets bit 31 of `0x20e01c200`, which enables GFX

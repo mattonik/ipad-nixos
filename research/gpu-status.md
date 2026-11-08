@@ -107,6 +107,11 @@ unchanged. LLB programs the GFX PLL perf-state table at `0x20e01c000`
 table is programmed on our boot chain. Nothing in Linux selects a GFX perf
 state, so the GPU may be sitting at 0 Hz. The proposed next check is a
 read-only PMGR read of `0x20e01c200` and the table.
+Done ([live perf-state read](2026-11-08-j81-gfx-perf-state-live-read.md)).
+The table is live in hardware and matches the ADT, and the control word is
+`0x80000000`: enabled, with no other bits set, which plausibly means state 0
+(0 Hz) is selected. GFX was off during the read. The next step is offline:
+find who selects a GFX perf state on iOS before the ID read.
 
 
 The next work is to understand the A8X-specific power, reset, wake, and
