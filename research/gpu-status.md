@@ -92,6 +92,15 @@ SoC-tuner device set 0, which drives the MCC-config and display-idle
 functions. Its policy only takes the MCC out of framebuffer-caching mode when GFX is
 busy. That is a performance setting and is unlikely to explain the hang ([SoC-tuner note](2026-11-08-j81-ios15-soc-tuner-device-sets.md)).
 
+Step by step, test4 matched every hardware write Apple's G4G driver makes
+before the ID read (power and clock on device 124, the bridge tables, and
+the GPC mask/control/request/poll), and its read was the same first access
+with a Device-nGnRnE mapping
+([test4 vs Apple](2026-11-08-j81-test4-vs-apple-pre-id-sequence.md)). What
+remains is what iBoot configures before the kernel, and timing. The next
+offline step is to decrypt J81 iBoot/iBEC 12B410 and search it for
+GFX/RGX setup.
+
 
 The next work is to understand the A8X-specific power, reset, wake, and
 ownership sequence before any further core access. Similarities to A5 SGX or
