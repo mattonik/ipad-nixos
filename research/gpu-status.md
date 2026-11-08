@@ -70,7 +70,7 @@ trace points with no hardware effect
 On iOS 15 the GFX clock gate goes to ApplePMGR's generic state path and its
 state helper. On J81 the AppleT7000 bridge-selector handler does not bind
 ([clock gate to PMGR state](2026-11-08-j81-ios15-clock-gate-to-pmgr-state.md)).
-GFX has no parent power domains, and iOS 15 writes its bridge selectors 9
+GFX has no parent power domains, no related-device step, and iOS 15 writes its bridge selectors 9
 and 10 right after PMGR state 15 is reached, the same order test4 used
 ([dependencies and bridge apply](2026-11-08-j81-ios15-gfx-dependencies-and-bridge-apply.md)).
 

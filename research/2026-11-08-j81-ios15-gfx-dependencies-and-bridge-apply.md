@@ -75,13 +75,38 @@ This matches and pins down the 2026-11-05 summary in
 The iOS 15 ADT `bridge-settings-9` and `-10` are the same 264 bytes as the
 8.1 tables test4 replayed (hash recorded in the 2026-11-04 note).
 
+## 4. The remaining helpers (compared 2026-11-08)
+
+- `bd9628` (pre-state) calls `bed9b0(0)` and keeps the result. Then for up
+  to 8 objects in the table at `pmgr+0x49b8 + state*0x9800 + id*64` it
+  calls `bed5cc`, and it does the same for the related device's `+0x100`
+  object. `bd96e8` (post-state) mirrors this with `bed5d8` and ends by
+  passing the saved value back to `bed9b0`. The pairing reads as
+  interrupt-disable plus lock, then unlock plus restore. These are external
+  kernel calls with no PMGR MMIO in either helper. The exact kernel
+  functions were not resolved.
+- `bd785c` (the related-device lookup) takes byte `+2` of the device record
+  as an index into `pmgr+0x2740`. GFX byte `+2` is 0, so it returns NULL for
+  GFX. That means the related-device lock in `bd9628`/`bd96e8` is skipped,
+  and so is the `bd9798` branch at `bd837c`.
+- For devices that do have it, `bd9798` is a real register sequence. It
+  waits on bit `0x40000000` (vtable `+0x990`, timeout `0x2ee00`), reads
+  (`+0x980`), replaces the low 4 bits and writes back (`+0x988`). This does
+  not run for GFX.
+- The `bd82a8` check of record flag bit 4 is also clear for GFX (flags 0).
+
+So on iOS 15 GFX power-up, the only hardware effects on the `bd81a8` path
+are the PMGR state change to 15 and the selector 9 and 10 bridge writes.
+Test4 did both, in the same order.
+
 ## What this leaves open
 
 - The cause of the RGX core-ID read stall is still unknown. On this path,
   dependencies, state, bridge content and bridge order all match test4.
-- Not traced: `bd9628`/`bd96e8` (pre/post steps), and the related-device
-  `bd9798` branch. These are the only parts of `bd81a8`'s power-up branch
-  not yet compared with test4.
+- The `bd81a8` power-up branch is now fully compared with test4 and
+  nothing is missing. Any missing precondition lies outside this path, for
+  example in the conditional display/MCC busy callback, in state that
+  iBoot/iBEC leaves behind, or in something AGX does after the ID read.
 - The legacy writer also builds `DEVRD`/`DEVWR`-like name keys for an object
   at `pmgr+0x2d18`/`+0x2d20`. That looks like statistics or reporting, not
   hardware. Not confirmed.
