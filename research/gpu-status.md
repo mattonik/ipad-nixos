@@ -60,6 +60,15 @@ procedure to repeat the stalled RGX read.
 
 ## Remaining boundary
 
+The iOS 15 G4G probe was traced up to the identity read. Its only pre-ID
+clock/power calls are one provider clock enable and one power enable, the same
+as iOS 8.1 ([pre-ID clock/power trace](2026-11-08-j81-ios15-g4g-pre-id-clock-power.md)).
+The next offline target is the iOS 15 PMGR clock callback behind that
+enable. The PMGR busy-edge codes `0x2700c001/2` turned out to be kdebug
+trace points with no hardware effect
+([trace-code note](2026-11-08-j81-pmgr-2700c00x-are-trace-codes.md)).
+
+
 The next work is to understand the A8X-specific power, reset, wake, and
 ownership sequence before any further core access. Similarities to A5 SGX or
 A10/A11 AGX are research leads only. There is no verified A8X initialization
