@@ -88,8 +88,13 @@ check.
 2. Hardware: repeat this read once right after the guarded PMGR power-up
    (`0x3ff`), with no bridge, GPC or RGX access. The boot used here runs the
    original GPU-test kernel (`/sys/kernel/notes` sha256 `82ff70e8...`, the
-   value the 20261106 bundle wrappers check), so the existing
-   `gpu-pmgr-once` module can be used without a reboot.
+   value the 20261106 bundle wrappers check), but its device tree is the
+   MCC payload's. Tried 2026-11-08 18:5x: `insmod gpu-pmgr-once.ko` failed
+   with `EINVAL` before any register access, because the GFX power-state
+   node lacks the `experimental,j81-gpu-test-no-poweroff` guard property
+   that the module requires. Nothing was powered, and a perf read right
+   after showed unchanged values (PS `0x300`, control `0x80000000`). The
+   check needs a boot of the `gpu-pmgr-once` payload (DFU).
 
 The stop rules in
 [`2026-11-08-j81-next-mcc-experiment-decision.md`](2026-11-08-j81-next-mcc-experiment-decision.md)
