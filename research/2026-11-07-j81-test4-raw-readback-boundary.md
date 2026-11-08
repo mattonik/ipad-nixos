@@ -39,9 +39,11 @@ planned store instructions/checkpoints in selector order; they do not prove
 that all 66 values persisted in the target registers. Likewise,
 `boot/gpu-gpc-init.c` prints the local requested value after each of its
 three stores, so those three `after-*` values are not readbacks. Its initial
-state and poll result are real volatile reads. The post-GPC capture confirms
-only two bridge words; it cannot serve as readback for the remaining 64
-table entries.
+state and poll result are real volatile reads. The post-GPC capture reads two
+bridge words. The read at `0x201f00018` matches selector 9's first table write
+to that same address and value (`0x80010004`), so one table address/value pair
+has readback evidence. The read at `0x201f0001c` is outside the table targets.
+Of the 66 table operations, the other 65 have no readback evidence.
 
 This distinction does not contradict the result note's wording that writes
 "reached their after-write checkpoints." Avoid shortening that phrase to

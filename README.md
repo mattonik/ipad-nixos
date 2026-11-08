@@ -151,7 +151,7 @@ ipad-nixos/
 | Wi-Fi | **Working on `main`** | BCM4350 scan, WPA2 association, DHCP, ping and HTTP; production boot auto-connects on 5 GHz. See [Wi-Fi bring-up](research/2026-10-10-wifi-bringup-root-cause-and-permanent-fix.md). |
 | Bluetooth | **Working on `main`** | UART3/serdev initialization is present on `main`; the `wifi-touch-kmod-BT1` payload with private patchram booted and scanned 2 classic devices and 29 LE advertisers. Pairing, connection and coexistence under load are unverified. |
 | Touch | **Working on `main`** | Five-finger multitouch verified on the Orchard main kernel; a 161.5-second run had no frame errors. J81 touch support and tooling are present on `main`; J82 and suspend/resume remain untested. |
-| GPU | **Bring-up in progress on `main`** | Test4 checkpointed all 66 planned bridge-table stores and read back two bridge words; the first RGX core-ID read stalled. The other 64 entries were not read back, and firmware execution, job submission and rendering remain unverified. See the [test4 readback boundary](research/2026-11-07-j81-test4-raw-readback-boundary.md). |
+| GPU | **Bring-up in progress on `main`** | Test4 checkpointed all 66 planned bridge-table stores and read back two bridge words; one readback overlaps a table target, leaving 65 table targets without readback. The first RGX core-ID read stalled; firmware execution, job submission and rendering remain unverified. See the [public GPU research status](research/gpu-status.md). |
 
 These are subsystem demonstrations on the iPad Air 2 Wi-Fi model (J81), not a
 complete tablet experience. The results apply to the specific payloads and
@@ -276,6 +276,7 @@ The `research/` directory contains detailed analysis of every subsystem:
 - **[Bluetooth, battery and ADT plan](docs/plans/2026-09-08-j81-bluetooth-battery-adt.md)** — Live J81 baseline, safe ADT capture and commit-sized UART3/UART5 implementation gates
 - **[J81 battery/HDQ research](research/j81-battery-hdq.md)** — Real wiring, TI timing, serdev correction and the concrete minimal driver plan
 - **[J81 GPU/audio/suspend/charging/storage plan](research/j81-long-term-subsystems.md)** — Exact remaining driver layers, ANS1 WIP path, safety gates and dependency order
+- **[J81 GPU research status](research/gpu-status.md)** — Public evidence boundary, reproducibility limits and related GPU work
 - **[touch-deep-dive.md](research/touch-deep-dive.md)** — BCM5976 Z2 protocol analysis across 5 independent implementations
 - **[compatibility-matrix.md](research/compatibility-matrix.md)** — All 40 checkm8-vulnerable iPad models
 

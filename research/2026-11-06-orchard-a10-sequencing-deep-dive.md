@@ -22,27 +22,45 @@ The A10 driver therefore has two separate prerequisites that our J81 probes do
 not have: a live coprocessor transport and a firmware-owned shared-memory
 contract. Its `gfx-kf`/A7-IOP node is not optional plumbing.
 
-## What the J81 result proves
+## J81 comparison: what is and is not missing
 
-The J81 PMGR cycle, GPC init, and post-GPC bridge read demonstrate that the
-application processor can acquire the GFX domain and access the Fender/GPC
-window. They do **not** demonstrate that the RGX slave port is released. The
-first direct read at `0x201000020` still hangs, exactly where an Apple firmware
-or an additional A8X-specific wrapper would be expected to own the transition.
+Test4 reached PMGR `0x3ff`, completed the exact 66 selector 9/10 writes,
+reached GPC state 1/control `0x40000000`, and then stalled on the first RGX
+identity read at `0x201000020`. This rules out those replayed writes plus the
+tested GPC setup as sufficient for a completed read; it does not identify the
+cause.
 
-This explains why copying Orchard's three GPC writes was insufficient: those
-writes are downstream of A10's RTKit/window setup. On J81, the missing piece is
-not another generic Linux power-domain call; it is the undocumented A8X host
-initialization and firmware/alive contract.
+The matching iOS 8.1 G4G start trace now identifies a concrete earlier
+difference: before the GPC writes, Apple calls provider slots `+0x560(1,0)`
+and `+0x568(1,&local,0)`; only after GPC setup does its identity matcher read
+RGX `+0x20` then `+0x18`. Test4 replayed the selector stores and generic PMGR
+cycle but did not execute those provider callbacks or their software-side
+state transitions. This is a falsifiable sequence gap, not proof that it caused
+the hang. The callback's SoC-busy/display work is separately conditional and
+its runtime inputs are not captured; see
+`2026-11-07-j81-core-read-missing-apple-dispatch.md`.
+
+Do not infer an A10 RTKit prerequisite from the A10 driver's order. The A10
+T8010 path boots its `gfx-kf` A7-IOP and RTKit before its first RGX access, but
+the J81 iOS 8.1 G4G trace reaches its first identity matcher before the later
+firmware-object hold/start path. The A10 protocol is therefore not evidence
+that A8X needs the same coprocessor transport or an alive message to make this
+pre-firmware identity read work. Conversely, A10's Fender state register and
+successful core-ID read are T8010/G9P evidence, not a J81 register recipe.
+
+The useful comparison is limited to sequencing discipline: both paths gate RGX
+access on platform setup, but the specific blocks and ordering differ. No
+J81 firmware/alive step is established as a missing prerequisite for the
+first identity read; the provider callbacks immediately before GPC remain the
+known unexecuted Apple sequence in test4, with causality unresolved.
 
 ## Consequence for implementation
 
-Do not port `pvr_apple.c` or its A10 firmware filename to J81. The useful parts
-to retain are the ordering and fail-closed state machine. The next offline
-milestone is to identify the J81 G4G firmware's host-visible window, boot
-descriptor, and alive notification from the iOS 8.1 AGX kext. Until those are
-known, another RGX read or a render attempt would only repeat the established
-hang boundary.
+Do not port `pvr_apple.c` or its A10 firmware filename to J81. Keep the A10
+RTKit/window contract separate from J81's pre-ID G4G path. Offline work can
+continue tracing the J81 firmware host contract for the later firmware start,
+but that is downstream of the current first-read hang and does not yet justify
+another RGX read or render attempt.
 
 Source checked locally; no firmware bytes or hardware access were added.
 
