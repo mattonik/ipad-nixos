@@ -8,8 +8,9 @@ MMIO access.
 ## Result
 
 iOS 15's G4G probe makes exactly one clock request and one power request
-before the RGX identity read, in the same order as iOS 8.1. Nothing else on the
-path touches clocks or power. The iOS 15 code adds no new pre-ID step that
+before the RGX identity read, in the same order as iOS 8.1. No other explicit
+clock or power calls appear on the G4G path; indirect provider side effects of
+those calls are not traced here. The iOS 15 code adds no new pre-ID call that
 Linux test4 could have missed.
 
 Instruction order on the path that reaches the identity read:
@@ -56,8 +57,8 @@ not a provider index 7.
 
 ## What this means for the next step
 
-The only pre-ID clock/power edge in iOS 15 is the provider clock enable for
-`clock-gates[0]`, the same call already traced on iOS 8.1. On iOS 8.1 it goes
+The only explicit pre-ID clock request in iOS 15 is the provider clock enable
+for `clock-gates[0]`, the same call already traced on iOS 8.1. On iOS 8.1 it goes
 to the PMGR per-device reference count. On a 0→1 edge it requests PMGR state
 15, applies selectors 9 and 10, and takes a SoC-busy reference
 (`2026-11-07-j81-gfx-clock-reference-startup-audit.md`). The G4G probe itself

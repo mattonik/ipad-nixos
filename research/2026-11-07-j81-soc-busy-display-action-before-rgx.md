@@ -54,8 +54,8 @@ feature is described for J81. They do not establish the result of setup in
 the test boot: boot arguments and failed/missing provider resolution can
 disable it.
 
-When enabled, the busy-edge handler first sends PMGR action/event
-`0x2700c001` for cache ID `0x75` with the edge boolean. It calls the display
+When enabled, the busy-edge handler first passes code `0x2700c001` to PMGR
+vtable `+0x740` for cache ID `0x75` with the edge boolean. It calls the display
 idle function with the same boolean. If that call returns success, the
 selected MCC configuration is `+0x95c` on 0→1 and the configured value 4 on
 1→0. If that differs from the cached mode at `+0x968`, Apple calls
@@ -64,8 +64,10 @@ function object only when internal flag `+0x958` is set and object pointer
 `+0x978` exists. It passes `(enable=1, requested_mode)` and records the
 returned mode at `+0x968` only on success. The caller then updates provider
 cache state with `+0x690` and clears the pending bit. Completion sends
-`0x2700c002`. The PMGR helper contains no direct MCC MMIO; it delegates
-through the function object. The 8.1 numeric selector is now traced
+`0x2700c002` to the same PMGR slot. iOS 15 identifies these codes as kdebug
+trace markers; the iOS 8.1 interpretation is a strong inference from the
+matching call shape and constants, not proof. The PMGR helper contains no
+direct MCC MMIO; it delegates through the function object. The 8.1 numeric selector is now traced
 statically: it applies the requested row's first two words to mapped `+0x830`
 using the masks described below. The selector's initialized-state guard and
 the function wrapper's return behavior are also known from static code. These

@@ -104,13 +104,16 @@ records with flag bit 3: it is set to 1 on enable and 0 on disable. The J81
 `DISP0` record is the sole record with bit 3. On 0→1 busy, the routine sets
 `bVar2=0` and requests the busy MCC mode (`+0x95c`); on 1→0 it sets
 `bVar2=1` and requests configured `mcc-config-fb-caching` (`+0x988`, J81
-value 4). It emits controller event `0x2700c001` for cache ID `0x75`, then
+value 4). It passes `0x2700c001` to the PMGR vtable `+0x740` for cache ID
+`0x75`, then
 invokes `function-dispidle_ctrl` with that state. If that call succeeds and
 the desired MCC mode differs from the last applied mode, the controller
 applies it through the cached MCC function; it then updates the cache record
-through its `+0x690` method. The completion/error path emits event
-`0x2700c002`. This exposes what test4's direct stores omitted: the clock
-reference edge, busy counter, and any enabled display coordination. The
+through its `+0x690` method. The completion/error path passes `0x2700c002` to
+the same slot. iOS 15 identifies these as kdebug trace markers;
+that interpretation for iOS 8.1 is a strong inference from the matching call
+shape and constants, not proof. This exposes what test4's direct stores
+omitted: the clock reference edge, busy counter, and any enabled display coordination. The
 current artifacts do not establish live `+0x980`, whether the display
 callback resolves, or whether either edge ran; the omission is not evidence
 that display-side work caused the RGX hang. Test4's initial `0x300` PMGR word

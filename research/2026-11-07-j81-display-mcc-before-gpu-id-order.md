@@ -12,8 +12,10 @@ transition edge, the ID-124 record has flags `0x06`: Apple requests PMGR state
 stores, and calls the SoC-busy helper. The helper increments its in-memory
 count. It calls the display/MCC path only when feature `+0x980` and byte
 `+0x98c` are enabled, the count crosses 0↔1, and callback object `+0x990`
-exists. It emits action `0x2700c001`, calls display callback vtable `+0x78`,
-and only on callback success may apply an MCC mode. The helper completes and
+exists. It passes code `0x2700c001` to PMGR vtable `+0x740`, calls display
+callback vtable `+0x78`, and only on callback success may apply an MCC mode.
+The iOS 8.1 slot is unresolved; that code is likely a trace marker, a strong
+inference from the iOS 15 helper, call shape, and constants, not proof. The helper completes and
 G4G continues into GPC setup; the first GPU ID access is the 32-bit read at
 `0x201000020`.
 

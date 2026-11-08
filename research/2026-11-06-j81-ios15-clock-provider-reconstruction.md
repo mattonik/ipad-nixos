@@ -24,8 +24,10 @@ Evidence from `artifacts/live/private/gpu-offline/`:
   helper. Flag bit 2 enters the provider busy-count transition.
 - `FUN_ffffff80031eb7c0` performs the provider busy transition. On the first
   acquire/release it calls the provider vtable at `+0x78`, then invokes the
-  clock action at the PMGR vtable `+0x740` with action ids `0x2700c001` and
-  `0x2700c002`, and finally updates the provider's clock bitmap.
+  PMGR vtable `+0x740` with codes `0x2700c001` and `0x2700c002`, and finally
+  updates the provider's clock bitmap. iOS 15 identifies these as kdebug trace
+  markers; that interpretation for iOS 8.1 is a strong inference from the
+  matching call shape and constants, not proof.
 - `FUN_ffffff80031eb648` copies the selected clock record's offset/value pairs
   into the provider's mapped clock regions. This is the missing class of work
   from the current Linux path: the existing J81 driver only reaches the PMGR
