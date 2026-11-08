@@ -224,8 +224,13 @@ ignored `artifacts/live/private/gpu-offline/`.
 The newer kernelcache separates `com.apple.AGXG4G`,
 `com.apple.AGXFirmwareKextG4G`, `com.apple.driver.ApplePMGR`, and
 `com.apple.driver.AppleT7001PMGR`. Its `AGXG4G_A0` personality matches
-`gpu,t7001` on `AppleARMIODevice`; its `AppleT7001PMGR` personality matches
-`pmgr1,t7001`, the compatible in the separately captured J81 ADT. This is
+`gpu,t7001` and declares `IOProviderClass=AppleARMIODevice`; its
+`AppleT7001PMGR` personality matches `pmgr1,t7001`, the compatible in the
+separately captured J81 ADT. These are static personality criteria, not proof
+that the live 15.8.8 `sgx` provider is an `AppleT7001IO` instance or that its
+indirect gate calls bind to a particular backing object. See
+[`2026-11-08-j81-ios15-applearmiodevice-vtable-candidates.md`](2026-11-08-j81-ios15-applearmiodevice-vtable-candidates.md)
+for the bounded 15.8.8 vtable result and its runtime-binding limit. This is
 consistent with a driver/device-tree naming change across releases, without
 assuming the capture's exact OS version.
 

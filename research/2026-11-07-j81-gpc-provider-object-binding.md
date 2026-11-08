@@ -235,6 +235,12 @@ dispatch chain. The 12B410 device-tree child-factory and T7001IO controller
 path above resolve the effective gate implementation even without an
 IORegistry capture.
 
+This resolved chain is specific to the matching iOS 8.1 (12B410) inputs and
+must not be projected onto iPadOS 15.8.8. The newer-kernel inspection confirms
+the `AppleARMIODevice` base slots and static `AppleT7001IO` subclass overrides,
+but not the live `sgx` provider's dynamic class or the backing object's runtime
+binding; see [`2026-11-08-j81-ios15-applearmiodevice-vtable-candidates.md`](2026-11-08-j81-ios15-applearmiodevice-vtable-candidates.md).
+
 Public corroboration: [Apple XNU `IOService.h`](https://github.com/apple-oss-distributions/xnu/blob/main/iokit/IOKit/IOService.h),
 which documents subclass matching for `IOProviderClass`. This is current
 public API documentation, not source for the proprietary iOS 8.1 drivers.
