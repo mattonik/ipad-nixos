@@ -50,15 +50,46 @@ point: states 9–15 read as zero here, they do not repeat an entry.
   hardware selects once GFX is powered. That is the one open question this
   check can still answer.
 
+## Offline search for the perf-state selector (same day)
+
+A search of both kernelcaches found no kernel code that selects a GFX perf
+state:
+
+- The `sgx` ADT node maps no PMGR registers. It does carry
+  `meta-sw-interrupt`, which names PMGR addresses `0x20e104010` and
+  `0x20e104090`, and two platform functions, `clpc_enabled` (on `pmgr`)
+  and `clpc_gpu_feedback` (on `clpc`).
+- J81 PMGR `perf-domains` lists only SOC and CPU. The iOS 15 ApplePMGR GFX
+  clock-generator helpers (`readGFXClkGenReg` and related) and the GFX perf
+  domain are generic code for other SoCs, and nothing on J81 points them at
+  this block.
+- In 12B410, the only kernel reader of `perf-states`, `perf-state-count`
+  and `meta-sw-interrupt` is `IOAcceleratorFamily2`, at
+  `0xffffff8003285468`–`854ec` and `0xffffff8003287384`. It copies the
+  (frequency, voltage) pairs into its own object (`+0x5d2c`, count at
+  `+0x5dac`). These are DVFS tables for the GPU power controller or
+  firmware, not register writes.
+- A scan of the 12B410 prelinked text and kernel text, and of the whole
+  19H422 image, for an `add #0x1c, lsl #12` or a `0x1c000`/`0x1c200`
+  immediate found nothing relevant. This is a pattern scan, not a full
+  audit: a base pointer plus a table offset would not show up in it.
+
+Reading: on iOS the kernel probably never selects a GFX perf state itself.
+The selection is either made later by the GPU firmware, which runs after
+the ID read, or made by hardware when GFX powers on. If it is the
+firmware, Apple's ID read would also run at state 0, and 0 Hz cannot be
+the whole cause of the hang. If it is the hardware, a read after power-up
+will show a nonzero selection. So the after-power-up read is the deciding
+check.
+
 ## Next
 
-1. Offline: find who writes `0x20e01c200` (or another GFX perf-select
-   register) on iOS, in the AGX kext or ApplePMGR, and whether it happens
-   before the RGX ID read. That decides whether the core-ID hang is a 0 Hz
-   clock.
-2. Hardware, only if 1 is inconclusive: repeat this read once in a fresh
-   GPU-payload boot right after the guarded PMGR power-up (`0x3ff`), with no
-   bridge, GPC or RGX access. It needs a reboot through DFU.
+1. Done above, inconclusive on its own.
+2. Hardware: repeat this read once right after the guarded PMGR power-up
+   (`0x3ff`), with no bridge, GPC or RGX access. The boot used here runs the
+   original GPU-test kernel (`/sys/kernel/notes` sha256 `82ff70e8...`, the
+   value the 20261106 bundle wrappers check), so the existing
+   `gpu-pmgr-once` module can be used without a reboot.
 
 The stop rules in
 [`2026-11-08-j81-next-mcc-experiment-decision.md`](2026-11-08-j81-next-mcc-experiment-decision.md)
