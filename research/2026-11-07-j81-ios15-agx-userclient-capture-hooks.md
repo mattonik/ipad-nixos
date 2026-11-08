@@ -5,11 +5,15 @@ no Orchard source changes.
 
 ## Artifact provenance
 
-The local decoded J81 iPadOS 15.8.8 kernelcache is
+The local decoded J81 iOS 15 cache is
 `artifacts/live/private/gpu-offline/ios15-kernel`, SHA-256
-`832cd980f257e6205b8ec131abea2a8470f3a3455f2c7039c890a091149c7389`.
-The preceding J81 GPU trace records that the NAS IPSW BuildManifest selects
-`kernelcache.release.ipad5b` for J81 on 19H422. The adjacent
+`832cd980f257e6205b8ec131abea2a8470f3a3455f2c7039c890a091149c7389`. Its
+embedded prelink metadata says `DTPlatformVersion=15.8` and
+`DTPlatformBuild=19H402`. The exact 19H422 source association for this file is verified by the matching
+manifest digest and raw and decoded caches. The prelink value is platform
+metadata, not the top-level product build. See [the provenance
+check](2026-11-08-j81-ios15-kernelcache-provenance.md). This does not establish
+which binary was running on a device. The adjacent
 `ios15-kexts.json` is its extracted prelink inventory. Its AGX entry is
 `com.apple.AGXG4G`, executable `AGXG4G`, personality `AGXG4G_A0`, class
 `AGXAcceleratorG4G_A0`, provider `AppleARMIODevice`, and `IONameMatch` is

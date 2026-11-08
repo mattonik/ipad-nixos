@@ -63,16 +63,23 @@ procedure to repeat the stalled RGX read.
 The iOS 15 G4G probe was traced up to the identity read. Its only pre-ID
 clock/power calls are one provider clock enable and one power enable, the same
 as iOS 8.1 ([pre-ID clock/power trace](2026-11-08-j81-ios15-g4g-pre-id-clock-power.md)).
-The next offline target is the iOS 15 PMGR clock callback behind that
-enable. The PMGR busy-edge codes `0x2700c001/2` turned out to be kdebug
-trace points with no hardware effect
+The iOS 15 PMGR callback is now traced through the generic per-device state
+compare and state-transition helper; the dependency builder also maintains
+per-device counts. The PMGR busy-edge codes `0x2700c001/2` turned out to be
+kdebug trace points with no hardware effect
 ([trace-code note](2026-11-08-j81-pmgr-2700c00x-are-trace-codes.md)).
 On iOS 15 the GFX clock gate goes to ApplePMGR's generic state path and its
-state helper. On J81 the AppleT7000 bridge-selector handler does not bind
+state helper. The separate AppleT7000 special-action handler does not bind on
+J81, but this does not exclude other bridge paths
 ([clock gate to PMGR state](2026-11-08-j81-ios15-clock-gate-to-pmgr-state.md)).
-GFX has no parent power domains, no related-device step, and iOS 15 writes its bridge selectors 9
-and 10 right after PMGR state 15 is reached, the same order test4 used
+GFX's captured dependency record has no parent IDs or related-device object;
+selectors 9 and 10 are written after state 15 on the traced transition, the
+same order test4 used
 ([dependencies and bridge apply](2026-11-08-j81-ios15-gfx-dependencies-and-bridge-apply.md)).
+The effective Linux FDT on the inspected boot has no bridge-settings,
+bridge-reg-index, or state-config properties, so it cannot answer what those
+properties held in Apple's ADT or whether iOS PMGR populated `bcc56c` records
+for GFX ([Linux FDT property check](2026-11-08-j81-linux-fdt-pmgr-properties.md)).
 
 
 The next work is to understand the A8X-specific power, reset, wake, and

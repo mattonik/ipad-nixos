@@ -1,10 +1,13 @@
 # J81 PMGR `0x2700c001`/`0x2700c002` are kdebug trace codes, not hardware actions
 
-Date: 2026-11-08. Offline disassembly of the iPadOS 15.8.8 J81 kernelcache's
+Date: 2026-11-08. Offline disassembly of the iOS 15 J81 kernelcache, whose
+19H422 source association is verified (embedded `DTPlatformBuild=19H402`; see
+the [provenance check](2026-11-08-j81-ios15-kernelcache-provenance.md)),
 `com.apple.driver.ApplePMGR` `__TEXT_EXEC` (VA `0xfffffff006bb9000`, size
 `0x34a4c`). It was cut from `ios15-kernel` and is byte-identical to the
 existing `ios15-ApplePMGR.raw`. Disassembled with `objdump -b binary -m aarch64`.
-No device access.
+This verifies source provenance, not which binary ran on a device. No device
+access.
 
 ## Finding
 

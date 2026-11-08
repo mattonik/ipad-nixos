@@ -1,8 +1,10 @@
 # J81 iOS 15 AppleARMIODevice vtable candidates
 
-Date: 2026-11-08. Bounded offline inspection of the local iPadOS 15.8.8
-kernelcache (`artifacts/live/private/gpu-offline/ios15-kernel`). No device,
-build, or MMIO access.
+Date: 2026-11-08. Bounded offline inspection of the local iOS 15 kernelcache
+(embedded `DTPlatformBuild=19H402`; its 19H422 source association is verified;
+see [the provenance check](2026-11-08-j81-ios15-kernelcache-provenance.md)).
+This verifies source provenance, not which binary was running on a device.
+No device, build, or MMIO access.
 
 ## Mapped AppleARMPlatform ranges
 

@@ -214,12 +214,18 @@ captured ADT; it is not evidence of a mismatch within the 8.1 release.
 The exact `sgx` controller-pointer assignment is still untraced, so this
 establishes a matching candidate, not the runtime object's identity.
 
-For comparison, the NAS IPSW's BuildManifest associates J81 with
-`kernelcache.release.ipad5b` in iPadOS 15.8.8 (19H422). Its decompressed
-kernelcache SHA-256 is
-`832cd980f257e6205b8ec131abea2a8470f3a3455f2c7039c890a091149c7389`.
-The private extracted kernelcache and decoded 8.1 device tree remain under
-ignored `artifacts/live/private/gpu-offline/`.
+The local iOS 15 Mach-O at
+`artifacts/live/private/gpu-offline/ios15-kernel` has SHA-256
+`832cd980f257e6205b8ec131abea2a8470f3a3455f2c7039c890a091149c7389` and is
+byte-identical to the decoded J81 kernelcache in the 19H422 extraction. The
+matching BuildManifest digest and raw cache verify its exact 19H422 source
+association. Its embedded prelink metadata says `DTPlatformVersion=15.8` and
+`DTPlatformBuild=19H402`; this is platform/toolchain metadata, not the
+top-level product build. See [the provenance
+check](2026-11-08-j81-ios15-kernelcache-provenance.md). This establishes source
+provenance, not the binary running on a particular device. The
+private cache and decoded 8.1 device tree remain under ignored
+`artifacts/live/private/gpu-offline/`.
 
 The newer kernelcache separates `com.apple.AGXG4G`,
 `com.apple.AGXFirmwareKextG4G`, `com.apple.driver.ApplePMGR`, and
@@ -250,7 +256,9 @@ hardware or MMIO access was performed.
 
 ## Follow-up: iPadOS 15 Fender wait and 8.1 provider construction
 
-In 19H422 `AGXG4G`, the G4G Fender performance-state setter at
+In the local iOS 15 cache (`DTPlatformBuild=19H402`; source association with
+19H422 verified; see [the provenance
+check](2026-11-08-j81-ios15-kernelcache-provenance.md)), the `AGXG4G` Fender performance-state setter at
 `0xfffffff006698d94` reads `Fender+0x1000` until bit 4 clears, calling the
 kernel's `IODelay(10)` between reads. Its loop counter and timeout diagnostic
 indicate a nominal **30,000 ms** delay budget. On success it writes
@@ -500,7 +508,9 @@ unresolved; this is not a verified power-up sequence. No MMIO was accessed.
 
 ## Follow-up: 15.8.8 firmware package comparison
 
-In 19H422, the J81 `AGXFirmwareKextG4G` method at
+In the local iOS 15 cache (`DTPlatformBuild=19H402`; source association with
+19H422 verified; see [the provenance
+check](2026-11-08-j81-ios15-kernelcache-provenance.md)), the J81 `AGXFirmwareKextG4G` method at
 `0xfffffff0069820c0` returns its `__TEXT.__const` image at
 `0xfffffff0059ab9c8`, length `0x1cbb4`. Interpreting that private image
 with the **8.1 record-link and type-0 source-range rules** yields a
@@ -516,7 +526,7 @@ bytes are recorded here and neither image was executed.
 
 ### 15.8.8 record-walker cross-check
 
-The 19H422 G4G driver's instructions at `0xfffffff00668fc40` confirm that
+The local G4G driver's instructions at `0xfffffff00668fc40` confirm that
 its loader reads the first record offset from image `+8`, follows the next
 offset at record `+4` until `0xffffffff`, masks the record type with
 `0x1f`, and handles types 0 and 4 while calculating image regions. For
@@ -944,7 +954,7 @@ defines `Z_ZERO` as bit `0x0004` and documents zero-filled allocation.
 The running binary identifies itself as xnu `8020.241.44`, not the
 public `8020.140.41` reference. The shared PMGR constructor and J81
 subclass constructor were inspected; no direct write to the format
-field at object offset `0x2684` was found there. The shared initializer
+field at object offset `0x2680` was found there. The shared initializer
 assigns that field if the `bridge-settings-version` property is present;
 this captured tree lacks that property. Together this supports a
 zero/legacy-format default on the normal allocation path, but is still

@@ -392,7 +392,9 @@ firmware. Remaining suspects: hardware-side, i.e. the display-sync routing (GPIO
 reads iOS function code 2 as "input", which may mean "peripheral route 2") or a missing
 supply/clock difference; or a mode change carried in the kext's power-state handling.
 
-**Power-state path resolved offline, 2026-11-02:** the 19H422 J81 N1 instance
+**Power-state path resolved offline, 2026-11-02:** the local iOS 15 J81 N1
+cache (embedded `DTPlatformBuild=19H402`; source association with 19H422 verified;
+see [the provenance check](2026-11-08-j81-ios15-kernelcache-provenance.md)) has instance
 vtable `0xfffffff006ddaaa0` inherits `+0x718` and its workloop callback from
 Z2SPI. On a nonzero power transition, it calls the ADT power providers, then
 `function-enable_cs` (GPIO51), `function-clock_enable` (PMGR touch clock),

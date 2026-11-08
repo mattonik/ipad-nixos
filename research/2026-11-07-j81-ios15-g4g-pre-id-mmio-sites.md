@@ -5,7 +5,10 @@ device access.
 
 ## Scope and artifacts
 
-The input is the locally decoded J81 iPadOS 15.8.8 kernelcache and its AGX G4G
+The input is the locally decoded J81 iOS 15 kernelcache, whose 19H422 source
+association is verified; it has embedded `DTPlatformBuild=19H402` (see [the
+provenance check](2026-11-08-j81-ios15-kernelcache-provenance.md)). This does
+not establish which binary was running on a device. The input also includes its AGX G4G
 Ghidra disassembly/decompilation in `artifacts/live/private/gpu-offline/`
 (`ios15-kernel`, `ios15-agx-disasm.txt`, `ios15-g4g-probe.c`). The inspected
 function `FUN_fffffff00668322c` starts at `0xfffffff00668322c` in the

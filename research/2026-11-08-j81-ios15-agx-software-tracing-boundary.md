@@ -17,7 +17,9 @@ RGX identity reads, but that is static evidence, not a runtime trace (see
 
 ## New bounded evidence from local artifacts
 
-The J81 15.8.8 decoded kernelcache is available at
+The local J81 iOS 15 decoded cache (embedded `DTPlatformBuild=19H402`; its
+19H422 source IPSW association is verified; see [the provenance
+check](2026-11-08-j81-ios15-kernelcache-provenance.md)) is available at
 `artifacts/live/private/gpu-offline/ios15-kernel` (SHA-256
 `832cd980f257e6205b8ec131abea2a8470f3a3455f2c7039c890a091149c7389`). Its
 prelink inventory identifies the `gpu,t7001` AGXG4G personality; its

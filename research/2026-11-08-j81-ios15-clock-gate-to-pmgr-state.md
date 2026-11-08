@@ -1,10 +1,13 @@
 # J81 iOS 15: GFX clock gate reaches ApplePMGR's generic state path, not the T7000 special action
 
-Date: 2026-11-08. Offline objdump disassembly of the iPadOS 15.8.8 J81
-kernelcache (`artifacts/live/private/gpu-offline/ios15-kernel`). Slices cut:
+Date: 2026-11-08. Offline objdump disassembly of the iOS 15 J81 kernelcache
+(`artifacts/live/private/gpu-offline/ios15-kernel`), whose 19H422 source
+association is verified. It has embedded `DTPlatformBuild=19H402`; see [the
+provenance check](2026-11-08-j81-ios15-kernelcache-provenance.md). Slices cut:
 `ApplePMGR` `__TEXT_EXEC` `0xfffffff006bb9000`+`0x34a4c`, `AppleT7001PMGR`
 `0xfffffff006c88000`+`0x2f28`, and `AppleT7000` `0xfffffff006c8f000`+`0xaadc`.
-No device access.
+This verifies source provenance, not which binary ran on a device. No device
+access.
 
 ## 1. The clock-gate `+0x80` target (the last open link)
 
@@ -31,9 +34,12 @@ Complete chain: G4G → `AppleT7001IO +0x568` → cached `function-clock_gate` o
 `+0x80` (`ApplePMGRFunctionClockGate`) → `ApplePMGR 0x...6bd7a1c` →
 `0x...6bd7ad0` → `0x...6bd81a8` → `0x...6bc6ed8`.
 
-There is **no per-device reference count** on this path. The per-device record
-of 8.1 (`count != 0` → active) becomes a cached-state compare here. The 8.1
-question "was G4G's request a 0→1 edge?" does not carry over to iOS 15.
+At the clock-gate callback boundary, the request is compared with a cached
+per-(instance, device) state; this is not the iOS 8.1 G4G-side 0→1 reference
+count. Downstream, `0x...6bc8de4` does maintain per-device counts while
+building dependency transitions, so counts still exist in the broader PMGR
+path. The iOS 8.1 question "was G4G's request a 0→1 edge?" does not carry over
+to this iOS 15 callback.
 
 ## 2. Which PMGR driver binds on J81 under iOS 15
 
@@ -63,9 +69,11 @@ The iOS 15 ADT carries the bridge data directly in the `pmgr` node:
 ApplePMGR parses them (string refs at `0x...6bc09b8` and around it into
 `BridgeData` objects). Selectors 9/10 in the 8.1 record match
 `bridge-settings-9`/`-10` by number, which supports test4's choice of tables.
-This pass did **not** find where or when iOS 15 ApplePMGR applies a device's
-bridge settings during the state change. It could be inside `0x...6bd81a8`'s
-callees, or only at init or wake. That is the next open point.
+This pass did **not** resolve where or when iOS 15 ApplePMGR applies a device's
+bridge settings. The later trace found GFX selectors 9/10 applied from
+`0x...6bd81a8` on its state-15 transition; other bridge application paths,
+including init or wake paths, were not exhaustively traced. See
+`2026-11-08-j81-ios15-gfx-dependencies-and-bridge-apply.md`.
 
 ## 4. Record-flag platform actions
 
