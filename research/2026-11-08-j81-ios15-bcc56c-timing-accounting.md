@@ -140,3 +140,14 @@ The three relevant extracted artifacts are local and ignored by Git:
 `ios15pmgr-bridge-use.c`. These findings apply to the local cache whose source
 association with 19H422 is verified; they do not establish which binary was
 running on a device.
+
+## Later resolution: optional gated action
+
+The later [SoC-tuner and PMGR counter trace](2026-11-08-j81-ios15-soc-tuner-device-sets.md)
+resolved the `0x...bd6328` action for selector 1: its inspected path reads two
+PMGR counter words and returns a result. It does not issue a register store
+on that path. The earlier references above to this action being undisassembled
+or its callback body being unknown describe the state of the analysis at that
+time. The separate `record+0x28` pointer's provenance and whether GFX has an
+eligible record remain unresolved; a software load also does not establish
+that every possible underlying register read has no side effect.

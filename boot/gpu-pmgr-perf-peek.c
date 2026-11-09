@@ -3,9 +3,7 @@
  * Never touches RGX, GPC, the GFX bridges, Fender or the MCC.
  *
  *   0x20e01c000 + n*0x10, n = 0..15   GFX perf-state table (LLB writes it)
- *   0x20e01c004 + n*0x10, n = 0..15   second word of each perf-state entry
  *   0x20e01c200                       GFX perf-state control (LLB sets bit 31)
- *   0x20e01c300                       LLB tunable word (LLB writes 0x40000001)
  *   0x20e020320                       GFX PMGR power state (read in test4)
  */
 #include <fcntl.h>
@@ -51,6 +49,7 @@ int main(int argc, char **argv)
 		perror("mmap PMGR ps");
 		goto out_perf;
 	}
+	/* 34 perf-page words: 0x000..0x0f4, 0x200, 0x300 (last ends at 0x303), plus PS below. */
 	if (puts("stage=before-perf-read base=0x20e01c000 words=34 ps=0x20e020320") == EOF ||
 	    fflush(stdout) == EOF)
 		goto out_ps;
@@ -60,16 +59,14 @@ int main(int argc, char **argv)
 	fflush(stdout);
 	printf("ctl raw=0x%08x\n", rd(perf, 0x200));
 	fflush(stdout);
+	printf("perf-tunable raw=0x%08x\n", rd(perf, 0x300));
+	fflush(stdout);
 	for (n = 0; n < 16; n++) {
 		printf("perf%02u raw=0x%08x\n", n, rd(perf, n * 0x10));
 		fflush(stdout);
-	}
-	for (n = 0; n < 16; n++) {
-		printf("perf%02u+4 raw=0x%08x\n", n, rd(perf, n * 0x10 + 4));
+		printf("perf%02u-p4 raw=0x%08x\n", n, rd(perf, n * 0x10 + 4));
 		fflush(stdout);
 	}
-	printf("w300 raw=0x%08x\n", rd(perf, 0x300));
-	fflush(stdout);
 	puts("stage=after-perf-read");
 	fflush(stdout);
 	rc = 0;

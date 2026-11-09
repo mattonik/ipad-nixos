@@ -80,34 +80,26 @@ The effective Linux FDT on the inspected boot has no bridge-settings,
 bridge-reg-index, or state-config properties, so it cannot answer what those
 properties held in Apple's ADT or whether iOS PMGR populated `bcc56c` records
 for GFX ([Linux FDT property check](2026-11-08-j81-linux-fdt-pmgr-properties.md)).
-The only unclassified code left on that path is the `bcc56c` timing
-helper's optional branch. It runs a PMGR action (`0x...bd6328`) under the
-PMGR command gate, and only for `state-config` records with byte `+0x57` set
-([`bcc56c` note](2026-11-08-j81-ios15-bcc56c-timing-accounting.md)). The next
-cheap offline checks are to disassemble `bd6328` and to look in the private
-Pongo ADT capture for `state-config` rows naming GFX (`0x7c`).
-Done: `bd6328` only reads PMGR counter registers, so the `bd81a8` path
-has no unclassified write. GFX is one of the five devices in the iOS 15
-SoC-tuner device set 0, which drives the MCC-config and display-idle
-functions. Its policy only takes the MCC out of framebuffer-caching mode when GFX is
-busy. That is a performance setting and is unlikely to explain the hang ([SoC-tuner note](2026-11-08-j81-ios15-soc-tuner-device-sets.md)).
+The later [`bcc56c` analysis](2026-11-08-j81-ios15-bcc56c-timing-accounting.md)
+resolved its optional selector-1 action to PMGR counter reads. The alternate
+pointer's mapping and whether a GFX record invokes the action remain unknown.
+GFX is in an iOS 15 SoC-tuner set linked to MCC and display policy; its
+runtime activation and effect on GPU reachability have not been established
+([SoC-tuner note](2026-11-08-j81-ios15-soc-tuner-device-sets.md)).
 
-Test4 matched the traced pre-ID writes and values (power and clock on device
-124, the bridge tables, and the GPC mask/control/request/poll), but its helper
-processes left seconds between stages versus Apple's 10 µs delay. The ID read
-was the same first access, with a Device-nGnRnE mapping
-([test4 vs Apple](2026-11-08-j81-test4-vs-apple-pre-id-sequence.md)). What
-remains is what iBoot configures before the kernel, and timing. The next
-offline step is to decrypt J81 iBoot/iBEC 12B410 and search it for
-GFX/RGX setup.
-Done ([iBoot/LLB note](2026-11-08-j81-iboot-llb-gfx-perf-state.md)).
-iBoot does not touch the GPU blocks; LLB programs the GFX perf-state table
-and sets bit 31 at `0x20e01c200`. The all-zero state-0 word has its valid bit
-clear, so it is an invalid entry, not a valid 0 Hz state. The read-only
-snapshot confirmed the table values match the ADT and recorded control word
-`0x80000000` while GFX was off. The control field layout and selected state
-after power-up remain unknown; see the [live perf-state read](2026-11-08-j81-gfx-perf-state-live-read.md).
+Test4's planned bridge stores match the conditional format-0 Apple writer,
+and its GPC operations match the inspected pre-ID sequence. Its software
+checkpoints are not readback of all entries. Apple waits 10 µs after the GPC
+poll; the identity-read transcript does not timestamp the actual test4
+interval. Linux and XNU mapping attributes have not been compared directly
+([test4 comparison](2026-11-08-j81-test4-vs-apple-pre-id-sequence.md)).
 
+Both 8.1 and 15.8.8 LLB images contain GFX perf-control writes. A helper
+hid the 15.8.8 writes from the original address scan; they can produce values
+matching the later Linux capture. That is static evidence, not proof of the
+last writer or of which instructions ran in the Linux boot. The selected
+GPU performance state remains unknown ([bootloader analysis](2026-11-09-j81-iboot-15.8.8-first-scan.md),
+[helper inventory](2026-11-09-j81-llb-indirect-pmgr-helper.md)).
 
 The next work is to understand the A8X-specific power, reset, wake, and
 ownership sequence before any further core access. Similarities to A5 SGX or

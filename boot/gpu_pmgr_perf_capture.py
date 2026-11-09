@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """Stage gpu-pmgr-perf-peek on the J81 and capture one read-only snapshot.
 
-Reads only the GFX perf-state block (0x20e01c000-0x20e01c0f0, 0x20e01c200)
-and the GFX PMGR state word (0x20e020320). Run at most once per boot.
+Reads table words at 0x20e01c000..0x20e01c0f4, control at 0x20e01c200,
+and tunable at 0x20e01c300 (last byte 0x20e01c303), plus PS at
+0x20e020320. Run at most once per boot. Timeout is host-side; the target
+probe has no watchdog.
 """
 import argparse
+from collections import Counter
 import hashlib
 import os
 from pathlib import Path
@@ -20,19 +23,32 @@ HOST = "172.16.42.1"
 REMOTE = "/tmp/gpu-pmgr-perf-peek"
 READY = b"stage=before-perf-read base=0x20e01c000 words=34 ps=0x20e020320"
 DONE = b"stage=after-perf-read"
-LINE = re.compile(rb"(ps|ctl|perf\d\d) raw=0x([0-9a-f]{8})")
+LINE = re.compile(rb"(ps|ctl|perf-tunable|perf\d\d(?:-p4)?) raw=0x([0-9a-f]{8})")
+EXPECTED = {"ps", "ctl", "perf-tunable"} | {
+    f"perf{n:02d}{suffix}" for n in range(16) for suffix in ("", "-p4")
+}
+
+
+def complete_output(data):
+    names = Counter(name.decode() for name, _ in LINE.findall(data))
+    return names == Counter({name: 1 for name in EXPECTED})
 
 
 def decode(log: bytes) -> None:
     for name, raw in LINE.findall(log):
         v = int(raw, 16)
         name = name.decode()
-        if name.startswith("perf"):
+        if name.startswith("perf") and name[4:6].isdigit():
+            if name.endswith("-p4"):
+                print(f"{name} 0x{v:08x}")
+                continue
             fb, pre, post = (v >> 12) & 0x1ff, (v >> 4) & 0x1f, v & 0xf
             mhz = 24 * fb / (pre * (post + 1)) if pre else 0
             print(f"{name} 0x{v:08x} fb={fb} pre={pre} post={post} ~{mhz:.1f} MHz vidx={v >> 24}")
         elif name == "ps":
             print(f"ps    0x{v:08x} target={v & 0xf} actual={(v >> 4) & 0xf}")
+        elif name == "perf-tunable":
+            print(f"{name} 0x{v:08x}")
         else:
             print(f"ctl   0x{v:08x} bit31={v >> 31}")
 
@@ -62,6 +78,8 @@ def capture(sock, path, timeout):
                 acknowledged, data = True, b""
                 continue
             if acknowledged and DONE in data:
+                if not complete_output(data):
+                    raise RuntimeError("capture completed without exactly one value for every expected register")
                 return data
     raise RuntimeError("capture incomplete; device state is unknown")
 
@@ -73,6 +91,8 @@ def main():
     parser.add_argument("log", type=Path, help="new private host log file")
     parser.add_argument("--timeout", type=float, default=30)
     args = parser.parse_args()
+    if not 1 <= args.timeout <= 300:
+        parser.error("--timeout must be between 1 and 300 seconds")
     data = args.binary.read_bytes()
     if hashlib.sha256(data).hexdigest() != args.sha256:
         parser.error("binary hash mismatch; not staging")

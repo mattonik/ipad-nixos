@@ -39,8 +39,11 @@ LLB is what programs the GPU clock:
   chip-ID fuse voltages (`chipid_get_gpu_voltage`, `chipid_get_gpu_ram_voltage`).
   The code appeared to repeat one entry for states 9–15, but the live read
   shows them as zero ([live read](2026-11-08-j81-gfx-perf-state-live-read.md)).
-- `0x...12ff4`–`1301c` sets up PLL 5 (`0x20e005000`): wait for bit 25
-  clear, clear bit 0 at `+4`, set bit 24 at `+8`.
+- `0x...12ff4`–`1301c` operates on PMGR page `0x20e005000`: wait for bit
+  25, clear bit 0 at `+4`, set bit 24 at `+8`. The block is not identified
+  as PLL 5 by the LLB instructions, the saved ADT, or the iOS PMGR analysis;
+  its function and relationship to GFX remain unresolved. These writes are
+  separate from the GFX perf-state table at `0x20e01c000`.
 - `0x...13020`–`13034` sets bit 31 of `0x20e01c200`, which enables GFX
   perf-state control.
 

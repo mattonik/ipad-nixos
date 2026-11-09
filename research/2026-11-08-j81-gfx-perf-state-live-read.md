@@ -10,7 +10,9 @@ Tool: [`boot/gpu-pmgr-perf-peek.c`](../boot/gpu-pmgr-perf-peek.c) (static
 aarch64, sha256 of the stripped build
 `eb446a661e5414e038b049d9ce425458234ef3464248b1c0e90e4c2316a49fc5`). It
 maps two PMGR pages read-only and reads 18 words. The raw log is kept
-private under `artifacts/live/gpu-pmgr-perf/`. The device answered a shell
+private under `artifacts/live/gpu-pmgr-perf/` and is not included here, so the
+reported values cannot be independently checked from this public note. The
+device answered a shell
 command right after the read.
 
 ## Values
@@ -144,17 +146,18 @@ read. No bridge, GPC, MCC or RGX access.
 The device stayed up and responsive afterwards; dmesg showed nothing new
 except the module load.
 
-What it shows: powering GFX changes none of the 17 words this probe reads.
-The control word does not move when GFX turns on, so either the selected
-state is not held in `0x20e01c200` or nothing selects one at power-up. This
-read alone cannot tell those apart. `0x20e01c300` (`0x40000001` from LLB)
+The 17 table and control words match between the off and on captures.
+Those captures are from different boots, so they do not establish that
+the words stayed unchanged during the transition or identify a selected
+performance state. `0x20e01c300` (`0x40000001` from LLB)
 and the per-state `+4` words were read next, on the same boot.
 
 ### Remaining words, same boot, GFX still on
 
-`boot/gpu-pmgr-perf-peek.c` now also reads each entry's `+4` word and
-`0x20e01c300` (static aarch64 build sha256 `d2ef11e1...`; preflight
-`perf-peek` GO at 568 s uptime, `gpu_pmgr_once` loaded, PS `0x3ff`).
+An archived probe read each entry's `+4` word and `0x20e01c300` (aarch64
+binary sha256 `d2ef11e1...`; preflight `perf-peek` GO at 568 s uptime,
+`gpu_pmgr_once` loaded, PS `0x3ff`). Its labels differ from the current
+probe source; a build transcript tying that binary to source is unavailable.
 
 | Register | Value |
 |---|---|
@@ -166,17 +169,33 @@ and the per-state `+4` words were read next, on the same boot.
 | states 9-15 +4 | `0x00000000` |
 | `0x20e01c300` | `0x40000001` (exactly LLB's value) |
 
-The `+4` words repeat the same pattern for the full-rate states 1-4 and the
-half-rate states 5-8. They are static per-entry settings (probably a second
-voltage index, inferred), not a selection. `0x20e01c300` holds the value LLB wrote. The device stayed up.
-
-Result: every word in this PMGR block holds LLB's static setup, with GFX
-both off and on. None of them records a selected perf state, so this block
-does not show what the GPU clock is when the ID read stalls. The selection,
-if any, lives elsewhere (GPU firmware, the CLPC/`meta-sw-interrupt` path
-named in the `sgx` ADT node, or hardware not exposed here). This line of
-reads is finished.
+The `+4` words repeat the same pattern for states 1–4 and 5–8. Their
+meaning is unresolved. These `+4` and `0x20e01c300` values were not read
+in the earlier off-state capture, so their values before power-up are
+unknown. Neither snapshot identifies the selected GPU clock or the cause
+of the later ID-read stall. Raw logs remain private; see the
+[provenance audit](2026-11-09-j81-expanded-perf-capture-audit.md).
 
 The stop rules in
 [`2026-11-08-j81-next-mcc-experiment-decision.md`](2026-11-08-j81-next-mcc-experiment-decision.md)
 still apply. No register was written.
+
+## Prepared read-only probe extension (offline)
+
+The probe source and host capture parser now include the previously omitted
+PMGR words: table `+4` at `0x20e01c004..0x20e01c0f4` (stride `0x10`), and
+`0x20e01c300`, alongside the existing table words, control at
+`0x20e01c200`, and GFX power-state word at `0x20e020320`. The perf-page
+capture contains 34 32-bit words: 32 table words plus control and tunable;
+the PS word is separate. The last read word occupies bytes
+`0x20e01c300..0x20e01c303`. Access remains `/dev/mem` read-only with
+`PROT_READ` mappings and the existing READY/READ acknowledgement.
+
+Offline verification passed `boot/test_gpu_pmgr_perf_peek.py` and
+`boot/test_gpu_pmgr_perf_capture.py`; the fake-socket test checks split READY,
+persist-before-ACK, complete/duplicate/missing output, timeout, and timeout
+rejection before staging. Python compilation and `git diff --check` passed.
+No aarch64 executable was built because the builder was below its free-space
+floor, and this extension has not been run on hardware. The timeout is
+host-side only; the target probe has no watchdog. This prepared source does
+not add observations to the live capture above.

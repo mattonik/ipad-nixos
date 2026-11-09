@@ -8,36 +8,38 @@ the same day. No device access.
 
 ## Result
 
-Test4 used the same pre-ID register operations, values, and ordering traced
-in Apple's driver. Its helper processes leave seconds between stages, versus
-Apple's 10 µs delay before the ID read; what the boot chain leaves behind is
-also unknown.
+Test4's planned GPC operations and conditional format-0 bridge sequence
+match the traced Apple path. After-store checkpoints confirm progress, not
+retention of every bridge entry; one table entry was read back. Apple's
+probe delays 10 µs after its poll. The test4 GPC and identity reads used
+separate helper runs, but the available identity transcript has no host
+timestamp from which to measure their interval. Boot-chain state is also
+unknown.
 
 | # | Apple (iOS 15 G4G probe, `0x...322c`) | Test4 (2026-11-07, same boot) | Same? |
 |---|---|---|---|
-| 1 | Clock enable `clock-gates[0]` and power enable `power-gates[0]`, both device 124 (`0x7c`, GFX). On iOS 15 both reach ApplePMGR's state change to state 15 | `clock-cycle` test4: PMGR `0x20e020320` from `0x300` (state 0) to `0x3ff` (target and actual 15) | yes |
-| 2 | Right after state 15: bridge selectors 9 then 10, 33 pairs each | `clock-table` test4: the same 66 stores in the same order | yes (format-0 writer) |
+| 1 | Clock enable `clock-gates[0]` and power enable `power-gates[0]`, both device 124 (`0x7c`, GFX). On iOS 15 both reach ApplePMGR's state change to state 15 | `clock-cycle` test4: PMGR `0x20e020320` from `0x300` (state 0) to `0x3ff` (target and actual 15) | same observed PMGR state; provider callbacks differ |
+| 2 | Right after state 15: bridge selectors 9 then 10, 33 pairs each | `clock-table` test4: the same 66 planned stores in the same order | conditional on format 0; one pair read back |
 | 3 | GPC map (`reg` 1) with `has-kf` clear: `+0x10000 = 0xffff0000`, `+0 = 0x40000000`, `+0x1000 = 0x11` | `gpc-init` test4: the same three writes, same values, same order | yes |
 | 4 | Poll `+0x1000` while bit 4 is set | One poll read returned `0x1` (bit 4 clear) | yes |
-| 5 | 10 µs delay, set a software flag | Several seconds between helper processes | timing only |
+| 5 | 10 µs delay, set a software flag | Separate helper processes; exact time to identity read is not captured | not measured |
 | 6 | Readback: none | `postgpc` test4: GPC state `0x1`, control `0x40000000`, bridge `+0x18 = 0x80010004` | — |
 | 7 | RGX map (`reg` 0): identity vtable `+0xa38` reads `+0x20`, then `+0x18` | `core-revision` test4: PMGR still `0x3ff`, GPC `0x1`/`0x40000000`, then a 32-bit read of `0x201000020`, which never returned | yes, same first access |
 
-Apple steps that turned out to have no hardware effect, or not to apply to
-GFX: the kdebug codes `0x2700c001/2`, the interrupt and lock bracketing, the
-related-device branch (GFX has none), the `bcc56c` timing helper (a PMGR
-counter read), and the SoC tuner (MCC performance mode only).
+On the inspected paths, trace codes and lock bracketing do not themselves
+write GPU registers; the related-device branch is not selected by the saved
+GFX record, and one `bcc56c` branch reads a PMGR counter. The SoC tuner
+has a conditional MCC/display policy; its runtime activation and whether
+it could affect this particular stall are not established.
 
 ## Memory type of the read
 
 `gpu-core-revision-once.c` maps `0x201000000` with
 `open("/dev/mem", O_RDONLY | O_SYNC)` and `mmap(..., MAP_SHARED)`. On arm64
 that is a non-cached device mapping (`pgprot_noncached`, Device-nGnRnE)
-for an address outside system RAM. That is the strict device type Apple SoCs
-expect for MMIO, the same class XNU uses for `mapDeviceMemoryWithIndex`
-I/O mappings. This is from the kernel's documented `/dev/mem` behaviour; the
-running kernel's page tables were not checked, and the exact XNU attribute
-was not confirmed.
+for an address outside system RAM, assuming the standard arm64 mapping path.
+The running kernel's page tables and XNU's exact mapping attributes were
+not checked, so equivalence of the two mappings is not established.
 
 ## What is left
 
@@ -49,10 +51,12 @@ was not confirmed.
    above. The iBoot and iBEC images for iPad5,3 12B410 are encrypted, but
    `api.ipsw.me/v4/keys/ipsw/iPad5,3/12B410` lists keys for both iBoot
    and iBEC (checked 2026-11-08), from the same source as the kernelcache
-   key. Decrypting them and searching for GFX,
-   SGX and `0x201xxxxxx` accesses is the next offline step.
+   key. Later offline analysis examined 8.1 and 15.8.8 LLB/iBoot and found
+   indirect perf-control writes; see the [15.8.8 scan](2026-11-09-j81-iboot-15.8.8-first-scan.md).
+   It does not establish a complete write trace or fully audit iBEC.
 2. **Timing.** Apple reads identity about 10 µs after the GPC poll. Test4
-   read it seconds later from a new process. A GPU that drops back to a
+   used separate helper processes; the elapsed interval is not established.
+   A GPU that drops back to a
    low-power state on its own after GPC init would explain the hang. The
    PMGR still read `0x3ff` with `auto=0` right before the read, which argues
    against it at the PMGR level, but nothing checked RGX-internal power.

@@ -2,9 +2,14 @@
 """Exercise the perf-state probe against fake mappings, with no hardware access."""
 import subprocess
 import tempfile
+from contextlib import redirect_stdout
+from io import StringIO
 from pathlib import Path
+import sys
 
 source = Path(__file__).with_name("gpu-pmgr-perf-peek.c")
+sys.path.insert(0, str(source.parent))
+import gpu_pmgr_perf_capture as capture
 harness = r'''
 #define open fake_open
 #define close fake_close
@@ -70,9 +75,14 @@ with tempfile.TemporaryDirectory() as directory:
     out = subprocess.run([str(path / "test")], check=True, capture_output=True, text=True).stdout
     assert "stage=before-perf-read base=0x20e01c000 words=34 ps=0x20e020320" in out
     assert "ps raw=0x000000ff" in out and "ctl raw=0x80000003" in out
+    assert "perf-tunable raw=0x40000001" in out
     assert "perf00 raw=0x11000000" in out and "perf15 raw=0x1100000f" in out
-    assert "perf00+4 raw=0x22000000" in out and "perf15+4 raw=0x2200000f" in out
-    assert "w300 raw=0x40000001" in out
-    assert out.count(" raw=") == 35
+    assert "perf00-p4 raw=0x22000000" in out and "perf15-p4 raw=0x2200000f" in out
     assert out.rstrip().endswith("stage=after-perf-read")
+    assert len(capture.LINE.findall(out.encode())) == 35
+    decoded = StringIO()
+    with redirect_stdout(decoded):
+        capture.decode(out.encode())
+    assert "perf-tunable 0x40000001" in decoded.getvalue()
+    assert "perf00-p4 0x22000000" in decoded.getvalue()
 print("PASS: read-only GFX perf-state mapping, order and cleanup")

@@ -21,7 +21,7 @@ other LLB paths.
 
 | Instruction site | Address/effect established by instructions | Limit |
 |---|---|---|
-| `0x180012ff4`–`0x18001301c` | Polls `0x20e005000` bit 25; clears bit 0 at `0x20e005004`; sets bit 24 at `0x20e005008`. | Same PLL-5 setup already noted with the GFX perf table; no register meaning inferred. |
+| `0x180012ff4`–`0x18001301c` | Polls `0x20e005000` bit 25; clears bit 0 at `0x20e005004`; sets bit 24 at `0x20e005008`. | PMGR page 5; function and relationship to GFX are unresolved. Do not label it PLL 5 from the address alone. |
 | `0x180013020`–`0x180013034` | RMW sets bit 31 at `0x20e01c200`. | Matches the previously documented GFX perf-state control write. |
 | `0x180013038`–`0x180013064`, helper `0x180013b2c` | Calls helper with `(1,4,0x85,0,0)` and `(3,1,0x32,0xb,0)`. The helper addresses `0x20e000000 + index*0x1000`, including writes and polls at offsets derived from its arguments. | These are direct PMGR-indexed operations; index meanings and any relation to GFX are unresolved. |
 | `0x180013068`–`0x1800130a4` | Reads chip-ID/fuse word `0x20e02a020`; when `(word & 0x07000000) == 0x05000000`, RMW-writes `0x20e00300c`, replacing bits under mask `0x0e000000` with `0x0a000000`. | Conditional SoC write; no GFX attribution established. |

@@ -21,16 +21,18 @@ stores the result to the caller's block, and returns.
 
 Selector 1 has no register store. The other selectors use `be4354`/`be43e8`,
 `be4438` and `be4544` (`be4544` is a multi-word bit-field read through vtable
-`+0x980`). `bcc56c` does not use them. The `bcc56c` path therefore reads a
-PMGR counter and changes no hardware state.
+`+0x980`). `bcc56c` does not use them. The inspected selector-1 path therefore performs PMGR counter reads and
+no register writes; this does not establish that all hardware reads are
+side-effect-free.
 
 The ADT's PMGR `energy-counters` list has these entries: Rest of SoC, VENC,
 VDEC, ISP, CPU0–2, SoC Base, SoC and CPU. None is GFX. No property named
 `state-config` appears in the capture. Together, these suggest that GFX has
 no counter record on this path, but the capture does not prove it.
 
-**Conclusion:** the GFX power-up path in `bd81a8` contains no unclassified
-hardware write.
+**Conclusion:** this resolves the inspected selector-1 action as a counter
+read rather than a register write. It does not prove that every indirect
+path or the separate `record+0x28` pointer has been classified.
 
 ## 2. The iOS 15 form of the display/MCC busy callback
 
@@ -96,9 +98,9 @@ also calls a per-set method for every device set (`cd8b94`).
 
 **What this means for GFX:** with the display on, GFX (in set 0) becoming
 busy moves the MCC *out of* framebuffer-caching mode (4) into config 3, and
-turns display idle off. This is a memory-controller performance policy. The
-GPU does not need it to be reachable. A Linux boot that never put the MCC
-into fb-caching mode has nothing to undo. The earlier single read
+turns display idle off. This is a memory-controller and display policy; its hardware impact on GPU
+register reachability has not been tested. If a Linux boot never put the
+MCC into fb-caching mode, that particular transition would not be needed. The earlier single read
 `0x200000830 = 0` does not tell us which config the MCC is in. This makes it
 unlikely, though not ruled out, that the tuner explains why the RGX
 register read hangs.
