@@ -37,12 +37,12 @@ the fields: no other `0x5db0`-`0x5dc0` access exists in the AGX range).
 The ADT's `sgx` `function-clpc_gpu_feedback` points at phandle `0x1c`
 (the `clpc` node) with magic `GPUF` (E). The 12B410 kernelcache has no
 `clpc_gpu_feedback` or `gpu_feedback` string and no `GPUF` constant in
-code, so iOS 8.1's GPU driver does not use it (E). In 11.4.1 the
+code; an indirect or unnamed code path could still use it (U). In 11.4.1 the
 `AppleCLPC` side has `AppleCLPCGPUFeedbackFunction`,
 `AppleCLPCGPUSampler`, `AppleCLPCGPUFrameTimeMetric` and
 `AppleCLPCGPUCommandQueueController` (E, strings). That is runtime
-frame-time and queue telemetry for DVFS (I). iOS 8.1 brings the same GPU up
-without it, so it cannot be a missing pre-ID step.
+frame-time and queue telemetry for DVFS (I). The strings alone do not
+establish when it is used or exclude a pre-ID dependency.
 
 ## Who sets `0x20e01c200`/`0x300` on 15.8.8
 
@@ -51,15 +51,15 @@ found four. None has a PMGR GFX base: `0x180391614` is RMW on the
 `0x202230018` CPU-cluster block, and `0x180399e00` is a loop helper for a
 controller with registers at `+0x800`/`+0x9a8` (E). So the writer is still
 not found (U). The candidates are a path this analysis misses, the
-SecureROM, or reset values.
+another boot stage, retained state, or reset values.
 
-This no longer matters for the hang (I). The live values (`0x80000000`,
-`0x40000001`) are exactly what 8.1 LLB writes, and iOS 8.1 runs the GPU
-from that state. Whoever writes them on 15.8.8, the GPU sees the same
-values it sees under a working iOS boot.
+The live values (`0x80000000`, `0x40000001`) match values written by
+8.1 LLB. We have not observed those words at the GPU ID read during a
+working iOS boot, so this comparison does not rule out their relevance to
+the hang or establish the writer.
 
 ## Result
 
 None of the three leads finds a pre-ID step that iOS does and test4
-skips. The software IRQ and CLPC feedback come into play only after the
-firmware is running. The perf control words already match the 8.1 state.
+skips. The inspected software IRQ paths occur after firmware loading. The CLPC
+usage and perf-control words remain bounded leads, not confirmed causes.
