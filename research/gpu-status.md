@@ -21,6 +21,9 @@ Imagination GXA6850 (Rogue/G4G generation).
   3, or 4;
   it does not establish MCC initialization, hardware mode, or prior iOS
   callback history. See the [MCC read result](2026-11-08-j81-mcc-read-result.md).
+- A same-boot read before and after guarded GFX power-on found all 34
+  sampled performance-page words unchanged; the selected GPU clock remains
+  unknown ([paired capture](2026-11-09-j81-gfx-perf-paired-capture.md)).
 - GPU firmware execution, job submission, and rendering have not been
   demonstrated.
 
