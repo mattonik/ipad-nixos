@@ -46,17 +46,12 @@ establish when it is used or exclude a pre-ID dependency.
 
 ## Who sets `0x20e01c200`/`0x300` on 15.8.8
 
-A further pass over the 15.8.8 LLB for stores at `#0x200`/`#0x300` offsets
-found four. None has a PMGR GFX base: `0x180391614` is RMW on the
-`0x202230018` CPU-cluster block, and `0x180399e00` is a loop helper for a
-controller with registers at `+0x800`/`+0x9a8` (E). So the writer is still
-not found (U). The candidates are a path this analysis misses, the
-another boot stage, retained state, or reset values.
-
-The live values (`0x80000000`, `0x40000001`) match values written by
-8.1 LLB. We have not observed those words at the GPU ID read during a
-working iOS boot, so this comparison does not rule out their relevance to
-the hang or establish the writer.
+The initial store scan missed both writes because the address is built
+across a helper call. The 15.8.8 LLB sets bit 31 of `0x20e01c200` at
+`0x180390804` and writes `0x40000001` to `0x20e01c300` at `0x180391650`.
+See the [instruction-level follow-up](2026-11-09-j81-iboot-15.8.8-first-scan.md).
+These static stores can produce the live values, but do not prove they ran
+on the Linux boot or that the words were unchanged at the GPU ID read.
 
 ## Result
 
