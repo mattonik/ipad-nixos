@@ -73,10 +73,42 @@ Only the iOS 8.1 (12B410) bootloaders have been disassembled
 perf-block values match what we read live on 2026-11-09, but other blocks
 were not inventoried.
 
-## Next (cheapest first)
+## Follow-up, same day: `0x20e023000`
 
-1. Offline: search the 12B410 kernelcache for a write of `0x23000` in
-   PMGR, to see whether iOS sets the same voltage control word.
-2. Read-only, live: one PMGR read of `0x20e023000` (expect `1`).
-3. Needs the iPad in DFU, no Linux: decrypt the 15.8.8 LLB/iBoot with the
-   device GID through checkm8 and inventory every block they write.
+**Live read (read-only).** Same boot as the GFX power-up (uptime 9546 s,
+GFX PS `0x3ff`), preflight `perf-peek` GO. A one-word probe
+(`pmgr-volctl-peek`, static build sha256 `215f9468...`, maps
+`0x20e023000` read-only) returned **`0x00000001`**, the value m1n1 wrote.
+The device stayed up. m1n1 uses a plain `write32`, so whatever LLB/iBoot
+left there is overwritten and unknown.
+
+**iOS 8.1 (12B410) kernelcache.** A scan of the whole decrypted image for
+the constant `0x23000` (`movz #0x2, lsl #16` + `movk #0x3000`, and
+`add #0x23, lsl #12`) finds exactly one site, at `0xffffff80031e90d0` in
+`AppleT7000PerformanceController` (E). Base `[this+0x6d0]` is the same
+PMGR base the clock-gate code uses. The function (`0xffffff80031e8fac`):
+
+1. reapplies a saved CPU p-state through a vtable call and waits on
+   cluster status;
+2. if flag `[this+0x9e8]` is set, clears bit 0 of PMGR `+0x2d000`;
+3. waits until bit 1 of PMGR `+0x2d100` clears;
+4. sets **`PMGR+0x23000 |= 0xf00`**.
+
+It has two callers, both in `callPlatformFunction`, and both are shutdown
+paths: `gIOPlatformHaltRestartActionKey` (`0x...e92d8`) and
+`gIOPlatformQuiesceActionKey` (`0x...e94a0`, right after the loop that
+turns off clock gates left on). The keys were resolved from the kext's GOT
+slots against the kernel symbol table (E).
+
+So iOS writes this register when it shuts down or hands off, not on the
+way up. No boot-time constant write was found. Boot-time accesses could
+still go through the generic `read/write PMGR offset` helpers
+(`0x...e9204`, `0x...e9210`) with offsets from tables, which this scan
+cannot see. Our live value (bits 8-11 clear) is what a running OS would be
+expected to have if `0xf00` is the hand-off setting (I). No evidence ties
+this register to the GFX hang.
+
+## Next
+
+Needs the iPad in DFU, no Linux: decrypt the 15.8.8 LLB/iBoot with the
+device GID through checkm8 and inventory every block they write.
