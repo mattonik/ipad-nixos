@@ -167,8 +167,8 @@ and the per-state `+4` words were read next, on the same boot.
 | `0x20e01c300` | `0x40000001` (exactly LLB's value) |
 
 The `+4` words repeat the same pattern for the full-rate states 1-4 and the
-half-rate states 5-8, so they belong to the voltage/rate level, not to
-selection. `0x20e01c300` holds the value LLB wrote. The device stayed up.
+half-rate states 5-8. They are static per-entry settings (probably a second
+voltage index, inferred), not a selection. `0x20e01c300` holds the value LLB wrote. The device stayed up.
 
 Result: every word in this PMGR block holds LLB's static setup, with GFX
 both off and on. None of them records a selected perf state, so this block
