@@ -3,6 +3,11 @@
 Date: 2026-11-09. Offline comparison of the local 12B410 LLB/iBoot analysis,
 iOS 15.8.8 PMGR/AppleT7000 analysis, and saved J81 ADT. No device or MMIO.
 
+> Follow-up: both inspected LLB versions later include page 5 in a
+> rate-calculation loop; the bounded iOS 15 selector-table scan found no
+> direct selection of its calculated slot. See the
+> [page-5 data-flow trace](2026-11-09-j81-llb-page5-clock-dataflow.md).
+
 ## What the evidence establishes
 
 - LLB writes 16 GFX perf slots at `0x20e01c000 + n*0x10` from its
