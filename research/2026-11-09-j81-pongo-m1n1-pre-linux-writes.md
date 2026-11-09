@@ -45,7 +45,7 @@ That should not affect an RGX register read (I).
 |---|---|---|
 | `mcc_init` | J81 ADT `mcc` is `compatible = mcc,t7000`, which m1n1 does not support, so MCC is left alone; `mcc_enable_cache()` is a no-op | E (ADT checked) |
 | `aic_init`, `wdt_disable` | AIC, WDT | E |
-| `pmgr_init` | reads all PS words; powers on only parents of devices already active. GFX is off at handoff, so nothing for GFX | E |
+| `pmgr_init` | reads all PS words; powers on only parents of devices already active. GFX was observed off in a later Linux baseline; its exact state at m1n1 entry is not captured | E/U |
 | `display_init`/`fb_init` | framebuffer on `disp0` | E |
 | `sep_init` | SEP mailbox | E |
 | `tunables_apply_static` | no case for T7001 (only M1/M2 AGX and ANE). The J81 ADT has one `*tunable*` property in total, `apcie-config-tunables`, so there are no ADT GFX tunables to miss | E |
@@ -56,9 +56,9 @@ That should not affect an RGX register read (I).
 
 ## Result
 
-Neither stage writes any GFX, `sgx`, GPU-bridge or MCC register, and neither
-skips a GFX step that iOS's boot path would do before its kernel. Two writes
-differ from a plain iBoot → XNU handoff and are worth knowing:
+The inspected paths did not reveal writes to GFX, `sgx`, GPU-bridge or
+MCC registers. This bounded audit cannot prove that every indirect path or
+every difference from an iOS boot was found. Two points worth knowing:
 
 1. **`0x20e023000 = 1` (m1n1 cpufreq).** m1n1 calls this voltage control. It
    is a PMGR-wide register, and the GFX perf entries carry voltage indices,
@@ -112,3 +112,11 @@ this register to the GFX hang.
 
 Needs the iPad in DFU, no Linux: decrypt the 15.8.8 LLB/iBoot with the
 device GID through checkm8 and inventory every block they write.
+
+## Later bootloader follow-up
+
+The 15.8.8 LLB and iBoot have since been decrypted and examined offline;
+see the [scan and helper-call correction](2026-11-09-j81-iboot-15.8.8-first-scan.md).
+The LLB contains writes to both GFX perf-control words through an address
+helper that the initial reference scan missed. This is static evidence, not
+a trace of the Linux boot or proof of the last writer.
