@@ -3,6 +3,15 @@
 Offline comparison of the saved iOS 15 Ghidra decompilation, raw Pongo ADT
 text, and Linux test4 transcript. No device access.
 
+> **Correction, 2026-11-09:** This note conflated two bridge paths.
+> `bd91a8 → bd4da8` is reached on the non-increasing state branch and
+> operates on the optional per-bridge data at `+0x20`; it is not the
+> 33-pair table writer. On power-up `bd90a8 → bd3dc8` writes the pair
+> table at `+0x18` when bridge mode `+0x2684` is zero. The addresses and
+> table values below still describe the captured table and test4 plan,
+> but the `+0x2680` format-selection explanation does not establish their
+> dispatch. See the [corrected trace](2026-11-09-j81-pmgr-clock-reset-path-correction.md).
+
 ## Writer path and format selection
 
 `bd91a8(pmgr, device_record, state)` walks the device record's bridge count

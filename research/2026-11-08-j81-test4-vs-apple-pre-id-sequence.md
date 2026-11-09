@@ -6,9 +6,15 @@ source (`boot/gpu-core-revision-once.c`) against the iOS 15 G4G probe
 (`2026-11-08-j81-ios15-g4g-pre-id-clock-power.md`) and the PMGR traces from
 the same day. No device access.
 
+> **Correction, 2026-11-09:** The power-up table writer is `bd90a8 → bd3dc8`;
+> an earlier PMGR note confused it with the non-increasing branch. The table
+> comparison is conditional on bridge mode `+0x2684 == 0`, not the separate
+> `+0x2680` counter-format field. See the
+> [corrected instruction trace](2026-11-09-j81-pmgr-clock-reset-path-correction.md).
+
 ## Result
 
-Test4's planned GPC operations and conditional format-0 bridge sequence
+Test4's planned GPC operations and conditional bridge pair sequence
 match the traced Apple path. After-store checkpoints confirm progress, not
 retention of every bridge entry; one table entry was read back. Apple's
 probe delays 10 µs after its poll. The test4 GPC and identity reads used
@@ -19,7 +25,7 @@ unknown.
 | # | Apple (iOS 15 G4G probe, `0x...322c`) | Test4 (2026-11-07, same boot) | Same? |
 |---|---|---|---|
 | 1 | Clock enable `clock-gates[0]` and power enable `power-gates[0]`, both device 124 (`0x7c`, GFX). On iOS 15 both reach ApplePMGR's state change to state 15 | `clock-cycle` test4: PMGR `0x20e020320` from `0x300` (state 0) to `0x3ff` (target and actual 15) | same observed PMGR state; provider callbacks differ |
-| 2 | Right after state 15: bridge selectors 9 then 10, 33 pairs each | `clock-table` test4: the same 66 planned stores in the same order | conditional on format 0; one pair read back |
+| 2 | Right after state 15: bridge selectors 9 then 10, 33 pairs each | `clock-table` test4: the same 66 planned stores in the same order | conditional on bridge mode 0 and populated pair tables; one pair read back |
 | 3 | GPC map (`reg` 1) with `has-kf` clear: `+0x10000 = 0xffff0000`, `+0 = 0x40000000`, `+0x1000 = 0x11` | `gpc-init` test4: the same three writes, same values, same order | yes |
 | 4 | Poll `+0x1000` while bit 4 is set | One poll read returned `0x1` (bit 4 clear) | yes |
 | 5 | 10 µs delay, set a software flag | Separate helper processes; exact time to identity read is not captured | not measured |

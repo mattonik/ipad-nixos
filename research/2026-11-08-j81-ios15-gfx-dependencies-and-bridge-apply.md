@@ -7,6 +7,14 @@ kernelcache (`com.apple.driver.ApplePMGR`, same slice as
 device access. Follows
 `2026-11-08-j81-ios15-clock-gate-to-pmgr-state.md`.
 
+> **Correction, 2026-11-09:** The `bd82xx` sequence described below is the
+> non-increasing branch, not the power-up branch, and `bc6c20` returns the
+> requested-state nibble rather than the actual-state nibble. The power-up
+> bridge writer is `bd90a8 → bd3dc8`. See the
+> [corrected instruction trace](2026-11-09-j81-pmgr-clock-reset-path-correction.md).
+> Assertions below about `bd91a8` applying the 33-pair table after power-up
+> and about a complete match with test4 are superseded.
+
 ## Result
 
 On iOS 15, the captured GFX record has no parent IDs, so its dependency walk

@@ -1234,6 +1234,13 @@
             installPhase = "mkdir -p $out/bin && cp gpu-core-revision-once $out/bin/gpu-core-revision-once";
           };
 
+          gpuGpcTimedRevisionPkg = pkgsCrossMusl.stdenv.mkDerivation {
+            name = "gpu-gpc-timed-revision";
+            dontUnpack = true;
+            buildPhase = "$CC -static -O2 -Wall -Wextra -Werror -o gpu-gpc-timed-revision ${./boot/gpu-gpc-timed-revision.c}";
+            installPhase = "mkdir -p $out/bin && cp gpu-gpc-timed-revision $out/bin/gpu-gpc-timed-revision";
+          };
+
           gpuGpcInitPkg = pkgsCrossMusl.stdenv.mkDerivation {
             name = "gpu-gpc-init";
             dontUnpack = true;
@@ -1595,6 +1602,7 @@
         gpu-fender-wake-static = gpuFenderWakePkg;
         gpu-id-once-static = gpuIdOncePkg;
         gpu-core-revision-once-static = gpuCoreRevisionOncePkg;
+        gpu-gpc-timed-revision-static = gpuGpcTimedRevisionPkg;
         gpu-bridge-once-static = gpuBridgeOncePkg;
         gpu-bridge-sim-static = gpuBridgeSimPkg;
         gpu-bridge-map-static = gpuBridgeMapPkg;

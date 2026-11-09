@@ -70,12 +70,12 @@ unknown, the callback's MMIO side effects cannot be classified.
 ### Caller eligibility and observed effects
 
 The two call sites in `FUN_fffffff006bd81a8`'s device-transition routine
-bound when the helper runs. On entry to state 15, the caller first runs
-`FUN_fffffff006bd91a8`, then visits eight associated-record pointers. For each
+bound when the helper runs. On the non-increasing branch, when the old target state is 15, the caller first
+runs `FUN_fffffff006bd91a8`, then visits eight associated-record pointers. For each
 non-null record with byte `+0x55 == 0`, it calls `bcc56c`; if byte `+0x56 == 0`,
 the result replaces the record's `+0x40`, otherwise the result is saved at
-`+0x58` and added to `+0x40`. On exit from state 15, it visits those same
-records after the transition work and calls the helper only where the pointer
+`+0x58` and added to `+0x40`. On an increase to state 15, it visits those same
+records after the state change and before `bd90a8` and calls the helper only where the pointer
 is non-null, `+0x55 == 0`, and `+0x56 != 0`. It subtracts saved `+0x58` from
 `+0x40` only when `+0x58 <= result`. These are the concrete caller conditions
 and memory side effects established by the decompilation; the linked records'

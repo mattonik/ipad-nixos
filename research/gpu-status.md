@@ -24,6 +24,16 @@ Imagination GXA6850 (Rogue/G4G generation).
 - A same-boot read before and after guarded GFX power-on found all 34
   sampled performance-page words unchanged; the selected GPU clock remains
   unknown ([paired capture](2026-11-09-j81-gfx-perf-paired-capture.md)).
+- A later same-process timed GPC/revision experiment timed out after its
+  pre-poll checkpoint. It cannot distinguish a GPC-poll stall from a later
+  core-read stall ([v2 result](2026-11-09-j81-timed-gpc-revision-v2-result.md)).
+- A subsequent timed run confirmed GPC state `1` after five polls and
+  emitted its pre-revision checkpoint, but produced no revision result;
+  the delay and clock call after that checkpoint leave the exact stall site
+  unconfirmed ([campaign result](2026-11-09-j81-campaign-timed-result.md)).
+- A fresh host-paced campaign again reached GPC state `1`, acknowledged
+  the `0x201000020` revision-read checkpoint, and received no result
+  ([paced result](2026-11-09-j81-campaign-paced-result.md)).
 - GPU firmware execution, job submission, and rendering have not been
   demonstrated.
 
@@ -76,9 +86,10 @@ state helper. The separate AppleT7000 special-action handler does not bind on
 J81, but this does not exclude other bridge paths
 ([clock gate to PMGR state](2026-11-08-j81-ios15-clock-gate-to-pmgr-state.md)).
 GFX's captured dependency record has no parent IDs or related-device object;
-selectors 9 and 10 are written after state 15 on the traced transition, the
-same order test4 used
-([dependencies and bridge apply](2026-11-08-j81-ios15-gfx-dependencies-and-bridge-apply.md)).
+the increasing-state branch calls a bridge setup for selectors 9 and 10 after
+the state change. Its pair-table writer and the earlier non-increasing branch
+were previously conflated; the [corrected instruction trace](2026-11-09-j81-pmgr-clock-reset-path-correction.md)
+describes the conditions and remaining uncertainty.
 The effective Linux FDT on the inspected boot has no bridge-settings,
 bridge-reg-index, or state-config properties, so it cannot answer what those
 properties held in Apple's ADT or whether iOS PMGR populated `bcc56c` records
@@ -90,7 +101,8 @@ GFX is in an iOS 15 SoC-tuner set linked to MCC and display policy; its
 runtime activation and effect on GPU reachability have not been established
 ([SoC-tuner note](2026-11-08-j81-ios15-soc-tuner-device-sets.md)).
 
-Test4's planned bridge stores match the conditional format-0 Apple writer,
+Test4's planned bridge stores match the captured pair tables and the
+conditional mode-0 Apple pair writer,
 and its GPC operations match the inspected pre-ID sequence. Its software
 checkpoints are not readback of all entries. Apple waits 10 µs after the GPC
 poll; the identity-read transcript does not timestamp the actual test4
