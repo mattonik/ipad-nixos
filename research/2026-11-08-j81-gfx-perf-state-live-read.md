@@ -148,8 +148,34 @@ What it shows: powering GFX changes none of the 17 words this probe reads.
 The control word does not move when GFX turns on, so either the selected
 state is not held in `0x20e01c200` or nothing selects one at power-up. This
 read alone cannot tell those apart. `0x20e01c300` (`0x40000001` from LLB)
-and the per-state `+4` words are still unread; they are the only words in
-this block left to check.
+and the per-state `+4` words were read next, on the same boot.
+
+### Remaining words, same boot, GFX still on
+
+`boot/gpu-pmgr-perf-peek.c` now also reads each entry's `+4` word and
+`0x20e01c300` (static aarch64 build sha256 `d2ef11e1...`; preflight
+`perf-peek` GO at 568 s uptime, `gpu_pmgr_once` loaded, PS `0x3ff`).
+
+| Register | Value |
+|---|---|
+| `0x20e01c004` (state 0 +4) | `0x00000000` |
+| states 1, 2, 3 +4 | `0x00000070` |
+| state 4 +4 | `0x00000080` |
+| states 5, 6, 7 +4 | `0x00000070` |
+| state 8 +4 | `0x00000080` |
+| states 9-15 +4 | `0x00000000` |
+| `0x20e01c300` | `0x40000001` (exactly LLB's value) |
+
+The `+4` words repeat the same pattern for the full-rate states 1-4 and the
+half-rate states 5-8, so they belong to the voltage/rate level, not to
+selection. `0x20e01c300` holds the value LLB wrote. The device stayed up.
+
+Result: every word in this PMGR block holds LLB's static setup, with GFX
+both off and on. None of them records a selected perf state, so this block
+does not show what the GPU clock is when the ID read stalls. The selection,
+if any, lives elsewhere (GPU firmware, the CLPC/`meta-sw-interrupt` path
+named in the `sgx` ADT node, or hardware not exposed here). This line of
+reads is finished.
 
 The stop rules in
 [`2026-11-08-j81-next-mcc-experiment-decision.md`](2026-11-08-j81-next-mcc-experiment-decision.md)
