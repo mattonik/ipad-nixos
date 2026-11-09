@@ -18,7 +18,7 @@ from stage_gpu_test_bundle import stage  # noqa: E402
 
 HOST = "172.16.42.1"
 REMOTE = "/tmp/gpu-pmgr-perf-peek"
-READY = b"stage=before-perf-read base=0x20e01c000 words=17 ps=0x20e020320"
+READY = b"stage=before-perf-read base=0x20e01c000 words=34 ps=0x20e020320"
 DONE = b"stage=after-perf-read"
 LINE = re.compile(rb"(ps|ctl|perf\d\d) raw=0x([0-9a-f]{8})")
 

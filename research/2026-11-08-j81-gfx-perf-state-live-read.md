@@ -120,6 +120,62 @@ them in the current boot (preflight `perf-peek` = GO).
    that the module requires. Nothing was powered, and a perf read right
    after showed unchanged values (PS `0x300`, control `0x80000000`). The
    check needs a boot of the `gpu-pmgr-once` payload (DFU).
+   Done 2026-11-09, see below.
+
+## After the guarded GFX power-up (2026-11-09)
+
+DFU boot of `artifacts/live/gcroot-gpu-pmgr-once-payload` (palera1n +
+`boot/load_m1n1.py`). `boot/j81_preflight.sh gpu-pmgr-once` returned GO at
+49 s uptime: kernel notes `82ff70e8...`, DT guard present, module not
+loaded, no consumer device. Staged files matched their expected sha256
+(`gpu-pmgr-once.ko` `39d32b55...`, `gpu-pmgr-peek` `78349e4a...`,
+`gpu-pmgr-once-run` `4fb50cd7...`, `gpu-pmgr-perf-peek` `eb446a66...`).
+
+Sequence, one shell session: wrapper read GFX PS `0x300`, wrote
+`power_once` once (`rc=0`), then the read-only perf peek, then a second PS
+read. No bridge, GPC, MCC or RGX access.
+
+| Register | GFX off (2026-11-08) | GFX on (2026-11-09) |
+|---|---|---|
+| `0x20e020320` (GFX PS) | `0x00000300` | `0x000003ff` (target 15, actual 15) |
+| `0x20e01c200` (control) | `0x80000000` | `0x80000000` |
+| `0x20e01c000`..`0x20e01c0f0` (states 0-15) | table above | identical, word for word |
+
+The device stayed up and responsive afterwards; dmesg showed nothing new
+except the module load.
+
+What it shows: powering GFX changes none of the 17 words this probe reads.
+The control word does not move when GFX turns on, so either the selected
+state is not held in `0x20e01c200` or nothing selects one at power-up. This
+read alone cannot tell those apart. `0x20e01c300` (`0x40000001` from LLB)
+and the per-state `+4` words were read next, on the same boot.
+
+### Remaining words, same boot, GFX still on
+
+`boot/gpu-pmgr-perf-peek.c` now also reads each entry's `+4` word and
+`0x20e01c300` (static aarch64 build sha256 `d2ef11e1...`; preflight
+`perf-peek` GO at 568 s uptime, `gpu_pmgr_once` loaded, PS `0x3ff`).
+
+| Register | Value |
+|---|---|
+| `0x20e01c004` (state 0 +4) | `0x00000000` |
+| states 1, 2, 3 +4 | `0x00000070` |
+| state 4 +4 | `0x00000080` |
+| states 5, 6, 7 +4 | `0x00000070` |
+| state 8 +4 | `0x00000080` |
+| states 9-15 +4 | `0x00000000` |
+| `0x20e01c300` | `0x40000001` (exactly LLB's value) |
+
+The `+4` words repeat the same pattern for the full-rate states 1-4 and the
+half-rate states 5-8. They are static per-entry settings (probably a second
+voltage index, inferred), not a selection. `0x20e01c300` holds the value LLB wrote. The device stayed up.
+
+Result: every word in this PMGR block holds LLB's static setup, with GFX
+both off and on. None of them records a selected perf state, so this block
+does not show what the GPU clock is when the ID read stalls. The selection,
+if any, lives elsewhere (GPU firmware, the CLPC/`meta-sw-interrupt` path
+named in the `sgx` ADT node, or hardware not exposed here). This line of
+reads is finished.
 
 The stop rules in
 [`2026-11-08-j81-next-mcc-experiment-decision.md`](2026-11-08-j81-next-mcc-experiment-decision.md)

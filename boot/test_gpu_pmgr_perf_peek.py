@@ -47,7 +47,9 @@ int fake_munmap(void *addr, size_t length) {
 int main(void) {
     char *args[] = { "gpu-pmgr-perf-peek", "x", NULL };
     for (int n = 0; n < 16; n++) perfmem[n * 4] = 0x11000000u + n;
+    for (int n = 0; n < 16; n++) perfmem[n * 4 + 1] = 0x22000000u + n;
     perfmem[0x200 / 4] = 0x80000003u;
+    perfmem[0x300 / 4] = 0x40000001u;
     psmem[0x320 / 4] = 0x000000ffu;
     assert(peek_main(2, args) == 2 && opens == 0);
     fail_open = 1; assert(peek_main(1, args) == 1 && maps == 0); fail_open = 0;
@@ -66,8 +68,11 @@ with tempfile.TemporaryDirectory() as directory:
     subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-I", str(source.parent),
                     str(path / "test.c"), "-o", str(path / "test")], check=True)
     out = subprocess.run([str(path / "test")], check=True, capture_output=True, text=True).stdout
-    assert "stage=before-perf-read base=0x20e01c000 words=17 ps=0x20e020320" in out
+    assert "stage=before-perf-read base=0x20e01c000 words=34 ps=0x20e020320" in out
     assert "ps raw=0x000000ff" in out and "ctl raw=0x80000003" in out
     assert "perf00 raw=0x11000000" in out and "perf15 raw=0x1100000f" in out
+    assert "perf00+4 raw=0x22000000" in out and "perf15+4 raw=0x2200000f" in out
+    assert "w300 raw=0x40000001" in out
+    assert out.count(" raw=") == 35
     assert out.rstrip().endswith("stage=after-perf-read")
 print("PASS: read-only GFX perf-state mapping, order and cleanup")
