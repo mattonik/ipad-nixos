@@ -6,6 +6,8 @@ public keys at `api.ipsw.me/v4/keys/ipsw/iPad5,3/12B410`, then disassembled
 them with `objdump -b binary -m aarch64` (iBoot at `0x87a0e0000`, LLB at
 `0x180000000`). The decrypted images stay on the Mac, outside Git. I also
 used the saved J81 ADT `artifacts/adt/20260908T082112Z-j81.adt` (private).
+The decrypted images and ADT are not included, so public readers cannot
+independently reproduce the binary and ADT observations from this repository.
 No device access.
 
 ## iBoot (iBoot-2261.3.32)
@@ -57,11 +59,17 @@ The `sgx` node in the 2026-09-08 capture has `perf-state-count = 16`,
 | 4 | 550 | 996 |
 | 5–8 | 182.5, 225, 250, 275 | 912–996 |
 
-iBoot computes these from the live `0x20e01c000` registers, so on that boot
-LLB had programmed the GFX PLL table. This boot chain does run the device's
-own LLB and iBoot (the ADT also carries iBoot-only properties such as
-`original-base-os-version`). So a missing LLB stage is **not** the
-difference between iOS and Linux.
+iBoot computes these from the live `0x20e01c000` registers, so the saved ADT
+is evidence that those table values were present when iBoot populated that
+tree. The `original-base-os-version` property is consistent with iBoot having
+produced or contributed to the saved tree, but it does not show that iBoot or
+LLB ran during the later Linux boot. The documented Linux run starts from DFU:
+palera1n performs checkm8 and loads PongoOS, then the host uploads m1n1 and
+sends PongoOS `bootm` (`boot/run_m1n1_debug.sh`, `boot/load_m1n1.py`). No LLB
+or iBoot execution appears in that path. Therefore do not use this ADT alone
+to claim those stages ran in the Linux boot, or to rule out a boot-stage
+difference between iOS and Linux. The Linux-session read is covered by the
+[handoff-state boundary note](2026-11-08-j81-llb-linux-perf-state-boundary.md).
 
 The state-0 table word is all zero and has its valid bit clear. Treat it as
 an invalid entry, not a valid 0 Hz state; neither the selected state nor the
