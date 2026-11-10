@@ -45,6 +45,10 @@ The reusable design pattern is therefore:
 
 The G5P/G9P render job ABI, register programming, and firmware image cannot
 be copied to J81: the Air 2 is A8X/T7001 with PowerVR GXA6850, not G5P or G9P.
+The interrupt layout is already a concrete warning: the G5P DT patch uses
+AIC IRQs 170--174, while J81's recovered `sgx` node uses the distinct
+five-interrupt range 134--138. Any future A8X transport must bind the J81
+interrupts, not inherit the G5P list.
 
 ## Offline next boundary
 
