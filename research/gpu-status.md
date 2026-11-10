@@ -50,6 +50,11 @@ Imagination GXA6850 (Rogue/G4G generation).
 - Linux GPU firmware execution, job submission, and rendering have not been
   demonstrated.
 
+The next bounded comparison is the full PMGR poll word and GPC poll result
+from working iOS against Linux's measured values, using existing reads if
+the runtime paths are reached. The [capture design](2026-11-10-j81-ios-linux-pmgr-poll-comparison.md)
+is not yet built or tested.
+
 These are observations from specific J81 test boots, not a general device
 support claim. Checkpoints after stores show software progress, not register
 readback. Thus 65 table targets remain unverified by readback.
