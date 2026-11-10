@@ -5,6 +5,11 @@ kernelcache and 12B410 iOS 8.1 AGX artifacts. No iPad access. This follows
 the [page-5 investigation](2026-11-09-j81-llb-page5-clock-dataflow.md)
 and the campaign captures.
 
+> Follow-up: the 15.8.8 driver statically binds a Fender object to the GPC
+> mapping and checks its state against a separate configured limit; it also
+> copies the GFX frequency values into another structure. See the
+> [15.8.8 handoff trace](2026-11-09-j81-ios15-gfx-perf-state-handoff.md).
+
 ## The iOS 15 Fender object has a state setter and getter
 
 The 15.8.8 kernelcache contains the diagnostic signature

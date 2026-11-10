@@ -119,3 +119,11 @@ installed iPad image. No branch, instruction relocation, kernel logging,
 trace retrieval, iPadOS boot, or hardware recovery has been tested. A
 future hook must separately prove those properties; matching alone cannot
 make a boot patch safe.
+
+## Installed-build follow-up
+
+The user reports iPadOS 15.8.5 build 19H394. The matching archive's AGX and
+three inspected PMGR code slices match the 19H422 slices byte-for-byte, and
+the match-only KPF finds each of the three sites exactly once in a host test.
+See the [19H394 comparison](2026-11-09-j81-ios1585-kernelcache-comparison.md)
+for provenance and limits. This does not validate a bootable tracing hook.

@@ -37,7 +37,17 @@ Imagination GXA6850 (Rogue/G4G generation).
 - A fresh host-paced campaign again reached GPC state `1`, acknowledged
   the `0x201000020` revision-read checkpoint, and received no result
   ([paced result](2026-11-09-j81-campaign-paced-result.md)).
-- GPU firmware execution, job submission, and rendering have not been
+- A temporarily instrumented iPadOS 15.8.5 boot returned both original RGX
+  identity reads and reported GPU firmware startup; the first equivalent
+  Linux read did not return ([iOS identity](2026-11-09-j81-ios1585-gpu-identity-capture.md)).
+- On a later iOS boot, all 66 GFX bridge writer requests matched Linux
+  test4's checkpointed addresses and values in order, subject to the
+  documented selector mappings ([capture](2026-11-10-j81-ios-corrected-bridge-result.md)).
+  An earlier probe's empty result was due to an incorrect instance filter.
+  Another 27 writer calls belonged to different threads from the GFX
+  provider and match display, USB and ISP tables
+  ([thread capture](2026-11-10-j81-writer-thread-result.md)).
+- Linux GPU firmware execution, job submission, and rendering have not been
   demonstrated.
 
 These are observations from specific J81 test boots, not a general device

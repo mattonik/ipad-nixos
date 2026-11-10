@@ -3,6 +3,10 @@
 Offline comparison of the saved iOS 15 Ghidra decompilation, raw Pongo ADT
 text, and Linux test4 transcript. No device access.
 
+> **Property correction, 2026-11-09:** `bridge-settings-version` maps to
+> `+0x2684`, while `bridge-counter-version` maps to `+0x2680`. See the
+> [provider comparison](2026-11-09-j81-provider-capture-decision.md).
+>
 > **Correction, 2026-11-09:** This note conflated two bridge paths.
 > `bd91a8 → bd4da8` is reached on the non-increasing state branch and
 > operates on the optional per-bridge data at `+0x20`; it is not the
