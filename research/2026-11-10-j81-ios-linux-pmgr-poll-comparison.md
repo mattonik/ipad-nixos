@@ -46,8 +46,9 @@ new read of `0x201e01000`.
 Both candidates require exact build/UUID and unique-signature checks, branch
 range checks, correct condition flags and register preservation, bounded
 buffering, and device/instance/thread attribution. They can change timing
-and may crash iPadOS. The plan is not yet an implementation or a hardware
-result. Full-word equality would rule out only the measured states at those
+and may crash iPadOS. A [probe implementation](probes/j81-pollcompare/README.md)
+has now passed host checks; it has not run on hardware. Full-word equality
+would rule out only the measured states at those
 particular moments; inequality would narrow the investigation, not prove a
 write is safe or responsible for the Linux stall.
 

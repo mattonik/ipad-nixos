@@ -53,7 +53,7 @@ Imagination GXA6850 (Rogue/G4G generation).
 The next bounded comparison is the full PMGR poll word and GPC poll result
 from working iOS against Linux's measured values, using existing reads if
 the runtime paths are reached. The [capture design](2026-11-10-j81-ios-linux-pmgr-poll-comparison.md)
-is not yet built or tested.
+is built and host-tested but has not been run on hardware.
 
 These are observations from specific J81 test boots, not a general device
 support claim. Checkpoints after stores show software progress, not register
