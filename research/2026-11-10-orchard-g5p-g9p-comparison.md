@@ -50,6 +50,15 @@ AIC IRQs 170--174, while J81's recovered `sgx` node uses the distinct
 five-interrupt range 134--138. Any future A8X transport must bind the J81
 interrupts, not inherit the G5P list.
 
+The G5P implementation also makes three sequencing assumptions that remain
+unproven for A8X: it uses 16-KiB GPU pages, a 40-bit DMA mask, and an explicit
+firmware-load command that validates both the original LDR and the packed
+image before mapping the two windows. Probe/registration is intentionally
+inert; the boot IRQ is requested only when the explicit transport is started.
+These are good design constraints for a future J81 driver, but not values to
+copy: our current J81 work uses a 4-KiB Linux kernel and has not identified an
+A8X LDR format or DMA/IRQ contract.
+
 ## Offline next boundary
 
 The highest-value offline task is now a format/sequence comparison: extract
