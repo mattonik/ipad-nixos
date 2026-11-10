@@ -1,14 +1,18 @@
 """Static contract for the GPU staging bundle: hashes and access classes are mandatory."""
 
 import json
+import sys
 from pathlib import Path
 
 
 source = Path(__file__).with_name("build_gpu_test_bundle.py").read_text()
 assert "refusing to overwrite" in source
-manifests = sorted(Path("artifacts/live").glob("gpu-test-bundle-*/MANIFEST.json"))
-assert manifests, "build the bundle before running this contract"
-manifest = manifests[-1]
+if len(sys.argv) > 1:
+    manifest = Path(sys.argv[1]) / "MANIFEST.json"
+else:
+    manifests = sorted(Path("artifacts/live").glob("gpu-test-bundle-*/MANIFEST.json"))
+    assert manifests, "build the bundle before running this contract"
+    manifest = manifests[-1]
 data = json.loads(manifest.read_text())
 assert len(data["binaries"]) >= 10
 assert len(data["modules"]) == 4

@@ -12,6 +12,7 @@ BINARIES = {
     "gpu-id-once": ("artifacts/live/gcroot-gpu-id-once/bin/gpu-id-once", "read-only; GPC state gate"),
     "gpu-core-revision-once": ("artifacts/live/gcroot-gpu-core-revision-once/bin/gpu-core-revision-once", "one read-only core-window revision read; cycle payload required"),
     "gpu-pmgr-peek": ("artifacts/live/gcroot-gpu-pmgr-peek/bin/gpu-pmgr-peek", "read-only; PMGR baseline"),
+    "gpu-pmgr-perf-peek": ("artifacts/live/gpu-pmgr-perf/gpu-pmgr-perf-peek", "read-only; GFX perf table/control and PMGR state"),
     "gpu-gpc-peek": ("artifacts/live/gcroot-gpu-gpc-peek/bin/gpu-gpc-peek", "read-only; GPC state/control"),
     "gpu-bridge-peek": ("artifacts/live/gcroot-gpu-bridge-peek/bin/gpu-bridge-peek", "read-only; bridge gate"),
     "gpu-bridge-map": ("artifacts/live/gcroot-gpu-bridge-map/bin/gpu-bridge-map", "MMIO writes; guarded"),
