@@ -6,6 +6,11 @@ Imagination GXA6850 (Rogue/G4G generation).
 
 ## What has been observed
 
+- A paired iPadOS boot observed PMGR page-5 offset `0x5004` change from
+  `0` after the GFX provider returned to `0x40000000` after GPU identity.
+  A separate Linux post-GPC sample was `0`. The bit's role and the cause of
+  the iOS change remain unknown; see the [paired capture](2026-11-10-j81-page5-capture-results.md#paired-ios-4-timing-on-one-boot).
+
 - A guarded PMGR power cycle completed, and the PMGR state subsequently read
   as `0x3ff` (state 15).
 - A staged sequence of 66 bridge-table store operations reached its software
@@ -50,10 +55,18 @@ Imagination GXA6850 (Rogue/G4G generation).
 - Linux GPU firmware execution, job submission, and rendering have not been
   demonstrated.
 
-The next bounded comparison is the full PMGR poll word and GPC poll result
-from working iOS against Linux's measured values, using existing reads if
-the runtime paths are reached. The [capture design](2026-11-10-j81-ios-linux-pmgr-poll-comparison.md)
-is built and host-tested but has not been run on hardware.
+Working iOS's existing PMGR poll read returned `0x3ff` and its existing GPC
+poll returned `1`, matching the corresponding Linux samples across different
+boots ([poll result](2026-11-10-j81-ios-linux-poll-result.md)). This narrows
+the measured gap without establishing equivalence of the full hardware state.
+
+A subsequent page-5 comparison found `0x20e005004 = 0x40000000` in iOS
+after GPU identity, but `0` on Linux both before and after its GFX/GPC-only
+control. Samples of the adjacent `+0` and `+8` words matched. These are
+separate boots and the bit's meaning and causal role are unknown; see the
+[capture results](2026-11-10-j81-page5-capture-results.md).
+Another iOS boot sampled that `+4` word as `0` before GPC/identity, so the
+post-identity difference must be checked at both points in the same boot.
 
 These are observations from specific J81 test boots, not a general device
 support claim. Checkpoints after stores show software progress, not register

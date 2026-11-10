@@ -28,13 +28,15 @@ int main(int argc, char **argv)
 	int fd, timeout = 20, disable = WDIOS_DISABLECARD, pin[2], pout[2], status, n = 0, saw_finish = 0;
 	int simulation, stalled, bridge_sim = 0, bridge_peek = 0, bridge_first = 0, bridge_segment = 0;
 	int bridge_cycle = 0, gpc_init_cycle = 0, postgpc_cycle = 0;
-	int core_revision_cycle = 0, mcc_read_once = 0;
+	int core_revision_cycle = 0, mcc_read_once = 0, page5_read_once = 0;
 	pid_t child;
 	FILE *in, *out;
 	char line[512], reply[128], expected[64];
 	struct watchdog_info info;
 	if (argc == 2 && (!strcmp(argv[1], "--simulate-ok") || !strcmp(argv[1], "--simulate-stall"))) {
 		simulation = 1; stalled = !strcmp(argv[1], "--simulate-stall");
+	} else if (argc == 6 && !strcmp(argv[1], "--page5-read-once") && strlen(argv[2]) == 64 && strspn(argv[2], "0123456789abcdef") == 64 && strlen(argv[3]) == 64 && strspn(argv[3], "0123456789abcdef") == 64 && strlen(argv[4]) == 36 && (!strcmp(argv[5], "0") || !strcmp(argv[5], "4") || !strcmp(argv[5], "8"))) {
+		simulation = stalled = 0; page5_read_once = 1;
 	} else if (argc == 5 && !strcmp(argv[1], "--mcc-read-once") && strlen(argv[2]) == 64 && strspn(argv[2], "0123456789abcdef") == 64 && strlen(argv[3]) == 64 && strspn(argv[3], "0123456789abcdef") == 64 && strlen(argv[4]) == 36) {
 		simulation = stalled = 0; mcc_read_once = 1;
 	} else if (argc == 3 && (!strcmp(argv[1], "--bridge") || !strcmp(argv[1], "--simulate-bridge") || !strcmp(argv[1], "--bridge-peek") || !strcmp(argv[1], "--bridge-first") || !strcmp(argv[1], "--bridge-segment") || !strcmp(argv[1], "--bridge-cycle") || !strcmp(argv[1], "--gpc-init-cycle") || !strcmp(argv[1], "--postgpc-cycle") || !strcmp(argv[1], "--core-revision-cycle")) && strlen(argv[2]) == 64 &&
@@ -69,7 +71,9 @@ int main(int argc, char **argv)
 		if (dup2(pin[0], STDIN_FILENO) < 0 || dup2(pout[1], STDOUT_FILENO) < 0) _exit(1);
 		close(pin[0]); close(pout[1]);
 		if (simulation) simulated_child(stalled);
-		if (mcc_read_once)
+		if (page5_read_once)
+			execl("/tmp/j81-page5-read-once-run", "j81-page5-read-once-run", "--run", argv[2], argv[3], argv[4], argv[5], (char *)NULL);
+		else if (mcc_read_once)
 			execl("/tmp/j81-mcc-read-once-run", "j81-mcc-read-once-run", "--run", argv[2], argv[3], argv[4], (char *)NULL);
 		else if (bridge_peek)
 			execl("/tmp/gpu-bridge-peek-run", "gpu-bridge-peek-run", argv[2], (char *)NULL);

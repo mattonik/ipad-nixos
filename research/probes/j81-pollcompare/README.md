@@ -1,6 +1,7 @@
 # J81 iOS PMGR/GPC poll comparison probe
 
-Prepared 2026-11-10; not yet run on hardware. This extends the previously
+Prepared and run 2026-11-10; see the [hardware result](../../2026-11-10-j81-ios-linux-poll-result.md).
+This extends the previously
 booted [thread capture](../j81-thread/README.md), adding hooks which record
 values returned by existing iOS PMGR and GPC poll reads. It does not add MMIO
 accesses. It logs after the original RGX identity reads using the same
