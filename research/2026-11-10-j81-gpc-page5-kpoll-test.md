@@ -222,3 +222,45 @@ so IRQ and FIQ are both masked on this CPU for the whole section (the comment
 in the source says FIQ is not controlled; the compiled code does mask it).
 SError is not masked. About twenty instructions separate the two loads. The
 stores compile to `dmb oshst; str; dsb sy`.
+
+## Hardware result, immediate mode (2026-11-10)
+
+Fresh cycle-payload RAM boot `5c3f6218-672a-4cb8-af9f-14bc26a187ab`.
+`boot/j81_preflight.sh gpc-page5-kpoll` returned GO (kernel notes `82ff70e8…`,
+clocksource `arch_sys_counter`). The campaign's PMGR cycle and 66 bridge
+stores completed, then:
+
+```text
+stage=after-pmgr-read raw=0x000003ff target=15 actual=15 auto=0 reset=0
+stage=after-gpc-state raw=0x00000000
+stage=before-gpc-page5-kpoll address=0x20e005004 width=32 mode=immediate
+checkpoint=before-kernel-batch
+checkpoint=kernel-batch result=ok mode=immediate raw=0x00000001 polls=11 prewrite_ns=291916 postwrite_ns=291125 first_valid=1 first=0x00000000 first_ns=1000 later_valid=0 later=0x00000000 later_ns=0
+stage=finished rc=0
+stage=watchdog-disarmed
+```
+
+- GPC reached state 1 on poll 11. The `0x11` store preceded the successful
+  poll load by more than 291.1 µs and less than 292.9 µs. Ten busy polls over
+  that time is about 29 µs per poll, so the GPC left the busy state at most
+  about one poll interval before the successful poll. That last figure is an
+  inference from the average spacing, not a measurement.
+- The single page-5 `+4` load returned `0x00000000`. It was issued less than
+  1000 ns after the poll load, with IRQ and FIQ masked on that CPU.
+- The watchdog disarmed and the iPad still answered ping afterwards.
+
+Reading: at the instant Linux first observes GPC state 1, bit 30 is clear.
+This does not support H1 at that instant. Together with the earlier userspace
+sample (`0`, tens of µs later, different boot) it strengthens H2: on Linux the
+bit is not set around the successful poll. It does not exclude a pulse that
+began and ended inside the roughly 291 µs before the successful poll, and it
+says nothing about what the bit means or whether it matters for the core.
+
+The `paired` and `delayed` modes exist to qualify a first sample that is set.
+With a first sample of zero they would add little, so they were not run.
+
+An earlier attempt on the same boot (`…-20261110-01`) stopped at its first
+host connection (`No route to host` from the operator's terminal) before any
+device access; its log directory is empty.
+
+Capture: `artifacts/live/gpu/gpc-page5-kpoll-20261110-02/` (private).
