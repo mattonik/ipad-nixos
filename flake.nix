@@ -1143,6 +1143,13 @@
             installPhase = "mkdir -p $out/bin && cp uartpeek $out/bin/uartpeek";
           };
 
+          pmgrDwiOnPkg = pkgsCrossMusl.stdenv.mkDerivation {
+            name = "pmgr-dwi-on";
+            dontUnpack = true;
+            buildPhase = "$CC -static -O2 -Wall -Wextra -Werror -o pmgr-dwi-on ${./boot/pmgr-dwi-on.c}";
+            installPhase = "mkdir -p $out/bin && cp pmgr-dwi-on $out/bin/pmgr-dwi-on";
+          };
+
           gpuPmgrPeekPkg = pkgsCrossMusl.stdenv.mkDerivation {
             name = "gpu-pmgr-peek";
             dontUnpack = true;
@@ -1604,6 +1611,7 @@
         pinpoke-static = pinpokePkg;
         uartpeek-static = uartpeekPkg;
         gpu-pmgr-peek-static = gpuPmgrPeekPkg;
+        pmgr-dwi-on-static = pmgrDwiOnPkg;
         gpu-gpc-peek-static = gpuGpcPeekPkg;
         gpu-gpc-init-static = gpuGpcInitPkg;
         gpu-gpc-page5-timed-static = gpuGpcPage5TimedPkg;
