@@ -162,3 +162,102 @@ zero on a different boot. No write is justified by these observations alone.
 Private archive: `artifacts/live/private/ios-logarchive-j81-page5pair-01/`.
 
 The [next-boundary analysis](2026-11-10-j81-page5-transition-next-boundary.md) identifies the existing successful GPC poll as an intermediate sampling point.
+
+## Reduced middle probe: change observed by the GPC poll
+
+On 2026-11-10 a temporary 19H394 boot ran the
+[reduced middle probe](probes/j81-page5min/README.md), module SHA-256
+`3ce3a82ecca142355244c81b0df315de49116d27c26459c35be0f5f1761a30ae`.
+The private startup log records:
+
+```text
+PAGE5-early-before
+Q=00000000
+P1=000003ff G1=00000001 I=00070500
+M=40000000
+PAGE5-before
+Q=40000000
+... GPU firmware booted successfully (AGXFirmwareKextG4G)
+```
+
+`M` is the buffered read taken after the successful same-thread GPC poll
+and before the caller's delay and identity dispatch; it is printed later at
+the identity hook. The result therefore narrows the observed change to the
+interval after the early clock-provider-return sample and by the successful
+GPC poll. This includes the provider power request and GPC setup, but could
+also include elapsed time, concurrent activity or a side effect of the early
+read. It does not identify the bit's function or establish a causal link to
+Linux's stalled RGX read. The iOS physical mapping is still inferred from the
+Pongo ADT. The boot reported successful firmware startup; that does not prove
+the reads had no side effects.
+
+The user reported the screen restarting before iPadOS appeared. The captured
+boot reached the GPU firmware success log, but the available log does not
+establish whether an additional restart occurred or its cause. Private archive:
+`artifacts/live/private/ios-logarchive-j81-page5min-01/`.
+
+## Power-provider boundary: change observed during GPC interval
+
+On 2026-11-10 a temporary 19H394 iPadOS boot ran the
+[power-boundary probe](probes/j81-page5power/README.md), SHA-256
+`7ebf0af4c97fe0a27688b0679661b28c7ef1c6de29fae6e1b6322d522c033351`.
+The same startup log records:
+
+```text
+PAGE5-early-before
+Q=00000000
+P1=000003ff G1=00000001 I=00070500
+T=00000000
+M=40000000
+PAGE5-before
+Q=40000000
+... GPU firmware booted successfully (AGXFirmwareKextG4G)
+```
+
+`T` was sampled after the power-provider call returned and before the
+caller's GPC setup. `M` was sampled at successful GPC poll before the caller's
+subsequent delay and identity reads. Both were buffered and printed later at
+the identity hook; their log timestamps are not sampling times. The word
+therefore differed between the post-power-provider and post-GPC-poll samples.
+The interval contains GPC mapping and setup, state polling, elapsed time and
+potential concurrent work; it does not prove which operation changed the
+word, that the samples were free from read side effects, or that the bit
+controls GPU access. The runtime iOS physical mapping remains inferred from
+the Pongo ADT. GPU firmware startup was reported on the same boot.
+
+The user reported a reboot before iPadOS appeared. The available log records
+this successful probe boot, but does not establish whether another restart
+occurred or why. Full private archive:
+`artifacts/live/private/ios-logarchive-j81-page5power-01/`.
+
+## GPC control boundary: transition after control sample
+
+On 2026-11-10 a temporary 19H394 boot ran the
+[control-boundary probe](probes/j81-page5control/README.md), SHA-256
+`bbcbae242a2e254d1b7f12bd9764d07f03b8055b38863ca8c754711b00b26ca6`.
+The same startup log records:
+
+```text
+PAGE5-early-before
+Q=00000000
+P1=000003ff G1=00000001 I=00070500
+C=00000000
+T=00000000
+M=40000000
+PAGE5-before
+Q=40000000
+... GPU firmware booted successfully (AGXFirmwareKextG4G)
+```
+
+`T` was sampled after the power-provider return; `C` was sampled after the
+conditional GPC control-write site and before the state-request instruction; `M`
+was sampled after a successful GPC poll and before identity. They were
+buffered and logged in `C`, `T`, `M` order at identity, **not sampling order**.
+The observed difference is between `C` and `M`, an interval containing the
+`0x11` state request and polling. The probe does not establish that the conditional control write executed
+or persisted. It also cannot distinguish a
+state-request effect from elapsed time, a concurrent action, or effects of
+the additional reads, and it does not establish that bit 30 controls GPU
+readiness. Runtime iOS physical mapping is inferred from the Pongo ADT.
+The same boot reported GPU firmware startup. Private archive:
+`artifacts/live/private/ios-logarchive-j81-page5control-01/`.

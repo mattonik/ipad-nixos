@@ -6,6 +6,34 @@ Imagination GXA6850 (Rogue/G4G generation).
 
 ## What has been observed
 
+- The proposed [next paired Linux observation](2026-11-10-j81-next-build-agent-handoff.md)
+  tests whether page-5 bit 30 is briefly set closer to the successful GPC
+  poll. It is a test plan, not a demonstrated GPU-ready condition.
+
+- A fresh Linux GPC run reached state `1` on poll 5, then sampled page-5
+  `0x20e005004` as `0` in the same process. The sysfs read returned 34.5 µs
+  after a timestamp taken after that poll; time before the timestamp was not
+  measured. The watchdog disarmed ([result](2026-11-10-j81-linux-gpc-page5-timed-probe.md#corrected-hardware-result)).
+
+- An iPadOS five-point capture found page-5 offset `0x5004` was `0` after
+  the conditional GPC control-write site and `0x40000000` after the state poll.
+  The interval includes the `0x11` state request; causation and the bit's
+  meaning remain unknown ([capture](2026-11-10-j81-page5-capture-results.md#gpc-control-boundary-transition-after-control-sample)).
+
+- An iPadOS four-point capture observed PMGR-method offset `0x5004` as `0`
+  immediately after the power-provider return and `0x40000000` after GPC
+  polling. The operation responsible and the bit's meaning remain unknown
+  ([capture](2026-11-10-j81-page5-capture-results.md#power-provider-boundary-change-observed-during-gpc-interval)).
+
+- A three-point iPadOS boot captured PMGR-method offset `0x5004` as `0`
+  after the GFX clock-provider return and `0x40000000` both after the GPC
+  poll and after identity. The transition's cause and relationship to Linux
+  GPU readiness remain unknown ([capture](2026-11-10-j81-page5-capture-results.md#reduced-middle-probe-change-observed-by-the-gpc-poll)).
+
+- Offline tracing resolved a candidate iOS 15 power-gate callback that reads
+  PMGR bits 8/9 into an output flag. Its runtime class is unverified; see
+  the [callback analysis](2026-11-10-j81-ios15-power-gate-callback.md).
+
 - A paired iPadOS boot observed PMGR page-5 offset `0x5004` change from
   `0` after the GFX provider returned to `0x40000000` after GPU identity.
   A separate Linux post-GPC sample was `0`. The bit's role and the cause of

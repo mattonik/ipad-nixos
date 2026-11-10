@@ -1,0 +1,11 @@
+# J81 iOS intermediate page-5 probe
+
+Offline-built experimental extension of the [paired probe](../j81-page5pair/README.md), targeting the exact iPadOS 15.8.5 19H394 kernel. It retains the early and late reads of PMGR region 0, offset `0x5004`, instance 0, and adds one read at the first successful same-thread GPC poll. The middle sample is buffered and printed as `M=xxxxxxxx` after the identity hook; it is not a log timestamp for the read. A missing `M=` is inconclusive. A read that stalls may prevent all middle and late output.
+
+The middle hook checks for a captured provider thread and PMGR context, a clear GPC busy bit, enabled IRQs and a one-shot claim. It saves and restores general-purpose and SIMD registers, flags, FP control and status, and returns through the original success or retry branch. The PMGR object's lifetime, mapping correspondence, lock/reentrancy state and read side effects are not established. Instrumentation adds three undocumented reads and timing changes and could stall, reboot or corrupt the running system. IRQ-enabled is not proof that the method is safe in this context. This probe is **not cleared for a device run** until its lock/context and preservation assumptions receive independent review.
+
+Private build `artifacts/live/private/j81-ios-page5middle-probe/page5-middle4` SHA-256 `489f3adbeb6952d15cae0bf42114ee7e1502515321ea1a9fe200945f6cac97c8`. It uses the paired probe's Pongo build environment, registering `j81_page5middle_capture` with `KPF_CFLAGS=-DJ81_PAGE5MIDDLE_DEVICE_BUILD`.
+
+The exact kernel passed the KPF host harness; each of nine missing and duplicated signatures, and a wrong UUID, was refused. Native ARM64 host simulations checked early/middle/late method arguments and ordering, busy polling, wrong-thread and absent-context skips, one-shot middle access, IRQ-masked skip and flags preservation in the skip tests. Host tests mock privileged state, logger, object and hardware; they do not establish iOS lock context, object lifetime or MMIO behavior. No hardware run was performed.
+
+A [static context review](../../2026-11-10-j81-page5middle-context-review.md) found a candidate direct read path, but did not resolve kernel SIMD, stack, runtime vtable or lock context; the probe remains unapproved for hardware.

@@ -37,3 +37,5 @@ object lifetime, first-success single-shot behavior, and safe logging or
 buffering. Host simulations and the exact-build signature guards must pass
 before a device run. Full log archives stay private. No Linux write or GPU
 core access is justified by this comparison alone.
+
+An experimental [intermediate probe](probes/j81-page5middle/README.md) has now been built and host-tested, but still requires independent context and preservation review before any device run.

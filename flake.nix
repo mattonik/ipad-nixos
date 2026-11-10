@@ -1241,6 +1241,13 @@
             installPhase = "mkdir -p $out/bin && cp gpu-gpc-timed-revision $out/bin/gpu-gpc-timed-revision";
           };
 
+          gpuGpcPage5TimedPkg = pkgsCrossMusl.stdenv.mkDerivation {
+            name = "gpu-gpc-page5-timed";
+            dontUnpack = true;
+            buildPhase = "$CC -D_GNU_SOURCE -static -O2 -Wall -Wextra -Werror -o gpu-gpc-page5-timed ${./boot/gpu-gpc-page5-timed.c}";
+            installPhase = "mkdir -p $out/bin && cp gpu-gpc-page5-timed $out/bin/gpu-gpc-page5-timed";
+          };
+
           gpuGpcInitPkg = pkgsCrossMusl.stdenv.mkDerivation {
             name = "gpu-gpc-init";
             dontUnpack = true;
@@ -1599,6 +1606,7 @@
         gpu-pmgr-peek-static = gpuPmgrPeekPkg;
         gpu-gpc-peek-static = gpuGpcPeekPkg;
         gpu-gpc-init-static = gpuGpcInitPkg;
+        gpu-gpc-page5-timed-static = gpuGpcPage5TimedPkg;
         gpu-fender-wake-static = gpuFenderWakePkg;
         gpu-id-once-static = gpuIdOncePkg;
         gpu-core-revision-once-static = gpuCoreRevisionOncePkg;
