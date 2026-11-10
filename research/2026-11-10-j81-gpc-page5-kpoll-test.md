@@ -166,7 +166,59 @@ campaign refuses to run until the three file hashes are pinned in it.
 
 These tests do not show what the hardware does.
 
-## Build record
+## Build record (2026-11-10)
 
-To be completed after the build: module and supervisor store paths, SHA-256,
-vermagic, kernel notes check, and the instructions between the two loads.
+| file | SHA-256 |
+| --- | --- |
+| `j81-gpc-page5-kpoll.ko` | `def7a657f995edf9b9d719ccc65cb9e15316a6394e463c02308c5b958dd82e59` |
+| `gpu-gpc-page5-kpoll-run` | `9a482e2238b5981189ee46a37416ce3f4bcfd62d5060b7d0a1471d19a8bbca94` |
+| `gpu-watchdog-supervisor` | `9740666bb9c4aab798ca762416e0044b737b1f134970fa4b567db80fa3f60280` |
+
+Local bundle: `artifacts/live/private/j81-gpc-page5-kpoll-bundle-v1/`.
+
+- The flake's test kernel has drifted from the booted cycle payload: building
+  `testKernel.dev` from today's tree gives `.notes` `79fd5ea9…`, not the
+  payload's `82ff70e8…`. `build.nix` therefore pins the kernel tree by store
+  path (`qwrk3jddqk…-dev`), whose `vmlinux` `.notes` hash is
+  `82ff70e850df341559fb775819962a9787a7bd85712a04b210d0fbfd407b7014`
+  (`boot/kernel_notes_sha256.py`). The module derivation references that path.
+  The existing `kernel/page5-read-once/build.nix` has the same drift.
+- vermagic `7.3.0-rc1 SMP preempt mod_unload aarch64`, the same string as the
+  `page5-read-once` module that loaded on this payload. `struct module`
+  (`.gnu.linkonce.this_module`) is `0x4c0` bytes in both. `CONFIG_MODVERSIONS`
+  is off. All 16 undefined symbols are exported in that tree's `Module.symvers`.
+- The supervisor is a static AArch64 ELF built from the flake output
+  `gpu-watchdog-supervisor-static`.
+
+Compiled path from the successful poll load to the first page-5 load
+(`batch_show`, `llvm-objdump`; `readl` is a local out-of-line function):
+
+```text
+110: bl   ktime_get_raw_fast_ns          t_poll
+118: ldr  x0, [x19, #0x8]                GPC mapping
+11c: add  w22, w22, #0x1
+120: add  x0, x0, #0x1, lsl #12
+124: bl   readl        -> nop; ldr w0,[x0]; dmb oshld; mov; eor; cbnz; ret     poll load
+128: mov  w25, w0
+12c: and  w23, w0, #0x10
+130: tbnz w25, #0x4, <busy>
+134: and  w1, w0, #0x1f
+138: cmp  w1, #0x1
+13c: b.ne <invalid state>
+140: adrp x26, mode_id
+144: ldr  w0, [x26]
+148: cmp  w0, #0x2
+14c: b.eq <delayed>
+150: ldr  x0, [x19, #0x10]               page-5 mapping
+154: str  w1, [sp, #0xac]
+158: add  x0, x0, #0x4
+15c: bl   readl        -> nop; ldr w0,[x0]; dmb oshld; …                       page-5 load
+160: mov  w21, w0
+164: bl   ktime_get_raw_fast_ns          t_first
+```
+
+`msr DAIFSet, #0x3` precedes `110` and `msr DAIF, x28` follows the last stamp,
+so IRQ and FIQ are both masked on this CPU for the whole section (the comment
+in the source says FIQ is not controlled; the compiled code does mask it).
+SError is not masked. About twenty instructions separate the two loads. The
+stores compile to `dmb oshst; str; dsb sy`.

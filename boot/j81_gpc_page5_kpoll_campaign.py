@@ -14,9 +14,9 @@ BASE = ROOT / 'artifacts/live/gpu-test-bundle-timed-revision-v3'
 BUNDLE = ROOT / 'artifacts/live/private/j81-gpc-page5-kpoll-bundle-v1'
 # SHA-256 of the exact files built for this test; None means "not built yet".
 FILES = {
-    'j81-gpc-page5-kpoll.ko': None,
-    'gpu-gpc-page5-kpoll-run': None,
-    'gpu-watchdog-supervisor': None,
+    'j81-gpc-page5-kpoll.ko': 'def7a657f995edf9b9d719ccc65cb9e15316a6394e463c02308c5b958dd82e59',
+    'gpu-gpc-page5-kpoll-run': '9a482e2238b5981189ee46a37416ce3f4bcfd62d5060b7d0a1471d19a8bbca94',
+    'gpu-watchdog-supervisor': '9740666bb9c4aab798ca762416e0044b737b1f134970fa4b567db80fa3f60280',
 }
 
 
