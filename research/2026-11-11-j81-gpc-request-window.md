@@ -59,3 +59,44 @@ Evidence: `artifacts/live/private/gpu-offline/ios15-agx-disasm.txt`,
 [control and reduced iOS captures](2026-11-10-j81-page5-capture-results.md),
 and the [writer capture](2026-11-11-j81-ios-page5writer-result.md).
 Private captures and Apple binaries must remain private.
+
+## Follow-up: bracket without instrumenting the busy loop
+
+The existing `j81-pollcompare` probe branches to its trampoline on every
+poll, and its busy path saves scratch registers and NZCV before returning to
+the load. Its result proves a poll value was seen, but it is not an
+unperturbed iOS poll-rate measurement. Counting each iteration in that same
+trampoline would add yet more per-poll work.
+
+A narrower timing candidate uses two sites instead:
+
+1. At the original `str w8, [x0, #0x1000]` at `0x...3998`, a trampoline
+   could record a start marker and timestamp, then execute that displaced
+   store exactly once.
+2. Replace the `mov w0, #10` at `0x...39a4`, which is reached after the poll,
+   with a second trampoline that records a finish timestamp and restores the
+   displaced `mov` before returning to the original delay call.
+
+No poll-loop instruction needs patching. However, `0x...39a4` is also the
+skip target when GPC setup is bypassed. A finish record is valid only after a
+matching start on the same invocation and thread. A start without finish is
+inconclusive; reentry, migration and concurrent invocations must not merge
+records. Store completion, register preservation, logging reachability and
+buffer publication must be checked in the actual implementation. This does
+not count polls, compare PMGR bit 30, verify bus completion, or prove causal
+readiness. It avoids the existing poll trampoline's per-iteration overhead,
+but still adds delay around both ends of the measured interval.
+
+A local 4-byte-aligned instruction-word scan of the decoded 19H394 kernel
+found 710 occurrences of `MRS Xt, CNTVCT_EL0` and no `MRS Xt, CNTPCT_EL0`
+(masking the target register); the extracted AGX executable slice contained
+neither. This raw scan is a lead only: it does not establish that each match
+is executed code, that the counter is safe in this exact hook context, or
+that counter values are comparable across CPU migration. The intended timer,
+frequency and per-CPU offset behavior need runtime or source corroboration.
+If a timer is validated, record raw ticks and CPU identity, treat migration as
+inconclusive unless cross-CPU counter coherence is verified, and bracket the
+load/store rather than presenting the result as an exact hardware latency.
+An unmatched hook, counter exception or failure before identity can prevent
+capture and may interrupt boot. This is a design candidate, not a built or
+hardware-tested probe.
