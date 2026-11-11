@@ -199,5 +199,22 @@ Buck 1 at `0x64` with the PLL still off means neither the rail voltage nor
 these domains hold the PLL back. Buck 1 still at `0x00` means the PMU does
 not accept the GFX code (PMU-side setup that iPadOS does and we do not).
 
+## Prepared, not run
+
+`pmgr-ps-restore` static aarch64 build, sha256
+`90474674554b3e3abac9f15e3d5d189b43a8a816feddf97dacdb8a32286f1d18`, private
+bundle with a staging file `artifacts/live/private/j81-pmgr-ps-restore-bundle-v1/`
+on the Mac. This build is **not** the Nix build: the shared builder refused
+to start because the Mac had 12 GB free (15 GB required), so it was compiled
+with `zig cc -target aarch64-linux-musl -static -O2 -s` (zig 0.17.1) on two
+machines, which gave the same hash. The flake attribute
+`pmgr-ps-restore-static` is the reproducible record once the builder is
+available again.
+
+Dry run on boot `288eb570` (E): no arguments and a name outside the list
+both exit 2 before `/dev/mem` is opened; with all twenty names and `READ`
+then a refused write it printed the current words (`dwi` `0xff`, the others
+off) and exited 1 without writing.
+
 Captures (private): `artifacts/live/gpu/pmgr-words-20261111-dwi-config/` and
 `artifacts/live/gpu/pmgr-words-20261111-boot288e-after-bridge10/` on the Mac.
