@@ -1,8 +1,10 @@
 /*
  * Read-only sample of J81 PMGR words named on the command line.
  * Offsets are relative to PMGR region 0 (0x20e000000), 4-byte aligned,
- * below 0x40000, at most 64 per run. Maps /dev/mem read-only and never
- * writes. Never touches the GPU, GPC, the GFX bridges or the DWI block.
+ * below 0x40000, at most 64 per run. The two DWI configuration words at
+ * 0x200000 and 0x200004 are also accepted; they must only be read while the
+ * dwi power state is on. Maps /dev/mem read-only and never writes. Never
+ * touches the GPU, GPC or the GFX bridges.
  */
 #include <errno.h>
 #include <fcntl.h>
@@ -15,6 +17,7 @@
 
 #define PMGR_BASE 0x20e000000ULL
 #define PMGR_SIZE 0x40000UL
+#define DWI_CFG 0x200000UL
 #define MAX_WORDS 64
 #define PAGE 0x1000UL
 
@@ -32,7 +35,8 @@ int main(int argc, char **argv)
 	for (i = 0; i < n; i++) {
 		errno = 0;
 		off[i] = strtoul(argv[i + 1], &end, 16);
-		if (errno || end == argv[i + 1] || *end || off[i] >= PMGR_SIZE || (off[i] & 3)) {
+		if (errno || end == argv[i + 1] || *end || (off[i] & 3) ||
+		    (off[i] >= PMGR_SIZE && off[i] != DWI_CFG && off[i] != DWI_CFG + 4)) {
 			fprintf(stderr, "bad offset: %s\n", argv[i + 1]);
 			return 2;
 		}
@@ -56,7 +60,7 @@ int main(int argc, char **argv)
 			close(fd);
 			return 1;
 		}
-		printf("w 0x%05lx raw=0x%08x\n", off[i],
+		printf("w 0x%06lx raw=0x%08x\n", off[i],
 		       *(volatile const uint32_t *)((const char *)map + (off[i] & (PAGE - 1))));
 		fflush(stdout);
 		munmap(map, PAGE);
