@@ -26,7 +26,7 @@ the exact read arguments and order, one-shot behavior and missing-PMGR
 skip; the KPF harness accepted the target and rejected nine individually
 missing and nine duplicate signatures and a wrong UUID. Final-binary
 disassembly shows both fixed offsets in sequence. These checks do not
-validate the live object, timing or MMIO safety. No hardware run yet.
+validate the live object, timing or MMIO safety.
 
 Run on a fresh DFU device with the existing temporary rootless boot flow:
 
@@ -37,3 +37,17 @@ sudo boot/vendor/palera1n-macos-arm64 --rootless --override-kpf artifacts/live/p
 Verify the checksum immediately before use. Boot archives can contain
 personal data and must remain private. Interpret either value as a snapshot,
 not as a reason to write page 5 or repeat the stalled Linux GPU-core read.
+
+## Hardware result: 2026-11-11
+
+On the temporary 19H394 boot, the saved kernel log contains the expected
+identity marker `P1=000003ff G1=00000001 I=00070500`, followed by
+`PAGE5-before`, `0=00001010` and `4=40000000`. GPU firmware startup was
+reported afterward. Thus the two sequential samples show `+0` bit 31 clear
+and `+4` bit 30 set at this checkpoint in the same boot. This weakens the
+idea that these bits simply mirror each other; it does not identify bit 30,
+establish a causal role in GPU access, or prove an electrical clock state.
+The runtime iOS physical mapping and saved object lifetime remain inferred.
+
+Private archive and filtered log:
+`artifacts/live/private/ios-logarchive-j81-page5dual-01/`.
