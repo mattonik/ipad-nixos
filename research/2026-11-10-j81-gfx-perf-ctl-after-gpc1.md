@@ -104,3 +104,39 @@ Run order, on a boot where GPC state 1 has been requested:
 
 A boot that has lost `/tmp` or was rebooted needs the kpoll `immediate`
 campaign first to get back to the pending state.
+
+## Result of the dwi test (2026-11-11, boot `2d2da8d6`)
+
+Fresh cycle-payload boot, preflight `gpc-page5-kpoll` GO. Sequence and
+values, all E:
+
+1. kpoll `immediate`: GPC state 1 on poll 11 (294 to 296 us after the
+   `0x11` store), page-5 `+4` = `0x00000000`. Same as boot `5c3f6218`.
+2. Perf block about a minute later: `ctl = 0x80110100`. So the value appears
+   right after the request, not slowly, and reproduces across boots.
+3. `pmgr-dwi-on` (hash checked on the device): `0x20e020120` read
+   `0x00000200` (target 0, actual 0), then after the write `0x000000ff`
+   (target 15, actual 15) on the first poll.
+4. Perf block again: **`ctl = 0x80110100`, unchanged.** GFX PS `0x3ff`,
+   `0x20e01c300 = 0x40000001`. Device stayed up.
+
+Switching the `dwi` clock gate on does not move the control word. Candidate
+1 in its simple form is ruled out. It does not rule out a DWI block that is
+clocked but not configured (iPadOS has a driver for it; Linux has none), and
+it does not test the reading of `0x80110100` itself: the word might also be
+a completed state, with the non-zero bits in 23:16 meaning something other
+than "pending" (U).
+
+## Next discriminator
+
+The cheapest decisive datum is the same word on iPadOS. The existing iOS
+probes already read PMGR region 0 through the ordinary reader, so a sample
+of offset `0x1c200` at the `C` and `M` points (optionally `0x20120` and
+`0x23000`) says whether a healthy GPU shows a different value. If iPadOS
+also reads `0x80110100`, this register is not the lead and page 5 stays the
+only known difference. If it differs (for example low nibble 1 or bits 23:16
+clear), the Linux transition is confirmed stuck and the difference tells
+which field to chase.
+
+Private captures: `artifacts/live/gpu/gpc-page5-kpoll-20261111-01/` and
+`artifacts/live/gpu/dwi-on-20261111-01/` on the Mac.
