@@ -6,11 +6,11 @@ stores the table's 32-bit value verbatim; the PMGR layer does not add or strip
 `0x80010000`. The generic bridge callback also dispatches table entries by
 index and returns only a status code.
 
-Therefore the live transition from a table value of `0x80010004` to a stable
-readback of `0x00000004` is a property of the bridge/GFX register itself (for
-example write-only/tagged control bits being read as zero), not a PMGR-side
-value conversion. The PMGR device-state reader's separate `& 0xf` masking
-cannot be used to explain this MMIO readback.
+The table value `0x80010004` and a fresh-boot no-write readback of `0x4`
+come from different boots and phases; they do not demonstrate a live
+transition or establish the high bits' behavior. The PMGR device-state
+reader's separate `& 0xf` masking cannot explain the direct MMIO readback.
+See the later [readback audit](2026-11-11-j81-bridge-readback-candidate.md).
 
 This removes one ambiguity but does not identify the high bits' hardware
 meaning. Keep the remaining bridge table and GPC writes blocked until an
