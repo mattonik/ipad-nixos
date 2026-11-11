@@ -29,12 +29,14 @@ def verify():
     return names
 
 
-def run(logdir, mode):
+def run(logdir, mode, expected_boot_id=None, before_kpoll=None):
     if mode not in kpoll.MODES: raise ValueError('invalid mode')
     names = verify()
     logdir.mkdir(parents=True, exist_ok=False)
     output = campaign.preflight(); (logdir / 'preflight.log').write_text(output)
     boot_id = campaign.parse_preflight(output)
+    if expected_boot_id is not None and boot_id != expected_boot_id:
+        raise ValueError('boot ID changed before GPC campaign')
     print(f'boot={boot_id} mode=gpc-page5-kpoll/{mode}', flush=True)
     for name, command in campaign.commands('gpc-control', BASE, logdir, names)[:3]:
         print(f'running {name}', flush=True)
@@ -46,6 +48,8 @@ def run(logdir, mode):
         data = (BUNDLE / name).read_bytes()
         if hashlib.sha256(data).hexdigest() != FILES[name]: raise ValueError(f'bundle changed: {name}')
         stage('172.16.42.1', '/tmp/' + name, data)
+    if before_kpoll is not None:
+        before_kpoll(boot_id)
     with socket.create_connection(('172.16.42.1', 23), timeout=5) as sock:
         result = kpoll.capture(sock, logdir / 'kpoll.log', FILES['j81-gpc-page5-kpoll.ko'],
                                FILES['gpu-watchdog-supervisor'], FILES['gpu-gpc-page5-kpoll-run'], boot_id, mode)
