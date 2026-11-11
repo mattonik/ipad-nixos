@@ -140,3 +140,27 @@ which field to chase.
 
 Private captures: `artifacts/live/gpu/gpc-page5-kpoll-20261111-01/` and
 `artifacts/live/gpu/dwi-on-20261111-01/` on the Mac.
+
+## iPadOS comparison (2026-11-11): the word is the same
+
+The [perfctl probe](probes/j81-perfctl/README.md) (module sha256
+`ebb30acc...`) ran on a temporary 19H394 boot. iPadOS reached the Home
+screen. Latest-boot records (E):
+
+| Point | iPadOS `0x1c200` | Linux |
+| --- | --- | --- |
+| early `Q`, `T`, `C` (before the `0x11` request) | `80000000` | `80000000` |
+| `M` (after the GPC poll) | `80110100` | `80110100` |
+| late `Q` (after GPU identity) | `80110100` | `80110100` |
+
+`0x80110100` is therefore the normal value after a state-1 request on a
+working GPU. The "transition stuck pending" reading above is wrong and the
+voltage/DWI candidates built on it have no support. The perf-state control
+word is not a difference between the two systems; page-5 `+4` bit 30 stays
+the only known one. Private archive:
+`artifacts/live/private/ios-logarchive-j81-perfctl-03/` (the `-01` and `-02`
+directories are an empty and a truncated attempt).
+
+Follow-up prepared, not run: the [perf-table probe](probes/j81-perftab/README.md)
+compares five static words (state-1 table entry, `0x1c300`, voltage control,
+`dwi` power state) in one boot.

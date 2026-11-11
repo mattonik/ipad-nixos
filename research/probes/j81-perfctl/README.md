@@ -39,6 +39,8 @@ The source differs from the control probe only by the symbol prefix, the
 - Private module `artifacts/live/private/j81-ios-perfctl-probe/perfctl4`,
   SHA-256 `ebb30acc414153bd7bc52f4f323bf32c491b7e655e4f14c5f05f71af742dd573`.
 
+Hardware run 2026-11-11: see the [result](../../2026-11-10-j81-gfx-perf-ctl-after-gpc1.md#ipados-comparison-2026-11-11-the-word-is-the-same).
+
 Limits are those of the control probe: mocked context, no proof of the
 runtime PMGR object or mapping, and the reads are of an undocumented
 register on a live iPadOS boot, which can perturb timing, hang or reboot. On
