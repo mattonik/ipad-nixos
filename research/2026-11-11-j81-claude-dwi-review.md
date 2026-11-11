@@ -43,6 +43,28 @@ boot points before calling them a difference. The existing iOS probe's
 ordinary PMGR region-0 reader is not established to cover the DWI node;
 do not simply pass `0x200000` to it.
 
+### Follow-up: is DWI a GPU voltage path?
+
+The local Orchard Linux checkout identifies Apple DWI as a **display
+backlight** two-wire interface, not a GPU-voltage interface: its
+`Documentation/devicetree/bindings/leds/backlight/apple,dwi-bl.yaml` describes
+backlight controllers; `arch/arm64/boot/dts/apple/t7000.dtsi` places a
+backlight channel at `0x20e200010` and associates it with `ps_dwi`; and the
+saved J81 Apple tree's backlight node calls `function-backlight_update` on
+the DWI node. The channel's `+0x10/+0x14` addresses are distinct from the
+block-level `+0/+4` words sampled above. The local J81 Linux device tree
+also describes a separate I2C PMIC backlight; that does not prove which
+path iPadOS uses in every mode.
+
+This evidence does **not** prove DWI cannot affect other hardware. It does
+mean the earlier claim that PMGR sends GPU-rail voltage changes over DWI has
+not been established, and powering DWI on is not equivalent to reproducing
+a GPU voltage request. Combined with the negative DWI-first experiment and
+the bootloader's writes to its configuration words, this makes an extra DFU
+round solely to compare DWI `+0/+4` a weak next experiment. First establish
+a specific GPU-to-DWI dependency or pursue the page-5/GPC transition through
+other evidence; do not write guessed DWI commands or PMIC values.
+
 ## Review observations
 
 - `pmgr-words-peek` is read-only in the C access mode, but permits any
