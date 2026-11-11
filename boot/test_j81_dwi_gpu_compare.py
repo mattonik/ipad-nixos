@@ -46,7 +46,8 @@ class TestDwiCampaign(unittest.TestCase):
             self.assertEqual(mode, 'paired')
             self.assertEqual(expected_boot_id, BOOT)
         with tempfile.TemporaryDirectory() as d, \
-             patch.object(c, 'verify'), patch.object(c.base, 'preflight', return_value='ok'), \
+             patch.object(c, 'verify'), patch.object(c.subprocess, 'run', return_value=MagicMock(returncode=0, stdout='GO: gpc-page5-kpoll\n', stderr='')), \
+             patch.object(c.base, 'preflight', return_value='ok'), \
              patch.object(c.base, 'parse_preflight', return_value=BOOT), \
              patch.object(c, 'stage'), patch.object(c, 'snapshot', side_effect=snap), \
              patch.object(c, 'remote', side_effect=remote), patch.object(c, 'dwi_capture', side_effect=dwi), \
@@ -57,7 +58,8 @@ class TestDwiCampaign(unittest.TestCase):
 
     def test_dwi_failure_stops_before_campaign(self):
         with tempfile.TemporaryDirectory() as d, \
-             patch.object(c, 'verify'), patch.object(c.base, 'preflight', return_value='ok'), \
+             patch.object(c, 'verify'), patch.object(c.subprocess, 'run', return_value=MagicMock(returncode=0, stdout='GO: gpc-page5-kpoll\n', stderr='')), \
+             patch.object(c.base, 'preflight', return_value='ok'), \
              patch.object(c.base, 'parse_preflight', return_value=BOOT), \
              patch.object(c, 'stage'), patch.object(c, 'snapshot', return_value=sample()), \
              patch.object(c, 'dwi_capture', side_effect=RuntimeError('DWI failed')), \

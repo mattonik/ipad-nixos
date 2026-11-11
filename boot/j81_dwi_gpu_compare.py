@@ -5,6 +5,7 @@ import hashlib
 import os
 import re
 import socket
+import subprocess
 import time
 from pathlib import Path
 
@@ -116,6 +117,11 @@ def snapshot(boot_id, directory, label):
 def run(directory):
     verify()
     directory.mkdir(parents=True, exist_ok=False, mode=0o700)
+    check = subprocess.run(['bash', 'boot/j81_preflight.sh', 'gpc-page5-kpoll'],
+                           cwd=ROOT, capture_output=True, text=True, timeout=30)
+    (directory / 'device-preflight.log').write_text(check.stdout + check.stderr)
+    if check.returncode or 'GO: gpc-page5-kpoll' not in check.stdout.splitlines():
+        raise ValueError('fresh kpoll preflight failed')
     output = base.preflight()
     (directory / 'preflight.log').write_text(output)
     boot_id = base.parse_preflight(output)
