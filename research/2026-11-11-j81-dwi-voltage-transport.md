@@ -164,6 +164,28 @@ device tree); not built or tested yet.
   [iOS timing probe](probes/j81-gpc-timing/README.md) on `main` would give the
   iPadOS figure.
 
+## Review of the parallel work on `main` (same day)
+
+- The [iOS timing result](2026-11-11-j81-ios-gpc-timing-result.md) gives
+  about 289 µs from the state request to the end of the poll on iPadOS (if
+  the timebase is 24 MHz), against 291 to 306 µs on Linux, whose poll loop
+  sleeps 10 to 20 µs between loads and so can only be late. The request takes
+  the same time on both systems (E, one sample each). On iPadOS the PLL bit
+  is already set at the first read after the poll, so the PLL start lies
+  inside that interval; the Linux zero right after the poll is then a real
+  difference and not a sample taken too early (I). One arithmetic fit, weak:
+  the delay word's top field 3000 counted at 12 MHz is 250 µs, and the PLL
+  lock time `0x348` at 24 MHz is 35 µs, together 285 µs.
+- The [DWI review](2026-11-11-j81-claude-dwi-review.md) said that DWI was
+  only shown to be a backlight path and that a GPU-rail use was not
+  established. The buck measurements above settle the general point: DWI
+  carries the CPU and SRAM rail codes. For the GPU rail it is still an
+  inference until buck 1 is read after a request made with `dwi` on. Its
+  point that `pmgr-words-peek` is not a safe scanner is taken, and the PMU
+  dump side effect below is the same lesson.
+- The [selector-10 readback](2026-11-11-j81-bridge10-readback-result.md)
+  and the tuner captures do not bear on the voltage path.
+
 ## Caution about PMU dumps
 
 The full `0x0000..0x04ff` read cleared the latched bytes at `0x002d`,
