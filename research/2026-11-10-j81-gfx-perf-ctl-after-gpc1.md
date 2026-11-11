@@ -82,3 +82,25 @@ and need DFU. Still no GPU core read and no page-5 write.
 
 Private capture: `artifacts/live/gpu/perf-peek-after-gpc1-20261110/` on the
 Mac (not in Git).
+
+## Prepared, not run (2026-11-11)
+
+Tool `boot/pmgr-dwi-on.c` (host test `boot/test_pmgr_dwi_on.py`): maps only
+the PMGR power-state page, reads `0x20e020120` after a `READ` acknowledgment,
+sets the low nibble to `0xf` after a separate `WRITE` acknowledgment, polls
+the actual-state nibble for up to 100 ms and prints the result. Static build
+`pmgr-dwi-on-static`, sha256 `0fa25237...ab65258`. Private bundle with a
+staging file on the Mac: `artifacts/live/private/j81-pmgr-dwi-on-bundle-v1/`
+(the staging file was decoded locally and reproduces the same hash).
+
+Run order, on a boot where GPC state 1 has been requested:
+
+1. `boot/j81_preflight.sh perf-peek` must say GO.
+2. Run the staged `gpu-pmgr-perf-peek2`; continue only if `ctl` reads
+   `0x80110100` (the stuck state).
+3. Stage `pmgr-dwi-on`, check its hash on the device, run it, answer `READ`
+   and then `WRITE`.
+4. Run `gpu-pmgr-perf-peek2` again and compare `ctl`.
+
+A boot that has lost `/tmp` or was rebooted needs the kpoll `immediate`
+campaign first to get back to the pending state.
