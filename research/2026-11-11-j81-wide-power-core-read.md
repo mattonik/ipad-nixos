@@ -36,3 +36,9 @@ was otherwise fully initialized, that page-5 bit 30 is causal, or that no
 other clock/reset/firmware state matters. Do not repeat on this boot. Raw
 capture and pre-read domain snapshots remain private under
 `artifacts/live/gpu/wide-power-core-read-20261111-01/`.
+
+After the capture timed out, the user reported that the iPad had rebooted
+into iPadOS. This confirms recovery to iPadOS by user observation, but the
+capture does not identify whether the watchdog or another reset mechanism
+caused the reboot. The Mac did not enumerate the device when checked afterward;
+no additional device access or GPU test was performed.
