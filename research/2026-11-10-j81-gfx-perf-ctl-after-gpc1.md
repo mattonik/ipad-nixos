@@ -164,3 +164,28 @@ directories are an empty and a truncated attempt).
 Follow-up prepared, not run: the [perf-table probe](probes/j81-perftab/README.md)
 compares five static words (state-1 table entry, `0x1c300`, voltage control,
 `dwi` power state) in one boot.
+
+## iPadOS perf-table comparison (2026-11-11)
+
+The [perf-table probe](probes/j81-perftab/README.md) (module sha256
+`af39a37e...`) ran on a second temporary 19H394 boot; iPadOS reached the
+Home screen. Latest-boot records (E):
+
+| Label | Word | iPadOS | Linux |
+| --- | --- | --- | --- |
+| first `Q` | `0x23000` voltage control | `00000001` | `00000001` |
+| `T` | `0x20120` `dwi` power state | `000000ff` (on) | `00000200` (off) |
+| `C` | `0x1c010` perf table, state 1 | `6436d063` | `6436d063` |
+| `M` | `0x1c014` | `00000070` | `00000070` |
+| last `Q` | `0x1c300` | `40000001` | `40000001` |
+
+Four of five words are identical, including the voltage control word that
+m1n1 writes, so that write is not a difference either. iPadOS does not
+rewrite the bootloader's perf table. The only PMGR difference found is the
+`dwi` power state, which iPadOS has on before the GPC request.
+
+The Linux `dwi` test above switched it on only **after** the request, when
+the state change had already been issued, so it does not cover this case.
+Untested: `dwi` on before the GPC request, then the kpoll `immediate` read
+of page-5 `+4`. Private archive:
+`artifacts/live/private/ios-logarchive-j81-perftab-01/`.
