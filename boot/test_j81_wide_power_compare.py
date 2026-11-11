@@ -1,7 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import j81_wide_power_compare as w
 
@@ -64,6 +64,34 @@ class RestoreTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 w.domain_snapshot(BOOT, Path('/unused'), True)
             self.assertEqual(len(w.domain_snapshot(BOOT, Path('/unused'), False)), 20)
+
+    def test_full_campaign_order(self):
+        events = []
+        def snapshot(boot, directory, label):
+            events.append(label)
+            return {'20120': 0xff}
+        def parent(boot, directory): events.append('parent')
+        def domains(boot, log, require_on): events.append('domains-on' if require_on else 'domains-log')
+        def restore(sock, boot, log): events.append('restore')
+        def campaign(path, mode, expected_boot_id, before_kpoll):
+            self.assertEqual(expected_boot_id, BOOT)
+            self.assertEqual(mode, 'paired')
+            events.append('bridge')
+            before_kpoll(BOOT)
+            events.append('gpc')
+        # FILES gains the restore entry when run begins; real local files are read but not staged.
+        with tempfile.TemporaryDirectory() as d, patch.object(w.dwi, 'verify'), \
+             patch.object(w.subprocess, 'run', return_value=MagicMock(returncode=0, stdout='GO: gpc-page5-kpoll\n', stderr='')), \
+             patch.object(w.base, 'preflight', return_value='ok'), \
+             patch.object(w.base, 'parse_preflight', return_value=BOOT), \
+             patch.object(w, 'stage'), patch.object(w.dwi, 'snapshot', side_effect=snapshot), \
+             patch.object(w, 'parent_check', side_effect=parent), patch.object(w, 'domain_snapshot', side_effect=domains), \
+             patch.object(w, 'restore_capture', side_effect=restore), \
+             patch.object(w.socket, 'create_connection', return_value=MagicMock()), \
+             patch.object(w.dwi.kpoll, 'run', side_effect=campaign), patch.object(w.time, 'sleep'):
+            w.run(Path(d) / 'capture')
+        self.assertEqual(events, ['before-restore','parent','restore','before-gpc','bridge','parent',
+                                  'domains-on','gpc','domains-log','after-gpc','domains-log','after-10s'])
 
     def test_active_domain_is_skipped(self):
         parts = transcript()
