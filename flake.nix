@@ -1192,6 +1192,13 @@
             installPhase = "mkdir -p $out/bin && cp gpu-bridge-postgpc $out/bin/gpu-bridge-postgpc";
           };
 
+          gpuBridge10PostGpcPkg = pkgsCrossMusl.stdenv.mkDerivation {
+            name = "gpu-bridge10-postgpc";
+            dontUnpack = true;
+            buildPhase = "$CC -static -O2 -Wall -Wextra -Werror -o gpu-bridge10-postgpc ${./boot/gpu-bridge10-postgpc.c}";
+            installPhase = "mkdir -p $out/bin && cp gpu-bridge10-postgpc $out/bin/gpu-bridge10-postgpc";
+          };
+
           gpuBridgeFirstPkg = pkgsCrossMusl.stdenv.mkDerivation {
             name = "gpu-bridge-first";
             dontUnpack = true;
@@ -1643,6 +1650,7 @@
         gpu-bridge-sim-live-static = gpuBridgeSimLivePkg;
         gpu-bridge-peek-static = gpuBridgePeekPkg;
         gpu-bridge-postgpc-static = gpuBridgePostGpcPkg;
+        gpu-bridge10-postgpc-static = gpuBridge10PostGpcPkg;
         gpu-bridge-first-static = gpuBridgeFirstPkg;
         gpu-bridge-segment-static = gpuBridgeSegmentPkg;
         hciscan-static = hciscanPkg;
