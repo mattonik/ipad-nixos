@@ -40,5 +40,20 @@ rc, out = run("perf-peek", dict(base, DEVMEM="no"))
 assert rc == 1, out
 rc, out = run("gpu-pmgr-once", base, complete=False)
 assert rc == 1 and "no complete answer" in out, out
+kp = dict(base, DT_GUARD="no", WATCHDOG="yes", RAMROOT="yes", GFX_PWRSTATE="yes", RELEASE="7.3.0-rc1",
+          CLOCKSOURCE="arch_sys_counter", MODULES="brcmfmac,", TMP="")
+rc, out = run("gpc-page5-kpoll", kp)
+assert rc == 0 and "GO: gpc-page5-kpoll" in out, out
+for change, why in ((dict(NOTES="0" * 64), "FAIL kernel"), (dict(DT_GUARD="yes"), "FAIL dt-guard"),
+                    (dict(RELEASE="7.3.0"), "FAIL release"), (dict(RAMROOT="no"), "FAIL ram-root"),
+                    (dict(WATCHDOG="no"), "FAIL watchdog"), (dict(GFX_PWRSTATE="no"), "FAIL gfx-pwrstate"),
+                    (dict(MODULES="brcmfmac,gpu_pmgr_cycle,"), "FAIL fresh-modules"),
+                    (dict(MODULES="gpc_page5_kpoll,"), "FAIL fresh-modules"),
+                    (dict(TMP="gpu-pmgr-peek,gpu-gpc-init.once,"), "FAIL fresh-tmp")):
+    rc, out = run("gpc-page5-kpoll", dict(kp, **change))
+    assert rc == 1 and why in out and "NO-GO: gpc-page5-kpoll" in out, (change, out)
+# Missing facts (an older boot that does not answer the new probes) are a NO-GO, never a GO.
+rc, out = run("gpc-page5-kpoll", base)
+assert rc == 1 and "NO-GO" in out, out
 assert subprocess.run(["bash", str(script), "bogus"], capture_output=True).returncode == 2
 print("PASS: preflight go/no-go decisions")
