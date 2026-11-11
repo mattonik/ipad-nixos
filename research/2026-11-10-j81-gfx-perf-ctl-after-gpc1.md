@@ -189,3 +189,22 @@ the state change had already been issued, so it does not cover this case.
 Untested: `dwi` on before the GPC request, then the kpoll `immediate` read
 of page-5 `+4`. Private archive:
 `artifacts/live/private/ios-logarchive-j81-perftab-01/`.
+
+## Linux with `dwi` on before the GPC request (2026-11-11)
+
+Fresh cycle-payload boot, preflight `gpc-page5-kpoll` GO before and after
+the `dwi` step. Order: `pmgr-dwi-on` (`0x20e020120` `0x200` to `0xff`), then
+the kpoll `immediate` campaign. Result (E): GPC state 1 on poll 11 (304 to
+306 us after the `0x11` store), page-5 `+4` = `0x00000000` less than 750 ns
+after the poll load. A read of `0x20e020120` after the campaign still gave
+`0xff`, so `dwi` stayed on through the request. Device stayed up.
+
+The `dwi` power state is ruled out in both orders. Every PMGR word compared
+so far is now equal on iPadOS and Linux at the GPC request, or was made
+equal without effect; page-5 `+4` bit 30 remains the only difference. The
+cause is not in the compared PMGR words. Not compared: the DWI block's own
+registers (clocked but unconfigured on Linux), the PMU side, the GPC/Fender
+block beyond the three written words, and the other PMGR pages.
+
+Captures: `artifacts/live/gpu/dwi-first-20261111-01/` and
+`artifacts/live/gpu/gpc-page5-kpoll-20261111-02-dwi-first/` (private).
