@@ -1157,6 +1157,13 @@
             installPhase = "mkdir -p $out/bin && cp pmgr-dwi-on $out/bin/pmgr-dwi-on";
           };
 
+          pmgrPsRestorePkg = pkgsCrossMusl.stdenv.mkDerivation {
+            name = "pmgr-ps-restore";
+            dontUnpack = true;
+            buildPhase = "$CC -static -O2 -Wall -Wextra -Werror -o pmgr-ps-restore ${./boot/pmgr-ps-restore.c}";
+            installPhase = "mkdir -p $out/bin && cp pmgr-ps-restore $out/bin/pmgr-ps-restore";
+          };
+
           gpuPmgrPeekPkg = pkgsCrossMusl.stdenv.mkDerivation {
             name = "gpu-pmgr-peek";
             dontUnpack = true;
@@ -1619,6 +1626,7 @@
         uartpeek-static = uartpeekPkg;
         gpu-pmgr-peek-static = gpuPmgrPeekPkg;
         pmgr-dwi-on-static = pmgrDwiOnPkg;
+        pmgr-ps-restore-static = pmgrPsRestorePkg;
         pmgr-words-peek-static = pmgrWordsPeekPkg;
         gpu-gpc-peek-static = gpuGpcPeekPkg;
         gpu-gpc-init-static = gpuGpcInitPkg;

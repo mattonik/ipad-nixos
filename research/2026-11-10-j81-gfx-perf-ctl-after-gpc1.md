@@ -208,3 +208,11 @@ block beyond the three written words, and the other PMGR pages.
 
 Captures: `artifacts/live/gpu/dwi-first-20261111-01/` and
 `artifacts/live/gpu/gpc-page5-kpoll-20261111-02-dwi-first/` (private).
+
+## Follow-up (2026-11-11): DWI is the voltage transport
+
+The DWI block's configuration words are intact on Linux, and the PMU buck
+registers follow the voltage manager only while the `dwi` power state is on.
+See [DWI carries the rail voltage requests](2026-11-11-j81-dwi-voltage-transport.md)
+for the measurements, the list of domains Linux switches off, and the next
+test.

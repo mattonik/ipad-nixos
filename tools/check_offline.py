@@ -41,6 +41,7 @@ HOST_TESTS = (
     "boot/test_gpu_pmgr_perf_capture.py",
     "boot/test_gpu_pmgr_perf_pair.py",
     "boot/test_pmgr_dwi_on.py",
+    "boot/test_pmgr_ps_restore.py",
     "boot/test_pmgr_words_peek.py",
     "boot/test_j81_preflight.py",
     "boot/test_gpu_bridge_peek.py",
