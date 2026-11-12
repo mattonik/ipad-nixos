@@ -22,6 +22,11 @@ of the accumulated `+0x40` are not established here.
 
 ## Body and dispatch
 
+**Later correction:** the initializer path discussed below reads
+`hw-dpe-reg` and parses 0x28-byte rows. The earlier `state-config` name and
+0x1c row size are incorrect for that path. See
+[the property trace](2026-11-12-j81-hw-dpe-provider-trace.md).
+
 In the raw ApplePMGR slice, VA `0xfffffff006bcc56c` is file offset `0x1356c`.
 Its 196-byte AArch64 body (`0x...bcc56c`–`0x...bcc62f`) takes two arguments,
 `(pmgr, record)`. The earlier one-argument decompilation was caused by
