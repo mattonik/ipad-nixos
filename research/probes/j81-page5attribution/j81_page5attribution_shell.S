@@ -717,10 +717,27 @@ _j81_page5attribution_bridge:
  stp x15, x16, [sp, #0x30]
  mrs x9, nzcv
  str x9, [sp, #0x40]
+ str wzr, [sp, #0x50]
+ b Lbridge_common
+Lsynthetic_bridge:
+ sub sp, sp, #0x60
+ stp x9, x10, [sp]
+ stp x11, x12, [sp, #0x10]
+ stp x13, x14, [sp, #0x20]
+ stp x15, x16, [sp, #0x30]
+ mrs x9, nzcv
+ str x9, [sp, #0x40]
+ str x30, [sp, #0x48]
+ mov w9, #1
+ str w9, [sp, #0x50]
+Lbridge_common:
  ldr x9, _j81_page5attribution_buffer
+ ldr w10, [sp, #0x50]
+ cbnz w10, Lbridge_seen_done
  add x10, x9, #4016
  mov w11, #1
  stlr w11, [x10]
+Lbridge_seen_done:
  mov x13, #0
  mov w14, #0
  add x10, x9, #4000
@@ -771,14 +788,25 @@ Lbridge_reserved:
  add x10, x9, #3712
  ldar w11, [x10]
  orr w11, w11, #0x200
+ ldr w10, [sp, #0x50]
+ cbz w10, Lbridge_record_tagged
+ orr w11, w11, #0x400
+Lbridge_record_tagged:
  str w11, [x13]
  str w3, [x13, #8]
 Lbridge_store:
+ ldr w10, [sp, #0x50]
+ cbnz w10, Lbridge_after_store
  str w3, [x8, w2, uxtw]
+Lbridge_after_store:
  cbz x13, Lbridge_retire
  add x10, x9, #3712
  ldar w11, [x10]
  orr w11, w11, #0x200
+ ldr w10, [sp, #0x50]
+ cbz w10, Lbridge_completion_tagged
+ orr w11, w11, #0x400
+Lbridge_completion_tagged:
  str w11, [x13, #4]
  add x10, x13, #12
  mov w11, #1
@@ -801,6 +829,8 @@ Lbridge_leave_failed:
  mov w11, #1
  stlr w11, [x10]
 Lbridge_done:
+ ldr w9, [sp, #0x50]
+ cbnz w9, Lsynthetic_bridge_done
  ldr x9, [sp, #0x40]
  msr nzcv, x9
  ldp x9, x10, [sp]
@@ -810,6 +840,16 @@ Lbridge_done:
  add sp, sp, #0x60
 _j81_page5attribution_bridge_resume:
  b _j81_page5attribution_bridge_resume
+Lsynthetic_bridge_done:
+ ldr x30, [sp, #0x48]
+ ldr x9, [sp, #0x40]
+ msr nzcv, x9
+ ldp x9, x10, [sp]
+ ldp x11, x12, [sp, #0x10]
+ ldp x13, x14, [sp, #0x20]
+ ldp x15, x16, [sp, #0x30]
+ add sp, sp, #0x60
+ ret
 _j81_page5attribution_control:
  sub sp, sp, #0x140
  stp x0, x1, [sp, #0x40]
@@ -1193,6 +1233,10 @@ Lsynthetic_run:
  mov w21, #0x5349
  movk w21, #0x5354, lsl #16
  bl Lsynthetic_store
+ mov w2, #0
+ mov w3, #0x5242
+ movk w3, #0x5354, lsl #16
+ bl Lsynthetic_bridge
 Lsynthetic_skip:
  ldr x19, _j81_page5attribution_buffer
  sub sp, sp, #0x80
