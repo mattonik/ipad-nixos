@@ -34,6 +34,11 @@ other overlapping widths require separate architecture and mapping review.
 
 ## Callers constrain the hypothesis
 
+**Correction:** a later raw instruction scan found additional direct branches
+that Ghidra's incomplete function boundaries missed. See the
+[follow-up](2026-11-12-j81-store64-callers-followup.md) before using this
+count to decide on a hardware test.
+
 Ghidra reports four direct call/tail-branch sites within the extracted
 ApplePMGR image: `bce27c` passes region `0x33`, `bd3300` passes region `8`,
 `bcf60c` passes region `8`, and `be453c` passes region `7`. These constant
