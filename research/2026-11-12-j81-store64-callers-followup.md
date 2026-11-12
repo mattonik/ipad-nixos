@@ -56,6 +56,14 @@ cannot alias page 5, or whether a specific caller is reached in the GPC
 window. Do not replay a 64-bit store or equate a negative CPU trace with
 autonomous hardware activity.
 
+The inspected resolver `bc75e4` indexes a per-object table at `+0xa58`
+with a `0x50`-byte region stride and `0x28`-byte instance stride. For the
+same object and instance, selectors 0 and 8 therefore use distinct table
+entries. The writer loads its effective mapping base from each entry's
+`+0x18`; distinct entries alone do **not** establish distinct virtual bases
+or physical resources. Resolving the initialization or observing the two
+mapping bases would be needed to rule out aliasing for that object.
+
 Evidence: 19H394 kernel SHA-256
 `c3507666766775dc854d5bcf6c375e6651ac8b2d1adb13d06331c60deb6a0008`;
 `ios15t7001pmgr.c` and the local `ios15pmgr`/`ios15t7001pmgr` Ghidra
