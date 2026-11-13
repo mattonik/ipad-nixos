@@ -19,14 +19,23 @@ branch execution are not established by the static code. The call operates on
 transition entries, so another entry could matter even if GFX's own record
 does not satisfy the guard.
 
-The `bc7624` lookup returns a separately based runtime table at PMGR
-`+0x4028` with a `0x30`-byte stride, indexed through the ID map at `+0x44f4`.
-The initializer assigns that ID map using the raw ADT `devices` row index,
-but the raw property is separately stored at `+0x8050`. A captured raw GFX
-row has byte `+0x19 = 0`; we have not established that this byte is copied
-unchanged into, or aliases, the runtime table. Therefore the raw zero does
-**not** prove the call is skipped. A prior inference that it did was too
-strong.
+**Correction from the follow-up audit:** the `bc7624` lookup returns
+an entry from the `devices` property's data at PMGR `+0x4028`, using the
+ID-to-row map at `+0x44f4`. The previous version of this note wrongly treated
+`param_1 + 0x100a` as byte offset `0x8050`; the decompiler types `param_1`
+as `uint *`, making it byte offset `0x4028`. The separate `interrupt-config`
+property builds the state-index table, not the device-record table.
+
+The saved 19H394 iPadOS IORegistry PMGR `devices` property has the GFX record
+at row 80, ID `0x7c`, with byte `+0x19 = 0`, matching the prior Pongo ADT
+capture. For **that GFX record**, the candidate call's nonzero guard is false.
+The registry is a post-boot property snapshot, not proof of the active
+transition object's exact property, binding or earlier state. The traced
+dependency walk finds no parent IDs in the saved GFX row, so it
+adds no parent transition for that request. This weakens the proposed call for
+the ordinary GFX path, but does not rule out independent transitions, another
+caller, or runtime data differing from the snapshot.
+See [the corrected audit](2026-11-13-j81-pmgr-runtime-record-audit.md).
 
 Reading the 19H394 Mach-O `__PLK_DATA_CONST` directly gives the static T7001
 PMGR vtable entry at `0xfffffff006fe5e28 + 0x848 = 0xfffffff006fe6670`:
@@ -42,8 +51,9 @@ with an instance to find a state record. Calls through slots `+0x850`,
 request target nibble `0xf` or `0`; an additional wait/status path depends
 on another argument, and a conditional `+0x6a8` dependency callback can run.
 At the inspected enable call the enable argument is 1 and wait argument is 0,
-so the target's explicit wait/status path is skipped; the instance comes from
-a transition entry and is not resolved to a single value.
+so the target's explicit wait/status path and its enable-side dependency
+callback are skipped; the instance comes from a transition entry and is not
+resolved to a single value.
 Argument roles, record meaning, physical register, and which dependency, if
 any, is relevant to GFX are not yet proven. This is more than pure software
 accounting, but it does **not** identify a missing Linux write, explain page-5
@@ -66,9 +76,10 @@ identity read. It is therefore a weak discriminator for the initial hang.
 
 ## Decision and next offline check
 
-First resolve the static `bd2c30` state-record-to-register and `+0x6a8`
-dispatch paths for the candidate T7001 class, and determine from captured
-19H394 data whether the GFX record satisfies the call's guards. Separate
+The follow-up resolved the candidate's indexed state mapping and found no
+parent IDs in the saved GFX record. Look for another specifically supported
+pre-identity prerequisite or independent transition; do not build a probe for
+this guarded GFX edge based solely on the earlier candidate. Separate
 inferences from runtime evidence; account for all possible instance values
 and aliases. Only if this produces a specific potentially missing prerequisite
 and measurable result should we design a bounded iPadOS observation with a
