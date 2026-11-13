@@ -6,9 +6,28 @@ Imagination GXA6850 (Rogue/G4G generation).
 
 ## What has been observed
 
-- The proposed [next paired Linux observation](2026-11-10-j81-next-build-agent-handoff.md)
-  tests whether page-5 bit 30 is briefly set closer to the successful GPC
-  poll. It is a test plan, not a demonstrated GPU-ready condition.
+- **Latest comparison (11–12 November):** iPadOS observed page-5
+  `0x20e005004` change from zero to `0x40000000` around GPC bring-up;
+  Linux read zero immediately after GPC state 1 even with DWI on and again
+  after restoring 20 domains. A brief earlier pulse is not excluded. The
+  bit's meaning and its relationship to core accessibility remain unproven
+  ([20-domain result](2026-11-11-j81-wide-power-result.md)).
+- The iPadOS store-attribution capture saw both instrumented store sites and
+  passed synthetic controls but recorded no real store to the watched virtual
+  address. Other writers, aliases and hardware activity remain possible
+  ([result](2026-11-12-j81-page5-store-attribution-result.md)).
+- Linux's DWI-off behavior correlates with frozen PMU request bytes; enabling
+  it before GPC produced changes in a candidate PMU row. The rail identity
+  and actual voltage are unverified. A separate iPadOS comparison found PMGR
+  `0x2300c` changes from `0` to `0x164`, as in Linux samples at different
+  boundaries ([DWI test](2026-11-11-j81-dwi-gpu-comparison-result.md),
+  [iPadOS comparison](2026-11-12-j81-ios-railcompare-result.md)).
+- After restoring 20 domains, a Linux core-ID attempt reached its host-acknowledged
+  pre-read checkpoint but returned no value; iPadOS later rebooted. The exact
+  stall site and cause are unknown ([result](2026-11-11-j81-wide-power-core-read.md)).
+- An iPadOS-to-Linux warm handoff is only an offline possibility, not a
+  working test. Its shutdown, data integrity and GPU state retention remain
+  unresolved ([feasibility](2026-11-12-j81-warm-handoff-feasibility.md)).
 
 - A fresh Linux GPC run reached state `1` on poll 5, then sampled page-5
   `0x20e005004` as `0` in the same process. The sysfs read returned 34.5 µs
