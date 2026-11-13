@@ -30,6 +30,9 @@ with an instance to find a state record. Calls through slots `+0x850`,
 `+0x980` and `+0x988` resolve a state index, read a PMGR state word and
 request target nibble `0xf` or `0`; an additional wait/status path depends
 on another argument, and a conditional `+0x6a8` dependency callback can run.
+At the inspected enable call the enable argument is 1 and wait argument is 0,
+so the target's explicit wait/status path is skipped; the instance comes from
+a transition entry and is not resolved to a single value.
 Argument roles, record meaning, physical register, and which dependency, if
 any, is relevant to GFX are not yet proven. This is more than pure software
 accounting, but it does **not** identify a missing Linux write, explain page-5
