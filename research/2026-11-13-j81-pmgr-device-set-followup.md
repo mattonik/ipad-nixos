@@ -15,7 +15,18 @@ when that branch is taken, the function calls the PMGR object's virtual
 slot `+0x848` with `(pmgr, set_index, 1, 0, instance)`. This call is in the
 provider transition before its return to G4G; it **could** run before GPC and
 GPU identity. The GFX runtime membership, enable mask, instance and actual
-branch execution are not established by the static code.
+branch execution are not established by the static code. The call operates on
+transition entries, so another entry could matter even if GFX's own record
+does not satisfy the guard.
+
+The `bc7624` lookup returns a separately based runtime table at PMGR
+`+0x4028` with a `0x30`-byte stride, indexed through the ID map at `+0x44f4`.
+The initializer assigns that ID map using the raw ADT `devices` row index,
+but the raw property is separately stored at `+0x8050`. A captured raw GFX
+row has byte `+0x19 = 0`; we have not established that this byte is copied
+unchanged into, or aliases, the runtime table. Therefore the raw zero does
+**not** prove the call is skipped. A prior inference that it did was too
+strong.
 
 Reading the 19H394 Mach-O `__PLK_DATA_CONST` directly gives the static T7001
 PMGR vtable entry at `0xfffffff006fe5e28 + 0x848 = 0xfffffff006fe6670`:
