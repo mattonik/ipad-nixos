@@ -69,3 +69,56 @@ initialization. Neither path is traced yet.
   mechanism with no Linux equivalent that is not yet traced.
 - If neither gives a candidate, use the XNU boot bisection (direction 2 of
   the [strategy note](2026-11-14-j81-gpu-strategy-reset.md)).
+
+## Second pass: `perf-regs` and `perf-domains` (2026-11-14)
+
+Traced from the two `ApplePMGR` init sites in 19H394, using plain
+`objdump` on the private kernel. String operands were resolved through the
+Mach-O segment map.
+
+**`perf-regs` (`0xfffffff006bc0214`).** The J81 value is one 16-byte entry:
+`{reg 0, offset 0x28000, 0x2f, flags 0}`. Init does three things:
+
+1. It stores the array at `this+0x2628`, with the count at `+0x2630`.
+2. It validates each entry's register index against the mapped regions
+   (`0x6bc5184`, a lookup only).
+3. It calls `0x6bc59f4`, which only logs.
+
+The array is read again only in `0x6bbe500`, the loop that builds IOReport
+channels for `ps-regs` devices, `clocks` (`%s_CLK_ON`), `power-domains`
+(`%s_POWER_ON`) and `events` (`TVM_TEMP_REG0-3`). Its callees
+(`0x6bd337c`, `0x6bd36ec`, `0x6bd37ac` and `0x6bd3860`) build channel IDs
+and register them with IOReport (`EVT`, `ACT`, `INACT` keys). They do not
+program hardware. So `perf-regs` describes the PMGR residency-counter
+block at `PMGR+0x28000`, used for statistics. **No PMGR writes; set aside.**
+
+**`perf-domains` (`0xfffffff006bc0a98`).** The table has two 28-byte entries:
+
+| Name | Voltage table | Type | ID |
+| --- | --- | --- | --- |
+| `SOC` | `voltage-states0` | 0 | 1 |
+| `CPU` | `voltage-states1` | 1 | 2 |
+
+Init allocates `0x110`-byte domain records (`this+0x2730`). It loads
+`voltage-states%u` and `voltage-states%u-sram`, and counts the non-zero
+states. On J81, `voltage-states0` is 8 zero bytes, so **the SOC domain has
+no usable states and iPadOS has nothing to apply to it**. The CPU domain is
+ordinary CPU DVFS. There is no GFX entry: GFX DVFS lives in the `sgx` node
+and the GPU firmware, not in this table. **Set aside.**
+
+**Method note.** `ApplePMGR` does all its MMIO through virtual read/write helpers
+(`0x6bd3d38` writes, `0x6bd3d54` reads, base table at `this+0x2668`). No
+direct `BL` reaches them, so a complete static list of boot-time PMGR
+writes means resolving vtable calls one by one. That is the slow part
+direction 2 warned about.
+
+## Where this leaves the offline trace
+
+None of the three iPadOS PMGR boot inputs traced here explains the stall:
+the voltage-manager enable, `perf-regs` and `perf-domains`. Two candidates
+remain that have no Linux equivalent:
+
+- `AppleT7000CLPC`, the separate closed-loop performance controller kext
+  (listed in 19H394). It is the most likely owner of SoC/GFX
+  performance-state setup at boot. It has not been opened yet.
+- The direction-2 boot bisection, which avoids enumerating writes by hand.
