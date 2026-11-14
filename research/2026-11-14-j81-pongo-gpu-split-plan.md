@@ -1,6 +1,7 @@
 # J81 PongoOS GPU split test: plan and GO/NO-GO list
 
-Status: **plan only.** Nothing has been built or run yet. The rationale is in
+Status: **plan only.** Nothing has been built or run yet. Every fact in
+"Offline facts" was re-checked on Martin's Mac on 2026-11-14 and matched. The rationale is in
 [the strategy reset](2026-11-14-j81-gpu-strategy-reset.md), direction 1.
 
 ## Question
@@ -51,13 +52,15 @@ sent. Stop on any unexpected value, and make no further writes after a stop.
 
 1. Read GFX PS `0x20e020320`. GO only if it is `0x300` (GFX off). Read page
    5 `0x20e005004`, perf control `0x20e01c200` and voltage `0x20e02300c`.
-   Do **not** read any GPC or core address while GFX is off.
+   Do **not** read any GPC or core address while GFX is off. `0x300` was
+   seen under Linux; in PongoOS the state may differ. If so, stop and
+   record the value: that is a finding in itself.
 2. GFX power-on as above. GO only if PS then reads `0x3ff`.
 3. Read GPC state `0x201e01000`. GO only if it is `0`.
 4. The 66 bridge stores, in plan order, with each `poke` echo verified.
 5. GPC wake: `0x201e10000 = 0xffff0000`, `0x201e00000 = 0x40000000`,
    `0x201e01000 = 0x11`. Then poll `0x201e01000` until bit 4 is clear and
-   `(v & 0x1f) == 1`, at most 50 polls.
+   `(v & 0x1f) == 1`, at most 64 polls (the limit in `gpu-gpc-init.c`).
 6. Read page 5 three times, perf control, voltage, and GPC control
    `0x201e00000`, which must be `0x40000000`. **Record the page-5 result
    prominently.**
