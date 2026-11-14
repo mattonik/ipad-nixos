@@ -37,8 +37,13 @@ result from hanging iPadOS.
 
 ## Mappings available at that point
 
-ApplePMGR keeps its region table at `this+0x2668`. Each region has a
-`0x40`-byte record, with the VA at `+8` (`0x6bd3d38` writes, `0x6bd3d54` reads). The J81
+ApplePMGR keeps a **pointer** to its region table at `this+0x2668`, with the
+region count at `this+0x2670`. There are two levels of indirection:
+`va = *( *( *(this+0x2668) + region*8 ) + instance*0x40 + 8 )`
+(`0x6bd3d38` writes, `0x6bd3d54` reads; filled in the ADT init at
+`0x6bc05dc`/`0x6bc07f4`). Instance is 0 for every region used here. (An
+earlier version of this note said "0x40-byte records at `this+0x2668`",
+which read as an inline array. That was wrong.) The J81
 `pmgr` `reg` list gives these regions, among others:
 
 | Index | Physical | Use |
