@@ -122,3 +122,26 @@ remain that have no Linux equivalent:
   (listed in 19H394). It is the most likely owner of SoC/GFX
   performance-state setup at boot. It has not been opened yet.
 - The direction-2 boot bisection, which avoids enumerating writes by hand.
+
+## Third pass: `AppleT7000CLPC` and `function-clpc_enabled` (2026-11-14)
+
+- `AppleT7000CLPC` (`__TEXT_EXEC` `0xfffffff006bee000`, `0x20db8` bytes) is a
+  feedback policy controller. Its strings cover only metrics, samplers and
+  controllers (CPU utilization, frame rate, GPU command queue, AMC/AON
+  bandwidth counters). It works through ApplePPM budgets
+  (`setBudgetToKernelClientFunction`). Its ADT node `clpc,t7000` is pure
+  tuning constants. No register-setup path was found, so it is set aside as
+  a source of a boot-time GFX step.
+- The J81 `sgx` and `disp0` nodes both call `function-clpc_enabled`
+  (`<pmgr phandle 0x1a> 'CPLC'`), a platform function that Linux never
+  calls. In ApplePMGR, the `'CPLC'` selector creates an
+  `ApplePMGRFunctionCLPCEnabled` object. Its `callFunction` (`0x6bddd7c`)
+  only stores `(pmgr->field_0x1a0 != 0)` into the caller's out-pointer and
+  returns. **It is a read-only query, so this lead is closed.**
+- The other `sgx` platform function, `function-clpc_gpu_feedback` (`clpc`
+  node, `'FUPG'`), feeds GPU load into CLPC once the GPU is running.
+
+The offline search of iPadOS boot-time PMGR/performance setup is now
+exhausted at reasonable cost. No traced step is missing on Linux. The
+remaining route is the direction-2 boot bisection: run the raw Linux-recipe ID
+read at earlier and earlier points of an iPadOS boot.
