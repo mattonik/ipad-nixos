@@ -51,8 +51,11 @@ ApplePMGR keeps its region table at `this+0x2668`. Each region has a
 the `sgx` node (`reg` entries 0 and 1). ApplePMGR does not map them. The probe
 needs its own device mapping of one page at `0x201e00000` (and one at
 `0x201000000` for the gated core read). The 19H394 mapping routine
-(`ml_io_map`, or an `IOMemoryDescriptor` path) has not been located yet. That
-is the first offline task before any build.
+is `ml_io_map` at `0xfffffff00728fa34`, an exported symbol in the kernel's
+own symbol table (`llvm-nm`: `S _ml_io_map`). Its whole body is `mov w2,#7;
+mov w3,#3; b io_map` (`io_map` at `0xfffffff007288ffc`). That is
+`vm_offset_t ml_io_map(phys, size)` → `io_map(phys, size, VM_WIMG_IO,
+READ|WRITE)`, with the 4-argument `io_map` and no `unmappable` argument.
 
 ## Probe actions, in order
 
@@ -74,7 +77,7 @@ rest of the boot.
 
 ## Before a boot (GO/NO-GO)
 
-- [ ] Mapping routine located and its call shape verified in 19H394.
+- [x] Mapping routine located: `ml_io_map` `0xfffffff00728fa34` (exported symbol).
 - [ ] Hook signature unique, and `kpf-test` accepts the exact kernel and
       rejects altered ones.
 - [ ] Host simulation: every stop path, the bit-30 gate, `w0 = 1`
