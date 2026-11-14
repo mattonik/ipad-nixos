@@ -39,3 +39,43 @@ No core read was made.
 - The core read (run 2) was not made. Every earlier read with bit 30 clear
   hung, so it is expected to hang. It would confirm the fork result but adds
   little; it is optional.
+
+## Pre-OS PMGR snapshot (2026-11-14, read-only)
+
+A second fresh DFU → PongoOS boot ran only 34 `peek`s, with no `poke`, no GFX power-on
+and no GPC or core access. Private log:
+`artifacts/live/gpu/pongo-peek-20261114T123332Z.log`.
+
+| Word | PongoOS (pre-OS) | Linux / iPadOS (earlier samples) |
+| --- | --- | --- |
+| GFX PS `0x20e020320` | `0x300` | `0x300` before cycle |
+| VM ctrl `0x20e023000` | `0xf01` (bits 11:8 set = disabled) | `0x1` on both |
+| VM `0x23004`/`08`/`0c`/`10` | all `0` | SRAM/CPU/GFX codes non-zero |
+| VM `0x23014`-`0x23020` | `0xbb81ac05` each | not sampled |
+
+PLL pages (`+0` / `+4` / `+8` / `+0x18`):
+
+| Page | `+0` | `+4` | `+8` | `+0x18` | State |
+| --- | --- | --- | --- | --- | --- |
+| 0 | `0x1010` | `0x80000001` | `0x80480348` | `0x1` | bypass |
+| 1 | `0x80085040` | `0x40000000` | `0x80480348` | `0x04000040` | running |
+| 2 | `0x1010` | `0x80000001` | `0x80480348` | `0x1` | bypass |
+| 3 | `0x8003201b` | `0x40000000` | `0x80480348` | `0x04000040` | running |
+| 4 | `0x80032010` | `0x40000000` | `0x88480348` | `0x04000040` | running |
+| 5 (GFX) | `0x1010` | `0x0` | `0x81480348` | `0x1` | off, bypass cleared |
+
+Reading:
+
+- PLL5 leaves LLB exactly as LLB's page-5 routine sets it: bypass request
+  (bit 0 of `+4`) cleared, `+8` bit 24 set, `+0` at the reset value `0x1010`.
+  These three words equal the Linux samples (`0x1010`, `0`, `0x81480348`)
+  and the iPadOS `+0`/`+8` samples. iPadOS never rewrites them. Its only
+  difference is `+4` bit 30 after the GPC request. So nothing in the PLL5 page
+  itself is missing on Linux. PLL5 is started by something else (the GFX
+  perf-state engine), and that engine does not start it on Linux or in PongoOS.
+- Before any OS runs, the voltage manager is disabled (`0xf01`) with every code at 0,
+  the CPU code included. iPadOS and m1n1 each enable it. This is consistent with
+  run 1 (`0x2300c` stayed 0 in PongoOS). It is not the Linux difference,
+  because on Linux it is enabled and `0x2300c` reaches `0x164`.
+- The untraced iPadOS startup paths (`perf-regs`, SOC `perf-domains` init)
+  remain the next offline step, followed by direction 2.
