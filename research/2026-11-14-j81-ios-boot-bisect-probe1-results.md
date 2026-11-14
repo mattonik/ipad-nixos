@@ -37,3 +37,35 @@ J81_BOOT STOP C=00000007 V=00000011
 Rerun with a time-based GPC poll limit instead of a count, for example up to
 5 ms measured with `CNTVCT_EL0` (24 MHz), and log the elapsed ticks at exit.
 Nothing else needs to change.
+
+## Run 3 (module `0a20ead8…`, time-based GPC poll), boot 20:57: **the core answers**
+
+```
+J81_BOOT P0 S=00000300 F=00000000 P=80000000 V0=00000001 V1=00000000
+J81_BOOT GPC TICKS=00003929
+J81_BOOT P1 F=40000000/40000000/40000000 P=80110100 V0=00000001 V1=00000164 G=30303000
+J81_BOOT BEFORE CORE READ
+J81_BOOT CORE=00070500
+```
+
+- GPC reached state 1 after `0x3929` ticks, about 610 µs at 24 MHz.
+- **Page-5 bit 30 is set on all three reads**, perf goes to `0x80110100` and the GFX
+  voltage code to `0x164`. That is exactly the iPadOS pattern.
+- **The RGX core-ID read at `0x201000020` returned `0x00070500`**, the same value
+  Apple's own driver logs (`I=00070500`). It is the first time the Linux recipe has
+  produced a core response on J81.
+- `G` (the GPC `+0` readback) is `0x30303000`, not the `0x40000000` that was
+  written. Its meaning is not known, and it does not affect the result.
+
+**Conclusion.** The same recipe hangs in PongoOS and on Linux, but works at the
+end of `ApplePMGR::start()` on iPadOS. The missing step therefore lies in XNU boot
+up to and including `ApplePMGR::start()`, before any CLPC, SOCTuner or AGX code.
+The known difference inside that window is that ApplePMGR's ADT init
+(`0x6bbf7a4`) runs: the voltage manager is already enabled at this point (`0x23000
+= 1` vs PongoOS `0xf01`). Linux gets `0x23000 = 1` from m1n1, so the remaining
+suspects are the other writes in that init and in XNU early platform setup.
+
+Next bisection point: the **entry** of `ApplePMGR::start()`, or just before the
+ADT-init call at `0x6bb9804`. If the recipe works there, the step is in XNU or
+platform setup before PMGR. If it fails, the step is inside ApplePMGR start,
+and the list of its PMGR writes becomes small enough to diff against Linux.
