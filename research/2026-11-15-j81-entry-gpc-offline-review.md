@@ -79,6 +79,31 @@ that the busy/tuner action is electrically required until a paired test shows
 a difference. The initial hardware test should stop after proving the model's
 PMGR and bridge state; it should not read the GPU core.
 
+## Safer boot bisection before any further request
+
+The `ApplePMGR::start()` instruction trace identifies four useful, low-risk
+observation boundaries. They retain `x19 = ApplePMGR *` and occur immediately
+after the listed calls:
+
+| Resume boundary | Preceding action |
+| --- | --- |
+| `0xfffffff006bb9808` | virtual `+0x598` ADT initialization |
+| `0xfffffff006bb9818` | virtual `+0x5a0` |
+| `0xfffffff006bb9828` | virtual `+0x5c8` |
+| `0xfffffff006bb9838` | virtual `+0x5d0` |
+
+The next probe should patch one boundary per temporary iPadOS boot, preserve
+all registers and flags, perform **only** the previously proven PMGR/page-5
+reads (GFX PS, page-5 `+4`, perf `+0x1c200`, VM `+0x23000` and `+0x2300c`,
+and `+0x32000`), log them, then resume at that boundary. It must not map GPC,
+write bridge/GPC state, poll, or read the GPU core. A successful series makes
+the first boundary where each observable changes a concrete static-tracing
+target; identical snapshots rule this limited state set out. Either result is
+more informative and substantially safer than another early three-write run.
+
+The next request-bearing experiment is explicitly deferred until the snapshot
+series identifies a candidate or a durable failure checkpoint is demonstrated.
+
 ## Best next offline work
 
 1. Trace the exact 19H394 ApplePMGR `start()` calls between entry and success,
