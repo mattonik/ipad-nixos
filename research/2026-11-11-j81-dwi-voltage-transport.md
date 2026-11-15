@@ -240,3 +240,79 @@ off) and exited 1 without writing.
 
 Captures (private): `artifacts/live/gpu/pmgr-words-20261111-dwi-config/` and
 `artifacts/live/gpu/pmgr-words-20261111-boot288e-after-bridge10/` on the Mac.
+
+## Review on 2026-11-15: what the follow-up runs settled
+
+This section reviews work done by others after this note was written. Sources:
+branch `j81-dwi-gpu-compare` (41 commits on top of this branch, no pull
+request yet) and branch `claude/project-thread-gb81y1` (PR #39). Two of the
+result notes were checked against their private raw logs on the Mac
+(`artifacts/live/gpu/dwi-gpu-compare-20261111-01/` and
+`wide-power-20261111-01/`); the values in the notes match the logs. No device
+access was made for this review.
+
+### The questions this note left open
+
+| Question | Answer | Run |
+| --- | --- | --- |
+| Does the PMU row `0x0128` take the GFX code when the request is made with DWI on? | Yes. Bytes 0/2 go from `00`/`40` to `64`/`64` after the GPC request. | DWI-first, 2026-11-11; repeated in the 20-domain run |
+| Does that start the GFX PLL? | No. Page 5 `+4` stays `0` and `+0x18` stays `0x1`. | Same runs |
+| Does restoring all 20 domains help? | No. Bit 30 stays clear, and a core-ID read Martin authorised afterwards did not return. The iPad rebooted into iPadOS. | 20-domain run and core read, 2026-11-11 |
+| Does holding DWI on from boot help? | No. The power-off callback at 0.75 s was rejected, DWI stayed `0xff`, bit 30 stayed clear. | Early hold, 2026-11-13 |
+| Does iPadOS see the same `0x2300c` values? | Yes, `0` before and `0x164` after. | iPadOS rail compare, 2026-11-12 |
+
+So the transport described in this note is confirmed, and it is **not** the
+missing step. The row `0x0128` now follows the GFX request in three boots,
+which supports reading it as the GPU rail; it is still not a measured voltage.
+The pending test in "Next test" above is done and the decision asked of
+Martin is withdrawn. `boot/pmgr-ps-restore.c` was not used; the 20-domain run
+used its own supervised tool.
+
+Still worth doing independently of the GPU: Linux switches DWI off at about
+0.75 s in every boot (seen directly in the instrumented control boot), which
+freezes the CPU and SRAM rails. Keeping `ps_dwi` on in the J81 device tree
+fixes that. Orchard's S8000 and T7000-handheld trees get the same effect from
+their `dwi_bl` node.
+
+### The bisection result and two qualifications
+
+The real progress is PR #39: with the unchanged recipe run at the end of
+iPadOS `ApplePMGR::start()`, bit 30 sets and the core ID reads `0x00070500`.
+The recipe is therefore sufficient, and what Linux lacks (or breaks) is
+decided before any GPU, CLPC or tuner code runs. Two points need care.
+
+1. **The PongoOS run failed for a reason Linux does not have.** In PongoOS
+   the voltage manager is disabled (`0x23000 = 0xf01`) and `0x2300c` stayed
+   `0`, so the GFX voltage request was never issued. On Linux it is enabled
+   and the request reaches the PMU. The PongoOS run therefore shows that the
+   pre-OS state is not enough. It does not show that m1n1 and Linux are
+   harmless. Two readings remain: (A) XNU does a further step that Linux
+   lacks; (B) enabling the voltage manager is the only missing step from the
+   pre-OS state, and something in m1n1 or Linux then stops the PLL.
+2. **The entry-hook run is likely to repeat the PongoOS result.** At the
+   entry of `ApplePMGR::start()` the voltage manager is probably still
+   `0xf01`, because `start()` itself enables it (it read `1` at the end). If
+   so, bit 30 will stay clear and `V1` will stay `0`, for the same reason as
+   in PongoOS, and the conclusion "the step is inside `start()`" would be one
+   we already have. The bit-30 gate keeps that outcome safe. The first log
+   line tells which case it is: `V0=00000f01` means this prediction holds.
+
+### A test that separates (A) from (B)
+
+Run the recipe from the pre-OS state with one addition, the voltage-manager
+enable done the way iPadOS does it: write the CPU and SRAM codes for the
+current CPU state to `0x23010` and `0x23004` first, then clear bits 11:8 of
+`0x23000`. Either the PongoOS script or the entry-hook probe can carry it.
+
+- Bit 30 sets: reading (B). The search moves to m1n1 and Linux, where every
+  step is a fast toggle and no iPadOS boot is needed.
+- Bit 30 stays clear: reading (A). The step is another write inside
+  `start()`. A read-only snapshot of the PMGR words at the entry and at the
+  end of `start()` then lists what changed, without tracing the code.
+
+Risk to settle before any run: clearing bits 11:8 while the CPU code is `0`
+and DWI is on would ask the PMU for the lowest CPU voltage. The codes must be
+seeded first, and the right values for the pre-OS CPU state are not yet
+established (Linux at its top state uses `0x19c` and `0x180`). This is a new
+hardware write and needs Martin's go-ahead. Nothing here has been built or
+run.
