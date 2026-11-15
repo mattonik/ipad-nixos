@@ -103,6 +103,19 @@ Any iPadOS observation must instead use a previously boot-proven entry hook
 with a return-path handoff, or a hook at a separately demonstrated safe call
 boundary. It must first pass a no-op boot control before adding a read.
 
+### Entry-return control result
+
+The entry-return no-op control did boot 19H394 successfully. It preserves the
+caller link register in a private 16-byte stack slot, replays ApplePMGR's
+original prologue, then restores that link register after `start()` returns.
+This establishes that the entry interception and return handoff are viable.
+
+Adding one kernel log call at the return trampoline caused a distinct red-screen
+reboot and a fresh data abort (`FAR 0x498`). Consequently, the handoff may not
+call the kernel logger, mapper, or MMIO helpers. It is not an externally
+observable capture channel yet. Do not iterate on return-time callback calls;
+first establish a separately owned, non-reentrant recording transport.
+
 The next request-bearing experiment is explicitly deferred until the snapshot
 series identifies a candidate or a durable failure checkpoint is demonstrated.
 
