@@ -79,11 +79,11 @@ that the busy/tuner action is electrically required until a paired test shows
 a difference. The initial hardware test should stop after proving the model's
 PMGR and bridge state; it should not read the GPU core.
 
-## Safer boot bisection before any further request
+## Rejected post-ADT bisection boundary
 
-The `ApplePMGR::start()` instruction trace identifies four useful, low-risk
-observation boundaries. They retain `x19 = ApplePMGR *` and occur immediately
-after the listed calls:
+The `ApplePMGR::start()` instruction trace identifies four apparent
+observation boundaries. They retain `x19 = ApplePMGR *` in static code and
+occur immediately after the listed calls:
 
 | Resume boundary | Preceding action |
 | --- | --- |
@@ -92,14 +92,16 @@ after the listed calls:
 | `0xfffffff006bb9828` | virtual `+0x5c8` |
 | `0xfffffff006bb9838` | virtual `+0x5d0` |
 
-The next probe should patch one boundary per temporary iPadOS boot, preserve
-all registers and flags, perform **only** the previously proven PMGR/page-5
-reads (GFX PS, page-5 `+4`, perf `+0x1c200`, VM `+0x23000` and `+0x2300c`,
-and `+0x32000`), log them, then resume at that boundary. It must not map GPC,
-write bridge/GPC state, poll, or read the GPU core. A successful series makes
-the first boundary where each observable changes a concrete static-tracing
-target; identical snapshots rule this limited state set out. Either result is
-more informative and substantially safer than another early three-write run.
+The first proposed boundary, patching `0xfffffff006bb9810` and resuming at
+`0xfffffff006bb9814`, is now rejected. Two 19H394 temporary boots panicked
+after the resumed virtual call with the same data abort (`FAR 0x2728`). The
+second was a no-op control: it made no logging, mappings, or MMIO accesses.
+Therefore this is a hook/resume incompatibility, not evidence about PMGR or
+the GPU. Do not use any of these mid-function boundaries for future capture.
+
+Any iPadOS observation must instead use a previously boot-proven entry hook
+with a return-path handoff, or a hook at a separately demonstrated safe call
+boundary. It must first pass a no-op boot control before adding a read.
 
 The next request-bearing experiment is explicitly deferred until the snapshot
 series identifies a candidate or a durable failure checkpoint is demonstrated.
@@ -119,7 +121,9 @@ series identifies a candidate or a durable failure checkpoint is demonstrated.
    transport needs independently verified ownership, reset survival and a
    control; avoid inventing a persistent buffer or assuming a watchdog can
    recover a blocked bus transaction.
-4. If a candidate prerequisite is established, design a paired experiment
+4. Design and prove an entry-hook return-path handoff before any more iPadOS
+   capture. Its no-op control must boot on the exact 19H394 kernel.
+5. If a candidate prerequisite is established, design a paired experiment
    with a known baseline and one change. A first-versus-third GPC write test
    without durable progress evidence can show only whether the whole boot
    completes; it cannot distinguish a stuck store from a later stall.
