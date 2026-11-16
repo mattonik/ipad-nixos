@@ -15,9 +15,10 @@ Imagination GXA6850 (Rogue/G4G generation).
   GPC state machine. See the [current boundary result](2026-11-16-j81-agx-postpower-page5-result.md).
 
 - A bare-PongoOS replay of the same PMGR/66-bridge/GPC sequence also reached
-  GPC state `1` with page-5 `+0x4 = 0` in three direct reads. The missing
-  condition is therefore not explained solely by Linux handoff or userspace;
-  see the [PongoOS result](2026-11-16-j81-pongo-gpc-page5-result.md).
+  GPC state `1` with page-5 `+0x4 = 0` in three direct reads. Its subsequent
+  first RGX revision read at `0x201000020` did not return, matching Linux's
+  non-response. Linux-only userspace, `/dev/mem`, or normal handoff is thus
+  insufficient as an explanation; see the [PongoOS core-read result](2026-11-16-j81-pongo-core-read-result.md).
 
 - The proposed [next paired Linux observation](2026-11-10-j81-next-build-agent-handoff.md)
   tests whether page-5 bit 30 is briefly set closer to the successful GPC
@@ -111,12 +112,11 @@ post-identity difference must be checked at both points in the same boot.
 
 A later bare-PongoOS replay independently completed the PMGR/bridge/GPC
 sequence, reached GPC state 1, and read page-5 `+4` as zero three times
-([result](2026-11-16-j81-pongo-gpc-page5-result.md)). This rules out Linux
-userspace and the Linux PMGR driver as the sole explanation for that negative
-page-5 observation. The next bounded discriminator is one PongoOS RGX
-revision read—not another PMGR or GPC replay—because it separates a Linux
-mapping/handoff issue from missing platform state
-([decision](2026-11-16-j81-pongo-core-read-discriminator.md)).
+([no-core result](2026-11-16-j81-pongo-gpc-page5-result.md)). Its guarded
+first RGX revision read then did not return ([core-read result](2026-11-16-j81-pongo-core-read-result.md)). This rules out a Linux-only execution path
+as the explanation for the current core-read stall. Further blind PMGR, GPC,
+or direct-core variations are not evidence-led; static iPadOS-path attribution
+is now the next useful step.
 
 These are observations from specific J81 test boots, not a general device
 support claim. Checkpoints after stores show software progress, not register
