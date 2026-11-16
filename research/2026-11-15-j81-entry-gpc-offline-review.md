@@ -113,8 +113,15 @@ This establishes that the entry interception and return handoff are viable.
 Adding one kernel log call at the return trampoline caused a distinct red-screen
 reboot and a fresh data abort (`FAR 0x498`). Consequently, the handoff may not
 call the kernel logger, mapper, or MMIO helpers. It is not an externally
-observable capture channel yet. Do not iterate on return-time callback calls;
-first establish a separately owned, non-reentrant recording transport.
+observable capture channel through ordinary callbacks. Do not iterate on
+return-time logger calls.
+
+The replacement transport maps PMGR at the boot-proven entry boundary, stores
+that mapping only in the private entry frame, then makes one direct read at
+return and deliberately faults with the value in `x0`/`FAR`. On 2026-11-16 it
+successfully captured GFX PS `0x00000300` at the ApplePMGR `start()` return.
+The planned data abort is expected; it performs no PMGR, bridge, GPC, or GPU
+writes. This establishes a non-reentrant, one-word iPadOS observation channel.
 
 The next request-bearing experiment is explicitly deferred until the snapshot
 series identifies a candidate or a durable failure checkpoint is demonstrated.
