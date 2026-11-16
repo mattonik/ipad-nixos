@@ -1,6 +1,6 @@
 .text
 .p2align 2
-.globl _j81_thread_start, _j81_thread_end, _j81_thread_clock, _j81_thread_write, _j81_thread_buffer, _j81_thread_format, _j81_thread_logger, _j81_thread_decision, _j81_thread_decision_resume, _j81_thread_aggregate, _j81_thread_aggregate_resume, _j81_thread_count, _j81_thread_count_resume, _j81_thread_choice, _j81_thread_choice_resume
+.globl _j81_thread_start, _j81_thread_end, _j81_thread_clock, _j81_thread_write, _j81_thread_store, _j81_thread_store_resume, _j81_thread_buffer, _j81_thread_format, _j81_thread_logger, _j81_thread_decision, _j81_thread_decision_resume, _j81_thread_aggregate, _j81_thread_aggregate_resume, _j81_thread_count, _j81_thread_count_resume, _j81_thread_choice, _j81_thread_choice_resume
 _j81_thread_start:
 _j81_thread_clock:
  stp x29, x30, [sp, #-16]!
@@ -15,7 +15,12 @@ Lclaim:
  mrs x9, tpidr_el1
  str x9, [x16, #3616]
  stlr w10, [x16]
+ mov w9, #1
+ add x9, x16, #3624
+ stlr w9, [x9]
  blr x8
+ add x9, x16, #3624
+ stlr wzr, [x9]
  sub sp, sp, #0x400
  stp x0, x1, [sp, #0x100]
  stp x2, x3, [sp, #0x110]
@@ -342,6 +347,61 @@ Lwrite_done:
  ldp x9, x10, [sp]
  add sp, sp, #0x60
  br x8
+_j81_thread_store:
+ sub sp, sp, #0x60
+ stp x9, x10, [sp]
+ stp x11, x12, [sp, #0x10]
+ stp x13, x14, [sp, #0x20]
+ stp x15, x16, [sp, #0x30]
+ mrs x9, nzcv
+ str x9, [sp, #0x40]
+ ldr x9, _j81_thread_buffer
+ add x10, x9, #3624
+ ldar w10, [x10]
+ cbz w10, Lstore_original
+ add x10, x9, #4
+ mov w14, #16
+Lstore_claim:
+ ldaxr w11, [x10]
+ cmp w11, #128
+ b.hs Lstore_overflow
+ add w12, w11, #1
+ stlxr w13, w12, [x10]
+ cbz w13, Lstore_claimed
+ subs w14, w14, #1
+ b.ne Lstore_claim
+ b Lstore_overflow
+Lstore_claimed:
+ add x12, x9, #48
+ add x12, x12, w11, uxtw #4
+ stp w22, w19, [x12]
+ str w21, [x12, #8]
+ add x12, x9, #0xa00
+ orr w13, w20, #0x80000000
+ str w13, [x12, w11, uxtw #2]
+ add x12, x9, #0xc00
+ mov w13, #3
+ str w13, [x12, w11, uxtw #2]
+ add x12, x9, #60
+ add x12, x12, w11, uxtw #4
+ mov w13, #1
+ stlr w13, [x12]
+ b Lstore_original
+Lstore_overflow:
+ clrex
+ mov w11, #1
+ str w11, [x9, #8]
+Lstore_original:
+ str w21, [x8, w19, uxtw]
+ ldr x9, [sp, #0x40]
+ msr nzcv, x9
+ ldp x9, x10, [sp]
+ ldp x11, x12, [sp, #0x10]
+ ldp x13, x14, [sp, #0x20]
+ ldp x15, x16, [sp, #0x30]
+ add sp, sp, #0x60
+_j81_thread_store_resume:
+ b _j81_thread_store_resume
 _j81_thread_decision:
  sub sp, sp, #0x20
  stp x9, x10, [sp]
