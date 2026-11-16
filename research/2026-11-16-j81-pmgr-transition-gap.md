@@ -76,9 +76,12 @@ firmware/autonomous activity, or a boot-stage difference.
 ## Minimal implementation boundary
 
 This does not require a new interception family. The existing private
-page-5-writer experiment already has both required safe points: a trampoline
-at the completed `+0x988` store instruction and a wrapper around the G4G
-clock callback. The new variant should set an atomic `in_gfx_clock` flag
+page-5-writer experiment already proves both required safe points: a
+trampoline at the completed `+0x988` store instruction and a wrapper around
+the G4G clock callback. Its current full binary is **not** an acceptable
+baseline because it also injects five PMGR/GPC/page-5 reads and substantial
+logger code. The new variant should be a reduced two-hook implementation. It
+should set an atomic `in_gfx_clock` flag
 immediately before that callback and clear it immediately after it returns.
 The existing store trampoline should reserve at most 16 records only while
 that flag is set, execute the displaced store unchanged, then publish
