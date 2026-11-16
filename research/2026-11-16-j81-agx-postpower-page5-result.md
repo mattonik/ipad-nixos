@@ -31,9 +31,14 @@ ApplePMGR startup or the first AGX provider clock/power requests. This removes
 the provider callbacks from the candidate set and places the remaining
 transition inside the stock GPC sequence (or a later AGX action).
 
-## Next discriminating capture
+## Prepared next discriminating capture
 
-The narrowest next probe should replace the instruction immediately after the
-stock GPC `0x40000000` store. It can reuse the same planned-panic transport,
-with no injected GPC write, and answers whether that store itself makes page-5
-bit 30 visible. If still zero, repeat after the stock `0x11` request and poll.
+The next probe is built at
+`artifacts/live/private/j81-ios-agx-gpcbit30-panic/agx-after-gpc-bit30-page5p4-panic`
+with SHA-256
+`edb014e62cb6870ad5d17054f1df149cd6bf83dd68a1ed59a064eb5de48794df`.
+It replaces the instruction immediately after the stock GPC `0x40000000`
+store, before the stock `0x11` request and poll. It reuses the same
+planned-panic transport and adds no injected GPC write. If its captured word
+is still zero, the final comparison is immediately after the stock `0x11`
+request and poll.
