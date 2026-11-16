@@ -49,6 +49,13 @@ negative result does **not** say that no other ordinary PMGR write occurred
 during the GFX transition. Conversely, static reachability does not prove a
 particular dependency or ordinary write runs for J81 GFX.
 
+An unmerged, locally retained follow-up also compared completed ordinary and
+bridge-store effective addresses against the page-5 reader's effective
+address. That was a stronger test of a CPU writer *to page 5*, but it retained
+the same target restriction. It cannot identify an ordinary write to another
+PMGR register made by the GFX clock action, so it is not a substitute for the
+windowed all-ordinary-write capture below.
+
 ## Best next discriminator
 
 Use a passive iPadOS capture of **all completed-entry candidates to PMGR
