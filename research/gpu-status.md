@@ -109,6 +109,15 @@ separate boots and the bit's meaning and causal role are unknown; see the
 Another iOS boot sampled that `+4` word as `0` before GPC/identity, so the
 post-identity difference must be checked at both points in the same boot.
 
+A later bare-PongoOS replay independently completed the PMGR/bridge/GPC
+sequence, reached GPC state 1, and read page-5 `+4` as zero three times
+([result](2026-11-16-j81-pongo-gpc-page5-result.md)). This rules out Linux
+userspace and the Linux PMGR driver as the sole explanation for that negative
+page-5 observation. The next bounded discriminator is one PongoOS RGX
+revision read—not another PMGR or GPC replay—because it separates a Linux
+mapping/handoff issue from missing platform state
+([decision](2026-11-16-j81-pongo-core-read-discriminator.md)).
+
 These are observations from specific J81 test boots, not a general device
 support claim. Checkpoints after stores show software progress, not register
 readback. Thus 65 table targets remain unverified by readback.
