@@ -73,6 +73,25 @@ be a concrete next replay candidate. An empty capture would only rule out
 this method/window; it would not exclude direct stores, another PMGR object,
 firmware/autonomous activity, or a boot-stage difference.
 
+## Minimal implementation boundary
+
+This does not require a new interception family. The existing private
+page-5-writer experiment already has both required safe points: a trampoline
+at the completed `+0x988` store instruction and a wrapper around the G4G
+clock callback. The new variant should set an atomic `in_gfx_clock` flag
+immediately before that callback and clear it immediately after it returns.
+The existing store trampoline should reserve at most 16 records only while
+that flag is set, execute the displaced store unchanged, then publish
+`region`, `offset`, `value`, and `instance`. It must not publish the PMGR
+object pointer, add an MMIO operation, or retain the five earlier page-5
+diagnostic reads.
+
+The first device image should install those two hooks but leave recording
+disabled, proving the reduced transport boots. Only after that baseline should
+the recording flag be enabled. That separates a hook/resume failure from a
+meaningful empty capture and avoids repeating the earlier entry-hook failure
+mode.
+
 ## Explicitly deferred
 
 Do not directly write page-5 bit 30, guess reset/PLL/voltage values, repeat
