@@ -58,3 +58,26 @@ with SHA-256
 `82f1e5b613c1227584566f4574e905b941e80f434c65b085643938221e754151`.
 It has the same exact-build and unique-signature gates as the preceding
 captures and does not inject a GPC write.
+
+## GPC request/poll result
+
+The post-poll probe ran successfully and created the planned panic report
+`panic-full-2026-11-16-143426.000.ips`. Its matched `19H394` crash record has:
+
+```
+x0  = 0x0000000040000000
+far = 0x0000000040000000
+```
+
+The PC is again in the injected cave, so this is the captured page-5 `+4`
+word. Together with the immediately preceding zero capture after the stock
+`0x40000000` GPC store, this pins the transition to the stock GPC `0x11`
+request and its busy completion poll. It excludes generic ApplePMGR startup,
+the AGX provider clock/power callbacks, and the preceding `0x40000000` GPC
+store as the writer.
+
+The practical Linux comparison is now concrete: reproduce this exact GPC
+request/poll transition while keeping the prior power and bridge state, then
+sample page-5 `+4` immediately after the successful poll. If it remains zero,
+the missing condition is an input to the GPC state machine rather than an
+unknown later page-5 writer.
