@@ -35,6 +35,14 @@ Static 19H394 PMGR code shows the transition path also:
 - may issue ordinary-region writes through virtual `+0x988`, a different
   mapping family from the bridge writer.
 
+More specifically, the inspected generic state-transition helper
+`0xfffffff006bc6ed8` reads the target device word through `+0x980`, writes a
+revised word through `+0x988`, updates the actual-state field through `+0x990`,
+and can make further `+0x988` writes while changing control bits for a target
+state of `0xf`. This is static reachability, not proof that a particular GFX
+transition takes every branch, but it is enough to show why replaying only the
+selector-bridge stores is incomplete.
+
 The existing page-5 writer capture only looked for a `+0x988` request whose
 effective target was ordinary region 0, offset `0x5004`, instance 0. Its
 negative result does **not** say that no other ordinary PMGR write occurred
