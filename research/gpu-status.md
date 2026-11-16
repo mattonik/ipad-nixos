@@ -14,6 +14,11 @@ Imagination GXA6850 (Rogue/G4G generation).
   bit 30 is not justified and the missing condition is upstream of the Linux
   GPC state machine. See the [current boundary result](2026-11-16-j81-agx-postpower-page5-result.md).
 
+- A bare-PongoOS replay of the same PMGR/66-bridge/GPC sequence also reached
+  GPC state `1` with page-5 `+0x4 = 0` in three direct reads. The missing
+  condition is therefore not explained solely by Linux handoff or userspace;
+  see the [PongoOS result](2026-11-16-j81-pongo-gpc-page5-result.md).
+
 - The proposed [next paired Linux observation](2026-11-10-j81-next-build-agent-handoff.md)
   tests whether page-5 bit 30 is briefly set closer to the successful GPC
   poll. It is a test plan, not a demonstrated GPU-ready condition.
