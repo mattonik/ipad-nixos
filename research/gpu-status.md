@@ -115,8 +115,10 @@ sequence, reached GPC state 1, and read page-5 `+4` as zero three times
 ([no-core result](2026-11-16-j81-pongo-gpc-page5-result.md)). Its guarded
 first RGX revision read then did not return ([core-read result](2026-11-16-j81-pongo-core-read-result.md)). This rules out a Linux-only execution path
 as the explanation for the current core-read stall. Further blind PMGR, GPC,
-or direct-core variations are not evidence-led; static iPadOS-path attribution
-is now the next useful step.
+or direct-core variations are not evidence-led. The remaining measured gap is
+ApplePMGR's full transition/dependency path, beyond the 66 bridge requests;
+the next discriminator is a passive ordinary-PMGR writer capture during that
+already proven GFX window ([review](2026-11-16-j81-pmgr-transition-gap.md)).
 
 These are observations from specific J81 test boots, not a general device
 support claim. Checkpoints after stores show software progress, not register
