@@ -42,3 +42,19 @@ store, before the stock `0x11` request and poll. It reuses the same
 planned-panic transport and adds no injected GPC write. If its captured word
 is still zero, the final comparison is immediately after the stock `0x11`
 request and poll.
+
+## GPC `0x40000000` result
+
+That prepared probe ran and generated its planned panic report at
+`2026-11-16 14:30:06`. It again has `x0 = 0` and `far = 0`, with the expected
+`19H394` kernel UUID and a program counter in the injected cave. Therefore the
+stock GPC `0x40000000` store does **not** set page-5 bit 30. The next direct
+boundary is after the stock `0x11` request and its busy poll, before the
+following AGX helper call.
+
+That post-poll probe is built at
+`artifacts/live/private/j81-ios-agx-gpcpoll-panic/agx-after-gpcpoll-page5p4-panic`
+with SHA-256
+`82f1e5b613c1227584566f4574e905b941e80f434c65b085643938221e754151`.
+It has the same exact-build and unique-signature gates as the preceding
+captures and does not inject a GPC write.
