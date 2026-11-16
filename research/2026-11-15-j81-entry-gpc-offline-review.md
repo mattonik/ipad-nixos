@@ -123,6 +123,11 @@ successfully captured GFX PS `0x00000300` at the ApplePMGR `start()` return.
 The planned data abort is expected; it performs no PMGR, bridge, GPC, or GPU
 writes. This establishes a non-reentrant, one-word iPadOS observation channel.
 
+A paired capture at the same return boundary read page-5 `+0x5004` as
+`0x00000000`. Bit 30 is therefore clear after generic ApplePMGR startup; the
+later iPadOS observation of `0x40000000` must come from the subsequent
+GPU-side path, not from ApplePMGR `start()` itself.
+
 The next request-bearing experiment is explicitly deferred until the snapshot
 series identifies a candidate or a durable failure checkpoint is demonstrated.
 
