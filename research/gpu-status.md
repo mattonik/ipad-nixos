@@ -6,6 +6,14 @@ Imagination GXA6850 (Rogue/G4G generation).
 
 ## What has been observed
 
+- A three-boundary iPadOS 15.8.5 (`19H394`) planned-panic series now pins
+  PMGR page-5 `+0x4` bit 30 to the stock GPC `0x11` request/poll interval:
+  it was `0` after AGX's clock/power callbacks and after the preceding GPC
+  `0x40000000` store, then `0x40000000` after the request's busy poll. The
+  earlier Linux sequence reached poll state `1` but sampled `0`; thus writing
+  bit 30 is not justified and the missing condition is upstream of the Linux
+  GPC state machine. See the [current boundary result](2026-11-16-j81-agx-postpower-page5-result.md).
+
 - The proposed [next paired Linux observation](2026-11-10-j81-next-build-agent-handoff.md)
   tests whether page-5 bit 30 is briefly set closer to the successful GPC
   poll. It is a test plan, not a demonstrated GPU-ready condition.
