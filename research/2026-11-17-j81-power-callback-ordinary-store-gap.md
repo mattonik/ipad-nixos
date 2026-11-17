@@ -44,6 +44,25 @@ candidate for a later single-transition comparison.  An empty result only
 rules out ordinary stores in these two callbacks; it does not prove the core
 is ready or authorize another RGX identity read.
 
+## Hardware result
+
+The 19H394 power-window probe booted successfully on 2026-11-17 at 12:01
+local time. Its logger runs only from the new power-callback wrapper, after
+that callback returns. It emitted the same 17 direct-store rows seen in the
+previous clock-tail capture (`+0x20120`, `+0x20128`, `+0x201a0` through
+`+0x201e0`, and `+0x201f0`) and no further row. In particular, it did not
+observe `+0x20320`.
+
+Because the hook remained armed across both callbacks and emitted only after
+the second, this is positive evidence that the second provider callback added
+no completed entry at the intercepted ordinary ApplePMGR store site. It rules
+out the specific hypothesis that the missing transition is an ordinary-store
+operation in the power callback. It does not rule out a different PMGR method,
+direct MMIO, asynchronous work, or state established before either callback.
+
+The next investigation should be static and target those distinct paths; a
+third window at this same store site would only repeat the now-bounded result.
+
 Evidence: 19H394 `ios15-agx-disasm.txt` at
 `0xfffffff006683918..68399c`, and the two successful direct-store captures
 documented in [the callback capture](2026-11-17-j81-ios-g4g-ordinary-pmgr-store-capture.md).
