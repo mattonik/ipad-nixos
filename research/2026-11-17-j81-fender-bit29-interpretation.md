@@ -72,3 +72,22 @@ Conclusion: the new capture sharpens the symptom (bit 29 and page-5 bit 30 are
 hardware responses that never arrive) but does not move the suspect away from
 the gap those notes already identify. The useful next work is that PMGR
 writer capture, not another Fender or GPC read, and not a bit-29 write.
+
+## Correction (same day): the PMGR writer capture was already done
+
+The follow-up section above recommended the passive ordinary-PMGR writer
+capture as the next step. That was wrong: it had already been run and closed
+on branch `j81-pmgr-store-sample` (not on `main`, which this note was written
+against). Results there:
+- `2026-11-17-j81-ios-g4g-ordinary-pmgr-store-capture.md`: 49 ordinary stores
+  across the G4G clock window; none to GFX state word `+0x20320`.
+- `2026-11-17-j81-power-callback-ordinary-store-gap.md`: the power callback
+  adds none.
+- `2026-11-17-j81-pmgr-control-bank-next-target.md`: the `+0x22000` bank is
+  memory-controller / CPU-frequency setup (`function-mcc_ctrl`), lead closed.
+
+So the ordinary-store, bridge, GPC, DWI and PMGR-poll paths are all bounded.
+What remains is a GPU-specific dependency outside those (reset/isolation,
+fabric, direct MMIO, or autonomous/asynchronous work), as that branch's last
+note says. Nothing in this Fender capture changes that; it only adds that
+bit 29 and page-5 bit 30 are hardware responses that do not arrive.
