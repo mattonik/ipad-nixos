@@ -61,6 +61,38 @@ Lclaim:
  stp q28, q29, [sp, #0x3c0]
  stp q30, q31, [sp, #0x3e0]
  ldr x19, _j81_thread_buffer
+ ldr w9, [x19, #4]
+ add x10, x19, #4096
+ ldr w10, [x10, #4]
+ mov w11, #128
+ sub w11, w11, w9
+ cmp w10, w11
+ csel w10, w10, w11, lo
+ mov w11, #0
+Lsample_copy:
+ cmp w11, w10
+ b.hs Lsample_done
+ add x12, x19, #4096
+ add x12, x12, #32
+ add x12, x12, w11, uxtw #4
+ add x13, x19, #48
+ add w14, w9, w11
+ add x13, x13, w14, uxtw #4
+ ldp w15, w16, [x12]
+ stp w15, w16, [x13]
+ ldr w15, [x12, #8]
+ str w15, [x13, #8]
+ add x13, x19, #0xa00
+ mov w15, #0x80000000
+ str w15, [x13, w14, uxtw #2]
+ add x13, x19, #0xc00
+ mov w15, #3
+ str w15, [x13, w14, uxtw #2]
+ add w11, w11, #1
+ b Lsample_copy
+Lsample_done:
+ add w9, w9, w10
+ str w9, [x19, #4]
  stlr wzr, [x19]
  mrs x8, daif
  tst x8, #0x80
@@ -359,8 +391,15 @@ _j81_thread_store:
  ldar w11, [x10]
  cbz w11, Lstore_original
  ldr w11, [x10, #4]
+ cmp w11, #32
+ b.hs Lstore_original
  add w11, w11, #1
  str w11, [x10, #4]
+ sub w11, w11, #1
+ add x10, x10, #32
+ add x10, x10, w11, uxtw #4
+ stp w22, w19, [x10]
+ str w21, [x10, #8]
 Lstore_original:
  str w21, [x8, w19, uxtw]
  ldr x9, [sp, #0x20]
