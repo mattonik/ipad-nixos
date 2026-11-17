@@ -82,6 +82,9 @@ Lsample_copy:
  stp w15, w16, [x13]
  ldr w15, [x12, #8]
  str w15, [x13, #8]
+ mov w15, #1
+ add x16, x13, #12
+ stlr w15, [x16]
  add x13, x19, #0xa00
  mov w15, #0x80000000
  str w15, [x13, w14, uxtw #2]
