@@ -17,6 +17,7 @@ Lclaim:
  stlr w10, [x16]
  add x9, x16, #4096
  stlr w10, [x9]
+ str wzr, [x9, #16]
  blr x8
  ldr x16, _j81_thread_buffer
  add x9, x16, #4096
@@ -393,7 +394,12 @@ _j81_thread_store:
  add x10, x9, #4096
  ldar w11, [x10]
  cbz w11, Lstore_original
- ldr w11, [x10, #4]
+ ldr w11, [x10, #16]
+ add w12, w11, #1
+ str w12, [x10, #16]
+ cmp w11, #32
+ b.lo Lstore_original
+ sub w11, w11, #32
  cmp w11, #32
  b.hs Lstore_original
  add w11, w11, #1
