@@ -1275,6 +1275,12 @@
             buildPhase = "$CC -D_GNU_SOURCE -static -O2 -Wall -Wextra -Werror -o gpu-gpc-page5-timed ${./boot/gpu-gpc-page5-timed.c}";
             installPhase = "mkdir -p $out/bin && cp gpu-gpc-page5-timed $out/bin/gpu-gpc-page5-timed";
           };
+          gpuGpcFenderStatusPkg = pkgsCrossMusl.stdenv.mkDerivation {
+            name = "gpu-gpc-fender-status";
+            dontUnpack = true;
+            buildPhase = "$CC -D_GNU_SOURCE -static -O2 -Wall -Wextra -Werror -o gpu-gpc-fender-status ${./boot/gpu-gpc-fender-status.c}";
+            installPhase = "mkdir -p $out/bin && cp gpu-gpc-fender-status $out/bin/gpu-gpc-fender-status";
+          };
 
           gpuGpcInitPkg = pkgsCrossMusl.stdenv.mkDerivation {
             name = "gpu-gpc-init";
@@ -1638,6 +1644,7 @@
         gpu-gpc-peek-static = gpuGpcPeekPkg;
         gpu-gpc-init-static = gpuGpcInitPkg;
         gpu-gpc-page5-timed-static = gpuGpcPage5TimedPkg;
+        gpu-gpc-fender-status-static = gpuGpcFenderStatusPkg;
         gpu-fender-wake-static = gpuFenderWakePkg;
         gpu-id-once-static = gpuIdOncePkg;
         gpu-core-revision-once-static = gpuCoreRevisionOncePkg;
