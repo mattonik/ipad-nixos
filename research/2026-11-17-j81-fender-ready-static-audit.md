@@ -37,6 +37,14 @@ The implementation uses a data-memory barrier before the first Fender read.
 The G4G strings explicitly call this path `setGPCPerformanceState` and refer
 to `GPC/Fender`; this is not a guessed PMGR/MCC interpretation.
 
+The `+0x20000` operation is not new evidence that it belongs to the early
+identity path.  Earlier A8X analysis already placed the analogous hold
+operation in a distinct firmware-object path, after the proven accelerator
+identity dispatch is selected; see
+[`2026-11-07-j81-gpc-hold-before-id-boundary.md`](2026-11-07-j81-gpc-hold-before-id-boundary.md).
+This 19H394 analysis independently confirms that newer G4G still carries the
+same auxiliary handshake and ordering guard.
+
 ## Consequence
 
 Bit 30 is a *ready acknowledgement*, paired with bit 29, in the stock
@@ -48,7 +56,8 @@ Fender condition that the replay has not caused.
 This also explains why merely making the `0x11` request and observing the
 state poll succeed is insufficient: iOS has a separate paired-ready test,
 an in-flight request check, and a distinct `+0x20000` handshake lane.  The
-Linux replay did not include that `+0x20000` request or its bit-5 poll.
+Linux replay did not include that `+0x20000` request or its bit-5 poll, and
+it should not: no evidence places it before the early identity read.
 
 The ordering matters: the stock guard enters the `+0x20000` operation only
 *after* its register-0 bits-29/30 test has passed.  That handshake may be a
