@@ -27,8 +27,11 @@ The relevant virtual table is at `0xfffffff006f2ff30`.
 * That same guard checks `fender[0x1000]` bit 4.  When set, it waits and
   rereads until the bit clears; a timeout emits the embedded diagnostic
   `GPC state transition is stuck!`.
-* After this, it invokes another Fender virtual operation and requires the
-  word at Fender `+0x8` to be zero before returning success.
+* After this, it invokes virtual table entry `+0x18`
+  (`0xfffffff00669c238`).  That operation writes `0x20` to Fender `+0x20000`
+  when enabling (or zero when disabling), waits for Fender `+0x20000` bit 5
+  to assert, then waits for Fender `+0x1000` bit 4 to clear.  The guard then
+  requires the word at Fender `+0x8` to be zero before returning success.
 
 The implementation uses a data-memory barrier before the first Fender read.
 The G4G strings explicitly call this path `setGPCPerformanceState` and refer
@@ -43,8 +46,9 @@ page-5 bit-30 difference as a write-one control.  The existing Linux result
 Fender condition that the replay has not caused.
 
 This also explains why merely making the `0x11` request and observing the
-state poll succeed is insufficient: iOS has a separate readiness test and
-an in-flight request check.
+state poll succeed is insufficient: iOS has a separate paired-ready test,
+an in-flight request check, and a distinct `+0x20000` handshake lane.  The
+Linux replay did not include that `+0x20000` request or its bit-5 poll.
 
 ## Next evidence, not a new write recipe
 
@@ -54,7 +58,8 @@ that has reached GPC state 1:
 1. Fender register 0 bits 29 and 30.
 2. Fender `+0x8`.
 3. Fender `+0x1000` bit 4.
-4. PMGR page-5 `+0x4`.
+4. Fender `+0x20000` and its bit 5.
+5. PMGR page-5 `+0x4`.
 
 The same four words should be captured at the matching iOS post-poll
 boundary.  Only a differing word can justify investigating an additional
@@ -63,6 +68,7 @@ prerequisite.  No register write is proposed from this audit.
 ## Limits
 
 The static result proves the semantics of the G4G driver's transition guard,
-not the physical producer of Fender bits 29/30.  The current J81 captures
-establish page-5 bit 30, not yet all three Fender status words at the same
-boundary.
+not the physical producer of Fender bits 29/30 or whether the `+0x20000`
+request must occur before the Linux-side `0x11` request.  The current J81
+captures establish page-5 bit 30, not yet all four Fender status words at
+the same boundary.
