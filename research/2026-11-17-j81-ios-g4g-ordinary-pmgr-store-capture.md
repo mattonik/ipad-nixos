@@ -45,13 +45,31 @@ GPU-window bit-30 activity, but this capture is of PMGR region 0.  Equal
 offsets or bit patterns must not be treated as the same register without an
 address-mapping proof.
 
+## Static classification of the first slice
+
+The `0x22000` block is now classified from the matching local 19H394
+`AppleT7001PMGR` decompilation.  `FUN_fffffff006c8a01c` walks offsets
+`0x22000` through `0x22180` in steps of `0x10`, writes each existing word with
+bit 31 selected according to its platform condition, skips `0x22030` through
+`0x22070`, and explicitly skips `0x22120`.  That is the exact inclusion and
+omission pattern in the live capture.  This is an ordinary PMGR control-bank
+operation, not a reconstructed GPU-core write.
+
+The `0x20100`, `0x20108`, `0x20110`, and `0x20120` offsets are PMGR
+power-state-table slots 32, 33, 34, and 36 respectively (`0x20000 + 8*i`).
+J81 GFX is state index 100, at `0x20320`.  Therefore the captured prefix
+does not yet contain a direct write to the known GFX power-state word.  It
+does demonstrate that the provider window drives additional platform PMGR
+work around the GFX transition.
+
 ## What this changes
 
 The current raw replay contains the bridge-store family but not this ordinary
 PMGR sequence.  It can therefore reach GPC state 1 while leaving one or more
 dependent clock, rail, reset, or fabric transitions incomplete.  That matches
 the observed permanent stall of the first RGX identity read in Linux and
-PongoOS.
+PongoOS, but does not yet assign causality to this particular control-bank
+routine.
 
 This does **not** identify a safe write sequence yet:
 
@@ -64,12 +82,12 @@ This does **not** identify a safe write sequence yet:
 
 ## Next discriminator
 
-Statically trace the ordinary PMGR mapping family for these offsets and
-identify which correspond to the active GFX dependency chain.  Then capture a
-bounded later slice (or a filtered subset) around the PMGR entries linked to
-GFX rather than expanding a blind replay.  The first hardware replay, if
-justified, should be a single mapped, read-back-checked state transition with
-the existing watchdog/recovery procedure—not all 32 writes.
+Capture the next bounded store slice after this prefix, looking specifically
+for the known GFX power-state offset `0x20320` and the immediately adjacent
+dependency entries.  Do not replay the `0x220xx` bank: it is a platform PMGR
+routine whose GFX necessity is not established.  Any eventual first replay
+must be a single mapped, read-back-checked state transition with the existing
+watchdog/recovery procedure—not the captured prefix wholesale.
 
 Evidence: the retained private `boot.logarchive` from the successful
 2026-11-17 10:24 local iPadOS boot; the count-only `O00000113` result; and
