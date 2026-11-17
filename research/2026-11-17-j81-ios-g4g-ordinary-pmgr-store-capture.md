@@ -75,11 +75,12 @@ ordinary-store count.  Only the 17 `P1T1` rows are direct evidence for this
 window.  The callback therefore contributes 49 observed ordinary stores to
 this hook invocation, not an observed 275.
 
-The earlier count-only result, `O00000113`, came from different
-instrumentation and cannot now be interpreted as 275 stores from this one
-callback.  It may include other PMGR paths or callback invocations.  It remains
-useful as evidence of broader PMGR activity during the boot, but not as a
-bound for this safe callback-local capture.
+The earlier `O00000113` label is not an ordinary-store counter at all.  In the
+probe formatter, `O` is the generic ApplePMGR writer-hook record count
+(`buffer + 0xe14`); therefore it records 275 writer-call records, not 275
+ordinary stores.  The direct-store hook is the first measurement that answers
+the ordinary-store question.  The 49 rows above are the callback-local direct
+stores observed by it.
 
 ## What this changes
 
@@ -101,14 +102,14 @@ This does **not** identify a safe write sequence yet:
 
 ## Next discriminator
 
-Resolve the count-only/callback-local scope mismatch offline before capturing a
-third numerical window: this callback's observed tail ends before GFX index
-100, so a third `65..96` window has no demonstrated chance of producing a
-GFX row.  Do not replay the `0x220xx` bank: it is a platform PMGR routine whose
-GFX necessity is not established.  Any eventual first replay must be a single
-mapped, read-back-checked state transition with the existing watchdog/recovery
+Trace the later AGX startup path rather than take a third numerical window:
+this callback's observed tail ends before GFX index 100, so a third `65..96`
+window has no demonstrated chance of producing a GFX row.  Do not replay the
+`0x220xx` bank: it is a platform PMGR routine whose GFX necessity is not
+established.  Any eventual first replay must be a single mapped,
+read-back-checked state transition with the existing watchdog/recovery
 procedure—not the captured prefix wholesale.
 
 Evidence: retained private `boot.logarchive` files from the successful
-2026-11-17 10:24 and 10:45 local iPadOS boots; the count-only `O00000113`
-result; and [the prior transition-gap review](2026-11-16-j81-pmgr-transition-gap.md).
+2026-11-17 10:24 and 10:45 local iPadOS boots; the generic-writer
+`O00000113` result; and [the prior transition-gap review](2026-11-16-j81-pmgr-transition-gap.md).
