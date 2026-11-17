@@ -4,9 +4,8 @@
 
 The reduced 19H394 iPadOS probe completed normally and recorded the first 32
 ordinary PMGR stores made while the existing G4G clock-provider callback was
-active.  The count-only predecessor recorded **275** such stores on a
-successful boot.  This is the first positive evidence that the iOS transition
-does materially more than the 66 selector-9/selector-10 bridge writes already
+active.  This is the first positive evidence that the iOS transition does
+materially more than the 66 selector-9/selector-10 bridge writes already
 replayed by Linux and PongoOS.
 
 The capture observes the ordinary ApplePMGR store path (virtual `+0x988`),
@@ -62,6 +61,26 @@ does not yet contain a direct write to the known GFX power-state word.  It
 does demonstrate that the provider window drives additional platform PMGR
 work around the GFX transition.
 
+## Second bounded slice: callback tail
+
+A second successful boot skipped the first 32 stores and recorded the next
+window.  It produced 17 completed ordinary-store rows before the callback
+returned: `0x20120`, `0x20128`, then state-table slots `0x201a0` through
+`0x201e0`, followed by `0x201f0`.  The repeated `0x000000ff` / `0x100000ff`
+pairs are the same PMGR power-state-table pattern seen in the prefix.
+
+There was no `0x20320` row (J81 GFX, state index 100).  More importantly, the
+second hook's `O00000020` header is its *merged log-record* count, not its
+ordinary-store count.  Only the 17 `P1T1` rows are direct evidence for this
+window.  The callback therefore contributes 49 observed ordinary stores to
+this hook invocation, not an observed 275.
+
+The earlier count-only result, `O00000113`, came from different
+instrumentation and cannot now be interpreted as 275 stores from this one
+callback.  It may include other PMGR paths or callback invocations.  It remains
+useful as evidence of broader PMGR activity during the boot, but not as a
+bound for this safe callback-local capture.
+
 ## What this changes
 
 The current raw replay contains the bridge-store family but not this ordinary
@@ -73,8 +92,8 @@ routine.
 
 This does **not** identify a safe write sequence yet:
 
-* the 32 rows are only a prefix of 275 calls and may include shared transition
-  work unrelated to GFX;
+* the 49 callback-local rows observed across the two windows may include
+  shared transition work unrelated to GFX;
 * the capture gives method arguments, not verified physical addresses or
   register meanings; and
 * blindly replaying the whole prefix would mix unknown PMGR state-machine
@@ -82,13 +101,14 @@ This does **not** identify a safe write sequence yet:
 
 ## Next discriminator
 
-Capture the next bounded store slice after this prefix, looking specifically
-for the known GFX power-state offset `0x20320` and the immediately adjacent
-dependency entries.  Do not replay the `0x220xx` bank: it is a platform PMGR
-routine whose GFX necessity is not established.  Any eventual first replay
-must be a single mapped, read-back-checked state transition with the existing
-watchdog/recovery procedure—not the captured prefix wholesale.
+Resolve the count-only/callback-local scope mismatch offline before capturing a
+third numerical window: this callback's observed tail ends before GFX index
+100, so a third `65..96` window has no demonstrated chance of producing a
+GFX row.  Do not replay the `0x220xx` bank: it is a platform PMGR routine whose
+GFX necessity is not established.  Any eventual first replay must be a single
+mapped, read-back-checked state transition with the existing watchdog/recovery
+procedure—not the captured prefix wholesale.
 
-Evidence: the retained private `boot.logarchive` from the successful
-2026-11-17 10:24 local iPadOS boot; the count-only `O00000113` result; and
-[the prior transition-gap review](2026-11-16-j81-pmgr-transition-gap.md).
+Evidence: retained private `boot.logarchive` files from the successful
+2026-11-17 10:24 and 10:45 local iPadOS boots; the count-only `O00000113`
+result; and [the prior transition-gap review](2026-11-16-j81-pmgr-transition-gap.md).
