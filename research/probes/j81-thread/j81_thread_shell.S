@@ -1,6 +1,6 @@
 .text
 .p2align 2
-.globl _j81_thread_start, _j81_thread_end, _j81_thread_clock, _j81_thread_write, _j81_thread_store, _j81_thread_store_resume, _j81_thread_buffer, _j81_thread_format, _j81_thread_logger, _j81_thread_decision, _j81_thread_decision_resume, _j81_thread_aggregate, _j81_thread_aggregate_resume, _j81_thread_count, _j81_thread_count_resume, _j81_thread_choice, _j81_thread_choice_resume
+.globl _j81_thread_start, _j81_thread_end, _j81_thread_clock, _j81_thread_power, _j81_thread_write, _j81_thread_store, _j81_thread_store_resume, _j81_thread_buffer, _j81_thread_format, _j81_thread_logger, _j81_thread_decision, _j81_thread_decision_resume, _j81_thread_aggregate, _j81_thread_aggregate_resume, _j81_thread_count, _j81_thread_count_resume, _j81_thread_choice, _j81_thread_choice_resume
 _j81_thread_start:
 _j81_thread_clock:
  stp x29, x30, [sp, #-16]!
@@ -19,9 +19,21 @@ Lclaim:
  stlr w10, [x9]
  str wzr, [x9, #16]
  blr x8
+ ldp x29, x30, [sp], #16
+ ret
+_j81_thread_power:
+ stp x29, x30, [sp, #-16]!
+ blr x8
  ldr x16, _j81_thread_buffer
  add x9, x16, #4096
+ ldar w10, [x9]
+ cbz w10, Lpower_done
  stlr wzr, [x9]
+ b Lcapture
+Lpower_done:
+ ldp x29, x30, [sp], #16
+ ret
+Lcapture:
  sub sp, sp, #0x400
  stp x0, x1, [sp, #0x100]
  stp x2, x3, [sp, #0x110]

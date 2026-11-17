@@ -1,6 +1,6 @@
 .text
 .p2align 2
-.globl _j81_thread_start, _j81_thread_end, _j81_thread_clock, _j81_thread_write, _j81_thread_buffer, _j81_thread_format, _j81_thread_logger, _j81_thread_decision, _j81_thread_decision_resume, _j81_thread_aggregate, _j81_thread_aggregate_resume, _j81_thread_count, _j81_thread_count_resume, _j81_thread_choice, _j81_thread_choice_resume
+.globl _j81_thread_start, _j81_thread_end, _j81_thread_clock, _j81_thread_power, _j81_thread_write, _j81_thread_buffer, _j81_thread_format, _j81_thread_logger, _j81_thread_decision, _j81_thread_decision_resume, _j81_thread_aggregate, _j81_thread_aggregate_resume, _j81_thread_count, _j81_thread_count_resume, _j81_thread_choice, _j81_thread_choice_resume
 _j81_thread_start:
 _j81_thread_clock:
  stp x29, x30, [sp, #-16]!
@@ -18,6 +18,21 @@ Lclaim:
  str x9, [x16, #3616]
  stlr w10, [x16]
  blr x8
+ ldp x29, x30, [sp], #16
+ ret
+_j81_thread_power:
+ stp x29, x30, [sp, #-16]!
+ blr x8
+ adrp x9, _test_buffer@PAGE
+ add x9, x9, _test_buffer@PAGEOFF
+ ldar w10, [x9]
+ cbz w10, Lpower_done
+ stlr wzr, [x9]
+ b Lcapture
+Lpower_done:
+ ldp x29, x30, [sp], #16
+ ret
+Lcapture:
  sub sp, sp, #0x400
  stp x0, x1, [sp, #0x100]
  stp x2, x3, [sp, #0x110]
@@ -470,9 +485,15 @@ _test_entry:
  adrp x8, _fake_provider@PAGE
  add x8, x8, _fake_provider@PAGEOFF
  bl _j81_thread_clock
+ adrp x8, Lfake_power@PAGE
+ add x8, x8, Lfake_power@PAGEOFF
+ bl _j81_thread_power
  str q0, [x19]
  str q31, [x19, #16]
  ldp x19, x30, [sp], #16
+ ret
+Lfake_power:
+ mov x0, #0x1234
  ret
 .globl _test_write
 _test_write:
