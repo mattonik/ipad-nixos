@@ -21,6 +21,18 @@ before/after values match in this boot. It does not rule out a transient
 change between snapshots, identify a selected performance state or clock,
 or establish why the first GPU identity read stalled.
 
+## Consequence for the boot-stage hypothesis
+
+The retained LLB analysis identifies the same control word, tunable word and
+table entries as boot-stage outputs.  Their same-boot stability across the
+only proven Linux GFX power transition means they are not a currently
+evidenced missing runtime operation.  In particular, replaying their known
+LLB values would not distinguish the stalled core read from the successful
+power-on already observed here.  Keep the residual possibility of an
+unobserved transient or separate selector state explicitly open, but
+down-rank boot-table replay below a GPU-specific reset/isolation or provider
+side effect with a concrete source trace.
+
 ## Procedure and evidence limits
 
 The payload `gcroot-gpu-pmgr-once-payload` passed its `SHA256SUMS` check.
