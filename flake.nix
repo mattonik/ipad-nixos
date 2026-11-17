@@ -1143,6 +1143,27 @@
             installPhase = "mkdir -p $out/bin && cp uartpeek $out/bin/uartpeek";
           };
 
+          pmgrWordsPeekPkg = pkgsCrossMusl.stdenv.mkDerivation {
+            name = "pmgr-words-peek";
+            dontUnpack = true;
+            buildPhase = "$CC -static -O2 -Wall -Wextra -Werror -o pmgr-words-peek ${./boot/pmgr-words-peek.c}";
+            installPhase = "mkdir -p $out/bin && cp pmgr-words-peek $out/bin/pmgr-words-peek";
+          };
+
+          pmgrDwiOnPkg = pkgsCrossMusl.stdenv.mkDerivation {
+            name = "pmgr-dwi-on";
+            dontUnpack = true;
+            buildPhase = "$CC -static -O2 -Wall -Wextra -Werror -o pmgr-dwi-on ${./boot/pmgr-dwi-on.c}";
+            installPhase = "mkdir -p $out/bin && cp pmgr-dwi-on $out/bin/pmgr-dwi-on";
+          };
+
+          pmgrPsRestorePkg = pkgsCrossMusl.stdenv.mkDerivation {
+            name = "pmgr-ps-restore";
+            dontUnpack = true;
+            buildPhase = "$CC -static -O2 -Wall -Wextra -Werror -o pmgr-ps-restore ${./boot/pmgr-ps-restore.c}";
+            installPhase = "mkdir -p $out/bin && cp pmgr-ps-restore $out/bin/pmgr-ps-restore";
+          };
+
           gpuPmgrPeekPkg = pkgsCrossMusl.stdenv.mkDerivation {
             name = "gpu-pmgr-peek";
             dontUnpack = true;
@@ -1611,6 +1632,9 @@
         pinpoke-static = pinpokePkg;
         uartpeek-static = uartpeekPkg;
         gpu-pmgr-peek-static = gpuPmgrPeekPkg;
+        pmgr-dwi-on-static = pmgrDwiOnPkg;
+        pmgr-ps-restore-static = pmgrPsRestorePkg;
+        pmgr-words-peek-static = pmgrWordsPeekPkg;
         gpu-gpc-peek-static = gpuGpcPeekPkg;
         gpu-gpc-init-static = gpuGpcInitPkg;
         gpu-gpc-page5-timed-static = gpuGpcPage5TimedPkg;

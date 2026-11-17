@@ -26,7 +26,8 @@ int fake_ioctl(int fd,unsigned long req,...){va_list a;void *p;(void)fd;
  if(req==WDIOC_KEEPALIVE){fputs("fake-feed\n",stderr);fflush(stderr);return 0;}
  va_start(a,req);p=va_arg(a,void *);va_end(a);
  if(req==WDIOC_GETSUPPORT){((struct watchdog_info *)p)->options=WDIOF_MAGICCLOSE;return 0;}
- if(req==WDIOC_SETTIMEOUT||req==WDIOC_SETOPTIONS)return 0;return -1;}
+ if(req==WDIOC_SETTIMEOUT||req==WDIOC_SETOPTIONS)return 0;
+ return -1;}
 '''
 
 def line(p, expected):
@@ -67,10 +68,13 @@ with tempfile.TemporaryDirectory() as d:
     timed=p/'timed-child'
     timed.write_text('#!/bin/sh\n[ "$#" -eq 2 ] || exit 2\nprintf "stage=before-gpc-page5 address=0x20e005004 width=32\\n"\nIFS= read -r reply || exit 1\n[ "$reply" = READ ] || exit 1\nprintf "stage=after-gpc-page5 address=0x20e005004 value=0x00000000\\nstage=finished rc=0\\n"\n')
     timed.chmod(0o755)
+    kpoll=p/'kpoll-child'
+    kpoll.write_text('#!/bin/sh\n[ "$#" -eq 3 ] || exit 2\nprintf "stage=before-gpc-page5-kpoll address=0x20e005004 width=32 mode=%s\\n" "$3"\nIFS= read -r reply || exit 1\n[ "$reply" = READ ] || exit 1\nprintf "checkpoint=before-kernel-batch\\n"\n[ "$3" = delayed ] && { printf "checkpoint=kernel-batch result=poll-failed mode=delayed raw=0x00000011 polls=1000\\nstage=finished rc=1\\n"; exit 1; }\nprintf "stage=after-gpc-page5-kpoll result=ok\\nstage=finished rc=0\\n"\n')
+    kpoll.chmod(0o755)
     page5=p/'page5-child'
     page5.write_text('#!/bin/sh\n[ "$#" -eq 5 ] && [ "$1" = --run ] || exit 2\nprintf "stage=before-page5-read address=0x20e00500%s width=32\\n" "$5"\nIFS= read -r reply || exit 1\n[ "$reply" = READ ] || exit 1\nprintf "stage=after-page5-read value=0x12345678\\nstage=finished rc=0\\n"\n')
     page5.chmod(0o755)
-    (p/'gpu-watchdog-supervisor.c').write_text(source.read_text().replace('"/tmp/j81-mcc-read-once-run"', f'"{child}"').replace('"/tmp/j81-page5-read-once-run"', f'"{page5}"').replace('"/tmp/gpu-gpc-page5-timed-run"', f'"{timed}"'))
+    (p/'gpu-watchdog-supervisor.c').write_text(source.read_text().replace('"/tmp/j81-mcc-read-once-run"', f'"{child}"').replace('"/tmp/j81-page5-read-once-run"', f'"{page5}"').replace('"/tmp/gpu-gpc-page5-timed-run"', f'"{timed}"').replace('"/tmp/gpu-gpc-page5-kpoll-run"', f'"{kpoll}"'))
     (p/'linux'/'watchdog.h').write_text('#pragma once\n#include <stdint.h>\nstruct watchdog_info { uint32_t options, firmware_version; unsigned char identity[32]; };\n#define WDIOF_MAGICCLOSE 0x100\n#define WDIOC_GETSUPPORT 1\n#define WDIOC_SETTIMEOUT 2\n#define WDIOC_KEEPALIVE 3\n#define WDIOC_SETOPTIONS 4\n#define WDIOS_DISABLECARD 1\n')
     (p/'test.c').write_text(harness)
     subprocess.run(['cc','-D_GNU_SOURCE','-std=c11','-Wall','-Wextra','-Werror','-I',str(p),'-I',str(source.parent),str(p/'test.c'),'-o',str(p/'test')],check=True)
@@ -100,6 +104,36 @@ with tempfile.TemporaryDirectory() as d:
     finally:
         if proc.poll() is None: os.killpg(proc.pid,signal.SIGKILL);proc.wait(timeout=3)
         for f in (proc.stdin,proc.stdout,proc.stderr): f.close()
+    boot='12345678-1234-1234-1234-123456789abc'
+    proc=subprocess.Popen([str(p/'test'),'--gpc-page5-kpoll','a'*64,boot,'paired'],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,start_new_session=True,bufsize=0)
+    try:
+        line(proc,b'stage=before-watchdog-open\n');proc.stdin.write(b'ARM\n')
+        line(proc,b'stage=watchdog-armed timeout=20\n')
+        line(proc,b'stage=before-gpc-page5-kpoll address=0x20e005004 width=32 mode=paired\n');proc.stdin.write(b'READ\n')
+        line(proc,b'checkpoint=before-kernel-batch\n')
+        line(proc,b'stage=after-gpc-page5-kpoll result=ok\n');proc.stdin.write(b'FEED 1\n')
+        line(proc,b'stage=finished rc=0\n');line(proc,b'stage=watchdog-disarmed\n')
+        assert proc.wait(timeout=3)==0 and proc.stderr.read()==b'fake-feed\n'
+    finally:
+        if proc.poll() is None: os.killpg(proc.pid,signal.SIGKILL);proc.wait(timeout=3)
+        for f in (proc.stdin,proc.stdout,proc.stderr): f.close()
+    # A failed poll must leave the watchdog armed: no feed, no disarm, no exit.
+    proc=subprocess.Popen([str(p/'test'),'--gpc-page5-kpoll','a'*64,boot,'delayed'],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,start_new_session=True,bufsize=0)
+    try:
+        line(proc,b'stage=before-watchdog-open\n');proc.stdin.write(b'ARM\n')
+        line(proc,b'stage=watchdog-armed timeout=20\n')
+        line(proc,b'stage=before-gpc-page5-kpoll address=0x20e005004 width=32 mode=delayed\n');proc.stdin.write(b'READ\n')
+        line(proc,b'checkpoint=before-kernel-batch\n')
+        line(proc,b'checkpoint=kernel-batch result=poll-failed mode=delayed raw=0x00000011 polls=1000\n')
+        line(proc,b'stage=finished rc=1\n')
+        try:proc.wait(timeout=0.3);raise AssertionError('failed poll terminated the supervisor')
+        except subprocess.TimeoutExpired:pass
+    finally:
+        if proc.poll() is None: os.killpg(proc.pid,signal.SIGKILL);proc.wait(timeout=3)
+        assert proc.stderr.read()==b''
+        for f in (proc.stdin,proc.stdout,proc.stderr): f.close()
+    for bad in (['a'*64,boot,'write'],['a'*63,boot,'paired'],['a'*64,boot]):
+        assert subprocess.run([str(p/'test'),'--gpc-page5-kpoll',*bad]).returncode == 2
     for offset in ('0','4','8'):
         proc=subprocess.Popen([str(p/'test'),'--page5-read-once','a'*64,'b'*64,'12345678-1234-1234-1234-123456789abc',offset],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,start_new_session=True,bufsize=0)
         try:
