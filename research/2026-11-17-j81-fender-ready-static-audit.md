@@ -50,6 +50,12 @@ state poll succeed is insufficient: iOS has a separate paired-ready test,
 an in-flight request check, and a distinct `+0x20000` handshake lane.  The
 Linux replay did not include that `+0x20000` request or its bit-5 poll.
 
+The ordering matters: the stock guard enters the `+0x20000` operation only
+*after* its register-0 bits-29/30 test has passed.  That handshake may be a
+later prerequisite for GPU access, but it cannot itself explain why Linux
+never obtains bit 30.  It must not be promoted to a Linux write experiment
+until the preceding ready condition is captured.
+
 ## Next evidence, not a new write recipe
 
 The narrow next capture is read-only and should correlate, on a Linux replay
@@ -68,7 +74,6 @@ prerequisite.  No register write is proposed from this audit.
 ## Limits
 
 The static result proves the semantics of the G4G driver's transition guard,
-not the physical producer of Fender bits 29/30 or whether the `+0x20000`
-request must occur before the Linux-side `0x11` request.  The current J81
-captures establish page-5 bit 30, not yet all four Fender status words at
-the same boundary.
+not the physical producer of Fender bits 29/30.  The current J81 captures
+establish page-5 bit 30, not yet all four Fender status words at the same
+boundary.
