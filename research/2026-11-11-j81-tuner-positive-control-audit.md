@@ -32,6 +32,25 @@ selected MCC operation affected the GPU. The November 8 note's statement
 that the PMGR-to-tuner notification path was unresolved should be read with
 the more complete November 4 trace; runtime ordering remains unresolved.
 
+## GFX transition boundary
+
+The retained ApplePMGR transition body for a G4G clock-on is now bounded more
+closely.  Its synchronous path is the generic state request
+`bd7ad0 -> bd81a8`: dependency collection, PMGR state settlement, selector
+bridge application, and record-flag actions.  That recovered body contains no
+direct call to the tuner bitmap action `bdc648`.  In the retained PMGR
+decompilation, `bdc648` is instead scheduled by the separate PMGR-nub helper
+`be3b0c`, which enters the PMGR command gate and then sends message 10 to the
+tuner object.
+
+This rules out describing the tuner callback as a demonstrated *synchronous*
+step between the G4G clock request and the first RGX identity read.  It does
+not rule out an indirect, queued, or independently scheduled device-set
+report: the scheduling conditions and runtime order of `be3b0c` remain
+unresolved.  Therefore a missing tuner marker remains inconclusive, but the
+tuner is not evidence for replaying an MCC or PMGR write during Linux GPU
+bring-up.
+
 ## Why a later event needs a different observer
 
 The tuner probe only prints its accumulated flags at the existing GPU
