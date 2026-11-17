@@ -18,6 +18,7 @@ Lclaim:
  add x9, x16, #4096
  stlr w10, [x9]
  blr x8
+ ldr x16, _j81_thread_buffer
  add x9, x16, #4096
  stlr wzr, [x9]
  sub sp, sp, #0x400
