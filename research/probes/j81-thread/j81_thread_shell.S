@@ -15,7 +15,11 @@ Lclaim:
  mrs x9, tpidr_el1
  str x9, [x16, #3616]
  stlr w10, [x16]
+ add x9, x16, #4096
+ stlr w10, [x9]
  blr x8
+ add x9, x16, #4096
+ stlr wzr, [x9]
  sub sp, sp, #0x400
  stp x0, x1, [sp, #0x100]
  stp x2, x3, [sp, #0x110]
@@ -151,9 +155,10 @@ Lcount_print:
  bl Lhex8
  mov w9, #32
  strb w9, [x23], #1
- mov w9, #87
+ mov w9, #79
  strb w9, [x23], #1
- ldr w25, [x19, #3604]
+ add x9, x19, #4096
+ ldr w25, [x9, #4]
  bl Lhex8
  mov w9, #32
  strb w9, [x23], #1
@@ -343,16 +348,25 @@ Lwrite_done:
  add sp, sp, #0x60
  br x8
 _j81_thread_store:
- sub sp, sp, #0x20
+ sub sp, sp, #0x30
  stp x9, x10, [sp]
  stp x11, x12, [sp, #0x10]
  mrs x9, nzcv
+ str x9, [sp, #0x20]
+ ldr x9, _j81_thread_buffer
+ add x10, x9, #4096
+ ldar w11, [x10]
+ cbz w11, Lstore_original
+ ldr w11, [x10, #4]
+ add w11, w11, #1
+ str w11, [x10, #4]
+Lstore_original:
  str w21, [x8, w19, uxtw]
- ldr x9, [sp, #0x10]
+ ldr x9, [sp, #0x20]
  msr nzcv, x9
  ldp x9, x10, [sp]
  ldp x11, x12, [sp, #0x10]
- add sp, sp, #0x20
+ add sp, sp, #0x30
 _j81_thread_store_resume:
  b _j81_thread_store_resume
 _j81_thread_decision:
