@@ -49,3 +49,26 @@ against existing iOS evidence. No new hardware access.
 
 Limit: the decompiled files above were read only for the stores and the guard;
 the gate indices in step 1 were not decoded in this pass.
+
+## Follow-up (same day): the gate-index lead is already decoded
+
+Existing notes cover the provider clock/power calls end to end, so no new
+decoding was needed:
+- `clock-gates[0]` and `power-gates[0]` are device ID 124 (0x7c)
+  ([clock-enable effects](2026-11-07-j81-g4g-clock-enable-register-effects.md)).
+  On an enable edge, ID 124 maps to PMGR state index 100: request state 15 at
+  0x20e020320 and poll, apply bridge selectors 9 and 10 (the 66 bridge
+  stores at 0x201f00000 / 0x201f80000), then the SoC-busy helper (conditional
+  display/MCC callback, see
+  [SoC-busy action](2026-11-07-j81-soc-busy-display-action-before-rgx.md)).
+- The Linux replay covers the PMGR state request and the 66 bridge stores.
+  What it does not show it covers is ApplePMGR's full transition/dependency
+  path and the conditional SoC-busy/MCC callback. `gpu-status.md` and
+  [PMGR transition gap](2026-11-16-j81-pmgr-transition-gap.md) already name the
+  same remaining gap and the next discriminator: a passive ordinary-PMGR
+  writer capture during the working iOS GFX window.
+
+Conclusion: the new capture sharpens the symptom (bit 29 and page-5 bit 30 are
+hardware responses that never arrive) but does not move the suspect away from
+the gap those notes already identify. The useful next work is that PMGR
+writer capture, not another Fender or GPC read, and not a bit-29 write.
