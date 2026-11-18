@@ -1,6 +1,6 @@
 .text
 .p2align 2
-.globl _j81_thread_start, _j81_thread_end, _j81_thread_clock, _j81_thread_write, _j81_thread_buffer, _j81_thread_format, _j81_thread_logger, _j81_thread_decision, _j81_thread_decision_resume, _j81_thread_aggregate, _j81_thread_aggregate_resume, _j81_thread_count, _j81_thread_count_resume, _j81_thread_choice, _j81_thread_choice_resume
+.globl _j81_thread_start, _j81_thread_end, _j81_thread_clock, _j81_thread_power, _j81_thread_write, _j81_thread_store, _j81_thread_store_resume, _j81_thread_buffer, _j81_thread_format, _j81_thread_logger, _j81_thread_decision, _j81_thread_decision_resume, _j81_thread_aggregate, _j81_thread_aggregate_resume, _j81_thread_count, _j81_thread_count_resume, _j81_thread_choice, _j81_thread_choice_resume
 _j81_thread_start:
 _j81_thread_clock:
  stp x29, x30, [sp, #-16]!
@@ -15,7 +15,25 @@ Lclaim:
  mrs x9, tpidr_el1
  str x9, [x16, #3616]
  stlr w10, [x16]
+ add x9, x16, #4096
+ stlr w10, [x9]
+ str wzr, [x9, #16]
  blr x8
+ ldp x29, x30, [sp], #16
+ ret
+_j81_thread_power:
+ stp x29, x30, [sp, #-16]!
+ blr x8
+ ldr x16, _j81_thread_buffer
+ add x9, x16, #4096
+ ldar w10, [x9]
+ cbz w10, Lpower_done
+ stlr wzr, [x9]
+ b Lcapture
+Lpower_done:
+ ldp x29, x30, [sp], #16
+ ret
+Lcapture:
  sub sp, sp, #0x400
  stp x0, x1, [sp, #0x100]
  stp x2, x3, [sp, #0x110]
@@ -56,6 +74,41 @@ Lclaim:
  stp q28, q29, [sp, #0x3c0]
  stp q30, q31, [sp, #0x3e0]
  ldr x19, _j81_thread_buffer
+ ldr w9, [x19, #4]
+ add x10, x19, #4096
+ ldr w10, [x10, #4]
+ mov w11, #128
+ sub w11, w11, w9
+ cmp w10, w11
+ csel w10, w10, w11, lo
+ mov w11, #0
+Lsample_copy:
+ cmp w11, w10
+ b.hs Lsample_done
+ add x12, x19, #4096
+ add x12, x12, #32
+ add x12, x12, w11, uxtw #4
+ add x13, x19, #48
+ add w14, w9, w11
+ add x13, x13, w14, uxtw #4
+ ldp w15, w16, [x12]
+ stp w15, w16, [x13]
+ ldr w15, [x12, #8]
+ str w15, [x13, #8]
+ mov w15, #1
+ add x16, x13, #12
+ stlr w15, [x16]
+ add x13, x19, #0xa00
+ mov w15, #0x80000000
+ str w15, [x13, w14, uxtw #2]
+ add x13, x19, #0xc00
+ mov w15, #3
+ str w15, [x13, w14, uxtw #2]
+ add w11, w11, #1
+ b Lsample_copy
+Lsample_done:
+ add w9, w9, w10
+ str w9, [x19, #4]
  stlr wzr, [x19]
  mrs x8, daif
  tst x8, #0x80
@@ -151,9 +204,10 @@ Lcount_print:
  bl Lhex8
  mov w9, #32
  strb w9, [x23], #1
- mov w9, #87
+ mov w9, #79
  strb w9, [x23], #1
- ldr w25, [x19, #3604]
+ add x9, x19, #4096
+ ldr w25, [x9, #4]
  bl Lhex8
  mov w9, #32
  strb w9, [x23], #1
@@ -342,6 +396,40 @@ Lwrite_done:
  ldp x9, x10, [sp]
  add sp, sp, #0x60
  br x8
+_j81_thread_store:
+ sub sp, sp, #0x30
+ stp x9, x10, [sp]
+ stp x11, x12, [sp, #0x10]
+ mrs x9, nzcv
+ str x9, [sp, #0x20]
+ ldr x9, _j81_thread_buffer
+ add x10, x9, #4096
+ ldar w11, [x10]
+ cbz w11, Lstore_original
+ ldr w11, [x10, #16]
+ add w12, w11, #1
+ str w12, [x10, #16]
+ cmp w11, #32
+ b.lo Lstore_original
+ sub w11, w11, #32
+ cmp w11, #32
+ b.hs Lstore_original
+ add w11, w11, #1
+ str w11, [x10, #4]
+ sub w11, w11, #1
+ add x10, x10, #32
+ add x10, x10, w11, uxtw #4
+ stp w22, w19, [x10]
+ str w21, [x10, #8]
+Lstore_original:
+ str w21, [x8, w19, uxtw]
+ ldr x9, [sp, #0x20]
+ msr nzcv, x9
+ ldp x9, x10, [sp]
+ ldp x11, x12, [sp, #0x10]
+ add sp, sp, #0x30
+_j81_thread_store_resume:
+ b _j81_thread_store_resume
 _j81_thread_decision:
  sub sp, sp, #0x20
  stp x9, x10, [sp]
