@@ -60,12 +60,26 @@ nix --extra-experimental-features 'nix-command flakes' build --impure --out-link
   }).kernel' > "$JOB/results/kernel-path.txt"
 GFX_KERNEL=$(cat "$JOB/results/kernel-path.txt")
 test -s "$GFX_KERNEL/Image"
+LC_ALL=C grep -aFq 'gfx-request pid=%d old=%08x request=%08x' "$GFX_KERNEL/Image"
 sha256sum "$GFX_KERNEL/Image" > "$JOB/results/kernel-image.sha256"
 ```
 
 If the build fails, return the first relevant Nix or compiler error and the derivation path. Continue the archive work independently. A printed `gfx-request` row in a future Linux log describes a setter that reached its successful poll. `auto=0` means there was no automatic-management write, and `auto_word` is then a placeholder. When `auto=1`, `rc` is the status of the last write. Earlier failures return before logging. A missing row cannot identify a skipped setter, failed access or lost message. The PID is the task executing the setter. Use independent task attribution before marking a normalized event as same-thread. Logging can affect timing between setter calls. [Observer patch](probes/j81-linux-gfx-request.patch)
 
-## Audit the three working-device archives
+## First check the earlier successful manual recipe
+
+Locate the November 14 20:57 19H394 archive (`ios-logarchive-j81-pmgr-bisect-03`), the matching binary whose reported SHA-256 begins `0a20ead8`, and its build record. On the Mac, set `EARLY_ARCHIVE` and `EARLY_BINARY` to their actual paths. Use existing exports if the builder runs Linux.
+
+```bash
+shasum -a 256 "$EARLY_BINARY"
+/usr/bin/log show --style syslog --info --debug --archive "$EARLY_ARCHIVE" \
+  --predicate 'eventMessage CONTAINS "J81_BOOT"' > "$JOB/results/early.messages"
+grep -En 'J81_BOOT (P0|GPC TICKS|P1|BEFORE CORE READ|CORE=|STOP)' "$JOB/results/early.messages"
+```
+
+Verify the published order from P0 with S=00000300 to CORE=00070500. Compare the hashed binary against the matching build record and inspect the already-built recipe's power-state requests offline. Record whether it issued a separate minimum-state write and a post-poll auto-enable request, or whether each is unknown. Include how you established the caller, order and absence if applicable. These archive markers do not themselves log the requests. An early successful recipe omitting an operation would redirect the search toward state that PMGR startup had already established. Keep this manual boot distinct from the normal AGX stock comparator. [Run 3 and interpretation](2026-11-18-j81-gfx-state-word-comparison.md#test-necessity-against-the-earlier-successful-boot)
+
+## Audit the three November 17 working-device archives
 
 Use the November 17 local captures individually. The published candidates are 10:24 for the prefix, 10:45 for the clock tail and 12:01 for the combined clock/power tail. Verify each boot alias, board, OS build, producer binary SHA-256 and source revision from the private build records. Confirm the actual formatter is the sampled version before interpreting O as staged slots. Retain the export and binary privately. On a Mac, run the following once per archive after setting `ARCHIVE` to its absolute .logarchive path and `LABEL` to the matching alias (prefix, clock-tail, or combined-tail). A Linux builder can use the Mac's per-boot plain-text exports and run the last command directly.
 
@@ -93,6 +107,7 @@ fi
 
 Return a short text report to the sender. Include the repository SHA, host tests, kernel store path and Image SHA-256 or the build error. For each boot give the alias, producer SHA/revision, staged/printed/missing counts and any GFX word. For each attributable transition give its order, caller, thread, old/request/poll/auto words, result and loss/control status. Report the earliest difference and any coverage gap. Keep raw archives, device identifiers and binaries local.
 
+* If a zero request precedes the active request, check the caller and previous MIN/TARGET fields. The 19H394 increasing path can write zero while setting minimum state to zero. Preserve any separate off transition.
 * If the only difference is the post-poll ACTUAL nibble, record it and pursue the first differently ordered reset, clock or fabric dependency upstream of the identity read.
 * If stock has a distinct target, auto-disable, or off/on edge, establish its caller, width and starting state. That transition becomes the candidate for a separate Linux experiment.
 * If stock coverage is incomplete, name the earliest missing observation. A new kernel build, a matching endpoint, or the static words in the table cannot fill it. The next capture should target that observation.

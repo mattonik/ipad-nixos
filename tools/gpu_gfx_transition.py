@@ -2,6 +2,7 @@
 """Record and compare J81 GFX observations from saved per-boot JSONL streams."""
 import argparse
 import json
+from itertools import zip_longest
 from pathlib import Path
 
 TARGET = (0, 0x20320, 0)
@@ -100,12 +101,19 @@ def record(lines, role):
                 rows=rows, inconclusive=reasons)
 
 
-def compare(stock, linux):
+def comparison(stock, linux):
     if stock['inconclusive'] or linux['inconclusive']:
-        return 'inconclusive'
-    def requested(report):
-        return [row['value'] for row in report['rows'] if row['kind'] == 'write']
-    return 'same observed write values in order' if requested(stock) == requested(linux) else 'different observed write values or order'
+        return dict(comparison='inconclusive', first_write_difference=None)
+    stock_writes = (row for row in stock['rows'] if row['kind'] == 'write')
+    linux_writes = (row for row in linux['rows'] if row['kind'] == 'write')
+    for index, (left, right) in enumerate(zip_longest(stock_writes, linux_writes), 1):
+        if left and right and left['value'] == right['value']:
+            continue
+        difference = dict(write_number=index, stock=left, linux=right, xor=None)
+        if left and right:
+            difference['xor'] = word(int(left['value'], 16) ^ int(right['value'], 16))
+        return dict(comparison='different observed write values or order', first_write_difference=difference)
+    return dict(comparison='same observed write values in order', first_write_difference=None)
 
 
 if __name__ == '__main__':
@@ -119,7 +127,7 @@ if __name__ == '__main__':
         if args.linux:
             with args.linux.open() as stream:
                 reports['linux'] = record(stream, 'linux')
-            reports['comparison'] = compare(reports['stock'], reports['linux'])
+            reports.update(comparison(reports['stock'], reports['linux']))
         print(json.dumps(reports, indent=2))
     except (ValueError, OSError) as error:
         parser.exit(1, f'{error}\n')
