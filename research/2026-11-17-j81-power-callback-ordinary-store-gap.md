@@ -11,8 +11,8 @@ a GFX state-word store in the working transition unresolved.
 
 The two successful direct-store captures bracketed only the first iOS 15 G4G
 provider callback, the clock action at `0xfffffff006683918..683930`.  They
-observed 49 completed ordinary ApplePMGR stores and no GFX power-state word at
-PMGR region-0 `+0x20320`.
+printed 32 ordinary requests on one boot and 17 on the other. None of the
+printed offsets is the GFX power-state word at PMGR region-0 `+0x20320`.
 
 That result does **not** cover the immediately following power action.  The
 same exact G4G probe executes:
@@ -27,29 +27,10 @@ x8`.  Therefore absence of `+0x20320` in the existing two slices is evidence
 about the clock callback only, not a negative result for the complete iOS
 power transition.
 
-## Next safe probe
+## Combined capture
 
-Extend the already proven two-hook direct-store probe with one exact G4G
-call-site wrapper at the power call.  Keep the recorder armed across the
-clock return, and clear it only after the power callback returns.  The store
-trampoline remains unchanged: it executes the displaced ordinary-store
-instruction once and records its arguments after that instruction, without
-adding an MMIO read or write.
-
-The wrapper must reject anything but the exact 19H394 UUID and both unique
-call-site signatures.  Before device use it needs host cases for:
-
-* clock-only execution: no stale active flag;
-* clock followed by power: ordinary stores in both calls are retained;
-* unrelated stores outside both calls: omitted; and
-* duplicate/capacity handling.
-
-No PMGR or GPU register will be written by the probe.  It should be run as a
-temporary iPadOS boot, not from Linux or PongoOS.  A nonempty power-window row
-outside Linux's already replayed bridge tables gives a concrete, mapped
-candidate for a later single-transition comparison.  An empty result only
-rules out ordinary stores in these two callbacks; it does not prove the core
-is ready or authorize another RGX identity read.
+The November 17 build kept the observation window open across the existing
+clock and power actions and exported its sample after the power action.
 
 ## Hardware result
 
@@ -60,15 +41,11 @@ previous clock-tail capture (`+0x20120`, `+0x20128`, `+0x201a0` through
 `+0x201e0`, and `+0x201f0`) and no further row. In particular, it did not
 observe `+0x20320`.
 
-Because the hook remained armed across both callbacks and emitted only after
-the second, this is positive evidence that the second provider callback added
-no completed entry at the intercepted ordinary ApplePMGR store site. It rules
-out the specific hypothesis that the missing transition is an ordinary-store
-operation in the power callback. It does not rule out a different PMGR method,
-direct MMIO, asynchronous work, or state established before either callback.
-
-The next investigation should be static and target those distinct paths; a
-third window at this same store site would only repeat the now-bounded result.
+The result establishes which rows survived the combined-window export.
+The recorder can fill before the power action, and the merge can omit staged
+rows. The number of additional GFX requests in the power action remains
+unknown. The [builder handoff](j81-gpu-builder-handoff.md) asks for per-boot
+accounting and a trace filtered to the GFX offset.
 
 Evidence: 19H394 `ios15-agx-disasm.txt` at
 `0xfffffff006683918..68399c`, and the two successful direct-store captures

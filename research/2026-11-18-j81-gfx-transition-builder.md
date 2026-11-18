@@ -2,7 +2,7 @@
 
 Builder handoff against `ab0cf1e3273e516d20ca1c4fa3095cf4e56c0330`, 2026-11-18. Target J81, T7001, stock reference iPadOS 15.8.5 (19H394). The first driver milestone is a repeatable RGX revision result on Linux matching iPadOS's `0x00070500`. The next piece to build is an address-filtered record of the working GFX power transition. First use the existing archives to see how much of it is already available.
 
-For the expected raw request words and the exact J81 device-tree lookup, see the [register comparison](2026-11-18-j81-gfx-state-word-comparison.md).
+Use the [cross-computer builder handoff](j81-gpu-builder-handoff.md) for checkout, kernel build, archive commands and return format. For the expected raw request words and the exact J81 device-tree lookup, see the [register comparison](2026-11-18-j81-gfx-state-word-comparison.md).
 
 ## Why reopen this one transition?
 
