@@ -1,5 +1,12 @@
 # J81 GPU: Fender capture summary and open questions (2026-11-17)
 
+**November 18 coverage correction.** The 32 prefix rows and 17 tail rows
+are visible samples across separate boots. The tail formatter reports staged
+slots before a capacity-limited merge. Ordinary rows carry synthetic thread
+and instance labels. The published counts therefore leave the presence of
+a GFX state-word store in the working transition unresolved.
+[Exact-build review and builder handoff](2026-11-18-j81-gfx-transition-builder.md)
+
 ## Achieved today
 
 - Rebuilt `gpu-pmgr-cycle.ko`; bit-identical to the original
