@@ -23,6 +23,7 @@ def record(lines, role):
     matched = 0
     positive = identity = boot = upstream_lost = None
     unknown_instance = 0
+    same_thread_write = False
     for seq, line in enumerate(lines, 1):
         try:
             e = json.loads(line)
@@ -65,8 +66,12 @@ def record(lines, role):
             row = dict(seq=seq, kind=kind, phase=phase, thread=thread, caller=caller, value=word(e['value']))
             if kind == 'write':
                 row['old'] = None if e.get('old') is None else word(e['old'])
-            if kind == 'poll' and positive is None and e['value'] == 0x3ff and thread == 'same':
-                positive = row
+                if thread == 'same':
+                    same_thread_write = True
+            elif positive is None and thread == 'same' and same_thread_write:
+                # Stock has an exact published control. Linux can reach ACTIVE with different history bits.
+                if (role == 'stock' and e['value'] == 0x3ff) or (role == 'linux' and e['value'] & 0xf0 == 0xf0):
+                    positive = row
             matched += 1
             if len(rows) < CAPACITY:
                 rows.append(row)
@@ -82,9 +87,8 @@ def record(lines, role):
     if unknown_instance:
         reasons.append('target offset observed with unknown instance')
     if positive is None:
-        reasons.append('missing same-thread 0x3ff poll')
-    elif not any(row['kind'] == 'write' and row['thread'] == 'same' and row['seq'] < positive['seq'] for row in rows):
-        reasons.append('missing same-thread request before positive poll')
+        expected = '0x3ff' if role == 'stock' else 'ACTUAL=15'
+        reasons.append(f'missing same-thread write followed by {expected} poll')
     if role == 'stock' and (identity is None or identity['value'] != '0x00070500' or
                             positive is None or identity['seq'] <= positive['seq']):
         reasons.append('missing working identity after positive poll')

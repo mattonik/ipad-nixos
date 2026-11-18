@@ -28,6 +28,12 @@ linux = record(stream(ordered[:-2] + [end], 'linux'), 'linux')
 assert compare(stock, linux) == 'same observed write values in order'
 assert compare(stock, record(stream([write, poll, end], 'linux'), 'linux')).startswith('different')
 
+assert record(stream([poll, write, poll, identity, end]), 'stock')['poll_control']['seq'] == 4
+linux_other_history = record(stream([write, dict(poll, value=0xff), end], 'linux'), 'linux')
+assert not linux_other_history['inconclusive'] and linux_other_history['poll_control']['value'] == '0x000000ff'
+assert record(stream([write, dict(poll, value=0xef), end], 'linux'), 'linux')['inconclusive']
+assert record(stream([write, dict(poll, value=0xff), identity, end]), 'stock')['inconclusive']
+
 over = record(stream([write] * (CAPACITY + 1) + [poll, identity, end]), 'stock')
 assert over['overflow'] and over['dropped'] == 2 and over['matched'] == CAPACITY + 2
 assert over['poll_control'] and over['identity'] and compare(over, linux) == 'inconclusive'

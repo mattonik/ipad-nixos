@@ -1,5 +1,5 @@
 # TEST ONLY. This adds one guarded PMGR off/on generation; it has no GPU MMIO.
-{ repo }:
+{ repo, traceGfxRequests ? false }:
 let
   packages = (builtins.getFlake ("git+file://" + toString repo)).packages.x86_64-linux;
   base = packages.hoolock-wifi-kmod-kernel;
@@ -7,7 +7,9 @@ let
   testKernel = base.overrideAttrs (old: {
     patches = (old.patches or []) ++ [
       (builtins.path { path = ../patches/0123-apple-pmgr-pwrstate-stop-on-errors.patch; name = "gpu-pmgr-errors.patch"; })
-    ];
+    ] ++ (if traceGfxRequests then [
+      (builtins.path { path = ../../research/probes/j81-linux-gfx-request.patch; name = "j81-linux-gfx-request.patch"; })
+    ] else []);
   });
   testModule = packages.j81-kmod-spi-apple.overrideAttrs (old: {
     src = builtins.path { path = ./.; name = "gpu-pmgr-cycle-src"; };
