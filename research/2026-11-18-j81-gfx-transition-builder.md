@@ -35,3 +35,28 @@ I selected the J81AP BuildIdentity from Apple's restore BuildManifest, extracted
 6. Use the diff to decide the next Linux piece. An additional **identified** stock GFX transition with known owner, width and preconditions merits an isolated Linux PMGR test ending at the existing readiness observations. A matching GFX transition shifts the search earlier to the reset/clock/fabric dependency and rules out replaying these same stores as the next experiment. A missing or dropped control leaves both paths open. Schedule an RGX identity attempt only after a new prerequisite has evidence behind it. The existing stalled ID read, the auxiliary hold write and a guessed page-5 or voltage write do not answer this comparison.
 
 The owner has the original capture binaries and archives. This checkout has the public source and published row counts only. The export discrepancy is reproducible at source level, while the identity of the missing rows and the reason the GPU stalls remain open.
+
+### Host recorder and local comparison
+
+Run the acceptance test, then supply one chronological JSON Lines stream per boot. The first argument is the stock reference. The optional second argument adds the Linux comparison.
+
+```sh
+python3 tools/test_gpu_gfx_transition.py
+python3 tools/gpu_gfx_transition.py stock.jsonl linux.jsonl
+```
+
+A **synthetic example** for the input format follows. The write value is illustrative. Each input line holds one object, with numeric fields encoded as unsigned decimal JSON integers. A boot header identifies the role and carries a local archive alias. Verify the real board, image, capture interval and producer revision against the corresponding archive before normalization.
+
+```jsonl
+{"kind":"boot","role":"stock","boot":"example-stock"}
+{"kind":"write","region":0,"offset":131872,"instance":0,"phase":"clock","thread":"same","caller":"example setter","old":768,"value":783}
+{"kind":"poll","region":0,"offset":131872,"instance":0,"phase":"clock","thread":"same","value":1023}
+{"kind":"identity","value":460032}
+{"kind":"end","lost":0}
+```
+
+Write and poll events describe actual observed values in input order. `write` means the requested word observed at the setter and carries no readback guarantee. Only use `poll` for the GFX actual-state poll of mask 0xf0, expected 0xf0, with the raw returned word. Use `identity` for the observed first RGX revision result. In the Linux stream, end at the equivalent pre-identity boundary if the read did not return. Use the same window on both sides, from baseline through first identity or its checkpoint. A successful Linux identity observation remains visible in its own report.
+
+Permitted phases are `before`, `clock`, `power`, and `unknown`. Use `unknown` for a Linux event without a corresponding provider phase. The thread label is `same`, `other`, or `unknown` relative to the tracked provider or Linux cycle thread. Set it only from independent attribution. Use JSON `null` for an unavailable instance, previous word or caller. Keep unverifiable raw legacy samples in the separate store-export analysis. A legacy synthetic instance tag cannot be normalized into instance zero. `end.lost` counts dropped or unobservable potential target events upstream. Supply zero only with independently verified producer coverage over the selected window. Omit the end record for unknown coverage.
+
+The host report holds the first 32 matching PMGR events. It counts further matching events as dropped and retains a separate first same-thread successful poll and identity result. The comparison reports ordered **requested write values only**. The event reports retain phases, previous words, caller, thread, poll values and source positions for manual comparison. Missing target writes, a missing positive control, an unverified source window, unknown target instances or dropped target observations make the comparison inconclusive. A matching sequence alone cannot establish equal timing, register effects or GPU readiness.
