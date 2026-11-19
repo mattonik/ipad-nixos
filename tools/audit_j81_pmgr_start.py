@@ -91,6 +91,13 @@ def check(kernel_path, tree_path):
                               (0x6c8a2b0, 0x97fff96e), (0x6c8a2c4, 0x97fff969),
                               (0x6c8a2d0, 0xf9436503), (0x6bcfa78, 0xd2c00108),
                               (0x6bcfaec, 0x925cf808), (0x6bcfaf4, 0xaa090103),
+                              # CPU TVM enable skips the disable-only busy loops.
+                              (0x6bccd40, 0x52800001), (0x6bccd48, 0x52800023),
+                              (0x6c88e78, 0x37000495), (0x6c88f10, 0xf9435d08),
+                              (0x6bcf5bc, 0x350008e1), (0x6bcf5d4, 0x52800101),
+                              (0x6bcf5d8, 0x52800902), (0x6bcf5e0, 0x94000084),
+                              (0x6bcf5e4, 0x927ff808), (0x6bcf5ec, 0xaa090103),
+                              (0x6bcf5f8, 0x52800902), (0x6bcf60c, 0x14000093),
                               # Register group 3, dispatch soc-tvm, then read/modify/write.
                               (0x6c88510, 0x52800061), (0x6c88514, 0x52800002),
                               (0x6c88518, 0x529a0003), (0x6c8851c, 0x72a00043),
@@ -158,6 +165,12 @@ def check(kernel_path, tree_path):
     cpu_base = translated_base(tree, address, length)
     if cpu_base != 0x202220000 or length != 0x2000:
         raise ValueError("unexpected arm-io translation")
+    if (property_at(tree, 0x6bfc, b"cpu-tvm") != struct.pack("<I", 1)
+            or struct.unpack_from("<Q", kernel, 0x247a4d8)[0] != 0xfffffff005a530c9
+            or not kernel.startswith(b"cpu-tvm\0", 0xeff0c9)
+            or 0x6bccb60 + 4 * kernel[0xefed91 + 2] != 0x6bccd34):
+        raise ValueError("unexpected CPU TVM descriptor or dispatch")
+    print(f"cpu-tvm=1 rail=0 address={cpu_base + 0x48:#x} request64=old|1; enable skips +0x50 polls")
     key, = struct.unpack("<I", property_at(tree, 0x703c, b"dpe-thrtl"))
     rows = [struct.unpack_from("<I4xQ", kernel, 0xf25bd0 + 80*i) for i in range(4)]
     calibration = [value for row_key, value in rows if row_key == key]
