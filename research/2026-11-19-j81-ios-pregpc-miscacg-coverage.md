@@ -33,26 +33,26 @@ So the successful boot sampled GFX PS, page 5, perf, VM0, VM1 before the GPC req
 | j81-ios-entry-*/entry controls (Nov 15, boot-scoped, prints `r9=`) | 0 | at ApplePMGR entry, BEFORE enableACG(true); no successful GPC |
 | j81-ios-miscacg-read-probe (Nov 19), boots B5C9CF9C-F412-416E-BC8E-0DFCA7F459B6 and 6B5D51C5-D33A-4FE2-947C-E26532C14C5F | 1, 1 | immediately after enableACG(true) returned; probe has no GPC/page-5 path (gpu-offline/j81-miscacg-log-review-20261119T161450/miscacg.ndjson) |
 | ios-logarchive-j81-pmgr-bisect-0{1,2,3} and every later archive that merely re-contains the same Nov 14 rows (store-sample, store-slice, window-probe ...) | no field | same five records as above |
-| probe-v4 (has R9 in P0) | no data | never run: no " R9=" record exists in any retained kernel.log |
+| probe-v4 (R9 in P0, but entry-site hook) | no data | never run; would sample at ApplePMGR entry, before enableACG |
 A requested store (the static enableACG store) or the post-enable read from another boot cannot stand in for the pre-GPC field, as the instructions say.
 
 ## 2b. Search done
 All kernel.log files under artifacts/live/private/*/ and */result/ searched for "J81_BOOT" and for R9-bearing records: only the Nov 14 rows
 (plus re-captures of them) exist. Raw files: ios-logarchive-j81-pmgr-bisect-03/{kernel.log,capture.tar} digests in evidence/archive-bisect-03.sha256.
 
-## 3. Prepared read-only pre-GPC observation (NOT built or run)
-Candidate: probe-v4 = j81-ios-pmgr-bisect-probe-v4/checkra1n-kpf-pongo-j81-pmgr-bisect, sha256
-784ab3b183344f30be66d395d6a169b78b89a51e5249b8f24812e2bb2dfc6a8d. Against the run-3 module it adds exactly one read-only
-sequence in the P0 block: `add x0, x20, #0x32, lsl #12; bl <mmio read>; str w0, [sp,#0x43c]` and the printed field ` R9=`, i.e.
-P0 would read `J81_BOOT P0 S=.. F=.. P=.. V0=.. V1=.. R9=<MiscACG>`. P0 is logged before the GFX power-on, the 66 bridge
-stores and the GPC writes, so it is a pre-GPC value in the same boot as the existing GPC / page-5 / core-ID sequence. The GPC and page-5
-ordering is unchanged and there is no MiscACG write. Store/barrier instruction diff against v3 shows no added store (only the one
-sp-relative spill of the read value).
-Not yet established (honest limits): the v4 source is not retained here (only the binary), so equivalence of the rest of v4 to v3 rests on
-the disassembly diff; v4's hook-site / kernel-UUID guard and the 19H394 kpf-test acceptance should be re-run on the builder before a hardware
-boot. The entry-lineage shell sources in /private/tmp/j81-entry-*-control show the same ` R9=`/+0x32000 convention (R9 = MiscACG).
-Run condition for a later hardware step (Martin's DFU/palera1n step): temporary rootless iPadOS boot with this module, then whole-device
-unified-log collection and a `log show --style ndjson` filter for "J81_BOOT"; keep bootUUID/machTimestamp with every row.
+## 3. CORRECTION (same day): probe-v4 is NOT a read-only variant of the working sequence
+The first version of this section called probe-v4 (784ab3b1...) the prepared pre-GPC observation. That was wrong. Decoding the hook-site
+constant in the module (`mov x8,#-0x6514; movk #0x6bb,lsl#16; movk #0xfff0,lsl#32`) gives:
+- run-3 module 0a20ead8... (v2 == v3, the build that produced boot DCE69446): hook at 0xfffffff006bb9aec, the success return at the END of ApplePMGR::start().
+- v4 (784ab3b1...): hook constant -0x6e08 -> 0xfffffff006bb91f8, the ENTRY-lineage site (retained entry-control sources j81-entry-*-control use 0xfffffff006bb91f8).
+So v4 would sample R9 at ApplePMGR entry, before enableACG(true): that is the already-known entry value 0, not a pre-GPC value. At that site the retained
+GPC controls with the third write (+0x1000 <- 0x11) stalled after kernel handoff. v4 was therefore NOT run, and it must not be used for this question.
+What it does show: the v4 P0 block confirms the field-to-address mapping (S=+0x20320, F=+0x5004, P=+0x1c200, V0=+0x23000, V1=+0x2300c, R9=+0x32000).
+
+### What a valid observation needs
+An end-of-start build (hook 0xfffffff006bb9aec, run-3 behavior) whose P0 additionally reads PMGR +0x32000 before the GFX power-on, bridge stores and GPC writes.
+The run-3 source is not retained in any tree found on this machine (only the binary), so this needs a rebuild from the entry-lineage sources with the hook site, signature guard
+and w0=1 resume of run 3, then the kpf-test acceptance on the exact 19H394 kernel. Not built yet.
 
 ## Interpretation rule, restated (from the instructions)
 If R9 reads 1 before GPC and page 5 rises -> phase-matched candidate difference for separate review.
