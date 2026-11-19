@@ -1,0 +1,75 @@
+--- /private/tmp/claude-501/-Users-martinp-Work-Sandbox-ipadlinux/72af8033-a1ed-4450-b97d-e866eff6b9d3/scratchpad/patched3/boot/j81_observer_paired_campaign.py	2026-11-19 21:42:17
++++ /private/tmp/claude-501/-Users-martinp-Work-Sandbox-ipadlinux/72af8033-a1ed-4450-b97d-e866eff6b9d3/scratchpad/patched4/boot/j81_observer_paired_campaign.py	2026-11-19 21:49:59
+@@ -187,22 +187,22 @@
+                     return {"old": 0, "new": 1}
+     raise RuntimeError("MiscACG write incomplete (the pre-value may not have been 0)")
+ 
+-CORE_TOOL = Path(__file__).resolve().parent / "gpu-core-id-gated"
+-CORE_WRAPPER = Path(__file__).resolve().parent / "gpu-core-id-gated-run.sh"
+-CORE_TOOL_SHA = "2bf8c5c3912d88c2de3db6307e6e0fce91d10b90a67453001cadff41f3389e78"
+-CORE_WRAPPER_SHA = "ee1edc55bf597db0a641d81854afa12974e8c029dc20a24f40ff178c0b048902"
+-CORE_STAGES = (("pmgr-read", "0x20e020320"), ("miscacg-read", "0x20e032000"), ("page5-read", "0x20e005004"),
+-               ("gpc-state", "0x201e01000"), ("gpc-control", "0x201e00000"), ("gpu-revision", "0x201000020"))
++CORE_TOOL = Path(__file__).resolve().parent / "gpu-gpc-timed-core"
++CORE_WRAPPER = Path(__file__).resolve().parent / "gpu-gpc-timed-core-run.sh"
++CORE_TOOL_SHA = "58e2f0254ef464d9dafec4094432d7a82b1f53b2fd6d85186d11a7492261c56a"
++CORE_WRAPPER_SHA = "622a4d5db5dadf888a5faf8226f75a1bcd37d036162d973997c76ea4eb3f29cf"
++CORE_STAGES = (("pmgr-read", "0x20e020320"), ("miscacg-read", "0x20e032000"), ("gpc-state", "0x201e01000"),
++               ("timed-sequence", "0x201000020"))
+ 
+ 
+ def core_id_read(path: Path, supervisor_hash: str) -> dict:
+-    """Gated, watchdog-supervised core-ID read after the paired GPC batch. Read-only. One shot per boot."""
++    """Watchdog-supervised timed GPC request plus immediate core-ID read (replaces the kpoll batch). One shot per boot."""
+     for local, sha in ((CORE_TOOL, CORE_TOOL_SHA), (CORE_WRAPPER, CORE_WRAPPER_SHA)):
+         if hashlib.sha256(local.read_bytes()).hexdigest() != sha:
+             raise ValueError(f"checksum mismatch: {local.name}")
+-    stage("172.16.42.1", "/tmp/gpu-core-id-gated", CORE_TOOL.read_bytes())
++    stage("172.16.42.1", "/tmp/gpu-gpc-timed-core", CORE_TOOL.read_bytes())
+     stage("172.16.42.1", "/tmp/gpu-core-revision-once-cycle-run", CORE_WRAPPER.read_bytes())
+-    shell("chmod +x /tmp/gpu-core-id-gated /tmp/gpu-core-revision-once-cycle-run")
++    shell("chmod +x /tmp/gpu-gpc-timed-core /tmp/gpu-core-revision-once-cycle-run")
+     command = ('test "$(sha256sum /tmp/gpu-watchdog-supervisor|cut -d " " -f1)" = ' + supervisor_hash +
+                ' && test "$(sha256sum /tmp/gpu-core-revision-once-cycle-run|cut -d " " -f1)" = ' + CORE_WRAPPER_SHA +
+                " && /tmp/gpu-watchdog-supervisor --core-revision-cycle " + CORE_TOOL_SHA + "\n")
+@@ -300,28 +300,22 @@
+     same_boot()
+     if b2["032000"] != 1 or any(b2[k] != b[k] for k in b if k != "032000"):
+         raise RuntimeError("post-write snapshot unexpected; stopping before GPC")
+-    with socket.create_connection(("172.16.42.1", 23), timeout=5) as sock:
+-        result = kpoll.capture(sock, logdir / "kpoll.log", files["j81-gpc-page5-kpoll.ko"],
+-                               files["gpu-watchdog-supervisor"], files["gpu-gpc-page5-kpoll-run-observer"],
+-                               pinned, "paired")
+-    same_boot()
+-    c = snapshot(logdir / "snapshot-c.log")
+-    if boot_id() != pinned:
+-        raise RuntimeError("boot changed during campaign")
+-    (logdir / "summary.txt").write_text(
+-        "boot=" + pinned + "\n" +
+-        "A=" + repr(a) + "\nB=" + repr(b) + "\nB2=" + repr(b2) + "\nC=" + repr(c) + "\n" + "miscacg-write=" + repr(write) + "\n" +
+-        f"pre-gpc MiscACG=0x{b2['032000']:08x} bit0={b2['032000'] & 1} (after the guarded write; before it 0x{b['032000']:08x})\n" +
+-        "\n".join(kpoll.describe(result)) + "\n" +
+-        "page5-first=0x%08x page5-later=0x%08x\n" % (result["first"], result["later"]))
+-    # Everything above is already on disk. The core window can still hang; the supervisor's watchdog then resets the device.
++    (logdir / "summary-before-timed.txt").write_text(
++        "boot=" + pinned + "\n" + "A=" + repr(a) + "\nB=" + repr(b) + "\nB2=" + repr(b2) + "\n" +
++        "miscacg-write=" + repr(write) + "\n" + "next: timed GPC request + immediate core-ID read (watchdog supervised)\n")
++    # The core window can still hang; the supervisor's watchdog then resets the device and the files above are already on disk.
+     try:
+-        core = core_id_read(logdir / "core-id.log", files["gpu-watchdog-supervisor"])
++        core = core_id_read(logdir / "timed-core.log", files["gpu-watchdog-supervisor"])
+     except (OSError, RuntimeError, ValueError) as error:
+-        (logdir / "core-id-result.txt").write_text(f"core-id: no result ({error})\n")
++        (logdir / "timed-core-result.txt").write_text(f"timed-core: no result ({error})\n")
+         raise
+     same_boot()
+-    (logdir / "core-id-result.txt").write_text("core-id: " + repr(core) + "\n")
++    (logdir / "timed-core-result.txt").write_text("timed-core: " + repr(core) + "\n")
++    c = snapshot(logdir / "snapshot-c.log")
++    same_boot()
++    (logdir / "summary.txt").write_text(
++        "boot=" + pinned + "\n" + "A=" + repr(a) + "\nB=" + repr(b) + "\nB2=" + repr(b2) + "\nC=" + repr(c) + "\n" +
++        "miscacg-write=" + repr(write) + "\n" + "timed-core=" + repr(core) + "\n")
+ 
+ 
+ if __name__ == "__main__":
