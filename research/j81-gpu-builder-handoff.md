@@ -90,6 +90,23 @@ Continue the current archive job. This addition runs on the host and needs no ke
 
 Return the pinned revision, audit output, boot alias, producer/digest, covered phase, ID/instance, old/request/effective values, replay evidence, and first missing observation. Keep the boot UUID and raw lines in the private reply. [Producer trace and tests](2026-11-19-j81-gfx-startup-state-producer.md)
 
+## Compare MiscACG with the page-5 outcome
+
+This archive task is independent of the replay caller. Run from the pinned checkout using the decompressed files named in the startup cross-check above.
+
+```bash
+python3 tools/audit_j81_pmgr_start.py "$J81_KERNEL" "$J81_TREE"
+python3 boot/test_pmgr_words_peek.py
+```
+
+Expect `enableACG(true) group=9 region=0 instance=0 address=0x20e032000 request=old|1` and a reader-test PASS. The test runs the existing reader against simulated memory.
+
+1. In the November 14 successful recipe boot, check existing captures from startup to its first GPC request for PMGR region 0 +0x32000. Distinguish an attributed ordinary-store **request** from a register **readback**. An `r9` label qualifies only after verifying the producer's address. Preserve full words, phases, caller/instance evidence, and omissions. The November 15 entry control's zero precedes startup.
+2. Use the retained November 11 Linux post-GPC collection as a positive control for the search. Its completed `volman.log` contains `w 0x32000 raw=0x00000000`. In the separate DWI campaign, the pre/post captures and paired GPC poll establish the voltage/perf transitions and page-5 outcome. That campaign omitted MiscACG. Check for an independent pre-request Linux read in the same boot as the outcome.
+3. Return one row per boot and phase with MiscACG source/value, page-5 value and sample timing, GPC poll result, perf and VID. Report missing coverage explicitly. If present in the same boot, include the secondary PMGR +0x1008 and +0x4008 words. The working recipe's `G` field is a logging-buffer artifact.
+
+The existing reader already accepts +0x32000. A builder that needs the existing AArch64 executable may use the project's `pmgr-words-peek-static` flake package on its x86_64 Linux build host. This handoff ends with archive analysis and the host test. [Results and decision criteria](2026-11-19-j81-misc-acg-and-page5.md)
+
 ## First check the earlier successful manual recipe
 
 Locate the November 14 20:57 19H394 archive (`ios-logarchive-j81-pmgr-bisect-03`), the matching binary whose reported SHA-256 begins `0a20ead8`, and its build record. On the Mac, set `EARLY_ARCHIVE` and `EARLY_BINARY` to their actual paths. Use existing exports if the builder runs Linux.

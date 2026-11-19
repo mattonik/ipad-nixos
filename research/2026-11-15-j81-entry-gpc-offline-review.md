@@ -30,10 +30,9 @@ Its pre-request VM word was `0x1`, versus `0xf01` at entry. Different point,
 boot, and instrumentation: this is a candidate difference, not a causal proof.
 Linux has also been observed with VM word `0x1` and still failed the GPU core
 read, so that word alone is not an established Linux fix. The earlier success
-probe's `G=30303000` must not be treated as verified GPC control readback: the
-current inherited hook source reuses `x23` as the log-buffer cursor before the
-purported GPC read. Binary/source correspondence for that historical run has
-not been independently established.
+probe's `G=30303000` came from the log-buffer cursor in x23. The November 19
+check confirmed this in the archived producer matching the successful run's
+recorded digest. [Producer check](2026-11-19-j81-misc-acg-and-page5.md)
 
 ## Normal iPadOS request: already observed
 
@@ -155,6 +154,4 @@ series identifies a candidate or a durable failure checkpoint is demonstrated.
 
 Private evidence includes `j81-entry-*-control-result/filtered.log`, the two
 `j81-entry-gpc*-failed-result` captures and the earlier
-`ios-logarchive-j81-pmgr-bisect-03` archive. Earlier successful GPC `G=`
-interpretation should be corrected where published only after confirming the
-exact binary provenance.
+`ios-logarchive-j81-pmgr-bisect-03` archive.

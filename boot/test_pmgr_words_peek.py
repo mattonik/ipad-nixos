@@ -40,6 +40,7 @@ int main(void) {
     char *dwi[] = { "p", "200000", "200004", NULL }, *bad4[] = { "p", "200008", NULL };
     char *bad1[] = { "p", "40000", NULL }, *bad2[] = { "p", "1c202", NULL }, *bad3[] = { "p", "zz", NULL };
     char *ok[] = { "p", "1c200", "23004", "5010", NULL };
+    char *acg[] = { "p", "32000", NULL };
     assert(peek_main(1, none) == 2 && peek_main(2, bad1) == 2 && peek_main(2, bad2) == 2 && peek_main(2, bad3) == 2);
     assert(peek_main(2, bad4) == 2);
     assert(maps == 0);
@@ -47,6 +48,7 @@ int main(void) {
     allow = 1;
     assert(peek_main(4, ok) == 0 && maps == 3 && last_base == 0x20e005000ULL);
     assert(peek_main(3, dwi) == 0 && maps == 5 && last_base == 0x20e200000ULL);
+    assert(peek_main(2, acg) == 0 && maps == 6 && last_base == 0x20e032000ULL);
     return 0;
 }
 '''
@@ -57,4 +59,5 @@ with tempfile.TemporaryDirectory() as directory:
                     str(path / "test.c"), "-o", str(path / "test")], check=True)
     out = subprocess.run([str(path / "test")], check=True, capture_output=True, text=True).stdout
     assert "w 0x01c200 raw=0xa001c200" in out and "w 0x023004 raw=0xa0023004" in out and "w 0x005010 raw=0xa0005010" in out and "w 0x200004 raw=0xa0200004" in out
+    assert "w 0x032000 raw=0xa0032000" in out
 print("PASS: pmgr-words-peek validates offsets, needs the acknowledgment and only reads")

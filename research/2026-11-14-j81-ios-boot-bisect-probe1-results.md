@@ -54,8 +54,10 @@ J81_BOOT CORE=00070500
 - **The RGX core-ID read at `0x201000020` returned `0x00070500`**, the same value
   Apple's own driver logs (`I=00070500`). It is the first time the Linux recipe has
   produced a core response on J81.
-- `G` (the GPC `+0` readback) is `0x30303000`, not the `0x40000000` that was
-  written. Its meaning is not known, and it does not affect the result.
+- **November 19 correction.** The matching archived producer assigns its log-buffer cursor to x23
+  at 0x437c, then reads through x23 at 0x43f0 for the printed `G=30303000`. Discard that field
+  in Fender comparisons. The three page-5 samples, perf and voltage words use their PMGR addresses
+  independently. [Verified producer and comparison](2026-11-19-j81-misc-acg-and-page5.md)
 
 **Conclusion.** The same recipe hangs in PongoOS and on Linux, but works at the
 end of `ApplePMGR::start()` on iPadOS. The missing step therefore lies in XNU boot
