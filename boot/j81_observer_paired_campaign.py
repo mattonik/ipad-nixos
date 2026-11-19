@@ -16,6 +16,10 @@ from stage_gpu_test_bundle import stage
 ROOT = Path(__file__).resolve().parent.parent
 BUNDLE = ROOT / "artifacts/live/private/j81-observer-paired-20261119-v1"
 NOTES = "a2dda2719fef771c109dd2ca2baee4bdc31ec13902aed677f4ea7d9aad7b7f4a"
+BOOT_ARTIFACTS = {
+    "Pongo.bin": "1e5543fd8e6dbd84c334b87d71aa473f4d347c2ba8a5e863b6e10f18461c7575",
+    "m1n1-linux.bin": "d8418f78cbe6b4cdf6096d40e2b8ea48d3cec21b667f6708a6e1c3da089ddec1",
+}
 OFFSETS = ("20320", "32000", "1008", "4008", "1c200", "2300c", "5004")
 READY = b"stage=before-pmgr-words-read base=0x20e000000 words=7"
 WORD = re.compile(rb"w 0x([0-9a-f]{6}) raw=0x([0-9a-f]{8})")
@@ -32,8 +36,9 @@ def manifest() -> dict[str, str]:
              "gpu-watchdog-supervisor", "gpu-bridge-once-cycle-run",
              "j81-gpc-page5-kpoll.ko", "gpu-gpc-page5-kpoll-run-observer")
     values = {name: digest(BUNDLE / name) for name in names}
-    if digest(BUNDLE / "Pongo.bin") == "" or digest(BUNDLE / "m1n1-linux.bin") == "":
-        raise ValueError("empty boot artifact digest")
+    for name, expected in BOOT_ARTIFACTS.items():
+        if digest(BUNDLE / name) != expected:
+            raise ValueError(f"unexpected boot artifact: {name}")
     return values
 
 
