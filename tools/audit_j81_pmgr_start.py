@@ -63,7 +63,7 @@ def check(kernel_path, tree_path):
     for slot, target in [(0x588, 0xfffffff006c88488), (0x590, 0xfffffff006c884cc),
                          (0x5c8, 0xfffffff006c8872c), (0x688, 0xfffffff006c8a0c4),
                          (0x690, 0xfffffff006bcf3c8), (0x698, 0xfffffff006c8a164),
-                         (0x6a8, 0xfffffff006c88df0),
+                         (0x6a8, 0xfffffff006c88df0), (0x6b8, 0xfffffff006c8a238),
                          (0x980, 0xfffffff006bd0478), (0x988, 0xfffffff006bd04f0)]:
         if struct.unpack_from("<Q", kernel, 0x24929c0 + slot)[0] != target:
             raise ValueError(f"unexpected PMGR method in slot {slot:#x}")
@@ -83,6 +83,14 @@ def check(kernel_path, tree_path):
                               (0x6bc3bd4, 0x383a6a79), (0x6bc9118, 0x54000b20),
                               (0x6bc924c, 0x3900011a), (0x6bcd464, 0x38796908),
                               (0x6bcd468, 0x71003d1f), (0x6bcd46c, 0x54000321),
+                              # DPE group, calibration guard, four writes and parent bit update.
+                              (0x6bccc74, 0xf9435d03), (0x6c88550, 0x528002c1),
+                              (0x6c88554, 0x52800102), (0x6c88558, 0x52803203),
+                              (0x6c88620, 0x390002a8), (0x6c8a26c, 0x340002e8),
+                              (0x6c8a284, 0x97fff979), (0x6c8a29c, 0x97fff973),
+                              (0x6c8a2b0, 0x97fff96e), (0x6c8a2c4, 0x97fff969),
+                              (0x6c8a2d0, 0xf9436503), (0x6bcfa78, 0xd2c00108),
+                              (0x6bcfaec, 0x925cf808), (0x6bcfaf4, 0xaa090103),
                               # Register group 3, dispatch soc-tvm, then read/modify/write.
                               (0x6c88510, 0x52800061), (0x6c88514, 0x52800002),
                               (0x6c88518, 0x529a0003), (0x6c8851c, 0x72a00043),
@@ -150,6 +158,18 @@ def check(kernel_path, tree_path):
     cpu_base = translated_base(tree, address, length)
     if cpu_base != 0x202220000 or length != 0x2000:
         raise ValueError("unexpected arm-io translation")
+    key, = struct.unpack("<I", property_at(tree, 0x703c, b"dpe-thrtl"))
+    rows = [struct.unpack_from("<I4xQ", kernel, 0xf25bd0 + 80*i) for i in range(4)]
+    calibration = [value for row_key, value in rows if row_key == key]
+    if (key != 12000 or calibration != [0x010e1a27333f4bff]
+            or struct.unpack_from("<Q", kernel, 0x247a5c8)[0] != 0xfffffff005a53146
+            or not kernel.startswith(b"dpe-thrtl\0", 0xeff146)
+            or 0x6bccb60 + 4 * kernel[0xefed91 + 17] != 0x6bccc70
+            or struct.unpack_from("<Q", kernel, 0x247a108)[0] != 0xfffffff006bcfa4c
+            or kernel[0xefedca] != 0):
+        raise ValueError("unexpected DPE throttle dispatch or calibration")
+    print(f"dpe-thrtl={key} selector=8 base={cpu_base:#x} calibrated row={calibration[0]:#018x}")
+    print("  write64 +0x1b0, +0x1a0, +0x150, +0x190; group 22 updates +0x190 bit 35")
     print(f"enableACG(true) group=9 region=0 instance=0 address={misc_acg_address:#x} request=old|1")
     print("startup parent calls MCC(+0x688), ACG(+0x690), voltage enable(+0x698) before the CPU table copy")
     print(f"GFX replay candidate bank={bank} lane={lane} software-state offset (instance zero)={0x19094 + gfx[3]:#x}")
