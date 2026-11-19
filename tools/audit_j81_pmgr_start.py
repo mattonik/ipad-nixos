@@ -63,6 +63,7 @@ def check(kernel_path, tree_path):
     for slot, target in [(0x588, 0xfffffff006c88488), (0x590, 0xfffffff006c884cc),
                          (0x5c8, 0xfffffff006c8872c), (0x688, 0xfffffff006c8a0c4),
                          (0x690, 0xfffffff006bcf3c8), (0x698, 0xfffffff006c8a164),
+                         (0x6a8, 0xfffffff006c88df0),
                          (0x980, 0xfffffff006bd0478), (0x988, 0xfffffff006bd04f0)]:
         if struct.unpack_from("<Q", kernel, 0x24929c0 + slot)[0] != target:
             raise ValueError(f"unexpected PMGR method in slot {slot:#x}")
@@ -82,6 +83,16 @@ def check(kernel_path, tree_path):
                               (0x6bc3bd4, 0x383a6a79), (0x6bc9118, 0x54000b20),
                               (0x6bc924c, 0x3900011a), (0x6bcd464, 0x38796908),
                               (0x6bcd468, 0x71003d1f), (0x6bcd46c, 0x54000321),
+                              # Register group 3, dispatch soc-tvm, then read/modify/write.
+                              (0x6c88510, 0x52800061), (0x6c88514, 0x52800002),
+                              (0x6c88518, 0x529a0003), (0x6c8851c, 0x72a00043),
+                              (0x6c88520, 0x94000a55), (0x6bccd80, 0xf9435505),
+                              (0x6bccd88, 0x52800021), (0x6bccd8c, 0x14000015),
+                              (0x6c88e10, 0x340001a1), (0x6c88e1c, 0xf9435d05),
+                              (0x6bcf5b8, 0x54000500), (0x6bcf660, 0x34000428),
+                              (0x6bcf664, 0xb9636276), (0x6bcf674, 0x97fffece),
+                              (0x6bcf678, 0x121f7808), (0x6bcf67c, 0x2a140102),
+                              (0x6bcf68c, 0x97fffdcd), (0x6bcf690, 0x370001d4),
                               # Group 9 registration, enableACG(true), region-zero bit update.
                               (0x6c88504, 0x529a0014), (0x6c88508, 0x72a00054),
                               (0x6c88538, 0x11401683), (0x6c88540, 0x52800121),
@@ -118,6 +129,17 @@ def check(kernel_path, tree_path):
 
     registers = list(struct.iter_unpack("<QQ", property_at(tree, 0x8808, b"reg")))
     pmgr_address, pmgr_length = registers[0]
+    if (property_at(tree, 0x6efc, b"soc-tvm") != struct.pack("<I", 1)
+            or struct.unpack_from("<Q", kernel, 0x247a4e8)[0] != 0xfffffff005a530d1
+            or not kernel.startswith(b"soc-tvm\0", 0xeff0d1)
+            or 0x6bccb60 + 4 * kernel[0xefed94] != 0x6bccd7c
+            or struct.unpack_from("<Q", kernel, 0x247a0f8)[0] != 0xfffffff006bcf590
+            or not kernel.startswith(b"_regGroups[kRegGroupSOCTVM].valid\0", 0xf02ed5)):
+        raise ValueError("unexpected SoC TVM descriptor or dispatch")
+    soc_tvm_address = translated_base(tree, pmgr_address, pmgr_length) + 0x2d000
+    if 0x2d104 > pmgr_length or soc_tvm_address != 0x20e02d000:
+        raise ValueError("unexpected SoC TVM address")
+    print(f"soc-tvm=1 group=3 rail=1 address={soc_tvm_address:#x} request=old|1; no enable poll")
     misc_acg_offset = 0x2d000 + 0x5000
     misc_acg_address = translated_base(tree, pmgr_address, pmgr_length) + misc_acg_offset
     if (misc_acg_offset + 4 > pmgr_length or misc_acg_address != 0x20e032000

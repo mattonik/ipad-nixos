@@ -28,3 +28,5 @@ The populated September J81 ADT text contains the same four named values. The st
 3. Revisit timing or extended Fender status if the first two comparisons identify a specific transition. A second identical ID attempt cannot distinguish the candidates. The next deliverable is an attributed difference and a predicted observation before another hardware trial.
 
 All nine prepared/result packet manifests checked successfully. The table intersection and dispatch decode used the archived kernel with SHA-256 c3507666766775dc854d5bcf6c375e6651ac8b2d1adb13d06331c60deb6a0008 and raw J81 ADT be3158284d25e5d1217b970327ce2414d3046a2feb6a7b4410697b66df438003. No new device access was performed.
+
+The [SoC TVM follow-up](2026-11-19-j81-soc-tvm-core-stall.md) resolves the index-3 dispatch to PMGR +0x2d000 and identifies which archived runs actually sampled it.
