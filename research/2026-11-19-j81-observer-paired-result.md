@@ -13,3 +13,5 @@ Result (all stages rc=0, watchdog disarmed, same boot id):
 - Observer rows: three gfx-request lines (0xf, 0xf0, 0xf).
 
 Reading: with the existing get/put/get cycle and the bridge plan, MiscACG is still 0 before the GPC batch, unlike iPadOS. The batch itself did not set it either (snapshot C offset 0x32000 still 0). Not run again on this boot (one-shot).
+
+The packet's author should switch that check to echo, or strip the prompt, before the next use.
