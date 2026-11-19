@@ -20,6 +20,15 @@ def property_at(tree, offset, name):
     return tree[offset:offset + (size & 0xffffff)]
 
 
+def translated_base(tree, address, length):
+    ranges = property_at(tree, 0x6418, b"ranges")
+    bases = [parent + address - child for child, parent, span in struct.iter_unpack("<QQQ", ranges)
+             if child <= address and address + length <= child + span]
+    if len(bases) != 1:
+        raise ValueError("expected one arm-io range covering the PMGR resource")
+    return bases[0]
+
+
 def check_gfx_producers(kernel, devices, gfx):
     # All records in this pinned tree use the byte-ID layout. A zero ends the parent list.
     rows = [row for row, in struct.iter_unpack("48s", devices)]
@@ -51,9 +60,10 @@ def check(kernel_path, tree_path):
     kernel = checked_file(kernel_path, "c3507666766775dc854d5bcf6c375e6651ac8b2d1adb13d06331c60deb6a0008")
     tree = checked_file(tree_path, "be3158284d25e5d1217b970327ce2414d3046a2feb6a7b4410697b66df438003")
     # File offsets are specific to the two digest-checked inputs.
-    for slot, target in [(0x588, 0xfffffff006c88488), (0x5c8, 0xfffffff006c8872c),
-                         (0x688, 0xfffffff006c8a0c4), (0x698, 0xfffffff006c8a164),
-                         (0x980, 0xfffffff006bd0478)]:
+    for slot, target in [(0x588, 0xfffffff006c88488), (0x590, 0xfffffff006c884cc),
+                         (0x5c8, 0xfffffff006c8872c), (0x688, 0xfffffff006c8a0c4),
+                         (0x690, 0xfffffff006bcf3c8), (0x698, 0xfffffff006c8a164),
+                         (0x980, 0xfffffff006bd0478), (0x988, 0xfffffff006bd04f0)]:
         if struct.unpack_from("<Q", kernel, 0x24929c0 + slot)[0] != target:
             raise ValueError(f"unexpected PMGR method in slot {slot:#x}")
     # The subclass uses the parent vtable address point with its two-word ABI header.
@@ -71,7 +81,15 @@ def check(kernel_path, tree_path):
                               (0x6bc2778, 0x362000c9), (0x6bc3bb0, 0x34000140),
                               (0x6bc3bd4, 0x383a6a79), (0x6bc9118, 0x54000b20),
                               (0x6bc924c, 0x3900011a), (0x6bcd464, 0x38796908),
-                              (0x6bcd468, 0x71003d1f), (0x6bcd46c, 0x54000321)]:
+                              (0x6bcd468, 0x71003d1f), (0x6bcd46c, 0x54000321),
+                              # Group 9 registration, enableACG(true), region-zero bit update.
+                              (0x6c88504, 0x529a0014), (0x6c88508, 0x72a00054),
+                              (0x6c88538, 0x11401683), (0x6c88540, 0x52800121),
+                              (0x6c88544, 0x52800002), (0x6c88548, 0x94000a4b),
+                              (0x6bcd0e0, 0xf9434908), (0x6bcd0e8, 0x52800021),
+                              (0x6bcd0ec, 0xd63f0100), (0x6bcf54c, 0xb963f275),
+                              (0x6bcf55c, 0x97ffff14), (0x6bcf560, 0x121f7808),
+                              (0x6bcf564, 0x2a140102), (0x6bcf580, 0x17fffe10)]:
         file_offset = 0x21344b0 + address - 0x6c884b0
         if struct.unpack_from("<I", kernel, file_offset)[0] != expected:
             raise ValueError(f"unexpected instruction at address suffix {address:x}")
@@ -92,17 +110,23 @@ def check(kernel_path, tree_path):
         raise ValueError("unexpected mapper arguments")
 
     registers = list(struct.iter_unpack("<QQ", property_at(tree, 0x8808, b"reg")))
+    pmgr_address, pmgr_length = registers[0]
+    misc_acg_offset = 0x2d000 + 0x5000
+    misc_acg_address = translated_base(tree, pmgr_address, pmgr_length) + misc_acg_offset
+    if (misc_acg_offset + 4 > pmgr_length or misc_acg_address != 0x20e032000
+            or not kernel.startswith(b"virtual void ApplePMGR::enableACG(bool)\0", 0xf02e18)
+            or not kernel.startswith(b"_regGroups[kRegGroupMiscACG].valid\0", 0xf02e40)):
+        raise ValueError("unexpected MiscACG group identity or address")
     address, length = registers[resource]
-    bases = [parent + address - child for child, parent, span in
-             struct.iter_unpack("<QQQ", property_at(tree, 0x6418, b"ranges"))
-             if child <= address and address + length <= child + span]
-    if bases != [0x202220000] or length != 0x2000:
+    cpu_base = translated_base(tree, address, length)
+    if cpu_base != 0x202220000 or length != 0x2000:
         raise ValueError("unexpected arm-io translation")
-    print("startup parent resolves MCC(+0x688) then voltage enable(+0x698) before the CPU table copy")
+    print(f"enableACG(true) group=9 region=0 instance=0 address={misc_acg_address:#x} request=old|1")
+    print("startup parent calls MCC(+0x688), ACG(+0x690), voltage enable(+0x698) before the CPU table copy")
     print(f"GFX replay candidate bank={bank} lane={lane} software-state offset (instance zero)={0x19094 + gfx[3]:#x}")
-    print(f"selector={selector} instance={instance} reg[{resource}]={bases[0]:#x} length={length:#x}")
+    print(f"selector={selector} instance={instance} reg[{resource}]={cpu_base:#x} length={length:#x}")
     for offset in (0x78, 0x68, 0x20):
-        print(f"  +{offset:#x} -> {bases[0] + offset:#x} (8 bytes)")
+        print(f"  +{offset:#x} -> {cpu_base + offset:#x} (8 bytes)")
 
 
 if __name__ == "__main__":
