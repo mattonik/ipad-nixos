@@ -79,7 +79,7 @@ def preflight() -> str:
         " && test ! -e /sys/module/gpu_pmgr_cycle && test ! -e /sys/module/gpc_page5_kpoll && "
         "test ! -e /tmp/gpu-bridge-once.once && test ! -e /tmp/gpu-gpc-init.once && "
         "test ! -e /tmp/gpu-gpc-page5-kpoll.once && grep -q '^rootfs / rootfs ' /proc/mounts && "
-        "! grep -q '^/dev/' /proc/mounts && printf OBSERVER_GO"
+        "! grep -q '^/dev/' /proc/mounts && echo OBSERVER_GO"
     )
     if output != b"OBSERVER_GO":
         raise RuntimeError("observer preflight failed")
