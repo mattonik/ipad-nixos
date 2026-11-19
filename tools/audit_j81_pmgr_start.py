@@ -89,7 +89,14 @@ def check(kernel_path, tree_path):
                               (0x6bcd0e0, 0xf9434908), (0x6bcd0e8, 0x52800021),
                               (0x6bcd0ec, 0xd63f0100), (0x6bcf54c, 0xb963f275),
                               (0x6bcf55c, 0x97ffff14), (0x6bcf560, 0x121f7808),
-                              (0x6bcf564, 0x2a140102), (0x6bcf580, 0x17fffe10)]:
+                              (0x6bcf564, 0x2a140102), (0x6bcf580, 0x17fffe10),
+                              # Page 1/4 reads, upper-pair replacement, writes and platform-active dispatch.
+                              (0x6c8873c, 0x52820101), (0x6c88744, 0x940009c6),
+                              (0x6c88748, 0x52a80014), (0x6c8874c, 0x52a80002),
+                              (0x6c88750, 0x33007402), (0x6c88760, 0x940009c8),
+                              (0x6c88768, 0x52880101), (0x6c88770, 0x940009bb),
+                              (0x6c88774, 0x33007414), (0x6c88788, 0x940009be),
+                              (0x6bbb7a4, 0xf942e508), (0x6bbb7ac, 0xd63f0100)]:
         file_offset = 0x21344b0 + address - 0x6c884b0
         if struct.unpack_from("<I", kernel, file_offset)[0] != expected:
             raise ValueError(f"unexpected instruction at address suffix {address:x}")
