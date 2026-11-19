@@ -30,6 +30,7 @@ HOST_TESTS = (
     "tools/test_gpu_g4g_dart_plan.py",
     "tools/test_gpu_apple_clock_model.py",
     "tools/test_audit_gpu_bridge_plan.py",
+    "tools/test_audit_j81_clock_pages.py",
     "tools/test_audit_gpu_tuner.py",
     "boot/test_gpu_bridge_map.py",
     "boot/test_watchdog_control_test.py",
