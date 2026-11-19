@@ -167,3 +167,7 @@ python3 tools/audit_j81_clock_pages.py \
 ```
 
 Expect page 1 to give 798000000 and page 4 to give 2400000000 in both calculated columns and in the ADT column. Review existing working-boot archives for a **read** of PMGR region 0 +0x1008 and +0x4008 after startup and immediately before GPC. Record each boot identifier, read order, raw words and phase alongside the GPC poll result and the subsequent +0x5004 read. Include +0x32000 and core ID when available. Preserve ordinary writer arguments as a separate observation. A pair of requests could also come from the platform-active callback. Report missing readback or timing explicitly. The [clock-page trace](2026-11-19-j81-page1-page4-clock-control.md) gives the interpretation for each outcome. This packet is an archive comparison and needs no target build.
+
+## Follow up the first GFX observer hardware run
+
+The runner captured the expected active/off/active setter sequence on the iPad. The [hardware review and next-run plan](2026-11-19-j81-gfx-observer-first-hardware.md) specifies the phase samples, observer-kernel compatibility checks and decision branches for a paired GPC/page-5 run. The private mailbox packet contains the transfer instructions and host build commands.
