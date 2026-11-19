@@ -45,13 +45,13 @@ the captured address pattern.  It has no GFX state-index argument and does
 not access `+0x20320`; it appears to be a board/platform control-bank setup
 operation rather than the GFX PMGR state transition itself.
 
-The further static trace resolves the routine's scope.  `c8a01c` is the
-final override at offset `+0x598` in the T7001 PMGR object's vtable (the
-base and intermediate implementations occupy the same slot).  Before the
-loop it asks its provider for the DeviceTree property
-`function-mcc_ctrl`, then reads `mcx-fast-cpu-frequency`.  Those names and
-the `+0x22000…+0x22180` range identify this as memory-controller control and
-CPU-frequency setup, not a GFX power request.
+The T7001 method at `c8a01c` (slot +0x598) looks up
+`function-mcc_ctrl` and, when present, `mcx-fast-cpu-frequency`.
+It returns before the separate loop method at `c8a0c4`. Startup reaches
+the latter through the parent call within +0x5c8 and instance slot +0x688.
+The static sequence explains how both the prefix and control-bank operations
+can occur during PMGR startup. Thread attribution in the capture remains
+unresolved. [Exact-build call chain](2026-11-19-j81-pmgr-start-resources.md)
 
 This removes the apparent replay gap: Linux replayed GFX state 15 and the 66
 selector-9/10 bridge stores, but intentionally did not replay an iOS
@@ -69,14 +69,13 @@ or fabric operation that cannot be inferred from this MCC setup code.
 ## Evidence and limits
 
 * `research/2026-11-17-j81-ios-g4g-ordinary-pmgr-store-capture.md` records
-  the 49 completed writes.
-* `research/2026-11-17-j81-power-callback-ordinary-store-gap.md` confirms
-  the power callback adds no additional ordinary store beyond the covered
-  window.
+  the 32 printed prefix and 17 printed tail rows from separate boots.
+* `research/2026-11-17-j81-power-callback-ordinary-store-gap.md` records
+  the visible combined-window sample and its capacity limit.
 * `artifacts/live/private/gpu-offline/ios15pmgr-vtable-bridge.c` decompiles
   `+0x980`, `+0x988`, and `+0x990`.
 * `artifacts/live/private/gpu-offline/ios15t7001pmgr.c` decompiles
-  `c8a01c` and its control-bank loop.
+  the MCC-related methods; the exact-build trace above separates their entries.
 * A local no-analysis import of the retained 19H394 kernelcache resolves the
   `c8a01c` vtable slot and the two referenced DeviceTree strings.  This is
   static evidence only; no new device access occurred.
