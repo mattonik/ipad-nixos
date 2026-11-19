@@ -47,7 +47,7 @@ address-mapping proof.
 ## Static classification of the first slice
 
 The `0x22000` block is now classified from the matching local 19H394
-`AppleT7001PMGR` decompilation.  `FUN_fffffff006c8a01c` walks offsets
+`AppleT7001PMGR` decompilation.  `FUN_fffffff006c8a0c4` walks offsets
 `0x22000` through `0x22180` in steps of `0x10`, writes each existing word with
 bit 31 selected according to its platform condition, skips `0x22030` through
 `0x22070`, and explicitly skips `0x22120`.  That is the exact inclusion and

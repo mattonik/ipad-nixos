@@ -20,9 +20,20 @@ XNU's implementation indexes the provider device-memory array. The physical-addr
 
 * At `6c887a0..6c887e4`, the routine copies bits 63:56 from CPU controller +0x78 into +0x68, preserving the lower 56 bits at +0x68. These are the state-2 and state-0 entries of the CPU performance-state table.
 * At `6c887e8..6c88824`, the requested 64-bit value at +0x20 is `(old & 0xffffffff9ff88fff) | 0x60002000`. Its desired CPU state field at bits 24:22 is preserved.
-* The J81 voltage-manager enable method at `6c8a164` is slot +0x698. It clears bits 11:8 at ordinary PMGR +0x23000, then takes the desired state from CPU controller +0x20. It requests the top byte of the corresponding +0x68 table entry at PMGR +0x23010 and a byte from the separate packed +0x110 table at PMGR +0x23004. The call at `6bcd100` passes enable=1. Its presence alone does not establish when that call ran in the successful boot. [Earlier voltage-manager analysis](2026-11-14-j81-ios-voltage-manager-enable.md)
+* The J81 voltage-manager enable method at `6c8a164` is slot +0x698. It clears bits 11:8 at ordinary PMGR +0x23000, then takes the desired state from CPU controller +0x20. It requests the top byte of the corresponding +0x68 table entry at PMGR +0x23010 and a byte from the separate packed +0x110 table at PMGR +0x23004. The parent dispatch below places that enable call before the state-table copy on this startup path. [Earlier voltage-manager analysis](2026-11-14-j81-ios-voltage-manager-enable.md)
 
-The top-byte copy can change that particular CPU seed only if the seed lookup sees **state 0** after the copy and the original high bytes differed. For desired states 1–7 it reads a different entry. The SRAM lookup uses a different table, and this sequence has no direct store to the GFX code at +0x2300c. This is a narrow reason to rank the table copy below startup differences that directly discriminate the working GPU case. It leaves possible hardware side effects of the CPU control word open.
+### The parent call orders the MCC and voltage operations
+
+At `6c8878c..6c8879c` the subclass loads the **parent** vtable through pointer `6fe5dc0`, then uses offset +0x5d8. The table pointer value is `6fcda40` and the entry at `6fce018` targets `6bccefc`. Inside this parent method, dispatches on the **instance** use the subclass implementations. Along the normal returning path, with intervening operations omitted, the order is:
+
+1. The subclass has already requested region-0 +0x1008 and +0x4008.
+2. The parent calls instance slot +0x688 with 1 at `6bccf3c`. On 19H394 this is `6c8a0c4`, the bit-31 read/modify/write loop over selected MCC/control-bank offsets in +0x22000..+0x22180. The exact loop starts at `6c8a0c4`. Nearby `6c8a01c` is a distinct method that looks up the MCC-related properties.
+3. After further platform work, the parent calls +0x690 with 1, then +0x698 with 1 at `6bcd100`. The latter performs the voltage-manager enable and CPU/SRAM seed requests described above.
+4. After the parent returns, the subclass copies the CPU state-2 high byte into state 0 and modifies the control word at CPU +0x20. The later tail dispatch at `6c8883c` is separate.
+
+**The later table copy cannot supply the CPU byte used by the earlier seed in this invocation.** Even a later seed lookup could see a change from this copy only if its desired state were 0 and the original high bytes differed. States 1–7 read different entries. The SRAM seed uses the separate +0x110 table. This trace establishes software order and requested values. It does not measure posted-write completion, analog voltage, autonomous hardware reactions or which thread produced an archived row.
+
+This provides one startup call chain with the same order as the first ordinary-store groups reported on November 17. It makes a PMGR initialization source for the groups concrete. The old global recorder did not capture the ordinary caller or thread, and this static match cannot establish their provenance. [Visible prefix and coverage](2026-11-17-j81-ios-g4g-ordinary-pmgr-store-capture.md)
 
 The project's pinned m1n1 independently locates the state table at cluster base `0x202200000` + `0x20068`. Its T7001 configuration requests state 2 before feature setup and state 7 at the end. This is bootloader policy; a saved CPU frequency or a later Linux voltage sample cannot establish the desired state when Apple read +0x20. [Pinned m1n1](https://github.com/HoolockLinux/m1n1/blob/d5a10ac52a6468484854419a6c5130f1d62073eb/src/cpufreq.c)
 

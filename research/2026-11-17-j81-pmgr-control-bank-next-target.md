@@ -38,7 +38,7 @@ two callback-window writes, `+0x1008 = 0x40480348` and
 `+0x4008 = 0x48480348`, are PMGR addresses.  Their numerical resemblance to
 GPU-window offsets is not evidence that they write GPC/page-5 bit 30.
 
-`AppleT7001PMGR::FUN_fffffff006c8a01c` has the same control-bank inclusion
+`AppleT7001PMGR::FUN_fffffff006c8a0c4` has the same control-bank inclusion
 pattern: it walks `0x22000` to `0x22180` in 16-byte steps, skips
 `0x22030..0x22070` and `0x22120`, and conditionally sets bit 31.  This matches
 the captured address pattern.  It has no GFX state-index argument and does
