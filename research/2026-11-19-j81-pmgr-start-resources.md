@@ -51,3 +51,5 @@ This locates the previously identified replay routine **inside the startup path*
 ## Decision for GPU bring-up
 
 Keep the in-progress early-recipe archive check first. If existing chronological evidence also gives the CPU desired state and seed values, apply the state-0 condition above. A matching CPU seed closes only this byte-copy hypothesis. A missing sample leaves it unresolved. The distinct GFX evidence is still the PMGR transition and the first appearance of page-5 bit 30 after the GPC request on the successful boot. There is no evidence here for replaying CPU controller writes or changing voltage settings on Linux.
+
+The follow-up traced the software byte back to allocation. On the stock GFX record, both initializer seed flags are clear and no child propagates a request to GFX. The fresh-object prediction is a reverse request of zero. The November 14 successful-boot markers leave that prediction unmeasured. [Aggregate writer and archive check](2026-11-19-j81-gfx-startup-state-producer.md)
