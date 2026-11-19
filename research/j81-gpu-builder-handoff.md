@@ -79,6 +79,17 @@ Expect selector 8 / instance 0 / reg[1] at 0x202220000, length 0x2000, and GFX b
 
 For the early successful recipe, check for any *already captured* attributed startup operation at region 0 offset 0x20320 before voltage enable. If available, distinguish the forward active/bridge dispatch from the reverse state setter using the caller sites in the linked note. Return the caller, order, requested word and the source of attribution. Report unknown if the archive has only P0/P1 markers. If a CPU seed was recorded, keep the pre-copy desired state and CPU/SRAM seed words together. The +0x68 table update happened later in the same startup invocation. No new device access is part of this check. [Startup call chain](2026-11-19-j81-pmgr-start-resources.md)
 
+## Identify the GFX startup writer
+
+Continue the current archive job. This addition runs on the host and needs no kernel rebuild. Run the startup cross-check above once from the pinned checkout. Expect seed word `0x18ab0`, mask `0x10000000`, both printed flag bytes zero, zero dependent children among 98 records, and direct branch sites `0x6bc3bd0, 0x6bc9210, 0x6bd0434, 0x6bd7c18`. A mismatch in either file digest means this build-specific audit cannot interpret the files.
+
+1. Use the November 14 20:57 archive and the boot identifier of its five successful recipe markers. Plain-text exports may span several boots. Use the archive's boot UUID or an independently verified single-boot export and record the source of that boundary.
+2. Check the existing producer's field definitions and time window for GFX ID 0x7c, instance 0. Report any saved pre-replay aggregate change at `6bc924c`, including the calling site, old aggregate and effective request. The generic provider calls at `6bd7c18`. Its preceding cache update at `6bd7bd8` concerns a different byte.
+3. If the archive supplies the replay decision itself, report the read at `6bcd464` or the GFX caller and arguments. A forward setter from `6bcd4bc` supports 15; the reverse setter at `6bcd558` with argument zero supports 0. Attach the producer's observation phase and any loss counts. A caller without the device identity cannot assign a lane.
+4. Report the earliest attributable observation and mark any missing field unknown. Use the November 10 dispatcher capture as a positive control for the later provider transition. Continue the existing Linux observer and GPC/page-5 comparison if the successful archive covers only the recipe boundary.
+
+Return the pinned revision, audit output, boot alias, producer/digest, covered phase, ID/instance, old/request/effective values, replay evidence, and first missing observation. Keep the boot UUID and raw lines in the private reply. [Producer trace and tests](2026-11-19-j81-gfx-startup-state-producer.md)
+
 ## First check the earlier successful manual recipe
 
 Locate the November 14 20:57 19H394 archive (`ios-logarchive-j81-pmgr-bisect-03`), the matching binary whose reported SHA-256 begins `0a20ead8`, and its build record. On the Mac, set `EARLY_ARCHIVE` and `EARLY_BINARY` to their actual paths. Use existing exports if the builder runs Linux.
