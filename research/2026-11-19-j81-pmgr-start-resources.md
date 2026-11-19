@@ -37,6 +37,17 @@ This provides one startup call chain with the same order as the first ordinary-s
 
 The project's pinned m1n1 independently locates the state table at cluster base `0x202200000` + `0x20068`. Its T7001 configuration requests state 2 before feature setup and state 7 at the end. This is bootloader policy; a saved CPU frequency or a later Linux voltage sample cannot establish the desired state when Apple read +0x20. [Pinned m1n1](https://github.com/HoolockLinux/m1n1/blob/d5a10ac52a6468484854419a6c5130f1d62073eb/src/cpufreq.c)
 
+## A GFX-specific startup branch to distinguish
+
+Between the MCC operation and voltage-manager enable, the parent reads byte `this+0xe4` at `6bccf40`. A zero selects `6bcd2c8` at `6bccf5c`; the other branch calls a different routine. The zero branch walks the enabled lanes of the `ps-regs` banks. At `6bcd458..6bcd46c` it maps the lane to a device ID and tests that device’s **software state** against 15. The J81 GFX record is ID 0x7c, bank 3, lane 4, with its enable bit set. For that record and instance 0 the state byte is at object offset `0x19094 + 0x7c = 0x19110`.
+
+| State byte in this branch | What to look for in existing traces |
+| --- | --- |
+| 15 | Forward pass calls the minimum-state helper (record flag bit 2 clear), active setter and bridge dispatcher at `6bcd49c`, `6bcd4bc` and `6bcd4cc`. A setter may short-circuit depending on its own old word. |
+| Below 15 | Forward pass skips this lane. In the reverse pass `6bcd538..6bcd558` calls the setter with that software state and auto disabled. |
+
+This locates the previously identified replay routine **inside the startup path** and before voltage seeding. A captured GFX request with this caller would distinguish platform initialization from a later AGX provider invocation even with the same requested word. The boot’s eventual GFX hardware value of 0x300 supplies neither the earlier software byte nor its path selector. [Earlier replay observation](2026-11-04-j81-gpu-offline-trace.md#bridge-actions-and-already-active-pmgr-state-2026-11-05) · [GFX record and address lookup](2026-11-18-j81-gfx-state-word-comparison.md)
+
 ## Decision for GPU bring-up
 
 Keep the in-progress early-recipe archive check first. If existing chronological evidence also gives the CPU desired state and seed values, apply the state-0 condition above. A matching CPU seed closes only this byte-copy hypothesis. A missing sample leaves it unresolved. The distinct GFX evidence is still the PMGR transition and the first appearance of page-5 bit 30 after the GPC request on the successful boot. There is no evidence here for replaying CPU controller writes or changing voltage settings on Linux.

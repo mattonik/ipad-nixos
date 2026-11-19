@@ -66,6 +66,19 @@ sha256sum "$GFX_KERNEL/Image" > "$JOB/results/kernel-image.sha256"
 
 If the build fails, return the first relevant Nix or compiler error and the derivation path. Continue the archive work independently. A printed `gfx-request` row in a future Linux log describes a setter that reached its successful poll. `auto=0` means there was no automatic-management write, and `auto_word` is then a placeholder. When `auto=1`, `rc` is the status of the last write. Earlier failures return before logging. A missing row cannot identify a skipped setter, failed access or lost message. The PID is the task executing the setter. Use independent task attribution before marking a normalized event as same-thread. Logging can affect timing between setter calls. [Observer patch](probes/j81-linux-gfx-request.patch)
 
+## November 19 startup cross-check (independent of archive extraction)
+
+Use the matching, already decompressed 19H394 kernelcache and raw J81AP Apple device tree. Set `J81_KERNEL` and `J81_TREE` to their absolute paths. The checker verifies both input hashes, inspects the stock mapper and dispatch instructions, and decodes the tree ranges. It needs Python 3 and reads files only.
+
+```bash
+python3 tools/audit_j81_pmgr_start.py "$J81_KERNEL" "$J81_TREE" > "$JOB/results/startup-map.txt"
+cat "$JOB/results/startup-map.txt"
+```
+
+Expect selector 8 / instance 0 / reg[1] at 0x202220000, length 0x2000, and GFX bank 3 / lane 4. If the inputs are unavailable, continue the existing archive job. Return the mapping result or the missing input, separately from device evidence.
+
+For the early successful recipe, check for any *already captured* attributed startup operation at region 0 offset 0x20320 before voltage enable. If available, distinguish the forward active/bridge dispatch from the reverse state setter using the caller sites in the linked note. Return the caller, order, requested word and the source of attribution. Report unknown if the archive has only P0/P1 markers. If a CPU seed was recorded, keep the pre-copy desired state and CPU/SRAM seed words together. The +0x68 table update happened later in the same startup invocation. No new device access is part of this check. [Startup call chain](2026-11-19-j81-pmgr-start-resources.md)
+
 ## First check the earlier successful manual recipe
 
 Locate the November 14 20:57 19H394 archive (`ios-logarchive-j81-pmgr-bisect-03`), the matching binary whose reported SHA-256 begins `0a20ead8`, and its build record. On the Mac, set `EARLY_ARCHIVE` and `EARLY_BINARY` to their actual paths. Use existing exports if the builder runs Linux.

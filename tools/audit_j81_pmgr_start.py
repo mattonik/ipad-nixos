@@ -41,6 +41,13 @@ def check(kernel_path, tree_path):
         file_offset = 0x21344b0 + address - 0x6c884b0
         if struct.unpack_from("<I", kernel, file_offset)[0] != expected:
             raise ValueError(f"unexpected instruction at address suffix {address:x}")
+    devices = property_at(tree, 0x74f8, b"devices")
+    gfx, = [devices[i:i+48] for i in range(0, len(devices), 48)
+            if devices[i+32:i+36] == b"GFX\0"]
+    lane, bank = gfx[10:12]
+    region, base, enabled = struct.unpack_from("<III", property_at(tree, 0x6a1c, b"ps-regs"), bank * 12)
+    if (gfx[3], bank, lane, region, base + 8 * lane) != (0x7c, 3, 4, 0, 0x20320) or not enabled & (1 << lane):
+        raise ValueError("GFX replay lane mismatch")
     args = struct.unpack_from("<4I", kernel, 0x21344b0)
     for opcode, register in zip(args, (1, 2, 3, 4)):
         if opcode & 0xffe0001f != 0x52800000 | register:
@@ -57,6 +64,7 @@ def check(kernel_path, tree_path):
     if bases != [0x202220000] or length != 0x2000:
         raise ValueError("unexpected arm-io translation")
     print("startup parent resolves MCC(+0x688) then voltage enable(+0x698) before the CPU table copy")
+    print(f"GFX replay candidate bank={bank} lane={lane} software-state offset (instance zero)={0x19094 + gfx[3]:#x}")
     print(f"selector={selector} instance={instance} reg[{resource}]={bases[0]:#x} length={length:#x}")
     for offset in (0x78, 0x68, 0x20):
         print(f"  +{offset:#x} -> {bases[0] + offset:#x} (8 bytes)")
