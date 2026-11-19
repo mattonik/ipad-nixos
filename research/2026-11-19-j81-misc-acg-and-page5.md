@@ -2,6 +2,8 @@
 
 **ApplePMGR requests bit 0 at physical 0x20e032000 while GFX can still be off. Linux has a saved zero at that exact address after GPC state 1.** The stock driver's own diagnostic calls the method `ApplePMGR::enableACG(bool)` and the group `kRegGroupMiscACG`. This is a candidate prerequisite for the later page-5 response. There is no post-start MiscACG readback in the five markers from the successful November 14 recipe, and no experiment here establishes which clocks the group controls. [GFX startup state](2026-11-19-j81-gfx-startup-state-producer.md) · [Working recipe](2026-11-14-j81-ios-boot-bisect-probe1-results.md)
 
+**November 19 archive recovery.** The runner recovered two kernel events from two distinct iPadOS 19H394 boot UUIDs. Both recorded **0x00000001** at 0x20e032000 immediately after `ApplePMGR::enableACG(true)` returned and before the voltage-manager call. Both used the successful-read format. The recovery report and updated probe report describe the same two events. This establishes the immediate readback. Retention until GPC and the page-5 outcome in those boots remain open.
+
 ## Trace in the decompressed J81AP 19H394 kernel and ADT
 
 Code addresses below omit the common prefix `0xfffffff00`. Offsets in the PMGR register block are relative to physical 0x20e000000.
@@ -20,6 +22,7 @@ The subclass also requests `(old & 0x3fffffff) | 0x40000000` at +0x1008 and +0x4
 | Run and phase | MiscACG +0x32000 | GPC and perf | Page-5 +4 |
 | --- | --- | --- | --- |
 | November 15 iPadOS entry control | Read **0**. The archived control reads PMGR +0x32000 at its offset 0x4270 and prints the value as `r9`. | Entry snapshots precede the manual GPC request. | Entry control reads 0. |
+| November 19 iPadOS post-enable probe, two boots | Read **1** in both, immediately after the enable call. | Neither recovery row includes a GPC poll. | No paired sample in these rows. |
 | November 14 iPadOS successful end-of-start recipe | Static startup request sets bit 0. Runtime value unknown. | Poll exited on `(raw & 0x1f) == 1`. Perf 0x80000000 → 0x80110100 and GFX VID 0 → 0x164. | 0 before request, then 0x40000000 in three samples following the timing log. Core ID 0x00070500. |
 | November 11 Linux post-GPC collection, `pmgr-words-20261111-after-gpc1` | **0** in `volman.log`, with VM control 1, GFX VID 0x164 and perf 0x80110100 in the same completed readout. | Collection labeled after GPC1. | 0 in sibling `plls.log`. These are separate commands. |
 | November 11 Linux DWI comparison, `dwi-gpu-compare-20261111-01` | Omitted from this campaign's sample. | Raw GPC=1 at poll 11. Perf and GFX VID make the same transitions as in the working recipe. PMU row 0x0128 bytes 0 and 2 change from 00/40 to 64/64. | Both paired samples zero at +709 ns and +101834 ns after the poll, and zero in the saved 10-second follow-up. |
@@ -37,4 +40,4 @@ The next discriminator is a **working-boot, post-start, pre-GPC MiscACG value**,
 
 The [page-1 and page-4 follow-up](2026-11-19-j81-page1-page4-clock-control.md) checks both requests against the recovered clock-rate calculation, the populated arm-io table, and the platform-active callback.
 
-The [four-report mailbox review](2026-11-19-j81-gpu-mailbox-review.md) records the later iPadOS control and read-probe boots. Both reached the Home screen. The post-enable register value remains unknown.
+The [four-report mailbox review](2026-11-19-j81-gpu-mailbox-review.md) records the later iPadOS control and read-probe boots. The original USB attachment missed the read marker. The later device archive supplied the two readings above.

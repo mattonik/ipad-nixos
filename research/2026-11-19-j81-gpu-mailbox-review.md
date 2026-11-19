@@ -1,6 +1,10 @@
 # J81 GPU mailbox review after the two iPadOS MiscACG runs
 
-Four reports were present in the private return mailbox. Linux completed the GFX power-domain cycle. The two iPadOS runs reached the Home screen, but neither report supplies a measured value for MiscACG immediately after ApplePMGR enables it.
+**Later returns, November 19.** The recovery report supersedes the initial missing-value assessment. Two different iPadOS boots recorded MiscACG = 0x00000001 immediately after enable returned. The updated probe report repeats those same two events. The builder also reproduced the page-1/page-4 clock calculations and native writer tests from the clock packet. The next outstanding hardware row is Linux MiscACG before GPC. [Updated comparison](2026-11-19-j81-misc-acg-and-page5.md) · [Fresh-boot handoff](j81-gpu-builder-handoff.md#fresh-linux-miscacg-before-gpc)
+
+## Initial four-report review
+
+At the time of this review, four reports were present in the private return mailbox. Linux completed the GFX power-domain cycle. The two iPadOS runs reached the Home screen, but neither report supplies a measured value for MiscACG immediately after ApplePMGR enables it.
 
 | Returned evidence | What it establishes | Limit for GPU bring-up |
 | --- | --- | --- |

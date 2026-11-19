@@ -171,3 +171,13 @@ Expect page 1 to give 798000000 and page 4 to give 2400000000 in both calculated
 ## Follow up the first GFX observer hardware run
 
 The runner captured the expected active/off/active setter sequence on the iPad. The [hardware review and next-run plan](2026-11-19-j81-gfx-observer-first-hardware.md) specifies the phase samples, observer-kernel compatibility checks and decision branches for a paired GPC/page-5 run. The private mailbox packet contains the transfer instructions and host build commands.
+
+## Fresh Linux MiscACG before GPC
+
+The runner recovered 0x00000001 immediately after the iPadOS enable call on two boots. Use the Linux probe already in development. The measurement is a single 32-bit read of PMGR region 0 +0x32000 (physical 0x20e032000). Preserve the full word and decode bit 0 separately. Record the boot UUID, time or uptime, probe version, and the operations completed before the read.
+
+- A fresh-boot baseline before any GPU setup is a useful standalone result. Label it **before setup**. If the run stops there, return it as such.
+- In the existing guarded GPC sequence the decisive Linux sample is **after GFX and bridge setup and before the first GPC setup write**. Record the completed read before proceeding. If that same boot also runs the paired probe, retain its GPC raw poll, both page-5 words, validity flags and timing. A failed or unrun poll leaves the paired outcome unknown.
+- If Linux bit 0 is clear and page-5 bit 30 stays clear after GPC reaches 1, there is a candidate difference from the iPadOS post-enable state. The iPadOS value immediately before a successful GPC request is still missing. If Linux bit 0 is already set and page 5 stays clear, setting bit 0 alone is insufficient for that Linux sequence. If page 5 rises with MiscACG clear at the pre-request read, retention of a set bit **at that sample** was unnecessary for that observed response. A later transition or a transient effect remains possible.
+
+The older Linux post-GPC zero and the November 14 iPadOS core ID belong to other boots. Compare phases explicitly. [Hardware sequence](2026-11-19-j81-gfx-observer-first-hardware.md) · [MiscACG evidence](2026-11-19-j81-misc-acg-and-page5.md)
