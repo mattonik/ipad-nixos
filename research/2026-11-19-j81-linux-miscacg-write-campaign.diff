@@ -1,0 +1,84 @@
+--- observer-src/boot/j81_observer_paired_campaign.py	2026-11-19 19:12:44
++++ patched2/boot/j81_observer_paired_campaign.py	2026-11-19 20:52:43
+@@ -81,7 +81,7 @@
+         "test ! -e /tmp/gpu-gpc-page5-kpoll.once && grep -q '^rootfs / rootfs ' /proc/mounts && "
+         "! grep -q '^/dev/' /proc/mounts && printf OBSERVER_GO"
+     )
+-    if output != b"OBSERVER_GO":
++    if output.removesuffix(b"/ #").strip() != b"OBSERVER_GO":
+         raise RuntimeError("observer preflight failed")
+     return boot_id()
+ 
+@@ -146,7 +146,48 @@
+                     return parse_words(data)
+     raise RuntimeError("PMGR snapshot incomplete")
+ 
++WRITER = Path(__file__).resolve().parent / "pmgr-miscacg-set"
++WRITER_SHA = "846d9e86bdb36403b49ba602a98a28f32336c5c41c40bec4816c00c56ecaff4b"
+ 
++
++def miscacg_write(path: Path) -> dict[str, int]:
++    """One guarded store of 1 to PMGR +0x32000, only if it reads 0. Never repeated on a boot."""
++    data = WRITER.read_bytes()
++    if hashlib.sha256(data).hexdigest() != WRITER_SHA:
++        raise ValueError("writer checksum mismatch")
++    stage("172.16.42.1", "/tmp/pmgr-miscacg-set", data)
++    check = shell("test \"$(sha256sum /tmp/pmgr-miscacg-set | cut -d ' ' -f1)\" = " + WRITER_SHA + " && printf WRITER_OK")
++    if not check.removesuffix(b"/ #").strip().endswith(b"WRITER_OK"):
++        raise RuntimeError("writer not staged intact")
++    with socket.create_connection(("172.16.42.1", 23), timeout=5) as sock:
++        sock.settimeout(.5)
++        sock.sendall(b"chmod +x /tmp/pmgr-miscacg-set && /tmp/pmgr-miscacg-set\n")
++        data, sent, deadline = b"", False, time.monotonic() + 20
++        with path.open("xb") as log:
++            while time.monotonic() < deadline:
++                try:
++                    chunk = sock.recv(4096)
++                except TimeoutError:
++                    continue
++                if not chunk:
++                    break
++                log.write(chunk); log.flush(); os.fsync(log.fileno()); data += chunk
++                if len(data) > 65536:
++                    raise RuntimeError("writer output too long")
++                lines = data.replace(b"\r\n", b"\n").split(b"\n")
++                if not sent and b"stage=before-miscacg-write address=0x20e032000" in lines and b"old=0x00000000" in lines:
++                    sock.sendall(b"WRITE\n")
++                    sent = True
++                elif not sent and any(l.startswith(b"stage=miscacg-") for l in lines):
++                    raise RuntimeError("writer refused")
++                if sent and b"stage=after-miscacg-write" in lines:
++                    new = [l for l in lines if l.startswith(b"new=0x")]
++                    if new != [b"new=0x00000001"]:
++                        raise RuntimeError("MiscACG did not read back 1")
++                    return {"old": 0, "new": 1}
++    raise RuntimeError("MiscACG write incomplete (the pre-value may not have been 0)")
++
++
+ def run(logdir: Path) -> None:
+     if logdir.exists():
+         raise FileExistsError(logdir)
+@@ -180,6 +221,12 @@
+     same_boot()
+     b = snapshot(logdir / "snapshot-b.log")
+     same_boot()
++    write = miscacg_write(logdir / "miscacg-write.log")
++    same_boot()
++    b2 = snapshot(logdir / "snapshot-b2.log")
++    same_boot()
++    if b2["032000"] != 1 or any(b2[k] != b[k] for k in b if k != "032000"):
++        raise RuntimeError("post-write snapshot unexpected; stopping before GPC")
+     with socket.create_connection(("172.16.42.1", 23), timeout=5) as sock:
+         result = kpoll.capture(sock, logdir / "kpoll.log", files["j81-gpc-page5-kpoll.ko"],
+                                files["gpu-watchdog-supervisor"], files["gpu-gpc-page5-kpoll-run-observer"],
+@@ -190,8 +237,8 @@
+         raise RuntimeError("boot changed during campaign")
+     (logdir / "summary.txt").write_text(
+         "boot=" + pinned + "\n" +
+-        "A=" + repr(a) + "\nB=" + repr(b) + "\nC=" + repr(c) + "\n" +
+-        f"pre-gpc MiscACG=0x{b['032000']:08x} bit0={b['032000'] & 1}\n" +
++        "A=" + repr(a) + "\nB=" + repr(b) + "\nB2=" + repr(b2) + "\nC=" + repr(c) + "\n" + "miscacg-write=" + repr(write) + "\n" +
++        f"pre-gpc MiscACG=0x{b2['032000']:08x} bit0={b2['032000'] & 1} (after the guarded write; before it 0x{b['032000']:08x})\n" +
+         "\n".join(kpoll.describe(result)) + "\n" +
+         "page5-first=0x%08x page5-later=0x%08x\n" % (result["first"], result["later"]))
+ 
