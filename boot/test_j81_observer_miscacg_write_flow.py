@@ -33,7 +33,8 @@ def run(job, fault=None):
     a, b = words(0), words(0)
     b2 = words(0 if fault == "post-write-zero" else 1)
     c = words(1)
-    sockets = [cycle, a, Console([]), b, writer, b2, kpoll, c]
+    core = Console(["stage=before-watchdog-open", "stage=watchdog-armed timeout=20", "stage=finished rc=0", "stage=watchdog-disarmed"])
+    sockets = [cycle, a, Console([]), b, writer, b2, kpoll, c, core]
     with ExitStack() as stack:
         def replace(obj, name, **options):
             return stack.enter_context(patch.object(obj, name, **options))
@@ -58,7 +59,7 @@ def run(job, fault=None):
         assert not (path / "kpoll.log").exists(), "GPC batch must not start after a failed write step"
         assert connect.call_count == (5 if fault == "refused" else 6)
         return
-    assert connect.call_count == 8
+    assert connect.call_count == 9
     assert b"WRITE\n" in writer.commands and writer.commands[0].startswith(b"chmod +x /tmp/pmgr-miscacg-set")
     summary = (path / "summary.txt").read_text()
     assert "miscacg-write={'old': 0, 'new': 1}" in summary and "pre-gpc MiscACG=0x00000001 bit0=1 (after" in summary

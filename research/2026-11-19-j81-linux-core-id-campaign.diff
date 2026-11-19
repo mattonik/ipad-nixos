@@ -1,0 +1,98 @@
+--- /private/tmp/claude-501/-Users-martinp-Work-Sandbox-ipadlinux/72af8033-a1ed-4450-b97d-e866eff6b9d3/scratchpad/patched2/boot/j81_observer_paired_campaign.py	2026-11-19 20:52:43
++++ /private/tmp/claude-501/-Users-martinp-Work-Sandbox-ipadlinux/72af8033-a1ed-4450-b97d-e866eff6b9d3/scratchpad/patched3/boot/j81_observer_paired_campaign.py	2026-11-19 21:42:17
+@@ -187,7 +187,80 @@
+                     return {"old": 0, "new": 1}
+     raise RuntimeError("MiscACG write incomplete (the pre-value may not have been 0)")
+ 
++CORE_TOOL = Path(__file__).resolve().parent / "gpu-core-id-gated"
++CORE_WRAPPER = Path(__file__).resolve().parent / "gpu-core-id-gated-run.sh"
++CORE_TOOL_SHA = "2bf8c5c3912d88c2de3db6307e6e0fce91d10b90a67453001cadff41f3389e78"
++CORE_WRAPPER_SHA = "ee1edc55bf597db0a641d81854afa12974e8c029dc20a24f40ff178c0b048902"
++CORE_STAGES = (("pmgr-read", "0x20e020320"), ("miscacg-read", "0x20e032000"), ("page5-read", "0x20e005004"),
++               ("gpc-state", "0x201e01000"), ("gpc-control", "0x201e00000"), ("gpu-revision", "0x201000020"))
+ 
++
++def core_id_read(path: Path, supervisor_hash: str) -> dict:
++    """Gated, watchdog-supervised core-ID read after the paired GPC batch. Read-only. One shot per boot."""
++    for local, sha in ((CORE_TOOL, CORE_TOOL_SHA), (CORE_WRAPPER, CORE_WRAPPER_SHA)):
++        if hashlib.sha256(local.read_bytes()).hexdigest() != sha:
++            raise ValueError(f"checksum mismatch: {local.name}")
++    stage("172.16.42.1", "/tmp/gpu-core-id-gated", CORE_TOOL.read_bytes())
++    stage("172.16.42.1", "/tmp/gpu-core-revision-once-cycle-run", CORE_WRAPPER.read_bytes())
++    shell("chmod +x /tmp/gpu-core-id-gated /tmp/gpu-core-revision-once-cycle-run")
++    command = ('test "$(sha256sum /tmp/gpu-watchdog-supervisor|cut -d " " -f1)" = ' + supervisor_hash +
++               ' && test "$(sha256sum /tmp/gpu-core-revision-once-cycle-run|cut -d " " -f1)" = ' + CORE_WRAPPER_SHA +
++               " && /tmp/gpu-watchdog-supervisor --core-revision-cycle " + CORE_TOOL_SHA + "\n")
++    values: dict = {}
++    with socket.create_connection(("172.16.42.1", 23), timeout=5) as sock, path.open("xb") as log:
++        sock.sendall(command.encode())
++        buf, watchdog, stage_no, feeds, awaiting, disarming = b"", 0, 0, 0, False, False
++        echoes: set = set()
++        deadline = time.monotonic() + 45
++        while time.monotonic() < deadline:
++            sock.settimeout(.5)
++            try:
++                chunk = sock.recv(4096)
++            except TimeoutError:
++                continue
++            if not chunk:
++                break
++            log.write(chunk); log.flush(); os.fsync(log.fileno()); buf += chunk
++            if len(buf) > 65536:
++                raise RuntimeError("core-ID capture exceeded 64 KiB")
++            while b"\n" in buf:
++                line, buf = buf.split(b"\n", 1)
++                line = line.strip(b"\r")
++                if line in echoes:
++                    echoes.remove(line); continue
++                if not line.startswith(b"stage="):
++                    continue
++                if watchdog == 0:
++                    if line != b"stage=before-watchdog-open": raise RuntimeError("missing watchdog arm checkpoint")
++                    echoes.add(b"ARM"); sock.sendall(b"ARM\n"); watchdog = 1; continue
++                if watchdog == 1:
++                    if line != b"stage=watchdog-armed timeout=20": raise RuntimeError("watchdog did not arm")
++                    watchdog = 2; continue
++                if disarming:
++                    if line != b"stage=watchdog-disarmed": raise RuntimeError("watchdog not disarmed")
++                    return values
++                if line.startswith(b"stage=before-"):
++                    name, address = CORE_STAGES[stage_no] if stage_no < len(CORE_STAGES) else (None, None)
++                    if awaiting or name is None or line != f"stage=before-{name} address={address} width=32".encode():
++                        raise RuntimeError("unexpected or pipelined core-ID checkpoint")
++                    echoes.add(b"READ"); sock.sendall(b"READ\n"); awaiting = True
++                elif line.startswith(b"stage=after-"):
++                    match = re.fullmatch(rb"stage=after-([a-z0-9-]+) raw=0x([0-9a-f]{8})", line)
++                    if not awaiting or not match or match[1].decode() != CORE_STAGES[stage_no][0]:
++                        raise RuntimeError("core-ID read result does not match its checkpoint")
++                    values[match[1].decode()] = int(match[2], 16)
++                    stage_no += 1; awaiting = False; feeds += 1
++                    echo = f"FEED {feeds}".encode(); echoes.add(echo); sock.sendall(echo + b"\n")
++                elif line.startswith(b"stage=skipped reason="):
++                    values["skipped"] = line.split(b"=", 2)[2].decode()
++                elif line == b"stage=finished rc=0":
++                    if awaiting: raise RuntimeError("core-ID finished mid-read")
++                    disarming = True
++                else:
++                    raise RuntimeError("unexpected core-ID stage")
++    raise RuntimeError("core-ID capture incomplete; the device may have been reset by the watchdog, do not retry this boot")
++
++
+ def run(logdir: Path) -> None:
+     if logdir.exists():
+         raise FileExistsError(logdir)
+@@ -241,6 +314,14 @@
+         f"pre-gpc MiscACG=0x{b2['032000']:08x} bit0={b2['032000'] & 1} (after the guarded write; before it 0x{b['032000']:08x})\n" +
+         "\n".join(kpoll.describe(result)) + "\n" +
+         "page5-first=0x%08x page5-later=0x%08x\n" % (result["first"], result["later"]))
++    # Everything above is already on disk. The core window can still hang; the supervisor's watchdog then resets the device.
++    try:
++        core = core_id_read(logdir / "core-id.log", files["gpu-watchdog-supervisor"])
++    except (OSError, RuntimeError, ValueError) as error:
++        (logdir / "core-id-result.txt").write_text(f"core-id: no result ({error})\n")
++        raise
++    same_boot()
++    (logdir / "core-id-result.txt").write_text("core-id: " + repr(core) + "\n")
+ 
+ 
+ if __name__ == "__main__":
