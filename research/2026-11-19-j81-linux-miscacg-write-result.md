@@ -20,3 +20,7 @@ Sequence: GFX get/put/get cycle -> snapshot A -> bridge plan -> snapshot B -> gu
 One variable (MiscACG bit 0 before the GPC request) flips the page-5 outcome on Linux from 0 to bit 30 set. This run did not read the RGX core ID (the campaign has no core read),
 so whether the core now answers is not established. One boot, one run: not yet repeated.
 
+
+## Repeat on a second fresh boot (fcc3107e-2d5f-4439-83f3-0abfc897cc0f)
+Same harness and bundle, fresh DFU/palera1n/m1n1 cycle. Write old=0 -> new=1; B2 MiscACG 1 with the other words unchanged; GPC raw 1 after 11 polls; page-5 samples 0x40000000 and 0x40000000; perf 0x80110100, 0x2300c = 0x164; rc=0, watchdog disarmed.
+Two of two write boots show bit 30 set; the no-write control (one boot) showed 0 and 0. Core ID still unread.
