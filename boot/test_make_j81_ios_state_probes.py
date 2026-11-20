@@ -26,6 +26,8 @@ except AssertionError:
     pass
 else:
     raise AssertionError('overlap not detected')
+assert m.sub_x0_x24(0xff4) == 0xd13fd300 and m.sub_x0_x24(0xfec) == 0xd13fb300 and m.add_x0_x0(0xc) == 0x91003000
+assert 0x23000 - 0xff4 == 0x2200c and 0x23000 - 0xff0 == 0x22010 and 0x23000 - 0xfec == 0x22014
 # encodings
 assert m.add_x0_x24(0x20) == m.OLD_CORE_ADD and m.add_x0_x24(0x48) == 0x91012300 and m.add_x0_x24(0x194) == 0x91065300
 assert m.OLD_PAGE5_A == 0x91400000 | (5 << 10) | (20 << 5) and m.NEW_MOVZ == 0xd2a00000 | (0x222 << 5) and m.OLD_MOVZ == 0xd2a00000 | (0x100 << 5)

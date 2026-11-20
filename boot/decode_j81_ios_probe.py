@@ -24,6 +24,9 @@ def meaning(variant: str) -> dict:
     if "pmgrx" in tokens:
         for k in ("P0", "P1"):
             m[k].update(P="pmgr_0x2d100_soc_tvm_status", V0="pmgr_0x23004_vm_sram", V1="pmgr_0x22000")
+    if "p22" in tokens:
+        m["P0"].update(F="pmgr_0x22004", P="pmgr_0x22008", V0="pmgr_0x2200c", V1="pmgr_0x22010")
+        m["P1"].update(F="pmgr_0x22004/pmgr_0x22008/page5_+4", P="pmgr_0x2200c", V0="pmgr_0x22010", V1="pmgr_0x22014")
     if "fender" in tokens:
         m["P1"]["G"] = "fender_0x201e00000_+0"
     cpu = [t for t in tokens if re.fullmatch(r"cpu[0-9a-f]+", t)]

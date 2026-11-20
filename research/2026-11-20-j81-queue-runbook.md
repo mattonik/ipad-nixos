@@ -58,3 +58,6 @@ Step 2 showed iPadOS +0x22000 = 0x80000000 (and Fender bit 29 clear, CPU TVM bit
 cd /Users/martinp/Work/Sandbox/ipadlinux/ipad-nixos/boot && DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib PYTHONPATH=../artifacts/live/gcroot-pyusb/lib/python3.14/site-packages /opt/homebrew/bin/python3 j81_linux_pmgr_words.py ../artifacts/live/private/j81-linux-pmgr-words-<date>-run1
 ```
 I run it after "linux up". If Linux +0x22000 is not 0x80000000, a guarded Linux replay of that word becomes the next candidate (needs a plan).
+
+## Addendum 2: iPadOS p22 probe (after the +0x22000 stock lookup, `2026-11-20-j81-22000-stock-lookup.md`)
+Variants `p22` (and `fender-p22`) read +0x22004/08/0c/10 before GPC and +0x22004/08/0c/10/14 after it. Use `<V>` = `p22` with the step-2 commands (collect name `j81-p22-device.logarchive`); the decoder labels every field.

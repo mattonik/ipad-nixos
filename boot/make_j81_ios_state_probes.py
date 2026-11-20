@@ -12,6 +12,9 @@ print-only (no control flow depends on them) and never adds a store:
           G read, which used x23 after it had been re-pointed at the log buffer, loads it back
   pmgrx   extra PMGR region-0 words in the print-only slots, before GPC (P0) and after page 5 (P1):
           P0/P1 P= -> +0x2d100 (soc-tvm status), V0= -> +0x23004 (vm_sram), V1= -> +0x22000
+  p22     PMGR words +0x22004, +0x22008, +0x2200c, +0x22010, +0x22014 in the print-only slots: P0 F/P/V0/V1 =
+          +0x22004/+0x22008/+0x2200c/+0x22010; P1 F1/F2/P/V0/V1 = +0x22004/+0x22008/+0x2200c/+0x22010/+0x22014
+          (page 5 still gates via F3). Linux values: 0, 0, 0, 0x80000000 (at +0x22010), ...
   cpuNN   the core-ID mapping (0x201000000) becomes the CPU cluster resource 0x202220000 and the
           one read there becomes +0xNN; the printed CORE= value is that word (core ID not read)
 """
@@ -31,6 +34,9 @@ OLD_CORE_ADD = 0x91008300                                   # add x0, x24, #0x20
 STR_X23_SP440, LDR_X0_SP440 = 0xf90223f7, 0xf94223e0        # str x23,[sp,#0x440] ; ldr x0,[sp,#0x440]
 OLD_MOV_W25_W0, OLD_CBZ_W25, NEW_CBZ_W0 = 0x2a0003f9, 0x34000079, 0x34000060
 OLD_MOV_X0_X23 = 0xaa1703e0
+ADD_X0_X20_22_REG = 0x91408a80   # add x0, x20, #0x22, lsl #12 (same word as ADD_X0_X20_22)
+def add_x0_x0(imm): return 0x91000000 | (imm << 10)
+def sub_x0_x24(imm): return 0xd1000000 | (imm << 10) | (24 << 5)
 ADD_X0_X20_2D = 0x9140b680   # add x0, x20, #0x2d, lsl #12
 ADD_X0_X0_100 = 0x91040000   # add x0, x0, #0x100
 ADD_X0_X20_22 = 0x91408a80   # add x0, x20, #0x22, lsl #12
@@ -51,6 +57,15 @@ def patches(name: str) -> list[tuple[int, int, int]]:
         offsets = [o for o, _, _ in out]
         assert len(offsets) == len(set(offsets)), "overlapping patches in " + name
         return out
+    if name == "p22":
+        base = ADD_X0_X20_22_REG
+        return [(0x413c, OLD_PAGE5_A, base), (0x4140, OLD_PAGE5_B, add_x0_x0(4)),
+                (0x414c, OLD_PERF_A, base), (0x4150, OLD_PERF_B, add_x0_x0(8)),
+                (0x4160, OLD_MOV_X0_X24, sub_x0_x24(0xff4)), (0x416c, OLD_ADD_X0_X24_C, sub_x0_x24(0xff0)),
+                (0x4394, OLD_PAGE5_A, base), (0x4398, OLD_PAGE5_B, add_x0_x0(4)),
+                (0x43a4, OLD_PAGE5_A, base), (0x43a8, OLD_PAGE5_B, add_x0_x0(8)),
+                (0x43c4, OLD_PERF_A, base), (0x43c8, OLD_PERF_B, add_x0_x0(0xc)),
+                (0x43d8, OLD_MOV_X0_X24, sub_x0_x24(0xff0)), (0x43e4, OLD_ADD_X0_X24_C, sub_x0_x24(0xfec))]
     if name == "pmgrx":
         return [(0x414c, OLD_PERF_A, ADD_X0_X20_2D), (0x4150, OLD_PERF_B, ADD_X0_X0_100),
                 (0x4160, OLD_MOV_X0_X24, ADD_X0_X24_4), (0x416c, OLD_ADD_X0_X24_C, ADD_X0_X20_22),
@@ -73,7 +88,7 @@ def patches(name: str) -> list[tuple[int, int, int]]:
 
 def names() -> list[str]:
     cpu = [f"cpu{offset:x}" for offset in CPU_OFFSETS]
-    return (["page14", "fender", "pmgrx"] + cpu + ["fender+pmgrx+cpu48"] +
+    return (["page14", "fender", "pmgrx", "p22", "fender+p22"] + cpu + ["fender+pmgrx+cpu48"] +
             [f"fender+cpu{offset:x}" for offset in CPU_OFFSETS if offset != 0x48])
 
 
