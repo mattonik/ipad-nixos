@@ -61,3 +61,7 @@ I run it after "linux up". If Linux +0x22000 is not 0x80000000, a guarded Linux 
 
 ## Addendum 2: iPadOS p22 probe (after the +0x22000 stock lookup, `2026-11-20-j81-22000-stock-lookup.md`)
 Variants `p22` (and `fender-p22`) read +0x22004/08/0c/10 before GPC and +0x22004/08/0c/10/14 after it. Use `<V>` = `p22` with the step-2 commands (collect name `j81-p22-device.logarchive`); the decoder labels every field.
+
+## Addendum 3: Linux +0x22000 write test (built after the p22 result; not run)
+`artifacts/live/private/j81-linux-w22000-write-experiment/runner/boot` (tests pass, `--verify-only` passes). Same flow as step 1 with one more guarded store: MiscACG, voltage check, +0x2d000, PLL1 +0x1008, PLL4 +0x4008, then **+0x22000 (must read 0x00000000, store 0x80000000, readback must match)**, snapshot, all before GFX power-on, then GFX cycle, bridge, GPC, core read under the watchdog. Stops before the next step on any unexpected readback; stops before the bridge/GPC if any stored word is lost. Boot with the two step-1 commands, say "linux up", and I launch:
+`python3 j81_observer_paired_campaign.py <new logdir> --bundle <bundle>` from that runner directory (log dir `j81-linux-w22000-write-results-<date>-run1`). The writer is `boot/pmgr-w22000-set.c` (sha256 ee719eb2..., one 32-bit store). What the bit does is unknown and the stock setter is unlocated; this replays the observed iPadOS end state.
