@@ -61,3 +61,7 @@ python3 verify_capture.py paired.ndjson "$BOOT_UUID"
 ```
 
 The verifier requires one complete, page-5-high paired row and an earlier GPC poll marker on that boot. It reports the original three words and the decoded Fender bit. An ID value of zero is a completed read when stage is 3. Keep the raw export and diagnostic build digest with the verification output. The verifier checks the recorded fields; the host build supplies their mapping provenance.
+
+## Which observer returned 0x00070500?
+
+The runner's 19H394 result identifies boot 846527FB-1D2B-4834-AEB8-49480323BBFD and observer SHA-256 `3f409df104a56f7c7ad9fd3b8b75fcbaed66e6e094678daac28e0a0ade5e8671`. On the share, verify the receipt from `builder-mailbox/from-builder/2026-11-19-j81-ios-pregpc-miscacg-run-result` with `shasum -a 256 -c SHA256SUMS`. The raw boot rows, module disassembly and module hash are separate evidence files in that receipt. The runner identifies the host as a checkra1n/PongoOS kernel-patching module. The paired-read object targets a diagnostic host with existing Device mappings. Its offline checks do not establish compatibility with that module or supply a new J81 result.
