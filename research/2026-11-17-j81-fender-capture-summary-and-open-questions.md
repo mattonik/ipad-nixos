@@ -1,5 +1,7 @@
 # J81 GPU: Fender capture summary and open questions (2026-11-17)
 
+**November 20 correction.** A stock software path forwards a runtime firmware-event word to Fender +0, including bit 29. The paired-bit guard calls the state getter; the +0x20000 override is a separate virtual method. Linux subsequently reached page-5 high with Fender bit 29 clear. The working iPadOS observer tests page 5 and leaves the physical Fender bit unmeasured. The [19H394 writer and corrected dispatch trace](2026-11-20-j81-fender-bit29-producer.md) supersedes the earlier interpretations below.
+
 **November 18 coverage correction.** The 32 prefix rows and 17 tail rows
 are visible samples across separate boots. The tail formatter reports staged
 slots before a capacity-limited merge. Ordinary rows carry synthetic thread

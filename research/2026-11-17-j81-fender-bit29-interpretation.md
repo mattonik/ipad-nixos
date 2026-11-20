@@ -1,5 +1,7 @@
 # J81 Fender bit 29: what the 2026-11-17 capture means and what to test next
 
+**November 20 correction.** A stock software path forwards a runtime firmware-event word to Fender +0, including bit 29. The paired-bit guard calls the state getter; the +0x20000 override is a separate virtual method. Linux subsequently reached page-5 high with Fender bit 29 clear. The working iPadOS observer tests page 5 and leaves the physical Fender bit unmeasured. The [19H394 writer and corrected dispatch trace](2026-11-20-j81-fender-bit29-producer.md) supersedes the earlier interpretations below.
+
 Offline synthesis of the [capture result](2026-11-17-j81-fender-page5-capture-result.md)
 against existing iOS evidence. No new hardware access.
 
