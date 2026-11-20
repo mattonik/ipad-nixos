@@ -43,3 +43,21 @@ After return, emit **one** record containing stage, page5, fender and gpu_id in 
 | 3 | page5, fender, gpu_id | Both reads completed, including when either returned word is zero. |
 
 A stage-3 record with bit 29 clear and ID 0x00070500 would show a clear sample immediately before a successful ID. With bit 29 set, it would establish coexistence. Neither result identifies when the bit changed or what sets it. If the call never returns, ordinary RAM alone does not guarantee a record survives reset. Mark the run incomplete unless the diagnostic host independently recovered a fresh partial record.
+
+## Verify a paired capture
+
+After the sampling call returns, use the following format string with the host logger and the four unsigned 32-bit fields in struct order:
+
+```c
+"J81_FENDER_ID stage=%08x page5=%08x fender=%08x gpu_id=%08x"
+```
+
+On the collection Mac, run the following against a saved device log archive, supplying its path and the recorded boot UUID:
+
+```sh
+log show --archive "$ARCHIVE" --style ndjson --info --debug \
+  --predicate 'eventMessage CONTAINS "J81_FENDER_ID" OR eventMessage CONTAINS "J81_BOOT GPC TICKS="' > paired.ndjson
+python3 verify_capture.py paired.ndjson "$BOOT_UUID"
+```
+
+The verifier requires one complete, page-5-high paired row and an earlier GPC poll marker on that boot. It reports the original three words and the decoded Fender bit. An ID value of zero is a completed read when stage is 3. Keep the raw export and diagnostic build digest with the verification output. The verifier checks the recorded fields; the host build supplies their mapping provenance.
