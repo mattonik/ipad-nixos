@@ -51,3 +51,10 @@ I then run `boot/decode_j81_ios_probe.py <archive> <V>`, which labels every fiel
 
 ## Not prepared
 A Linux read of the CPU cluster block through /dev/mem (needed to compare CPU TVM / DPE with iPadOS, only worth it if an iPadOS word is nonzero), and a Linux replay of the CPU TVM / DPE writes. Both wait for the iPadOS values.
+
+## Addendum (after step 2): Linux read of +0x22000
+Step 2 showed iPadOS +0x22000 = 0x80000000 (and Fender bit 29 clear, CPU TVM bit 0 clear, both excluded). Linux has never read +0x22000. Read-only script `boot/j81_linux_pmgr_words.py` (tests pass) reads PMGR +0x22000 .. +0x223fc (256 words, the per-domain 0x220xx words of the A8 thread's list) on any fresh Linux observer boot, using the same pinned read-only peek tool; it needs only the two boot commands of step 1, no GFX power-on and no stores:
+```bash
+cd /Users/martinp/Work/Sandbox/ipadlinux/ipad-nixos/boot && DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib PYTHONPATH=../artifacts/live/gcroot-pyusb/lib/python3.14/site-packages /opt/homebrew/bin/python3 j81_linux_pmgr_words.py ../artifacts/live/private/j81-linux-pmgr-words-<date>-run1
+```
+I run it after "linux up". If Linux +0x22000 is not 0x80000000, a guarded Linux replay of that word becomes the next candidate (needs a plan).

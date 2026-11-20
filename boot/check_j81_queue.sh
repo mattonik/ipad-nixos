@@ -17,6 +17,6 @@ for t in test_j81_observer_pll_write_flow test_j81_observer_paired_campaign; do
 	(cd $R && PYTHONDONTWRITEBYTECODE=1 $PY $t.py >/dev/null 2>&1) && ok "test $t" || bad "test $t"
 done
 (cd $R && DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib PYTHONPATH=$PWD/../../../../gcroot-pyusb/lib/python3.14/site-packages PYTHONDONTWRITEBYTECODE=1 $PY j81_observer_paired_campaign.py --verify-only --bundle $PWD/../../../j81-observer-paired-20261119-v1 >/dev/null 2>&1) && ok "pll-write campaign --verify-only" || bad "pll-write campaign --verify-only"
-(cd boot && for t in test_make_j81_ios_state_probes test_decode_j81_ios_probe test_j81_map_probe_campaign; do PYTHONDONTWRITEBYTECODE=1 $PY $t.py >/dev/null 2>&1 && echo "ok   test $t" || echo "FAIL test $t"; done) | tee /tmp/queue-tests.txt | grep FAIL && fail=1
+(cd boot && for t in test_make_j81_ios_state_probes test_decode_j81_ios_probe test_j81_map_probe_campaign test_j81_linux_pmgr_words; do PYTHONDONTWRITEBYTECODE=1 $PY $t.py >/dev/null 2>&1 && echo "ok   test $t" || echo "FAIL test $t"; done) | tee /tmp/queue-tests.txt | grep FAIL && fail=1
 grep -c '^ok' /tmp/queue-tests.txt | sed 's/^/ok   repo tests passed: /'
 [ $fail = 0 ] && echo "QUEUE READY" || { echo "QUEUE NOT READY"; exit 1; }
