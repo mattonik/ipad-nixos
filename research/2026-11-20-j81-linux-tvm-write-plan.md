@@ -1,0 +1,13 @@
+# Linux +0x2d000 write test: plan (prepared 2026-11-20, NOT run; needs a go-ahead per boot)
+
+Basis: iPadOS reads PMGR +0x2d000 (soc-tvm control, group 3 rail 1, stock request old|1, no enable poll) = 1 before the GPC request and after page 5 rises; Linux reads 0 at the same phases (`2026-11-20-j81-ios-tvm-probe-result.md`, `...-linux-tvm-snapshot-result.md`). Question: does setting it on Linux change the core-ID read, which hung on every earlier Linux attempt although MiscACG=1, GPC state 1 and page-5 bit 30 held?
+
+Sequence (one shot per boot; any failure stops, never retried on the same boot): cycle, snapshot A, bridge plan, snapshot B, guarded MiscACG store (old must be 0 -> 1), snapshot B2, **guarded +0x2d000 store (old must be 0 -> 1, readback must be 1)**, snapshot B3 (must equal B2 except +0x2d000 = 1, else stop before GPC), paired GPC/page-5 batch, snapshot C, then the existing gated, watchdog-supervised core-ID read (unchanged tool 2bf8c5c3..., gates: GFX PS 0x3ff, MiscACG 1, page-5 bit 30, GPC state 1, GPC control; 20 s hardware watchdog, per-stage host feeds). The state before GPC then matches the iPadOS boot (MiscACG 1 and +0x2d000 1).
+
+The write: `boot/pmgr-tvm-set.c` (built freestanding, sha256 998816f9...). Maps /dev/mem O_RDWR at 0x20e02d000, announces `old=`, waits for the host's `WRITE\n`, stores 1 only if old == 0, `dsb sy`, reads back. Exactly one 32-bit store in the binary (checked in the disassembly), no other address. Identical in form to the MiscACG writer used on three boots. +0x2d100 is not read or written.
+
+Risk: a store to a rail/SoC control that Apple's driver sets during PMGR start, so the same class of operation as MiscACG. The core read can still hang; the watchdog then resets the iPad (as in two earlier runs). Nothing persistent is written (PMGR registers only, RAM-only Linux).
+
+Tests: `boot/test_j81_observer_tvm_write_flow.py` passes (full flow; the +0x2d000 writer refusing; B3 wrong; each stops before the GPC batch; core-ID gating and feeds unchanged). `--verify-only` passes. Artifacts: `artifacts/live/private/j81-linux-tvm-write-experiment/` (git-ignored); diff `2026-11-20-j81-linux-tvm-write-campaign.diff`.
+
+Outcomes: ID returns (expected 0x00070500) => the control is sufficient for the core window with the current MiscACG store: strong result. Hang => the control is not sufficient alone; remaining differences: other soc-tvm-like controls, CPU TVM, DPE, +0x2d100 status, mapping. Run: DFU, palera1n Pongo shell with the bundle, load_m1n1.py, preflight GO, then from `.../j81-linux-tvm-write-experiment/runner/boot`: `python3 j81_observer_paired_campaign.py <new logdir> --bundle ../../../j81-observer-paired-20261119-v1`.
