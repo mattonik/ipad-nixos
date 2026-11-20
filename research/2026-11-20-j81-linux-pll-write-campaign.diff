@@ -1,0 +1,312 @@
+24,25c24,25
+< OFFSETS = ("20320", "32000", "1008", "4008", "1c200", "2300c", "5004")
+< READY = b"stage=before-pmgr-words-read base=0x20e000000 words=7"
+---
+> OFFSETS = ("20320", "32000", "1008", "4008", "1c200", "2300c", "5004", "2d000", "23000", "23004", "2d100")
+> READY = b"stage=before-pmgr-words-read base=0x20e000000 words=11"
+84c84
+<     if output != b"OBSERVER_GO":
+---
+>     if output.removesuffix(b"/ #").strip() != b"OBSERVER_GO":
+147a148,315
+> 
+> WRITER = Path(__file__).resolve().parent / "pmgr-miscacg-set"
+> WRITER_SHA = "846d9e86bdb36403b49ba602a98a28f32336c5c41c40bec4816c00c56ecaff4b"
+> PLL1_WRITER = Path(__file__).resolve().parent / "pmgr-pll1-set"
+> PLL1_WRITER_SHA = "af38b79f70775e694890b2fd3aee529e756b44db455a89a42fb2a1aa782b3c5e"
+> PLL4_WRITER = Path(__file__).resolve().parent / "pmgr-pll4-set"
+> PLL4_WRITER_SHA = "a060972c9573a629780b0ea4f1403a3d5c24084b8ba7d6e7ad953be2b2b989cc"
+> TVM_WRITER = Path(__file__).resolve().parent / "pmgr-tvm-set"
+> TVM_WRITER_SHA = "998816f91f8590d3ba7a570f84c12400b6b48009fdf7581027e7679175a5305b"
+> 
+> 
+> def miscacg_write(path: Path) -> dict[str, int]:
+>     """One guarded store of 1 to PMGR +0x32000, only if it reads 0. Never repeated on a boot."""
+>     data = WRITER.read_bytes()
+>     if hashlib.sha256(data).hexdigest() != WRITER_SHA:
+>         raise ValueError("writer checksum mismatch")
+>     stage("172.16.42.1", "/tmp/pmgr-miscacg-set", data)
+>     check = shell("test \"$(sha256sum /tmp/pmgr-miscacg-set | cut -d ' ' -f1)\" = " + WRITER_SHA + " && printf WRITER_OK")
+>     if not check.removesuffix(b"/ #").strip().endswith(b"WRITER_OK"):
+>         raise RuntimeError("writer not staged intact")
+>     with socket.create_connection(("172.16.42.1", 23), timeout=5) as sock:
+>         sock.settimeout(.5)
+>         sock.sendall(b"chmod +x /tmp/pmgr-miscacg-set && /tmp/pmgr-miscacg-set\n")
+>         data, sent, deadline = b"", False, time.monotonic() + 20
+>         with path.open("xb") as log:
+>             while time.monotonic() < deadline:
+>                 try:
+>                     chunk = sock.recv(4096)
+>                 except TimeoutError:
+>                     continue
+>                 if not chunk:
+>                     break
+>                 log.write(chunk); log.flush(); os.fsync(log.fileno()); data += chunk
+>                 if len(data) > 65536:
+>                     raise RuntimeError("writer output too long")
+>                 lines = data.replace(b"\r\n", b"\n").split(b"\n")
+>                 if not sent and b"stage=before-miscacg-write address=0x20e032000" in lines and b"old=0x00000000" in lines:
+>                     sock.sendall(b"WRITE\n")
+>                     sent = True
+>                 elif not sent and any(l.startswith(b"stage=miscacg-") for l in lines):
+>                     raise RuntimeError("writer refused")
+>                 if sent and b"stage=after-miscacg-write" in lines:
+>                     new = [l for l in lines if l.startswith(b"new=0x")]
+>                     if new != [b"new=0x00000001"]:
+>                         raise RuntimeError("MiscACG did not read back 1")
+>                     return {"old": 0, "new": 1}
+>     raise RuntimeError("MiscACG write incomplete (the pre-value may not have been 0)")
+> 
+> CORE_TOOL = Path(__file__).resolve().parent / "gpu-core-id-gated"
+> CORE_WRAPPER = Path(__file__).resolve().parent / "gpu-core-id-gated-run.sh"
+> CORE_TOOL_SHA = "2bf8c5c3912d88c2de3db6307e6e0fce91d10b90a67453001cadff41f3389e78"
+> CORE_WRAPPER_SHA = "ee1edc55bf597db0a641d81854afa12974e8c029dc20a24f40ff178c0b048902"
+> CORE_STAGES = (("pmgr-read", "0x20e020320"), ("miscacg-read", "0x20e032000"), ("page5-read", "0x20e005004"),
+>                ("gpc-state", "0x201e01000"), ("gpc-control", "0x201e00000"), ("gpu-revision", "0x201000020"))
+> 
+> 
+> def tvm_write(path: Path) -> dict[str, int]:
+>     """One guarded store of 1 to PMGR +0x2d000, only if it reads 0. Never repeated on a boot."""
+>     data = TVM_WRITER.read_bytes()
+>     if hashlib.sha256(data).hexdigest() != TVM_WRITER_SHA:
+>         raise ValueError("writer checksum mismatch")
+>     stage("172.16.42.1", "/tmp/pmgr-tvm-set", data)
+>     check = shell("test \"$(sha256sum /tmp/pmgr-tvm-set | cut -d ' ' -f1)\" = " + TVM_WRITER_SHA + " && printf TVM_WRITER_OK")
+>     if not check.removesuffix(b"/ #").strip().endswith(b"TVM_WRITER_OK"):
+>         raise RuntimeError("writer not staged intact")
+>     with socket.create_connection(("172.16.42.1", 23), timeout=5) as sock:
+>         sock.settimeout(.5)
+>         sock.sendall(b"chmod +x /tmp/pmgr-tvm-set && /tmp/pmgr-tvm-set\n")
+>         data, sent, deadline = b"", False, time.monotonic() + 20
+>         with path.open("xb") as log:
+>             while time.monotonic() < deadline:
+>                 try:
+>                     chunk = sock.recv(4096)
+>                 except TimeoutError:
+>                     continue
+>                 if not chunk:
+>                     break
+>                 log.write(chunk); log.flush(); os.fsync(log.fileno()); data += chunk
+>                 if len(data) > 65536:
+>                     raise RuntimeError("writer output too long")
+>                 lines = data.replace(b"\r\n", b"\n").split(b"\n")
+>                 if not sent and b"stage=before-tvm-write address=0x20e02d000" in lines and b"old=0x00000000" in lines:
+>                     sock.sendall(b"WRITE\n")
+>                     sent = True
+>                 elif not sent and any(l.startswith(b"stage=tvm-") for l in lines):
+>                     raise RuntimeError("writer refused")
+>                 if sent and b"stage=after-tvm-write" in lines:
+>                     new = [l for l in lines if l.startswith(b"new=0x")]
+>                     if new != [b"new=0x00000001"]:
+>                         raise RuntimeError("SoC TVM +0x2d000 did not read back 1")
+>                     return {"old": 0, "new": 1}
+>     raise RuntimeError("SoC TVM +0x2d000 write incomplete (the pre-value may not have been 0)")
+> 
+> 
+> def pll1_write(path: Path) -> dict[str, int]:
+>     """One guarded clock-word store, only if it reads the Linux value. Never repeated on a boot."""
+>     data = PLL1_WRITER.read_bytes()
+>     if hashlib.sha256(data).hexdigest() != PLL1_WRITER_SHA:
+>         raise ValueError("writer checksum mismatch")
+>     stage("172.16.42.1", "/tmp/pmgr-pll1-set", data)
+>     check = shell("test \"$(sha256sum /tmp/pmgr-pll1-set | cut -d ' ' -f1)\" = " + PLL1_WRITER_SHA + " && printf PLL1_WRITER_OK")
+>     if not check.removesuffix(b"/ #").strip().endswith(b"PLL1_WRITER_OK"):
+>         raise RuntimeError("writer not staged intact")
+>     with socket.create_connection(("172.16.42.1", 23), timeout=5) as sock:
+>         sock.settimeout(.5)
+>         sock.sendall(b"chmod +x /tmp/pmgr-pll1-set && /tmp/pmgr-pll1-set\n")
+>         data, sent, deadline = b"", False, time.monotonic() + 20
+>         with path.open("xb") as log:
+>             while time.monotonic() < deadline:
+>                 try:
+>                     chunk = sock.recv(4096)
+>                 except TimeoutError:
+>                     continue
+>                 if not chunk:
+>                     break
+>                 log.write(chunk); log.flush(); os.fsync(log.fileno()); data += chunk
+>                 if len(data) > 65536:
+>                     raise RuntimeError("writer output too long")
+>                 lines = data.replace(b"\r\n", b"\n").split(b"\n")
+>                 if not sent and b"stage=before-pll1-write address=0x20e001008" in lines and b"old=0x80480348" in lines:
+>                     sock.sendall(b"WRITE\n")
+>                     sent = True
+>                 elif not sent and any(l.startswith(b"stage=pll1-") for l in lines):
+>                     raise RuntimeError("writer refused")
+>                 if sent and b"stage=after-pll1-write" in lines:
+>                     new = [l for l in lines if l.startswith(b"new=0x")]
+>                     if new != [b"new=0x40480348"]:
+>                         raise RuntimeError("PMGR +0x1008 did not read back 1")
+>                     return {"old": 0x80480348, "new": 0x40480348}
+>     raise RuntimeError("PMGR +0x1008 write incomplete (the pre-value may not have been 0)")
+> 
+> 
+> def pll4_write(path: Path) -> dict[str, int]:
+>     """One guarded clock-word store, only if it reads the Linux value. Never repeated on a boot."""
+>     data = PLL4_WRITER.read_bytes()
+>     if hashlib.sha256(data).hexdigest() != PLL4_WRITER_SHA:
+>         raise ValueError("writer checksum mismatch")
+>     stage("172.16.42.1", "/tmp/pmgr-pll4-set", data)
+>     check = shell("test \"$(sha256sum /tmp/pmgr-pll4-set | cut -d ' ' -f1)\" = " + PLL4_WRITER_SHA + " && printf PLL4_WRITER_OK")
+>     if not check.removesuffix(b"/ #").strip().endswith(b"PLL4_WRITER_OK"):
+>         raise RuntimeError("writer not staged intact")
+>     with socket.create_connection(("172.16.42.1", 23), timeout=5) as sock:
+>         sock.settimeout(.5)
+>         sock.sendall(b"chmod +x /tmp/pmgr-pll4-set && /tmp/pmgr-pll4-set\n")
+>         data, sent, deadline = b"", False, time.monotonic() + 20
+>         with path.open("xb") as log:
+>             while time.monotonic() < deadline:
+>                 try:
+>                     chunk = sock.recv(4096)
+>                 except TimeoutError:
+>                     continue
+>                 if not chunk:
+>                     break
+>                 log.write(chunk); log.flush(); os.fsync(log.fileno()); data += chunk
+>                 if len(data) > 65536:
+>                     raise RuntimeError("writer output too long")
+>                 lines = data.replace(b"\r\n", b"\n").split(b"\n")
+>                 if not sent and b"stage=before-pll4-write address=0x20e004008" in lines and b"old=0x88480348" in lines:
+>                     sock.sendall(b"WRITE\n")
+>                     sent = True
+>                 elif not sent and any(l.startswith(b"stage=pll4-") for l in lines):
+>                     raise RuntimeError("writer refused")
+>                 if sent and b"stage=after-pll4-write" in lines:
+>                     new = [l for l in lines if l.startswith(b"new=0x")]
+>                     if new != [b"new=0x48480348"]:
+>                         raise RuntimeError("PMGR +0x4008 did not read back 1")
+>                     return {"old": 0x88480348, "new": 0x48480348}
+>     raise RuntimeError("PMGR +0x4008 write incomplete (the pre-value may not have been 0)")
+149a318,384
+> 
+> def core_id_read(path: Path, supervisor_hash: str) -> dict:
+>     """Gated, watchdog-supervised core-ID read after the paired GPC batch. Read-only. One shot per boot."""
+>     for local, sha in ((CORE_TOOL, CORE_TOOL_SHA), (CORE_WRAPPER, CORE_WRAPPER_SHA)):
+>         if hashlib.sha256(local.read_bytes()).hexdigest() != sha:
+>             raise ValueError(f"checksum mismatch: {local.name}")
+>     stage("172.16.42.1", "/tmp/gpu-core-id-gated", CORE_TOOL.read_bytes())
+>     stage("172.16.42.1", "/tmp/gpu-core-revision-once-cycle-run", CORE_WRAPPER.read_bytes())
+>     shell("chmod +x /tmp/gpu-core-id-gated /tmp/gpu-core-revision-once-cycle-run")
+>     command = ('test "$(sha256sum /tmp/gpu-watchdog-supervisor|cut -d " " -f1)" = ' + supervisor_hash +
+>                ' && test "$(sha256sum /tmp/gpu-core-revision-once-cycle-run|cut -d " " -f1)" = ' + CORE_WRAPPER_SHA +
+>                " && /tmp/gpu-watchdog-supervisor --core-revision-cycle " + CORE_TOOL_SHA + "\n")
+>     values: dict = {}
+>     with socket.create_connection(("172.16.42.1", 23), timeout=5) as sock, path.open("xb") as log:
+>         sock.sendall(command.encode())
+>         buf, watchdog, stage_no, feeds, awaiting, disarming = b"", 0, 0, 0, False, False
+>         echoes: set = set()
+>         deadline = time.monotonic() + 45
+>         while time.monotonic() < deadline:
+>             sock.settimeout(.5)
+>             try:
+>                 chunk = sock.recv(4096)
+>             except TimeoutError:
+>                 continue
+>             if not chunk:
+>                 break
+>             log.write(chunk); log.flush(); os.fsync(log.fileno()); buf += chunk
+>             if len(buf) > 65536:
+>                 raise RuntimeError("core-ID capture exceeded 64 KiB")
+>             while b"\n" in buf:
+>                 line, buf = buf.split(b"\n", 1)
+>                 line = line.strip(b"\r")
+>                 if line in echoes:
+>                     echoes.remove(line); continue
+>                 if not line.startswith(b"stage="):
+>                     continue
+>                 if watchdog == 0:
+>                     if line != b"stage=before-watchdog-open": raise RuntimeError("missing watchdog arm checkpoint")
+>                     echoes.add(b"ARM"); sock.sendall(b"ARM\n"); watchdog = 1; continue
+>                 if watchdog == 1:
+>                     if line != b"stage=watchdog-armed timeout=20": raise RuntimeError("watchdog did not arm")
+>                     watchdog = 2; continue
+>                 if disarming:
+>                     if line != b"stage=watchdog-disarmed": raise RuntimeError("watchdog not disarmed")
+>                     return values
+>                 if line.startswith(b"stage=before-"):
+>                     name, address = CORE_STAGES[stage_no] if stage_no < len(CORE_STAGES) else (None, None)
+>                     if awaiting or name is None or line != f"stage=before-{name} address={address} width=32".encode():
+>                         raise RuntimeError("unexpected or pipelined core-ID checkpoint")
+>                     echoes.add(b"READ"); sock.sendall(b"READ\n"); awaiting = True
+>                 elif line.startswith(b"stage=after-"):
+>                     match = re.fullmatch(rb"stage=after-([a-z0-9-]+) raw=0x([0-9a-f]{8})", line)
+>                     if not awaiting or not match or match[1].decode() != CORE_STAGES[stage_no][0]:
+>                         raise RuntimeError("core-ID read result does not match its checkpoint")
+>                     values[match[1].decode()] = int(match[2], 16)
+>                     stage_no += 1; awaiting = False; feeds += 1
+>                     echo = f"FEED {feeds}".encode(); echoes.add(echo); sock.sendall(echo + b"\n")
+>                 elif line.startswith(b"stage=skipped reason="):
+>                     values["skipped"] = line.split(b"=", 2)[2].decode()
+>                 elif line == b"stage=finished rc=0":
+>                     if awaiting: raise RuntimeError("core-ID finished mid-read")
+>                     disarming = True
+>                 else:
+>                     raise RuntimeError("unexpected core-ID stage")
+>     raise RuntimeError("core-ID capture incomplete; the device may have been reset by the watchdog, do not retry this boot")
+> 
+> 
+167a403,437
+>     # Apple's order (ApplePMGR::start): MiscACG, voltage manager check, SoC TVM, all BEFORE GFX power-on.
+>     s0 = snapshot(logdir / "snapshot-s0.log")
+>     same_boot()
+>     if s0["032000"] != 0 or s0["02d000"] != 0 or s0["020320"] & 0xf != 0:
+>         raise RuntimeError("unexpected pre-state (MiscACG, +0x2d000 must be 0 and GFX off); nothing written")
+>     write = miscacg_write(logdir / "miscacg-write.log")
+>     same_boot()
+>     s1 = snapshot(logdir / "snapshot-s1.log")
+>     same_boot()
+>     CORE_WORDS = ("020320", "001008", "004008", "01c200", "02300c", "005004", "02d000")
+>     if s1["032000"] != 1 or any(s1[k] != s0[k] for k in CORE_WORDS):
+>         raise RuntimeError("post-MiscACG snapshot unexpected; stopping before TVM write and GFX power-on")
+>     if s1["023000"] & 0xf00:
+>         raise RuntimeError("voltage manager 0x23000 bits 11:8 set; not enabling it here, stopping before GFX power-on")
+>     write_tvm = tvm_write(logdir / "tvm-write.log")
+>     same_boot()
+>     s2 = snapshot(logdir / "snapshot-s2.log")
+>     same_boot()
+>     if s2["02d000"] != 1 or s2["032000"] != 1 or any(s2[k] != s1[k] for k in CORE_WORDS if k != "02d000"):
+>         raise RuntimeError("post-TVM snapshot unexpected; stopping before GFX power-on")
+>     # Apple's clock-word update, one page at a time, only from the exact Linux values (GFX still off).
+>     if s2["001008"] != 0x80480348 or s2["004008"] != 0x88480348:
+>         raise RuntimeError("page-1/page-4 +8 words are not the expected Linux values; nothing written")
+>     write_pll1 = pll1_write(logdir / "pll1-write.log")
+>     same_boot()
+>     s3 = snapshot(logdir / "snapshot-s3.log")
+>     same_boot()
+>     if s3["001008"] != 0x40480348 or any(s3[k] != s2[k] for k in CORE_WORDS if k != "001008") or s3["004008"] != 0x88480348:
+>         raise RuntimeError("post-PLL1 snapshot unexpected; stopping before the PLL4 write and GFX power-on")
+>     write_pll4 = pll4_write(logdir / "pll4-write.log")
+>     same_boot()
+>     s4 = snapshot(logdir / "snapshot-s4.log")
+>     same_boot()
+>     if s4["001008"] != 0x40480348 or s4["004008"] != 0x48480348 or any(s4[k] != s3[k] for k in CORE_WORDS if k not in ("001008", "004008")):
+>         raise RuntimeError("post-PLL4 snapshot unexpected; stopping before GFX power-on")
+174a445,448
+>     if a["001008"] != 0x40480348 or a["004008"] != 0x48480348:
+>         raise RuntimeError("page-1/page-4 +8 words lost across the GFX cycle; stopping before the bridge plan")
+>     if a["032000"] != 1 or a["02d000"] != 1:
+>         raise RuntimeError("MiscACG or +0x2d000 lost across the GFX cycle; stopping before the bridge plan")
+182a457,460
+>     if b["001008"] != 0x40480348 or b["004008"] != 0x48480348:
+>         raise RuntimeError("page-1/page-4 +8 words lost across the bridge plan; stopping before GPC")
+>     if b["032000"] != 1 or b["02d000"] != 1:
+>         raise RuntimeError("MiscACG or +0x2d000 lost across the bridge plan; stopping before GPC")
+192,194c470,474
+<         "boot=" + pinned + "\n" +
+<         "A=" + repr(a) + "\nB=" + repr(b) + "\nC=" + repr(c) + "\n" +
+<         f"pre-gpc MiscACG=0x{b['032000']:08x} bit0={b['032000'] & 1}\n" +
+---
+>         "boot=" + pinned + "\n" + "order: MiscACG, voltage-manager check, SoC TVM, PLL1 +8, PLL4 +8 (01 in [31:30]), then GFX cycle, bridge, GPC\n" +
+>         "S0=" + repr(s0) + "\nS1=" + repr(s1) + "\nS2=" + repr(s2) + "\nS3=" + repr(s3) + "\nS4=" + repr(s4) + "\nA=" + repr(a) + "\nB=" + repr(b) + "\nC=" + repr(c) + "\n" +
+>         "miscacg-write=" + repr(write) + "\ntvm-write=" + repr(write_tvm) + "\npll1-write=" + repr(write_pll1) + "\npll4-write=" + repr(write_pll4) + "\n" +
+>         "vm_sram 0x23004 S0=0x%08x S1=0x%08x S2=0x%08x A=0x%08x B=0x%08x C=0x%08x\n" % tuple(x["023004"] for x in (s0, s1, s2, a, b, c)) +
+>         "status 0x2d100 S0=0x%08x S1=0x%08x S2=0x%08x A=0x%08x B=0x%08x C=0x%08x\n" % tuple(x["02d100"] for x in (s0, s1, s2, a, b, c)) +
+196a477,484
+>     # Everything above is already on disk. The core window can still hang; the supervisor's watchdog then resets the device.
+>     try:
+>         core = core_id_read(logdir / "core-id.log", files["gpu-watchdog-supervisor"])
+>     except (OSError, RuntimeError, ValueError) as error:
+>         (logdir / "core-id-result.txt").write_text(f"core-id: no result ({error})\n")
+>         raise
+>     same_boot()
+>     (logdir / "core-id-result.txt").write_text("core-id: " + repr(core) + "\n")

@@ -13,10 +13,19 @@ base = bytes(base)
 for name in m.names():
     out = m.build(base, name)
     changed = [i for i in range(0, len(base), 4) if base[i:i+4] != out[i:i+4]]
-    assert changed == [o for o, old, new in m.patches(name) if old != new], name
+    assert changed == sorted(o for o, old, new in m.patches(name) if old != new), name
     assert len(out) == len(base)
 assert m.STR_X23_SP440 == 0xf9000000 | (0x440 // 8 << 10) | (31 << 5) | 23 and m.LDR_X0_SP440 == 0xf9400000 | (0x440 // 8 << 10) | (31 << 5)
 assert m.NEW_CBZ_W0 == m.OLD_CBZ_W25 & ~0x1f
+assert m.ADD_X0_X20_2D == 0x91400000 | (0x2d << 10) | (20 << 5) and m.ADD_X0_X20_22 == 0x91400000 | (0x22 << 10) | (20 << 5)
+assert m.ADD_X0_X0_100 == 0x91000000 | (0x100 << 10) and m.ADD_X0_X24_4 == 0x91000000 | (4 << 10) | (24 << 5)
+assert m.OLD_ADD_X0_X24_C == 0x91000000 | (0xc << 10) | (24 << 5)
+try:
+    m.patches('page14+pmgrx')
+except AssertionError:
+    pass
+else:
+    raise AssertionError('overlap not detected')
 # encodings
 assert m.add_x0_x24(0x20) == m.OLD_CORE_ADD and m.add_x0_x24(0x48) == 0x91012300 and m.add_x0_x24(0x194) == 0x91065300
 assert m.OLD_PAGE5_A == 0x91400000 | (5 << 10) | (20 << 5) and m.NEW_MOVZ == 0xd2a00000 | (0x222 << 5) and m.OLD_MOVZ == 0xd2a00000 | (0x100 << 5)
