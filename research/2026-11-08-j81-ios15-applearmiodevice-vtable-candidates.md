@@ -6,6 +6,8 @@ see [the provenance check](2026-11-08-j81-ios15-kernelcache-provenance.md)).
 This verifies source provenance, not which binary was running on a device.
 No device, build, or MMIO access.
 
+**November 20 correction.** The exact 19H394 factory identifies AppleT7001IO as the controller that publishes an AppleARMIODevice child. Its immediate superclass is AppleARMIO. The subclass attribution below was incorrect. [Exact-build factory and dispatch](2026-11-20-j81-provider-slots.md)
+
 ## Mapped AppleARMPlatform ranges
 
 The kernelcache prelink metadata gives AppleARMPlatform load address
