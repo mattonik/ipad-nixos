@@ -8,8 +8,7 @@
 <     if output != b"OBSERVER_GO":
 ---
 >     if output.removesuffix(b"/ #").strip() != b"OBSERVER_GO":
-147a148,322
-> 
+148a149,158
 > WRITER = Path(__file__).resolve().parent / "pmgr-miscacg-set"
 > WRITER_SHA = "846d9e86bdb36403b49ba602a98a28f32336c5c41c40bec4816c00c56ecaff4b"
 > PLL1_WRITER = Path(__file__).resolve().parent / "pmgr-pll1-set"
@@ -20,7 +19,7 @@
 > PLL4_WRITER_SHA = "a060972c9573a629780b0ea4f1403a3d5c24084b8ba7d6e7ad953be2b2b989cc"
 > TVM_WRITER = Path(__file__).resolve().parent / "pmgr-tvm-set"
 > TVM_WRITER_SHA = "998816f91f8590d3ba7a570f84c12400b6b48009fdf7581027e7679175a5305b"
-> 
+149a160,435
 > 
 > def miscacg_write(path: Path) -> dict[str, int]:
 >     """One guarded store of 1 to PMGR +0x32000, only if it reads 0. Never repeated on a boot."""
@@ -184,7 +183,8 @@
 > MCC_WORDS = (("022000", 0x00000000), ("022090", 0x09070300), ("0220a0", 0x09040300), ("0220b0", 0x09060300), ("022130", 0x09040300))
 > MCC_OLD = {k: v for k, v in MCC_WORDS}
 > MCC_NEW = {k: (v & 0x7fffffff) | 0x80000000 for k, v in MCC_WORDS}
-149a325,435
+> 
+> 
 > def mcc_write(path: Path) -> dict[str, int]:
 >     """Stock MCC enable loop, five words that differ on Linux. All five old words must match exactly; then stock-order stores."""
 >     data = MCC_WRITER.read_bytes()
@@ -296,16 +296,21 @@
 >     raise RuntimeError("core-ID capture incomplete; the device may have been reset by the watchdog, do not retry this boot")
 > 
 > 
-167a454,499
+167a454,504
 >     # Apple's order, from the 19H394 start path: page-1/page-4 +8 (slot +0x5c8), parent -> MCC bank (+0x688),
 >     # MiscACG (+0x690), voltage-manager check (+0x698), SoC TVM; all BEFORE GFX power-on.
 >     STABLE = ("020320", "001008", "004008", "01c200", "02300c", "005004", "02d000", "032000", "023000",
 >               "022000", "022090", "0220a0", "0220b0", "022130")
 > 
+>     MCC_KEYS = {k for k, _ in MCC_WORDS}
+> 
 >     def check_step(cur, prev, changes, what):
+>         # Bit 30 of the MCC-bank words is a hardware status bit (already set on the enabled Linux words, e.g.
+>         # 0xc9040300 at +0x220d0); it can appear after the enable, so it is ignored for those five words only.
 >         for k in STABLE:
 >             want = changes.get(k, prev[k])
->             if cur[k] != want:
+>             mask = 0xbfffffff if k in MCC_KEYS else 0xffffffff
+>             if (cur[k] & mask) != (want & mask):
 >                 raise RuntimeError(f"{what}: word 0x{k} is 0x{cur[k]:08x}, expected 0x{want:08x}; stopping before GFX power-on")
 > 
 >     s0 = snapshot(logdir / "snapshot-s0.log")
@@ -343,11 +348,11 @@
 >     s5 = snapshot(logdir / "snapshot-s5.log")
 >     same_boot()
 >     check_step(s5, s4, {"02d000": 1}, "post-TVM snapshot")
-174a507
+174a512
 >     check_step(a, s5, {"020320": 0x3ff}, "state lost across the GFX cycle")
-182a516
+182a521
 >     check_step(b, a, {"020320": 0x3ff}, "state lost across the bridge plan")
-192,194c526,530
+192,194c531,535
 <         "boot=" + pinned + "\n" +
 <         "A=" + repr(a) + "\nB=" + repr(b) + "\nC=" + repr(c) + "\n" +
 <         f"pre-gpc MiscACG=0x{b['032000']:08x} bit0={b['032000'] & 1}\n" +
@@ -357,7 +362,7 @@
 >         "miscacg-write=" + repr(write) + "\ntvm-write=" + repr(write_tvm) + "\npll1-write=" + repr(write_pll1) + "\npll4-write=" + repr(write_pll4) + "\nmcc-write=" + repr(write_mcc) + "\n" +
 >         "vm_sram 0x23004 S0=0x%08x S1=0x%08x S2=0x%08x A=0x%08x B=0x%08x C=0x%08x\n" % tuple(x["023004"] for x in (s0, s1, s2, a, b, c)) +
 >         "status 0x2d100 S0=0x%08x S1=0x%08x S2=0x%08x A=0x%08x B=0x%08x C=0x%08x\n" % tuple(x["02d100"] for x in (s0, s1, s2, a, b, c)) +
-196a533,540
+196a538,545
 >     # Everything above is already on disk. The core window can still hang; the supervisor's watchdog then resets the device.
 >     try:
 >         core = core_id_read(logdir / "core-id.log", files["gpu-watchdog-supervisor"])

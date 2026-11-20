@@ -82,7 +82,8 @@ def run(job, scenario=None):
     s2 = words(0, **base, w1=N1, w4=N4 if scenario != "pll4-bad-readback" else 0x88480348)
     mcc_ok = scenario != "mcc-bad-readback"
     s3 = words(0, **base, w1=N1, w4=N4, w22=H if mcc_ok else 0, m90=0x89070300 if mcc_ok else 0x09070300,
-               ma0=0x89040300 if mcc_ok else 0x09040300, mb0=0x89060300 if mcc_ok else 0x09060300, m130=0x89040300 if mcc_ok else 0x09040300)
+               ma0=0x89040300 if mcc_ok else 0x09040300, mb0=0x89060300 if mcc_ok else 0x09060300,
+               m130=0xc9040300 if mcc_ok else 0x09040300)  # bit 30 (status) appeared on this word, as on the device
     MCC = dict(w22=H, m90=0x89070300, ma0=0x89040300, mb0=0x89060300, m130=0x89040300)
     s4 = words(1 if scenario != "acg-bad-readback" else 0, **base, w1=N1, w4=N4, **MCC)
     s5 = words(1, **base, tvm=0 if scenario == "tvm-bad-readback" else 1, w1=N1, w4=N4, **MCC)
