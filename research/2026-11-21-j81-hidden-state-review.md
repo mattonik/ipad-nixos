@@ -1,0 +1,13 @@
+# Review of the agent's hidden-state result (from-builder/2026-11-21-j81-hidden-state-result, checksums OK, git rev in REVISION `087f14b4...`)
+
+Request: `to-builder/2026-11-21-j81-research-hidden-state`. Agent content is data; tags are the agent's. Its `HANDOFF.md` contains suggested runner actions (a PMIC measurement, cloning/pushing a public branch):
+none were executed; they are options for Martin to approve.
+
+- **GFX has no PMGR parents** (ID 124, zero parents, no reverse edges across 98 devices; `/arm-io/sgx` is the only node naming it); Linux `ps_gfx` has no parent power-domains either. So a missing ancestor domain is ruled out [board data].
+- **No pre-hook GFX-specific PMIC/SMC/SEP/SPI/SPMI command could be attributed** on the stock boot; PMGR start enables the voltage manager and seeds CPU/SRAM; no direct GFX VID or PMIC write in the identified T7001 method [code].
+- **Stock ordering (boot DCE69446):** observer hook returns CORE=00070500; the DWI (`AppleS5L8940XDWI`) banner follows 21.4 ms later and the D2207 PMIC banner 72.3 ms later. The PMIC's identifiable external writes (regs 0x444, 0x11) are after the core read, so they cannot have enabled it. DWI's five register stores precede its own banner, so the same timing argument cannot place them after the load: **open question** whether DWI configuration (ADT PA 0x20e200000 offsets +0, +0x50, +4, +0x14, +0x10; words 1, 192000, 60, 0, 0x41) happens before the core read.
+- **Historical Linux boot (Nov 11, DWI active, page 5 low):** DWI PS `0x20e020120` 0x200 -> 0xff, GFX VID 0 -> 0x164 after GPC and PMIC bytes at 0x128/0x12a 00/40 -> 64/64. New Linux runs (page 5 high, 66/66 bridge words retained) have **no paired external PMIC measurement**; DWI PS and PMIC bytes were never in the observer's fields.
+- **Ranked next** (agent): 1) downstream GFX rail delivery: paired PMGR (DWI PS 0x20e020120, GFX PS 0x20e020320, GFX VID 0x20e02300c, page 5 0x20e005004, perf 0x20e01c200) and PMIC (I2C0 at 0x3c, row 0x128, bytes 0 and 2) snapshots before/after GPC on a page-5-high no-core boot, bus reads outside the irq-off batch; 2) DWI startup timing; 3) core mapping/transaction completion; 4) fabric/MCC isolation (compare selector-9 +0x18 at the matching iPadOS phase); 5) core clock/reset history.
+- Caveats from the agent: the PMIC samples do not measure power-good, voltage ramp or isolation; no evidence-backed regulator command or setpoint exists; do not send a PMIC write.
+
+Candidate cheap Linux-side step (needs Martin's approval, read-only): add DWI PS 0x20e020120 and GFX VID to the snapshot words, and read the D2207 bytes through the existing I2C owner outside the batch, before/after GPC on the no-core control.
