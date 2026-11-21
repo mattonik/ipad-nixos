@@ -1,0 +1,15 @@
+--- a/arch/arm64/boot/dts/apple/t7001-j81.dts
++++ b/arch/arm64/boot/dts/apple/t7001-j81.dts
+@@ -12,3 +12,12 @@
+ 	compatible = "apple,j81", "apple,t7001", "apple,arm-platform";
+ 	model = "Apple iPad Air 2 (Wi-Fi)";
+ };
++
++/*
++ * The DWI transport carries the voltage requests (CPU, SRAM and GFX codes) to the PMIC.
++ * LLB and iPadOS keep it on; without this, Linux switches it off about 0.7 s into boot
++ * and the GPU core-ID read hangs (research/2026-11-21-j81-dwion-core-result.md).
++ */
++&ps_dwi {
++	apple,always-on;
++};
