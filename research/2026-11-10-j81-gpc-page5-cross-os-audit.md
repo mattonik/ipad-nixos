@@ -93,3 +93,25 @@ sample is inconclusive, not zero. This is a proposed design, not an already
 built or hardware-tested probe.
 
 A [subsequent same-process Linux test](2026-11-10-j81-linux-gpc-page5-timed-probe.md#corrected-hardware-result) sampled `0` after the poll, with the sysfs read returning 34.5 µs after a timestamp taken following the poll.
+
+## Follow-up: same-process Fender status capture
+
+On 2026-11-18, a fresh, checksum-verified RAM boot completed the PMGR cycle
+and then ran the three known GPC writes in the same process as a read-only
+snapshot. The initial GPC state was `0`. The GPC poll reached `0x1` in five
+polls; the watchdog was then disarmed and the Linux dashboard remained
+reachable. The immediate snapshot was:
+
+| Register | Value |
+| --- | --- |
+| Fender/GPC control `0x201e00000` | `0x40000000` |
+| `+0x8` | `0x00000000` |
+| GPC state `+0x1000` | `0x00000001` |
+| `+0x20000` | `0x00000000` |
+| page-5 `0x20e005004` | `0x00000000` |
+
+This removes the ambiguity that the Linux helper might have failed to retain
+its own Fender control bit: it did retain bit 30 while page-5 bit 30 remained
+clear. The iPadOS page-5 value is therefore not simply a mirror of this
+Fender control write. It remains an observed correlation, not a justified
+target for a write or a GPU-core retry.
