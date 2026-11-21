@@ -32,7 +32,7 @@ was loaded, and no other GPU register has been read yet.
 1. Boot to a RAM-root Linux with the observer kernel; the dwi domain is already off.
 2. PLL1 +8, PLL4 +8 (`boot/pmgr-pll-set.c`), MCC bank bit 31 on five words
    (`boot/pmgr-mcc-set.c`), MiscACG `0x20e032000 = 1` (`boot/pmgr-miscacg-set.c`),
-   SoC TVM `0x20e02d000`-area store (`boot/pmgr-tvm-set.c`). Each runner stops if any other PMGR word
+   SoC TVM enable (`0x20e02d000` 0 -> 1; status word `0x20e02d100` follows) (`boot/pmgr-tvm-set.c`). Each runner stops if any other PMGR word
    changed.
 3. **DWI on:** one store of target 15 to `0x20e020120` (`boot/pmgr-dwi-on.c`); refuses unless the
    word reads exactly `0x200`; requires readback `0xff`. A snapshot after it must show no other change.
