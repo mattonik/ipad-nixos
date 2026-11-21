@@ -4,6 +4,10 @@
 is the iPad Air 2 (J81, A8X/T7001), whose GPU is identified by this project as
 Imagination GXA6850 (Rogue/G4G generation).
 
+## Update, 21 November 2026: the core-ID read returns once `dwi` is on
+
+With the PMGR `dwi` power state (`0x20e020120`) switched on before the GFX activation, the core ID at `0x201000020` returned `0x00070500` on Linux in two of two runs; every earlier run hung. PMIC buck row `0x0128` follows the GFX request to `64/64` only with `dwi` on. Summary: [2026-11-21-j81-dwi-gpu-core-id-summary.md](2026-11-21-j81-dwi-gpu-core-id-summary.md). No firmware, job or frame yet; the statements below this paragraph about the hang describe runs without `dwi`.
+
 ## What has been observed
 
 - A three-boundary iPadOS 15.8.5 (`19H394`) planned-panic series now pins
