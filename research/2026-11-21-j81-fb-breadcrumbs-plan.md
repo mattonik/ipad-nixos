@@ -18,3 +18,9 @@ Both runners keep the dry-run and clean-state gates; flow tests and `--verify-on
 Launch as before (fresh DFU, same two boot commands with the bundle's Pongo.bin/m1n1-linux.bin, preflight GO, go-ahead), then from the runner dir
 `python3 j81_observer_paired_campaign.py <new logdir> --bundle ../../../j81-crumbs-bundle-20261121` (or the `-core` bundle).
 Limits: needs a person (or photo) to read the panel before the reset; fbcon text can scroll over the squares if something prints; at most 8 squares; display scanout, not DRAM readback, is the evidence.
+
+## Update: validation run 1 and the format-check fix
+Run 1 of the validation variant (boot with module `1d0447c2...`, logs private `j81-linux-crumbs-results-20261121-run1/`): the batch returned normally (GPC state 1 after 28 polls, ~286 us, page 5 = 0x40000000) but `core` reported `crumb=off`: no squares were drawn.
+Cause: my format check required the substring `8888`, which `x8r8g8b8` (J81's format) does not contain. The DT node itself is fine (read from the live boot: `chosen/framebuffer@87d0de000`, compatible `apple,simple-framebuffer`+`simple-framebuffer`, 1536x2048, stride 6144, `x8r8g8b8`, reg 0x87d0de000 size 0xc00000; simpledrm bound it as fb0).
+Fix: accept `x8r8g8b8`/`a8r8g8b8` by prefix. Rebuilt modules: validation `0f0d53e4a9736188720b9f228cc2f89bec96cf49b51ed7cde705c1cd328a4817`, core variant `d9398f847691a07112ba6df7b80da2c03bbfadd3e83dbed3286c60ed93b65fee`
+(bundles and runners re-pinned; flow tests and `--verify-only` pass). The earlier hashes in this note are superseded. The boot of run 1 cannot be reused (PMGR writes and the GFX activation are done), so the validation needs a fresh DFU cycle.

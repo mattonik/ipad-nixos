@@ -43,9 +43,9 @@ static void fb_crumb_init(void)
 	    of_property_read_u32(np, "height", &h) || of_property_read_u32(np, "stride", &s) ||
 	    of_property_read_string(np, "format", &fmt))
 		goto out;
-	/* 32-bit pixels only, and the squares must fit on screen and inside the region */
+	/* 32-bit pixels only (x8r8g8b8 or a8r8g8b8; J81 reports x8r8g8b8), and the squares must fit on screen and inside the region */
 	if (s < w * 4 || w < CRUMB_MAX * (CRUMB_SQ + CRUMB_GAP) + CRUMB_GAP || h < 2 * CRUMB_SQ ||
-	    resource_size(&res) < (u64)s * h || !strstr(fmt, "8888") ||
+	    resource_size(&res) < (u64)s * h || (strncmp(fmt, "x8r8g8b8", 8) && strncmp(fmt, "a8r8g8b8", 8)) ||
 	    resource_size(&res) > 64ULL * 1024 * 1024)
 		goto out;
 	fb_crumb_dev.base = ioremap_wc(res.start, resource_size(&res));
