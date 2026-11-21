@@ -10,3 +10,5 @@ The compressed batch never ran.
 Cause: my gate compared output exactly, and my test mock returned a bare `CLEAN` instead of the console's `CLEAN/ #`.
 Fix: prefix match; mock now returns `CLEAN/ #`. The boot cannot be reused (PMGR writes and activation already done), so the
 next attempt needs a fresh DFU cycle. Lesson: test mocks must reproduce the console's prompt suffix.
+
+Correction: my first fix dropped a `not`, inverting the gate; the offline test caught it before any run. Test now has `dirty-after-dryrun` (stops) and the prompt-suffixed mock; all scenarios pass.
