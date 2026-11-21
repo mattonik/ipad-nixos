@@ -27,3 +27,9 @@ missing piece. Caveats: 64/64 is not by itself proof of voltage; one run only.
   ~0.7 s into boot with 19 other domains) instead of a post-boot poke.
 - Then the GPU driver bring-up proper.
 Logs (private): artifacts/live/private/j81-linux-dwioncore-results-20261121-run1.
+
+## Run 2 (repeat, fresh boot, same bundle and runner): reproduced
+core_valid=1 core=0x00070500 bridge_ns=48000 bridge_to_gpc_ns=3875 poll_to_core_ns=3834 core_read_ns=458 crumb=on.
+DWI 0x200 -> 0xff and held; GFX VID 0x164; PMIC row 0x0128 00/40 -> 64/64 after batch and at +10 s;
+other rows unchanged. No hang. Two of two runs with DWI on return the core ID; all earlier runs
+without it hung. Logs (private): artifacts/live/private/j81-linux-dwioncore-results-20261121-run2.
