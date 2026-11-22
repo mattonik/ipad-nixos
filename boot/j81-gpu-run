@@ -1,0 +1,48 @@
+#!/bin/sh
+# Runs under /tmp/gpu-watchdog-supervisor --j81-gpu <module-sha256> <boot-id>. TEST ONLY.
+# Loads /tmp/j81-gpu.ko and drives its steps one at a time; every step is announced (stage=before-..., host answers READ) and
+# reported (stage=after-..., host answers FEED n) so the 20 s watchdog is fed only after each completed step.
+set -u
+[ "$#" -eq 2 ] || exit 2
+hash=$1 boot_id=$2
+case "$boot_id" in ????????-????-????-????-????????????) ;; *) exit 2 ;; esac
+case "$hash" in *[!0-9a-f]*|'') exit 2 ;; esac
+[ "${#hash}" -eq 64 ] || exit 2
+dev=/sys/devices/j81-gpu
+[ "$(cat /proc/sys/kernel/random/boot_id)" = "$boot_id" ] || exit 1
+[ "$(uname -r)" = 7.3.0-rc1 ] || exit 1
+[ "$(uname -m)" = aarch64 ] || exit 1
+[ "$(sha256sum /tmp/j81-gpu.ko | cut -d ' ' -f 1)" = "$hash" ] || exit 1
+[ "$(sha256sum /sys/kernel/notes | cut -d ' ' -f 1)" = a2dda2719fef771c109dd2ca2baee4bdc31ec13902aed677f4ea7d9aad7b7f4a ] || exit 1
+[ "$(cat /proc/device-tree/model)" = 'Apple iPad Air 2 (Wi-Fi)' ] || exit 1
+tr '\000' '\n' </proc/device-tree/compatible | grep -qx apple,j81 || exit 1
+grep -q '^rootfs / rootfs ' /proc/mounts || exit 1
+if grep -q '^/dev/' /proc/mounts; then exit 1; fi
+[ ! -e /sys/module/j81_gpu ] || exit 1
+mkdir /tmp/j81-gpu.once || exit 1
+skip=0
+[ -e /tmp/j81-gpu.skip-pll1 ] && skip=1
+/sbin/insmod /tmp/j81-gpu.ko "skip_pll1=$skip" || exit 1
+for step in precheck pmgr activate batch; do
+    printf 'stage=before-%s width=32\n' "$step"
+    IFS= read -r reply
+    [ "$reply" = READ ] || exit 1
+    if ! echo "$step" >"$dev/step"; then
+        printf 'stage=failed-%s %s\nstage=finished rc=1\n' "$step" "$(cat $dev/status)"
+        exit 1
+    fi
+    printf 'stage=after-%s %s\n' "$step" "$(cat $dev/status)"
+done
+# Optional read-only survey: offsets (hex, one per line) staged by the host in /tmp/j81-gpu.peeks.
+if [ -f /tmp/j81-gpu.peeks ]; then
+    exec 3<&0
+    while IFS= read -r off; do
+        case "$off" in 0x????) ;; *) continue ;; esac
+        printf 'stage=before-peek-%s width=32\n' "$off"
+        IFS= read -r reply <&3
+        [ "$reply" = READ ] || exit 1
+        echo "$off" >"$dev/peek" || { printf 'stage=finished rc=1\n'; exit 1; }
+        printf 'stage=after-peek-%s %s\n' "$off" "$(cat $dev/peek)"
+    done </tmp/j81-gpu.peeks
+fi
+printf 'stage=finished rc=0\n'
