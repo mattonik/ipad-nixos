@@ -581,6 +581,42 @@ static int step_g(int n)
 	return -EINVAL;
 }
 
+/*
+ * Z-steps: isolate what the passing g-run did not do. Repeatable, no hardware access except the named one.
+ *   z0  blank the crumb row and draw mark 1 (framebuffer writes only)
+ *   z1  msleep(100) only
+ *   z2  draw mark 2 (framebuffer write only)
+ *   z3  read GPC +0x1000 ten times back-to-back (no delay), recorded in status
+ */
+static u32 z_last[10];
+static bool z3_done;
+
+static int step_z(int n)
+{
+	int i;
+
+	if (state != ST_IDENTIFIED || !wr.w2a_done)
+		return -EBUSY;
+	switch (n) {
+	case 0:
+		fb_crumb_clear();
+		fb_crumb_mark(1);
+		return 0;
+	case 1:
+		msleep(100);
+		return 0;
+	case 2:
+		fb_crumb_mark(2);
+		return 0;
+	case 3:
+		for (i = 0; i < 10; i++)
+			z_last[i] = readl(gpc_regs + GPC_STATE);
+		z3_done = true;
+		return 0;
+	}
+	return -EINVAL;
+}
+
 static ssize_t step_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
 {
 	int ret;
@@ -598,6 +634,14 @@ static ssize_t step_store(struct device *dev, struct device_attribute *attr, con
 		ret = step_w1();
 	else if (sysfs_streq(buf, "w2a"))
 		ret = step_w2a();
+	else if (sysfs_streq(buf, "z0"))
+		ret = step_z(0);
+	else if (sysfs_streq(buf, "z1"))
+		ret = step_z(1);
+	else if (sysfs_streq(buf, "z2"))
+		ret = step_z(2);
+	else if (sysfs_streq(buf, "z3"))
+		ret = step_z(3);
 	else if (sysfs_streq(buf, "g0"))
 		ret = step_g(0);
 	else if (sysfs_streq(buf, "g1"))
@@ -637,6 +681,8 @@ static ssize_t status_show(struct device *dev, struct device_attribute *attr, ch
 				   res.bridge_ns, res.poll_to_core_ns, res.core_read_ns);
 	if (wr.w1_done)
 		n += sysfs_emit_at(buf, n, " w1_before=0x%08x w1_after=0x%08x", wr.w1_before, wr.w1_after);
+	if (z3_done)
+		n += sysfs_emit_at(buf, n, " z3=%08x,%08x,%08x,%08x,%08x,%08x,%08x,%08x,%08x,%08x", z_last[0], z_last[1], z_last[2], z_last[3], z_last[4], z_last[5], z_last[6], z_last[7], z_last[8], z_last[9]);
 	if (gs.next)
 		n += sysfs_emit_at(buf, n, " g_next=%d g_r1=0x%08x g_poll_state=0x%08x g_perr=%d g_p5=0x%08x", gs.next, gs.r1, gs.polls_state, gs.perr, gs.p5);
 	{
