@@ -1,0 +1,53 @@
+--- a/drivers/pmdomain/apple/pmgr-pwrstate.c
++++ b/drivers/pmdomain/apple/pmgr-pwrstate.c
+@@ -16,6 +16,7 @@
+ #include <linux/mfd/syscon.h>
+ #include <linux/reset-controller.h>
+ #include <linux/module.h>
++#include <linux/sched.h>
+ 
+ #define APPLE_PMGR_RESET        BIT(31)
+ #define APPLE_PMGR_AUTO_ENABLE  BIT(28)
+@@ -58,11 +59,13 @@
+ {
+ 	int ret;
+ 	struct apple_pmgr_ps *ps = genpd_to_apple_pmgr_ps(genpd);
+-	u32 reg;
++	u32 reg, old, requested, polled;
+ 
+ 	ret = regmap_read(ps->regmap, ps->offset, &reg);
+ 	if (ret < 0)
+ 		return ret;
++
++	old = reg;
+ 
+ 	/* Resets are synchronous, and only work if the device is powered and clocked. */
+ 	if (reg & APPLE_PMGR_RESET && pstate != APPLE_PMGR_PS_ACTIVE)
+@@ -71,6 +74,7 @@
+ 
+ 	reg &= ~(APPLE_PMGR_AUTO_ENABLE | APPLE_PMGR_FLAGS | APPLE_PMGR_PS_TARGET);
+ 	reg |= FIELD_PREP(APPLE_PMGR_PS_TARGET, pstate);
++	requested = reg;
+ 
+ 	dev_dbg(ps->dev, "PS %s: pwrstate = 0x%x: 0x%x\n", genpd->name, pstate, reg);
+ 
+@@ -88,12 +92,19 @@
+ 		return ret;
+ 	}
+ 
++	polled = reg;
+ 	if (auto_enable) {
+ 		/* Not all devices implement this; this is a no-op where not implemented. */
+ 		reg &= ~APPLE_PMGR_FLAGS;
+ 		reg |= APPLE_PMGR_AUTO_ENABLE;
+ 		ret = regmap_write(ps->regmap, ps->offset, reg);
+ 	}
++
++	if (ps->offset == 0x20320 && !strcmp(genpd->name, "gfx") &&
++	    of_machine_is_compatible("apple,j81"))
++		dev_info(ps->dev, "gfx-request pid=%d old=%08x request=%08x poll=%08x auto=%u auto_word=%08x rc=%d\n",
++			 task_pid_nr(current), old, requested, polled, (unsigned int)auto_enable,
++			 auto_enable ? reg : 0, ret);
+ 
+ 	return ret;
+ }
