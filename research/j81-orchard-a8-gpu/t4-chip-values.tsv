@@ -1,0 +1,29 @@
+value	A8 (Orchard)	J81 (ours)	carry over?	source of J81 value
+GPU	GX6450 "G4P", BVNC 3.10.4.5 (4 clusters)	GXA6850 "G4G", BVNC 7.5.8.3 (CORE_REVISION 0x00070500, CORE_ID 0x011b0803; 8 clusters [inferred from N])	no	observed on J81 Linux
+ID check	refuses CORE_REVISION != 0x00030a00	needs 0x00070500	no: re-derive	observed
+RGX base	0x201000000 (0x100000 reg)	0x201000000	yes	observed (0x201000020 read)
+Fender base	0x201e00000	0x201e00000	yes	observed
+PMGR base	0x20e000000	0x20e000000	yes	observed
+GPU bridges	0x201f00000; +0x18 = 0x80010004 then 32 words at +0x80000	0x201f00000; 66 stores in two tables; +0x18 reads 0x80010004	base and first store yes; tables no	J81 captures (66 bridge writes)
+PMGR GFX PS	+0x20320	+0x20320	yes	J81 code + capture
+PLL lock bit	+0x5004 bit 30	+0x5004 bit 30 (page 5 +4)	yes (meaning now named)	J81 captures
+GFX perf table	+0x1c000, records 1-3, valid bit 21	+0x1c000, 8 states, valid bit set	offset yes; contents no	J81 capture perf-states.tsv
+MISC_ACG / VM_CTL / SOC_TVM	+0x32000 / +0x23000 / +0x2d000	same offsets in J81 recipe	yes	J81 recipe and code
+DWI	not needed by the A8 driver	required on J81 (ps_dwi 0x20e020120 always-on)	no: J81-specific	J81 measurements; Orchard t7001/0012
+GPU clocks / volts	MHz {365, 450, 500, 182, 225, 250}; mV {871, 896, 912}	MHz {365, 450, 500, 550, 182.5, 225, 250, 275}; table codes 912/950/950/996 mV	no	J81 perf-states.tsv
+perf fields in PLATFORM	+0x300 chip info {2,4,(0),4}, +0x30c top state 3, +0x310 16, +0x314 MHz x7, +0x354 mV x7	J81 config is 0x318: no room; location of J81 perf/chip-info fields not traced	no: re-derive from 19H394 (fw slot 0x98 and the CONTROL +0x1028 region)	open
+heap bases (PLATFORM +0x00..+0x2f)	0x5_0, 0x6_0, 0x1_0, 0x1_0, 0x3_0, 0x3_0 (x 2^32)	identical	yes	J81 code (config +0x00..+0x2f)
+VM heap table	general 0x1_00000000 (0xf0000000), PDS 0x3_00000000, USC 0x3_80000000, RGNHDR 0x5_00000000, VIS 0x5_80000000, TRANSFER 0x6_00000000	not traced (heap setup function)	likely (bases match) but verify the USC 0x3_8 split	open
+hardware objects	0x8_00000000 + {0, 0x4000, 0x8000, 0x10000}; YUV CSC, BRN44455, Border (0x800), Fence	same reservation (0x8_00000000, 4 MiB); same three named objects; offsets not traced	reservation and names yes; offsets re-derive	J81 code 0x6684d94, 0x669b18c-0x669b3a4
+CSC tables	2 x 0xa8	2 x 0xc0	no: J81 values from J81 kext data	J81 code
+BorderColorTable	0x800 B of AGXG4P data	0x800 B at 0x7a4c4f0 in AGXG4G data	no: extract J81's own (private file)	J81 code
+SLC boot value	0x3800 = 0x200001	0x3800 = 0x0003550000300001	no	J81 code (request 5/7)
+0x3808	1	1	yes	J81 code
+VM slots	8, host from 1	8 (accel slot 0x760)	count yes; first host slot not traced	J81 code
+0x4c object	0x10	0x10 (accel slot 0x990)	yes	J81 code
+INIT / CONTROL / POLICY / channel sizes	0x1118 / 0x1528 / 0x1058 / 0x990,0x8e0,0x8c0	0x1490 / 0x2058 / 0x938 / 0x990,0x8e0,0x8c0 (= A9's)	no: use the A9 layout	J81 code
+ring control lane	0x30	0x20 (= A9)	no	J81 code
+image	0x24000, no core memory	0x212b4 with core memory 0x52b4 at 0x80000080	no: use our tool	J81 tool
+page size	4 KiB	4 KiB	yes	J81 code (slot 0x878)
+interrupts	AIC 134-138, firmware = 138 (5th)	138 = firmware doorbell; 135-137 Fender	numbering yes; check 134 on J81	J81 code
+AIC windows	AIC+0x1000 (time, 0x1000), AIC+0x4000 (SW set, 0x1000); SW_CLR +0x4080	SW_CLR 0x2_0e10_4090 for IRQ 138 (= AIC+0x4080+0x10)	yes	J81 code (request 5/7)

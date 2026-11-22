@@ -1,0 +1,13 @@
+item	license / status	reuse for J81	caution
+pvr_apple_s8003.c, pvr_apple.c, pvr_apple.h, pvr_apple_chip.h, pvr_apple_layout.[ch], pvr_apple_queue.c, pvr_apple_t8010.c	SPDX GPL-2.0-only OR MIT (each file header)	HIGH as a structure: the s8003_variant split is the right shape for J81 (A8 boot + A9 interface); copy layouts, not values	A9 values attributed in the file to another person's G5P driver; A8 values partly from live iOS dumps ("P4/P5"); many patches carry "Assisted-by: LLM"
+kernel/patches/drivers/gpu/0063 (variant table)	GPL-2.0 (kernel patch)	read first	-
+0067 (A8 boot, power, release, stop, init build)	same	read first: power order, PLL gate, stream, alive, no-alive policy	"built but not yet flown": the PR's own kernel was built, not run; the tested tree had extra debug code
+0020 (A9 boot), 0017 (LDR placement), 0043/0044 (firmware IRQ)	same	read second: the A9 INIT/CONTROL/POLICY fill that J81 sizes match	A9/A10 paths changed by 0063-0073 were not retested on A9/A10 (PR text)
+0065 (binding), 0066 (no power-domains)	same	read: J81 would need its own compatible and a node without ps_gfx if we drive PS like Apple	-
+0068-0073 (compute, render, faults, completion, timeline)	same	later; job formats are A8 firmware (iOS 12) and must be rechecked against 19H394	a8_joint experimental (one test run); 0073 statistics not run on device without it
+devices/t7000/0011, 0012	GPL-2.0-or-later repo	DT shape (rgx, fender, pmgr, bridges; 5 interrupts)	0012 enables boards that never ran it
+devices/t7001/0012 (dwi always-on)	same	directly applicable to J81	written from this project's measurement
+examples/ipod-gpu-drm/tools/extract-fw.py	repo license	method only (LDR by magic + length walk; border table by hash)	do not run: it fetches Apple's IPSW; pins A8 hashes only
+OrchardLinux/mesa#18 (MIT)	open PR	not needed before alive	draft; kit built from an older commit (4ed8087c) than the PR head (e4483baa)
+kit 4 prebuilt binaries	GPL-2.0 kernel, mixed userland	none	do not run on J81; not inspected beyond listing
+claims to treat as claims	-	-	"Vulkan 1.2, GLES 3.1 via Zink, 514k jobs" (iPod only); "replays it into the core when the core is powered up" (no separate replay proof, but the firmware boots, so the reset release in the stream took effect on A8); 100 ms pauses "kept because every run had them"; ~290 alive events/s (iPad 5)

@@ -1,0 +1,51 @@
+J81 object (our name)	J81 offset	J81 content (ours)	Orchard name	A9 offset / value (iPadOS 16)	A8 offset / value (iOS 12.4)	verdict	evidence
+root (INIT)	size 0x1490	-	S8003_INIT 0x44	0x1490	0x1118	J81 = A9 size	[code-orchard] S:553, S:3417; [code-j81] request 8
+root	+0x00..+0x1c	fwaddr {ctl, buf} TA, 3D, CL, DevCtl	WORK_CTL/RING x3, DC_CTL/RING	+0x00..+0x1c same order	same	match (our "TA,3D,CL" are WORK lanes 0x60/0x64/0x68)	S:809-810
+root	+0x20..+0x3c	event, log (ctl 0x80, buf 0xb000), FWTRACE 0x2c00, 0x2400 ring	EVENT_CTL/EVENTS, LOG_CTL/LOGS, STATS_CTL/STATS (0x2c00), TRACE_CTL/TRACE (0x2400)	same	same	match; our "FWTRACE" = STATS, our 36-byte ring = TRACE	S:775-780
+root	+0x64..+0x74	fwaddr of 0x990, 0x8e0, 0x8c0, 0x938, 0x28	CHANNEL (TA), CHANNEL+1 (3D), CHANNEL+2 (CU), POLICY, 0x4b	+0x64, sizes 0x990/0x8e0/0x8c0/0x938/0x28	+0x88, sizes 0x990/0x8e0/0x8c0/0x1058/0x28	J81 = A9; resolves the four "unresolved blocks"	S:812, S:553-560
+root	+0x44c..+0x45c	fwaddr of 0x84 block, fw+0x218 block, config, fw+0x3f8, second log 0x36000	0x4e (0x84), 0x4c, PLATFORM, TAG_SEEN 0x85, 0x4f (0x36000)	+0x44c same order	+0x470 same order	J81 = A9 offsets	S:814
+root	+0x480/+0x484/+0x48c	core-memory copy fwaddr (region 0x40000000), VA, size	core memory	+0x480/+0x484/+0x48c	+0x4a4/+0x4a8 (no core memory: image end, size 0)	J81 = A9	S:824-828, S:3693-3696
+root	+0x490..+0x148f	never host-written	-	never written by the A9 driver; A9 reaches alive	never written by the A8 driver	zero is sufficient on A9 [claim+code]; J81 [inferred]	S:773-870
+CHANNEL x3 (0x990, 0x8e0, 0x8c0)	+0/+4/+8/+0xc	{0, self, 0, self+8}	channel headers	same	same	match	S:816-821
+CHANNEL+1 (0x8e0)	+0x778	0xffffffff	-	0xffffffff	not written on A8	J81 = A9	S:822, S:3697
+0x938 block	all	filled by fw slot 0xa0 (floats 1.0, 100); timing unresolved	POLICY (power governor record)	host fills BEFORE boot: +8 = 0x4_00000000, +0x10 = 1.0f, +0x28 = 0x1_00000001, +0x38 = 100, +0x8f8 = timer now; perf pins +0x688/+0x68c/+0x6f0/+0x6f4	0x1058: +0x10 = 1.0f, +0x3c = 100, +0x1008 = timer, governor constants from a live dump	block identified [code-orchard]; J81 offsets match A9 size only [inferred]; fill before boot as A9 does	S:733-765, S:860-864
+0x28 block	all	zeroed	0x4b: lockup state (+0 state 0/1/2, +8..+0x10 per-engine counts, +0x14 total, +0x18 first locked engine)	zeroed	zeroed	identified	S:5486-5490 comment (patch 0070)
+fw+0x218 block	size = accel slot 0x990	-	0x4c: {BRN44455Object VA, FenceBuffer VA}	8 bytes	0x10 bytes	J81 slot 0x990 returns 0x10 = A8 size	[code-j81] vtable 0x6f2f2d0+0x990 -> 0x669b790 mov w0,#0x10; S:3786-3787
+0x84 block	all	zeroed	0x4e	0x84 zeroed	0x84 zeroed	match	S:553
+fw+0x3f8 / fw+0x3f0 / fw+0x400	4 or 8 x accel slot 0x760	-	TAG_SEEN 0x85, TAG_HOST 0x84, MMU_ROOT 0x86 (per VM slot)	256 slots: 0x400/0x400/0x800	8 slots: 0x20/0x20/0x40	J81 slot 0x760 returns 8 -> 0x20/0x20/0x40 (A8 sizes)	[code-j81] 0x6699728 mov w0,#0x8
+state (CONTROL)	size 0x2058	-	S8003_CONTROL 0x5e	0x2058	0x1528	J81 = A9	S:562
+state	+0x24	120	gpu_temperature_limit	+0x24 = 0x78	+0x34 = 0x78	J81 = A9	S:866
+state	+0x30	1	-	+0x30 = 1	(+0x28 = 1)	J81 = A9	S:867
+state	+0x1044/+0x1048	fwaddr fw+0x3f0 / fw+0x400	TAG_HOST / MMU_ROOT	+0x1044/+0x1048	+0xd0e/+0xd12	J81 = A9	S:868-869
+state	+0x104c	not stored by J81 at init	-	A9 driver writes 1	A8 +0xd16 = 1	J81 kext has no +0x104c store [code-j81: only 0x6689c58/+0x1044 and 0x6689c78/+0x1048]; leave 0 unless alive fails	grep of 19H394 AGXG4G
+state	+0x1028..+0x1040	not traced	power envelope 3348 mW, floor, top, overrides	A9 pins governor (s8003_init_perf)	A8 +0xc66.. power target 1867, clock targets 100*q	open for J81: perf pin fields	S:733-765
+state	MMU_ROOT object +0	-	page catalogue of GPU context 0 (kernel VM)	u64 PC phys	same	write the same PC as BIF_CAT_BASE0	S:869-870, S:3775-3777
+config (PLATFORM)	size 0x318	-	S8003_PLATFORM 0x4d	0x78c	0x4dc	J81 size is its own; head follows A8	S:559, S:3425
+config	+0x00..+0x2f	6 u64: 0x5_0, 0x6_0, 0x1_0, 0x1_0, 0x3_0, 0x3_0	heap bases; +0x20/+0x28 = PDS and USC execution base	different values (0x6_0, 0xffc00000, PDS, USC)	identical 6 values	J81 = A8; meaning resolved	S:3706-3712
+config	+0x30	u64 from accel+0x1828 obj slot 0x88	YUV CSC buffer VA (hardware object at 0x8_00000000)	-	+0x30	J81 = A8 [inferred from position + kext string fYUVCSCTableMapping at 0x6672480]	S:3783
+config	+0x38..+0x1b7	2 x 0xc0 copied from accel+0x18f0 / +0x19b0	two colour-space-conversion blocks (A8: 2 x 0xa8 from acc+0x1798; Q13 coefficients)	-	+0x38..+0x187	J81 = A8 shape, bigger entries [inferred]; values must come from the J81 kext, not the A8 table	S:3605-3612
+config	+0x1b8	u64 accel slot 0x920	BorderColorTable VA	-	+0x188	resolved: slot 0x920 -> accel+0x1c18, the object filled with 0x800 B copied from kext data 0x7a4c4f0	[code-j81] 0x669b120, 0x669b2e0-0x669b300; S:3784
+config	+0x1c0..+0x24f	9 x {u64 phys, u32 fwaddr, u32 size}	register windows ("PIO"): Fender 0x5000, AIC+0x1000 0x1000 (time), AIC+0x4000 0x1000 (SW set), RGX 0x20000 with fwaddr 0	4 entries at +0x630	4 entries at +0x190 (12 slots to +0x250)	same order as ours (0 Fender, 1 AIC timer, 2 AIC SW, 3 RGX); A8 fills 4 and reaches alive, so 4..8 zero [claim+code]; RGX fwaddr 0	S:3667-3675, S:3715-3721
+config	+0x250	GPC flag (1)	Fender boot	A9 +0x6c0 = 1 [inferred same role]	+0x250 = 1	resolves meaning: firmware is told it boots via the Fender stream	S:3722
+config	+0x254	lockup detect	gpu_lockup_detection	-	+0x254 = 1	match	S:3723
+config	+0x258	1	PIO supported	-	+0x258 = 1	match	S:3724
+config	+0x26c..+0x28c	timeslice, -, agf_timer, ..., usc_exc_state	agf_timeslice, -, agf_timer, timer period, ...	-	+0x274..+0x2dc	partial: our +0x26c/+0x270/+0x274 = A8 +0x274/+0x278/+0x27c (shift -8) [inferred]; the rest unresolved	S:3725-3734
+config	+0x290..+0x29b	u64 accel+0xd38 / u32 accel+0xd44	-	-	no A8 equivalent written	still unresolved	-
+config	+0x2e4/+0x2e8	0x10 / 0x400	host interrupt word 4*(irq/32) and bit BIT(irq%32)	+0x758/+0x75c	+0x494/+0x498 (P4 0x10, 0x400)	match; AIC 138 -> 0x10/0x400	S:3745-3746
+config	+0x2ec	0x1020 & (page-1) = 0x20	AIC_TIME offset in the time window	+0x760 = 0x1020 (16 KiB window)	+0x49c = 0x20	match	S:3747
+config	+0x2f0/+0x2f4	from LDR	thread-1 pc / sp	+0x764/+0x768	+0x4a0/+0x4a4	resolved: 0x20000000 / 0x8000b3c8 for 19H394	[code-j81] 0x6690078-0x669008c
+config	+0x2f8	u64 accel slot 0x928	FenceBuffer VA	-	+0x4a8	resolved: slot 0x928 -> accel+0x1c20 (third object, FenceBuffer)	[code-j81] 0x669b144, 0x669b3a4
+config	+0x300	0xe1c0000000	image VA	+0x774	+0x4b0	match	S:3750
+config	+0x308/+0x30c	0 / 7	u64 0x7_00000000 (DM 7 used in OUTA1)	A9 +0x77c = 0x300000 (PM size) differs	+0x4b8 = 0x7_00000000	J81 = A8	S:3751, S:3355
+config	+0x310..+0x317	not traced	(A8 +0x4c8.. agf_gtp_ks 0xffff, frg_ks 7, compute_ks 7 lie beyond J81's 0x318)	-	+0x4c8..+0x4d0	open	S:3752-3754
+hardware objects	GPU VA	J81 kext reserves 0x8_00000000 size 0x400000 per GART (0x6684d94, 0x6685510) and creates BRN44455Object (accel+0x1c10), BorderColorTable (+0x1c18, 0x800 B), FenceBuffer (+0x1c20)	YUV CSC, BRN44455, BorderColorTable, FenceBuffer at 0x8_00000000 + {0, 0x4000, 0x8000, 0x10000}, 0x4000 each, mapped in every VM, plain flags	-	A8 offsets as left	same objects [code-j81 strings c7b276/c7b285/c7b296]; A8 notes the firmware never posts alive if they carry PM/META protect [claim]	S:3386-3403
+rings	control	0x20 per lane (consumer +0, producer +0x10); log = 4 lanes (0x80)	RING_CTL	0x20	0x30	J81 = A9	S:196-198, S:3415
+rings	work/DC entries	256 x 20 B (0x1400)	-	0x1400	0x1400	match	S:553-585
+rings	events	256 x 44 B (0x2c00)	-	same	same	match	S:199
+events	type 0	alive (+4 META PC of idle loop)	S8003_EVENT_ALIVE	alive; posted each scheduler run (~290/s on iPad 5)	same	match; host must drain or the ring fills in about 1 s [claim]	S:203-217
+events	type 1	four completion masks	S8003_EVENT_STAMP (job stamp)	same	same	match	S:204, S:1199
+events	type 4	unresolved	lockup recovery: +8 arm (0 MMU fault, 1 TA/3D watchdog), +0xc/+0x18, +0x1c, +0x20, +0x24 per-group bytes	logged as fault	decoded from the A8 firmware	new for J81 [code-orchard, A8 firmware; inferred for J81]	S:5458-5491
+events	types 2, 3, 5, 7, 8	unresolved	logged as "firmware fault"	same	same	still unresolved	S:1199-1206
+events	type 6	META-halt path	-	-	-	ours only	request 8
+alive check	-	-	host polls the event ring every 1 ms for up to 3 s; no IRQ needed; no kick before alive	same	same	matches Apple's waitForFWAlive (ours); 3 s vs our 10 s	S:1238-1251, S:4215
+what the firmware needs before alive	-	-	INIT/CONTROL/PLATFORM/POLICY filled as above; register windows mapped; zeroed page at GPU VA 0 (firmware context reads 0 while starting); hardware objects present with plain flags	A9 also maps a spare page for CR 0xe160 (not in J81 stream)	A8: no spare page	nothing else is checked by either driver; whether the firmware validates fields is still not known	S:955-990, S:3552-3576

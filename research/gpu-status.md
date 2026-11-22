@@ -8,6 +8,8 @@ For the stock 19H394 path from the core-ID read to running META firmware (LDR im
 
 For the reproducible LDR layout tool, the Fender ConfigRAM correction (it is a write-only replay list at `+0x10000`, not a mailbox), the comparison with the public Imagination driver and the revised first-boot steps, see [j81-ldr-tool-fwif/RESULT.md](j81-ldr-tool-fwif/RESULT.md) (2026-11-22, offline).
 
+For the comparison with Orchard's A8 GPU driver (OrchardLinux/orchard PR #196): J81 combines the A8 boot path with the A9 firmware-interface layout, PMGR `+0x5004` bit 30 is the GPU PLL-lock bit, and the revised first-boot steps, see [j81-orchard-a8-gpu/RESULT.md](j81-orchard-a8-gpu/RESULT.md) (2026-11-22, offline).
+
 ## What has been observed
 
 - A three-boundary iPadOS 15.8.5 (`19H394`) planned-panic series now pins
