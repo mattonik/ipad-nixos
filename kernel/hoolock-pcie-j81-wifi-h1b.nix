@@ -124,6 +124,8 @@ let
     # Wi-Fi cleanup W2: the PCIe DART window as the pin's five-cell iommu-map specifier; drops apple,iova-window/-rebase and apple,pci-alias
     # from the DT, so the 0063/0064/0076/0080 paths are no longer taken (research/2026-11-01-orchardlinux-org-review.md).
     patch -d "$out" -p1 < ${./patches/0123-t7001-air2-pcie-dart-five-cell-iommu-map.patch}
+    # dwi (PMGR 0x20e020120) always on: Linux otherwise switches it off ~0.7 s into boot, which blocks the GFX voltage request and hangs the GPU core-ID read (research/2026-11-22-j81-dwi-always-on-result.md).
+    patch -d "$out" -p1 < ${./patches/0125-j81-dwi-always-on.patch}
   '';
   buildArgs = builtins.removeAttrs args [ "source" "hoolockConfig" "runCommand" ];
 in
