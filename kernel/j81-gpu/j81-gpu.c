@@ -520,6 +520,63 @@ out:
 	return 0;
 }
 
+/*
+ * G-steps (after three F1 hangs at the 1 -> 0 transition): ONE primitive per host-visible stage so the last stage line names it.
+ *   g0  write GPC +0x1000 = 0x10 and NOTHING else (no read afterwards, non-posted store)
+ *   g1  one single read of GPC +0x1000
+ *   g2  bounded poll (2 s) for busy clear, reads only GPC +0x1000
+ *   g3  100 ms sleep, then write +0x1000 = 0x11 and nothing else
+ *   g4  bounded poll for busy clear, state must be 1, then PMGR +0x5004 bit 30 must be set (no RGX read in any g-step)
+ * Order enforced: g0 -> g1 -> g2 -> g3 -> g4, each once, from state 1 after W2a.
+ */
+static struct { int next; u32 r1, polls_state, p5; int perr; } gs;
+
+static int step_g(int n)
+{
+	int i, ret;
+	u32 v;
+
+	if (state != ST_IDENTIFIED || !wr.w2a_done || gs.next != n)
+		return -EBUSY;
+	gs.next = n + 1;
+	switch (n) {
+	case 0:
+		if ((readl(gpc_regs + GPC_STATE) & 0x1f) != 0x01)
+			return fail(-EBUSY, "g-gpc-not-state-1");
+		writel(0x10, gpc_regs + GPC_STATE);
+		return 0;
+	case 1:
+		gs.r1 = readl(gpc_regs + GPC_STATE);
+		return 0;
+	case 2:
+		for (i = 0; i < 200000; i++) {
+			v = readl(gpc_regs + GPC_STATE);
+			if (!(v & 0x10))
+				break;
+			udelay(10);
+		}
+		gs.polls_state = v;
+		gs.perr = i == 200000 ? -ETIMEDOUT : 0;
+		return gs.perr ? fail(gs.perr, "g2-poll-timeout") : 0;
+	case 3:
+		msleep(100);
+		writel(0x11, gpc_regs + GPC_STATE);
+		return 0;
+	case 4:
+		ret = gpc_wait_idle();
+		v = readl(gpc_regs + GPC_STATE);
+		gs.polls_state = v;
+		if (ret || (v & 0x1f) != 0x01)
+			return fail(ret ? ret : -EIO, "g4-state1-not-reached");
+		udelay(20);
+		gs.p5 = readl(pmgr + PM_PAGE5_4);
+		if (!(gs.p5 & 0x40000000))
+			return fail(-EIO, "g4-pll-lock-clear");
+		return 0;
+	}
+	return -EINVAL;
+}
+
 static ssize_t step_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
 {
 	int ret;
@@ -537,6 +594,16 @@ static ssize_t step_store(struct device *dev, struct device_attribute *attr, con
 		ret = step_w1();
 	else if (sysfs_streq(buf, "w2a"))
 		ret = step_w2a();
+	else if (sysfs_streq(buf, "g0"))
+		ret = step_g(0);
+	else if (sysfs_streq(buf, "g1"))
+		ret = step_g(1);
+	else if (sysfs_streq(buf, "g2"))
+		ret = step_g(2);
+	else if (sysfs_streq(buf, "g3"))
+		ret = step_g(3);
+	else if (sysfs_streq(buf, "g4"))
+		ret = step_g(4);
 	else if (sysfs_streq(buf, "f1a"))
 		ret = step_f(2);
 	else if (sysfs_streq(buf, "f1"))
@@ -566,6 +633,8 @@ static ssize_t status_show(struct device *dev, struct device_attribute *attr, ch
 				   res.bridge_ns, res.poll_to_core_ns, res.core_read_ns);
 	if (wr.w1_done)
 		n += sysfs_emit_at(buf, n, " w1_before=0x%08x w1_after=0x%08x", wr.w1_before, wr.w1_after);
+	if (gs.next)
+		n += sysfs_emit_at(buf, n, " g_next=%d g_r1=0x%08x g_poll_state=0x%08x g_perr=%d g_p5=0x%08x", gs.next, gs.r1, gs.polls_state, gs.perr, gs.p5);
 	{
 		static const char *const fn[3] = { "f1", "f2", "f1a" };
 		int k;
