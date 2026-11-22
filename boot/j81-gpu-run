@@ -34,18 +34,6 @@ for step in precheck pmgr activate batch; do
     fi
     printf 'stage=after-%s %s\n' "$step" "$(cat $dev/status)"
 done
-# Optional read-only survey: offsets (hex, one per line) staged by the host in /tmp/j81-gpu.peeks.
-if [ -f /tmp/j81-gpu.peeks ]; then
-    exec 3<&0
-    while IFS= read -r off; do
-        case "$off" in 0x????) ;; *) continue ;; esac
-        printf 'stage=before-peek-%s width=32\n' "$off"
-        IFS= read -r reply <&3
-        [ "$reply" = READ ] || exit 1
-        echo "$off" >"$dev/peek" || { printf 'stage=finished rc=1\n'; exit 1; }
-        printf 'stage=after-peek-%s %s\n' "$off" "$(cat $dev/peek)"
-    done </tmp/j81-gpu.peeks
-fi
 # Optional META slave-port survey: addresses (0x + 8 hex digits, one per line) staged in /tmp/j81-gpu.metas.
 if [ -f /tmp/j81-gpu.metas ]; then
     exec 3<&0
@@ -57,5 +45,17 @@ if [ -f /tmp/j81-gpu.metas ]; then
         echo "$addr" >"$dev/meta" || { printf 'stage=failed-meta-%s\nstage=finished rc=1\n' "$addr"; exit 1; }
         printf 'stage=after-meta-%s %s\n' "$addr" "$(cat $dev/meta)"
     done </tmp/j81-gpu.metas
+fi
+# Optional read-only survey: offsets (hex, one per line) staged by the host in /tmp/j81-gpu.peeks.
+if [ -f /tmp/j81-gpu.peeks ]; then
+    exec 3<&0
+    while IFS= read -r off; do
+        case "$off" in 0x????) ;; *) continue ;; esac
+        printf 'stage=before-peek-%s width=32\n' "$off"
+        IFS= read -r reply <&3
+        [ "$reply" = READ ] || exit 1
+        echo "$off" >"$dev/peek" || { printf 'stage=finished rc=1\n'; exit 1; }
+        printf 'stage=after-peek-%s %s\n' "$off" "$(cat $dev/peek)"
+    done </tmp/j81-gpu.peeks
 fi
 printf 'stage=finished rc=0\n'

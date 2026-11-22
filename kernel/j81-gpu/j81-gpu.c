@@ -47,7 +47,7 @@
 #define GPC_STATE 0x1000
 #define GPC_MASK 0x10000
 #define CORE_BASE 0x201000000ULL
-#define CORE_SIZE 0x1000
+#define CORE_SIZE 0x4000
 #define BRIDGE_SIZE 0x81000
 #define POLL_LIMIT 1000
 #define POLL_DELAY_US 10
@@ -81,6 +81,13 @@ static const struct { u32 off; const char *name; } peek_list[] = {
 	{ 0x0100, "SOFT_RESET_lo" }, { 0x0104, "SOFT_RESET_hi" }, { 0x0130, "EVENT_STATUS_lo" },
 	{ 0x0160, "TIMER_lo" }, { 0x03c8, "SIDEKICK_IDLE_lo" }, { 0x08f8, "MARS_IDLE_lo" },
 	{ 0x0a10, "META_SP_MSLVCTRL0" }, { 0x0a18, "META_SP_MSLVCTRL1" },
+	/* Post-research reads (packet 5/7 result): stock boot registers; read-only. */
+	{ 0x0ac8, "META_SP_MSLVIRQSTATUS" }, { 0x0bf8, "META_BOOT_lo" }, { 0x0bfc, "META_BOOT_hi" },
+	{ 0x1200, "BIF_CAT_BASE0_lo" }, { 0x1204, "BIF_CAT_BASE0_hi" }, { 0x1288, "BIF_FAULT_1288" },
+	{ 0x1290, "BIF_IRQ_1290" }, { 0x12a8, "BIF_CTRL" }, { 0x12b0, "BIF_FAULT_STATUS_12b0" },
+	{ 0x1340, "REG_1340" },
+	{ 0x3800, "SLC_CTRL_MISC_lo" }, { 0x3804, "SLC_CTRL_MISC_hi" }, { 0x3808, "SLC_REG_3808" },
+	{ 0x3898, "SLC_IDLE" },
 };
 
 /* META register addresses `meta` may read (META address space; names from the upstream PowerVR headers). */
@@ -89,6 +96,11 @@ static const struct { u32 addr; const char *name; } meta_list[] = {
 	{ 0x04801000, "T1ENABLE" }, { 0x04801010, "T1STATUS" }, { 0x048000b0, "TXCLKCTRL" },
 	{ 0x048000e8, "T0PRIVEXT" }, { 0x04830030, "SYSC_JTAG_THREAD" }, { 0x04830018, "MMCU_DCACHE_CTRL" },
 	{ 0x04830020, "MMCU_ICACHE_CTRL" }, { 0x04850000, "MMCU_SEG0_BASE" }, { 0x04850004, "MMCU_SEG0_LIMIT" },
+	{ 0x04850008, "MMCU_SEG0_OUTA0" }, { 0x0485000c, "MMCU_SEG0_OUTA1" },
+	{ 0x04850010, "MMCU_SEG1_BASE" }, { 0x04850014, "MMCU_SEG1_LIMIT" }, { 0x04850018, "MMCU_SEG1_OUTA0" },
+	{ 0x0485001c, "MMCU_SEG1_OUTA1" }, { 0x04850020, "MMCU_SEG2_BASE" }, { 0x04850024, "MMCU_SEG2_LIMIT" },
+	{ 0x04850028, "MMCU_SEG2_OUTA0" }, { 0x0485002c, "MMCU_SEG2_OUTA1" }, { 0x04850030, "MMCU_SEG3_BASE" },
+	{ 0x04850034, "MMCU_SEG3_LIMIT" }, { 0x04850038, "MMCU_SEG3_OUTA0" }, { 0x0485003c, "MMCU_SEG3_OUTA1" },
 };
 #define MSLVCTRL0 0x0a10
 #define MSLVCTRL1 0x0a18
