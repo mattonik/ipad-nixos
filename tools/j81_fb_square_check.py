@@ -24,8 +24,8 @@ w, h, s = (be(f"{node}/{k}", 4) for k in ("width", "height", "stride"))
 print(f"node={node} addr=0x{addr:x} size=0x{size:x} width={w} height={h} stride={s}")
 print(run("pkill tablet-dashboard; killall tablet-dashboard 2>/dev/null; echo dashboard-stopped"))
 y0 = h - SQ - GAP
-cmd = (f"A={addr}; for n in $(seq 1 {N}); do x0=$((8+(n-1)*{SQ+GAP})); "
-       f"for y in $(seq 0 {SQ-1}); do for x in $(seq 0 {SQ-1}); do "
-       f"devmem $((A+({y0}+y)*{s}+(x0+x)*4)) 32 0xffffffff; done; done; done; echo squares-done")
+cmd = (f"dd if=/dev/zero bs=128 count=1 2>/dev/null | tr '\\000' '\\377' >/tmp/sqrow; test $(wc -c </tmp/sqrow) -eq 128 || echo rowfile-bad; "
+       f"A={addr}; for n in $(seq 1 {N}); do x0=$((8+(n-1)*{SQ+GAP})); "
+       f"for y in $(seq 0 {SQ-1}); do dd if=/tmp/sqrow of=/dev/fb0 bs=128 count=1 oflag=seek_bytes seek=$((({y0}+y)*{s}+x0*4)) conv=notrunc 2>&1 | grep -i 'error\\|invalid\\|not' ; done; done; echo squares-done")
 print(run(cmd, 120))
 sh.close()
