@@ -1,4 +1,4 @@
-# TEST ONLY. Observer kernel (0123+0124, as kernel/gpu-pmgr-once) plus dwi always-on (0126). Keeps the PMGR "dwi" power domain on (apple,always-on) in the J81 device tree.
+# TEST ONLY. Observer kernel (0123 + research/probes/j81-linux-gfx-request.patch, as kernel/gpu-pmgr-cycle with traceGfxRequests; notes sha a2dda27) plus dwi always-on (0125). Keeps the PMGR "dwi" power domain on (apple,always-on) in the J81 device tree.
 # Boot files (Pongo.bin, m1n1.bin, bootargs, initramfs) come from the same control payload as kernel/gpu-pmgr-once.
 { repo }:
 let
@@ -8,8 +8,8 @@ let
   testKernel = base.overrideAttrs (old: {
     patches = (old.patches or []) ++ [
       (builtins.path { path = ../patches/0123-apple-pmgr-pwrstate-stop-on-errors.patch; name = "gpu-pmgr-errors.patch"; })
-      (builtins.path { path = ../patches/0124-j81-gpu-pmgr-test-node.patch; name = "gpu-pmgr-test-node.patch"; })
-      (builtins.path { path = ../patches/0126-j81-dwi-always-on-on-observer.patch; name = "j81-dwi-always-on-observer.patch"; })
+      (builtins.path { path = ../../research/probes/j81-linux-gfx-request.patch; name = "j81-linux-gfx-request.patch"; })
+      (builtins.path { path = ../patches/0125-j81-dwi-always-on.patch; name = "j81-dwi-always-on.patch"; })
     ];
   });
   testPayload = packages.m1n1-hoolock-wifi.overrideAttrs (old: {
