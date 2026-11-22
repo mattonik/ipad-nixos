@@ -101,6 +101,24 @@ class DashboardTests(unittest.TestCase):
         self.assertNotIn("tablet-dashboard", hook)
 
 
+class GpuSectionTests(unittest.TestCase):
+    def test_gpu_not_loaded_and_loaded(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            build_tree(root)
+            out = run(root, "--once", GPU_STATUS=str(root / "nogpu")).stdout
+            self.assertIn("== gpu ==", out)
+            self.assertIn("j81-gpu: driver not loaded", out)
+            (root / "gpu").write_text("state=identified reason=- skip_pll1=0 crumb=on core=0x00070500 id=0x011b0803 hi=0x00000000 bvnc_rev=0.7.5.0 gpc=0x00000001\n")
+            out = run(root, "--once", GPU_STATUS=str(root / "gpu")).stdout
+            self.assertIn("j81-gpu: identified", out)
+            self.assertIn("core: 0x00070500  id: 0x011b0803  rev: 0.7.5.0", out)
+            (root / "gpu").write_text("state=failed reason=dwi-not-on skip_pll1=0 crumb=on\n")
+            out = run(root, "--once", GPU_STATUS=str(root / "gpu")).stdout
+            self.assertIn("j81-gpu: failed", out)
+            self.assertNotIn("core:", out)
+
+
 class DashColsTest(unittest.TestCase):
     def test_lines_are_cut_to_dash_cols(self):
         with tempfile.TemporaryDirectory() as d:

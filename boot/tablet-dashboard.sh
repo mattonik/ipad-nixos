@@ -5,11 +5,12 @@
 #
 #   tablet-dashboard [--once] [--interval SECONDS]     Ctrl-C quits
 #
-# Overridable for tests: TABLET_STATUS (command), POLICY_LOG, DROPBEAR_PID. DASH_COLS cuts every line to that many columns (the iPad screen at the
+# Overridable for tests: TABLET_STATUS (command), POLICY_LOG, DROPBEAR_PID, GPU_STATUS. DASH_COLS cuts every line to that many columns (the iPad screen at the
 # 16x32 console font is 96 columns wide; a longer line would wrap and push the top off the screen).
 TABLET_STATUS=${TABLET_STATUS:-tablet-status}
 POLICY_LOG=${POLICY_LOG:-/var/log/charging-policy.log}
 DROPBEAR_PID=${DROPBEAR_PID:-/var/run/dropbear.pid}
+GPU_STATUS=${GPU_STATUS:-/sys/devices/j81-gpu/status}
 INTERVAL=5
 ONCE=
 
@@ -58,6 +59,19 @@ render() {
 		echo "charging policy: running"
 	else
 		echo "charging policy: not running"
+	fi
+	echo
+	echo "== gpu =="
+	if [ -r "$GPU_STATUS" ]; then
+		gpu=$(cat "$GPU_STATUS" 2>/dev/null)
+		gpu_field() { printf '%s\n' "$gpu" | tr ' ' '\n' | sed -n "s/^$1=//p" | head -n 1; }
+		echo "j81-gpu: $(gpu_field state)"
+		core=$(gpu_field core)
+		if [ -n "$core" ]; then
+			echo "core: $core  id: $(gpu_field id)  rev: $(gpu_field bvnc_rev)"
+		fi
+	else
+		echo "j81-gpu: driver not loaded"
 	fi
 	echo
 	echo "== charging policy log (last 3) =="
