@@ -366,6 +366,92 @@ static int step_w2a(void)
 	return 0;
 }
 
+/*
+ * F1/F2 (research packet 8, T3/T5): Fender ConfigRAM replay proof. Stock cycles the GPC state 1 -> 0 -> 1; ConfigRAM (words at
+ * GPC +0x10000, terminated by 0xffff0000) is replayed into RGX at the 0 -> 1 transition. F1 cycles with an empty list and
+ * re-reads the identity. F2 cycles with two SLC writes (0x3800 <- 0x0003550000300001, 0x3808 <- 1) and reads them back: R1 saw
+ * 0x00320001 / 0x00035500 / 0, a replay would show 0x00300001 / 0x00035500 / 1. Only SLC_CTRL_MISC is touched; META stays held.
+ */
+static int gpc_wait_idle(void)
+{
+	int i;
+
+	for (i = 0; i < 3000; i++) {	/* 10 us steps, 30 ms bound */
+		if (!(readl(gpc_regs + GPC_STATE) & 0x10))
+			return 0;
+		udelay(10);
+	}
+	return -ETIMEDOUT;
+}
+
+static u32 cfg_n;
+
+static void cfg_put(u32 w)
+{
+	writel(w, gpc_regs + GPC_MASK + 4 * cfg_n++);
+}
+
+static void cfg_put64(u32 reg, u64 v)
+{
+	cfg_put((reg + 4) | 0xff << 16);
+	cfg_put(v >> 32);
+	cfg_put(reg | 0xff << 16);
+	cfg_put(v & 0xffffffff);
+}
+
+static struct { bool done; u32 core, s0, s4, s8; } fr[2];
+static atomic_t f_attempted[2] = { ATOMIC_INIT(0), ATOMIC_INIT(0) };
+
+static int step_f(int which)
+{
+	unsigned long flags;
+	int ret = 0;
+	u32 core, a, b, c;
+
+	if (state != ST_IDENTIFIED || !wr.w2a_done || (which && !fr[0].done))
+		return -EBUSY;
+	if (atomic_cmpxchg(&f_attempted[which], 0, 1))
+		return -EBUSY;
+	if ((readl(gpc_regs + GPC_STATE) & 0x1f) != 0x01)
+		return fail(-EBUSY, "f-gpc-not-state-1");
+	local_irq_save(flags);
+	writel(0x10, gpc_regs + GPC_STATE);
+	if (gpc_wait_idle()) {
+		ret = -ETIMEDOUT;
+		goto out;
+	}
+	cfg_n = 0;
+	if (which) {
+		cfg_put64(0x3800, 0x0003550000300001ULL);
+		cfg_put(0x3808 | 0xff << 16);
+		cfg_put(1);
+	}
+	cfg_put(0xffff0000);
+	writel(0, gpc_regs + 0x20000);
+	if (gpc_wait_idle()) {
+		ret = -ETIMEDOUT;
+		goto out;
+	}
+	writel(0x11, gpc_regs + GPC_STATE);
+	ret = gpc_wait_idle();
+out:
+	a = readl(core_regs + 0x3800);
+	b = readl(core_regs + 0x3804);
+	c = readl(core_regs + 0x3808);
+	core = readl(core_regs + 0x20);
+	local_irq_restore(flags);
+	fr[which].core = core;
+	fr[which].s0 = a;
+	fr[which].s4 = b;
+	fr[which].s8 = c;
+	fr[which].done = true;
+	if (ret)
+		return fail(ret, "f-gpc-poll-timeout");
+	if (core != res.core)
+		return fail(-EIO, "f-core-mismatch");
+	return 0;
+}
+
 static ssize_t step_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
 {
 	int ret;
@@ -383,6 +469,10 @@ static ssize_t step_store(struct device *dev, struct device_attribute *attr, con
 		ret = step_w1();
 	else if (sysfs_streq(buf, "w2a"))
 		ret = step_w2a();
+	else if (sysfs_streq(buf, "f1"))
+		ret = step_f(0);
+	else if (sysfs_streq(buf, "f2"))
+		ret = step_f(1);
 	else
 		ret = -EINVAL;
 	mutex_unlock(&lock);
@@ -406,6 +496,10 @@ static ssize_t status_show(struct device *dev, struct device_attribute *attr, ch
 				   res.bridge_ns, res.poll_to_core_ns, res.core_read_ns);
 	if (wr.w1_done)
 		n += sysfs_emit_at(buf, n, " w1_before=0x%08x w1_after=0x%08x", wr.w1_before, wr.w1_after);
+	if (fr[0].done)
+		n += sysfs_emit_at(buf, n, " f1_core=0x%08x f1_slc=0x%08x/0x%08x/0x%08x", fr[0].core, fr[0].s0, fr[0].s4, fr[0].s8);
+	if (fr[1].done)
+		n += sysfs_emit_at(buf, n, " f2_core=0x%08x f2_slc=0x%08x/0x%08x/0x%08x", fr[1].core, fr[1].s0, fr[1].s4, fr[1].s8);
 	if (wr.w2a_done)
 		n += sysfs_emit_at(buf, n, " w2a_set=0x%016llx w2a_clear=0x%016llx w2a_core=0x%08x", wr.w2a_set, wr.w2a_clear, wr.w2a_core);
 	n += sysfs_emit_at(buf, n, "\n");

@@ -58,11 +58,11 @@ if [ -f /tmp/j81-gpu.peeks ]; then
         printf 'stage=after-peek-%s %s\n' "$off" "$(cat $dev/peek)"
     done </tmp/j81-gpu.peeks
 fi
-# Optional guarded write steps (w1, w2a): names staged in /tmp/j81-gpu.writes. Each is its own stage; a failure stops the run.
+# Optional guarded write steps (w1, w2a, f1, f2): names staged in /tmp/j81-gpu.writes. Each is its own stage; a failure stops the run.
 if [ -f /tmp/j81-gpu.writes ]; then
     exec 3<&0
     while IFS= read -r wstep; do
-        case "$wstep" in w1|w2a) ;; *) continue ;; esac
+        case "$wstep" in w1|w2a|f1|f2) ;; *) continue ;; esac
         printf 'stage=before-write-%s width=32\n' "$wstep"
         IFS= read -r reply <&3
         [ "$reply" = READ ] || exit 1
