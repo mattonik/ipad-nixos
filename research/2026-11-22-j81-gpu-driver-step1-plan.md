@@ -1,0 +1,8 @@
+# j81-gpu driver steps 1 and 2: first hardware run (plan, 2026-11-22)
+
+Roadmap: `2026-11-22-j81-gpu-driver-roadmap.md`. Module `kernel/j81-gpu` (sha256 c902b732...), supervisor mode `--j81-gpu` (sha256 039d669b...), wrapper `boot/j81-gpu-run`, host `boot/j81_gpu_run.py`. Boot: the always-on observer bundle `j81-dwialwayson-bundle-20261122` (kernel notes a2dda27, dwi on from boot).
+
+Step 1 (one boot): precheck -> pmgr stores (PLL1, PLL4, MCC x5, MiscACG, TVM, each old-value guarded and read back) -> activate (one runtime-PM get) -> batch (bridges, GPC, page-5, identity reads). Same sequence and values as the userspace-tool runs (32100bb).
+Prediction: state=identified, core=0x00070500, id=0x011b0803, hi=0, gfx_ps=0x3ff, gfx_vid=0x164, gpc raw 1 after ~28 polls, page5 0x40000000. New code path: the in-kernel stores replace the userspace tools; any guard mismatch stops with a reason before the next step.
+Step 2 (same boot, only after a successful identity): 15 allow-listed reads of the first RGX page, one per stage (CLK_CTRL, CLK_STATUS, DESIGNER_REV, CHANGESET, SOFT_RESET, EVENT_STATUS, TIMER, SIDEKICK_IDLE, MARS_IDLE, META_SP_MSLVCTRL0/1). A hang on one read resets the iPad after the 20 s watchdog; the host log names the last announced offset. These are reads of status registers defined by the upstream PowerVR headers for Rogue, never tried on this GPU: unknown whether each is safe at this clock/reset state. Expected: SOFT_RESET shows which blocks are in reset; META_SP_MSLVCTRL1 non-zero if the META slave port is alive.
+Dashboard is stopped for the run so the framebuffer crumbs survive a hang (squares 1-8 as in the id module).
