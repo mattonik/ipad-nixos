@@ -444,6 +444,7 @@ static int step_f(int which)
 	fb_crumb_clear();
 	fb_crumb_mark(1);
 	writel(0x10, gpc_regs + GPC_STATE);
+	msleep(100);	/* g-run 2026-11-22: a read right after the 1 -> 0 store hung the bus; with a delay it is safe */
 	ret = gpc_wait_idle();
 	fr[which].g_after0 = readl(gpc_regs + GPC_STATE);
 	if (ret || (fr[which].g_after0 & 0x1f) != 0x00) {
@@ -473,6 +474,7 @@ static int step_f(int which)
 		wmb();
 		msleep(100);
 		writel(0, gpc_regs + 0x20000);
+		msleep(10);
 		ret = gpc_wait_idle();
 		fr[which].g_after20000 = readl(gpc_regs + GPC_STATE);
 		if (ret) {
@@ -483,6 +485,7 @@ static int step_f(int which)
 	fb_crumb_mark(3);
 	writel(0x11, gpc_regs + GPC_STATE);
 	fb_crumb_mark(4);
+	msleep(10);
 	ret = gpc_wait_idle();
 	g = readl(gpc_regs + GPC_STATE);
 	fr[which].g_after1 = g;
@@ -508,6 +511,7 @@ static int step_f(int which)
 recover:
 	/* one attempt back to state 1, GPC_STATE only */
 	writel(0x11, gpc_regs + GPC_STATE);
+	msleep(100);
 	gpc_wait_idle();
 	fr[which].g_after1 = readl(gpc_regs + GPC_STATE);
 out:
