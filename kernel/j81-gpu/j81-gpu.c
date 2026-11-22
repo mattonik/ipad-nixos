@@ -372,13 +372,32 @@ static int step_w2a(void)
  * re-reads the identity. F2 cycles with two SLC writes (0x3800 <- 0x0003550000300001, 0x3808 <- 1) and reads them back: R1 saw
  * 0x00320001 / 0x00035500 / 0, a replay would show 0x00300001 / 0x00035500 / 1. Only SLC_CTRL_MISC is touched; META stays held.
  */
-/* Bounded poll of GPC_STATE bit 4 (busy); 10 us steps, 2 s bound (stock allows 30 s; the host watchdog is 20 s). */
+/*
+ * z-run 2026-11-22: in GPC state 0 a Fender-block access issued right after the previous one hangs the bus (ten back-to-back
+ * reads hung; single accesses separated by sleeps or host round trips are safe). Every Fender access in the F steps therefore
+ * goes through gr()/gw(), which wait 1 ms afterwards. The spacing is a first safe-looking guess, not a measured minimum.
+ */
+static u32 gr(u32 off)
+{
+	u32 v = readl(gpc_regs + off);
+
+	udelay(1000);
+	return v;
+}
+
+static void gw(u32 v, u32 off)
+{
+	writel(v, gpc_regs + off);
+	udelay(1000);
+}
+
+/* Bounded poll of GPC_STATE bit 4 (busy); ~1 ms per iteration, about 2 s bound (stock allows 30 s; the host watchdog is 20 s). */
 static int gpc_wait_idle(void)
 {
 	int i;
 
-	for (i = 0; i < 200000; i++) {
-		if (!(readl(gpc_regs + GPC_STATE) & 0x10))
+	for (i = 0; i < 2000; i++) {
+		if (!(gr(GPC_STATE) & 0x10))
 			return 0;
 		udelay(10);
 	}
@@ -403,7 +422,7 @@ static u32 cfg_n;
 
 static void cfg_put(u32 w)
 {
-	writel(w, gpc_regs + GPC_MASK + 4 * cfg_n++);
+	gw(w, GPC_MASK + 4 * cfg_n++);
 }
 
 static void cfg_put64(u32 reg, u64 v)
@@ -437,16 +456,16 @@ static int step_f(int which)
 		return -EBUSY;
 	if (atomic_cmpxchg(&f_attempted[which], 0, 1))
 		return -EBUSY;
-	g = readl(gpc_regs + GPC_STATE);
+	g = gr(GPC_STATE);
 	fr[which].g_start = g;
 	if ((g & 0x1f) != 0x01)
 		return fail(-EBUSY, "f-gpc-not-state-1");
 	fb_crumb_clear();
 	fb_crumb_mark(1);
-	writel(0x10, gpc_regs + GPC_STATE);
+	gw(0x10, GPC_STATE);
 	msleep(100);	/* g-run 2026-11-22: a read right after the 1 -> 0 store hung the bus; with a delay it is safe */
 	ret = gpc_wait_idle();
-	fr[which].g_after0 = readl(gpc_regs + GPC_STATE);
+	fr[which].g_after0 = gr(GPC_STATE);
 	if (ret || (fr[which].g_after0 & 0x1f) != 0x00) {
 		fr[which].where = "state0-request";
 		ret = ret ? ret : -EIO;
@@ -455,15 +474,15 @@ static int step_f(int which)
 	msleep(100);
 	fb_crumb_mark(2);
 	if (which != 2) {
-		v = readl(gpc_regs + 0x10);
-		writel(0, gpc_regs + 0x10);
-		v = readl(gpc_regs + 0x10);
+		v = gr(0x10);
+		gw(0, 0x10);
+		v = gr(0x10);
 		if (v) {
 			fr[which].where = "int-enable-not-zero";
 			ret = -EIO;
 			goto recover;
 		}
-		writel(0x40000000, gpc_regs);
+		gw(0x40000000, 0);
 		cfg_n = 0;
 		if (which == 1) {
 			cfg_put64(0x3800, 0x0003550000300001ULL);
@@ -473,21 +492,21 @@ static int step_f(int which)
 		cfg_put(0xffff0000);
 		wmb();
 		msleep(100);
-		writel(0, gpc_regs + 0x20000);
+		gw(0, 0x20000);
 		msleep(10);
 		ret = gpc_wait_idle();
-		fr[which].g_after20000 = readl(gpc_regs + GPC_STATE);
+		fr[which].g_after20000 = gr(GPC_STATE);
 		if (ret) {
 			fr[which].where = "after-20000-write";
 			goto recover;
 		}
 	}
 	fb_crumb_mark(3);
-	writel(0x11, gpc_regs + GPC_STATE);
+	gw(0x11, GPC_STATE);
 	fb_crumb_mark(4);
 	msleep(10);
 	ret = gpc_wait_idle();
-	g = readl(gpc_regs + GPC_STATE);
+	g = gr(GPC_STATE);
 	fr[which].g_after1 = g;
 	if (ret || (g & 0x1f) != 0x01) {
 		fr[which].where = "state1-request";
@@ -510,10 +529,10 @@ static int step_f(int which)
 	goto out;
 recover:
 	/* one attempt back to state 1, GPC_STATE only */
-	writel(0x11, gpc_regs + GPC_STATE);
+	gw(0x11, GPC_STATE);
 	msleep(100);
 	gpc_wait_idle();
-	fr[which].g_after1 = readl(gpc_regs + GPC_STATE);
+	fr[which].g_after1 = gr(GPC_STATE);
 out:
 	fr[which].err = ret;
 	fr[which].done = true;
