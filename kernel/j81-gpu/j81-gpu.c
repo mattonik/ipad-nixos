@@ -131,6 +131,8 @@ static struct {
 static u32 peek_off, peek_val;
 static bool peek_valid;
 static u32 meta_addr, meta_val, meta_ctrl1;
+static struct { bool w1_done, w2a_done; u32 w1_before, w1_after; u64 w2a_set, w2a_clear; u32 w2a_core; } wr;
+static atomic_t w1_attempted = ATOMIC_INIT(0), w2a_attempted = ATOMIC_INIT(0);
 static bool meta_valid;
 static atomic_t batch_attempted = ATOMIC_INIT(0), activate_attempted = ATOMIC_INIT(0), pmgr_attempted = ATOMIC_INIT(0);
 
@@ -302,6 +304,68 @@ static int step_batch(void)
 	return 0;
 }
 
+/*
+ * W1: first GPU register write. META_BOOT (0xbf8, 64-bit; low word) is rewritten with the value just read (expected 0), then
+ * read back. Tests that a direct RGX store does not fault; it cannot show that a store changes state (same value).
+ */
+static int step_w1(void)
+{
+	u32 before, after;
+
+	if (state != ST_IDENTIFIED)
+		return -EBUSY;
+	if (atomic_cmpxchg(&w1_attempted, 0, 1))
+		return -EBUSY;
+	before = readl(core_regs + 0xbf8);
+	if (before != 0 || readl(core_regs + 0xbfc) != 0)
+		return fail(-EBUSY, "w1-meta-boot-not-zero");
+	writel(before, core_regs + 0xbf8);
+	mb();
+	after = readl(core_regs + 0xbf8);
+	wr.w1_before = before;
+	wr.w1_after = after;
+	wr.w1_done = true;
+	if (after != before)
+		return fail(-EIO, "w1-readback-differs");
+	return 0;
+}
+
+/*
+ * W2a: first stage of the stock SOFT_RESET staging (research packet 5/7): 64-bit store 0x00e7fffffffffc1d to SOFT_RESET (0x100),
+ * read it back, then store 0 and read back again, and re-read CORE_REVISION. Stock does the same writes on J81 (through the
+ * Fender mailbox when its global bit is set, which is unresolved: a readback that is not the value written means direct
+ * stores do not land). Interrupts are off for the whole window; only SOFT_RESET itself is read while blocks are in reset.
+ */
+static int step_w2a(void)
+{
+	unsigned long flags;
+	u64 set, clear;
+	u32 core;
+
+	if (state != ST_IDENTIFIED || !wr.w1_done)
+		return -EBUSY;
+	if (atomic_cmpxchg(&w2a_attempted, 0, 1))
+		return -EBUSY;
+	if (readl(core_regs + 0x100) != 0 || readl(core_regs + 0x104) != 0)
+		return fail(-EBUSY, "w2a-soft-reset-not-zero");
+	local_irq_save(flags);
+	writeq(0x00e7fffffffffc1dULL, core_regs + 0x100);
+	mb();
+	set = readq(core_regs + 0x100);
+	writeq(0, core_regs + 0x100);
+	mb();
+	clear = readq(core_regs + 0x100);
+	core = readl(core_regs + 0x20);
+	local_irq_restore(flags);
+	wr.w2a_set = set;
+	wr.w2a_clear = clear;
+	wr.w2a_core = core;
+	wr.w2a_done = true;
+	if (clear != 0 || core != res.core)
+		return fail(-EIO, "w2a-unwind-mismatch");
+	return 0;
+}
+
 static ssize_t step_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
 {
 	int ret;
@@ -315,6 +379,10 @@ static ssize_t step_store(struct device *dev, struct device_attribute *attr, con
 		ret = step_activate();
 	else if (sysfs_streq(buf, "batch"))
 		ret = step_batch();
+	else if (sysfs_streq(buf, "w1"))
+		ret = step_w1();
+	else if (sysfs_streq(buf, "w2a"))
+		ret = step_w2a();
 	else
 		ret = -EINVAL;
 	mutex_unlock(&lock);
@@ -336,6 +404,10 @@ static ssize_t status_show(struct device *dev, struct device_attribute *attr, ch
 				   res.core, res.id, res.hi, (res.core >> 24) & 0xff, (res.core >> 16) & 0xff,
 				   (res.core >> 8) & 0xff, res.core & 0xff, res.gpc_raw, res.polls, res.page5,
 				   res.bridge_ns, res.poll_to_core_ns, res.core_read_ns);
+	if (wr.w1_done)
+		n += sysfs_emit_at(buf, n, " w1_before=0x%08x w1_after=0x%08x", wr.w1_before, wr.w1_after);
+	if (wr.w2a_done)
+		n += sysfs_emit_at(buf, n, " w2a_set=0x%016llx w2a_clear=0x%016llx w2a_core=0x%08x", wr.w2a_set, wr.w2a_clear, wr.w2a_core);
 	n += sysfs_emit_at(buf, n, "\n");
 	mutex_unlock(&lock);
 	return n;
