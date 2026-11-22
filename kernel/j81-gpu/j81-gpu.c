@@ -99,6 +99,8 @@ static char *mode_unused;
 module_param_named(mode, mode_unused, charp, 0000);
 static int skip_pll1;
 module_param(skip_pll1, int, 0000);
+static int skip_pll4;
+module_param(skip_pll4, int, 0000);
 
 enum { ST_NEW, ST_PRECHECKED, ST_PMGR_DONE, ST_ACTIVE, ST_IDENTIFIED, ST_FAILED };
 static const char * const st_name[] = { "new", "prechecked", "pmgr-done", "active", "identified", "failed" };
@@ -175,7 +177,7 @@ static int step_pmgr(void)
 		return -EBUSY;
 	if (!skip_pll1 && (err = store_check(PM_PLL1, 0x80480348, 0x40480348, ~0U)))
 		return fail(err, "pll1-store");
-	if ((err = store_check(PM_PLL4, 0x88480348, 0x48480348, ~0U)))
+	if (!skip_pll4 && (err = store_check(PM_PLL4, 0x88480348, 0x48480348, ~0U)))
 		return fail(err, "pll4-store");
 	for (i = 0; i < 5; i++)
 		if ((err = store_check(mcc_words[i].off, mcc_words[i].old, mcc_words[i].old | MCC_BANK_BIT, MCC_CMP_MASK)))
@@ -313,7 +315,7 @@ static ssize_t status_show(struct device *dev, struct device_attribute *attr, ch
 	ssize_t n;
 
 	mutex_lock(&lock);
-	n = sysfs_emit(buf, "state=%s reason=%s skip_pll1=%d crumb=%s", st_name[state], reason, skip_pll1, fb_crumb_state());
+	n = sysfs_emit(buf, "state=%s reason=%s skip_pll1=%d skip_pll4=%d crumb=%s", st_name[state], reason, skip_pll1, skip_pll4, fb_crumb_state());
 	if (state >= ST_ACTIVE)
 		n += sysfs_emit_at(buf, n, " gfx_ps=0x%08x gfx_vid=0x%08x", res.gfx_ps, res.vid);
 	if (res.batch_done)

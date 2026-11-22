@@ -20,9 +20,10 @@ grep -q '^rootfs / rootfs ' /proc/mounts || exit 1
 if grep -q '^/dev/' /proc/mounts; then exit 1; fi
 [ ! -e /sys/module/j81_gpu ] || exit 1
 mkdir /tmp/j81-gpu.once || exit 1
-skip=0
+skip=0 skip4=0
 [ -e /tmp/j81-gpu.skip-pll1 ] && skip=1
-/sbin/insmod /tmp/j81-gpu.ko "skip_pll1=$skip" || exit 1
+[ -e /tmp/j81-gpu.skip-pll4 ] && skip4=1
+/sbin/insmod /tmp/j81-gpu.ko "skip_pll1=$skip" "skip_pll4=$skip4" || exit 1
 for step in precheck pmgr activate batch; do
     printf 'stage=before-%s width=32\n' "$step"
     IFS= read -r reply
