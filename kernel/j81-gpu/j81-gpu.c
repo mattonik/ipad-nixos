@@ -414,22 +414,26 @@ static void cfg_put64(u32 reg, u64 v)
 	cfg_put(v & 0xffffffff);
 }
 
-static struct { bool done; u32 core, s0, s4, s8; u32 g_start, g_after0, g_after20000, g_after1; int err; const char *where; bool rgx_read; } fr[2];
-static atomic_t f_attempted[2] = { ATOMIC_INIT(0), ATOMIC_INIT(0) };
+static struct { bool done; u32 core, s0, s4, s8; u32 g_start, g_after0, g_after20000, g_after1, p5; int err; const char *where; bool rgx_read; } fr[3];
+static atomic_t f_attempted[3] = { ATOMIC_INIT(0), ATOMIC_INIT(0), ATOMIC_INIT(0) };
 
 /*
- * Fixed after the 2026-11-22 run where F1 hung the bus: RGX registers are read ONLY when GPC_STATE reads back as state 1 with
- * bit 4 clear (packet 8: RGX may be read only once the state is >= 1). On any timeout or unexpected state only GPC_STATE is
- * read; one attempt to return to state 1 is made and its outcome recorded. Crumb squares (row cleared first): 1 before the
- * state-0 request, 2 state 0 reached, 3 ConfigRAM + 0x20000 written, 4 state-1 request written, 5 state 1 verified (RGX reads next).
+ * F-steps, Apple's order (research packet 9, T3 rows 15/16/10/11, from Orchard's A8 driver and our 19H394 trace). Both earlier
+ * runs hung F1 right after the state-0 request; the old F1 wrote ConfigRAM and +0x20000 immediately after the busy bit cleared,
+ * skipping Apple's 100 ms wait, the +0x10 cycle and the +0 = 0x40000000 store.
+ *   which 2 = f1a: ONLY state 0 -> poll -> 100 ms -> state 1 -> poll (no other Fender write): isolates the state transition.
+ *   which 0 = f1 : state 0, 100 ms, +0x10 read/0/read, +0 = 0x40000000, ConfigRAM (empty), barrier, 100 ms, +0x20000 = 0, state 1.
+ *   which 1 = f2 : as f1 with the two-entry ConfigRAM list.
+ * RGX is read only when GPC_STATE == 1 (busy clear) AND PMGR +0x5004 bit 30 (PLL lock) is set. Sleeps run with interrupts on.
+ * Crumbs (row cleared first): 1 before state-0 request, 2 state 0 reached (+100 ms done), 3 pre-release writes done, 4 state-1
+ * request written, 5 state 1 verified.
  */
 static int step_f(int which)
 {
-	unsigned long flags;
 	int ret = 0;
-	u32 g;
+	u32 g, v;
 
-	if (state != ST_IDENTIFIED || !wr.w2a_done || (which && !fr[0].done))
+	if (state != ST_IDENTIFIED || !wr.w2a_done || (which == 1 && !fr[0].done))
 		return -EBUSY;
 	if (atomic_cmpxchg(&f_attempted[which], 0, 1))
 		return -EBUSY;
@@ -438,7 +442,6 @@ static int step_f(int which)
 	if ((g & 0x1f) != 0x01)
 		return fail(-EBUSY, "f-gpc-not-state-1");
 	fb_crumb_clear();
-	local_irq_save(flags);
 	fb_crumb_mark(1);
 	writel(0x10, gpc_regs + GPC_STATE);
 	ret = gpc_wait_idle();
@@ -448,20 +451,34 @@ static int step_f(int which)
 		ret = ret ? ret : -EIO;
 		goto recover;
 	}
+	msleep(100);
 	fb_crumb_mark(2);
-	cfg_n = 0;
-	if (which) {
-		cfg_put64(0x3800, 0x0003550000300001ULL);
-		cfg_put(0x3808 | 0xff << 16);
-		cfg_put(1);
-	}
-	cfg_put(0xffff0000);
-	writel(0, gpc_regs + 0x20000);
-	ret = gpc_wait_idle();
-	fr[which].g_after20000 = readl(gpc_regs + GPC_STATE);
-	if (ret) {
-		fr[which].where = "after-20000-write";
-		goto recover;
+	if (which != 2) {
+		v = readl(gpc_regs + 0x10);
+		writel(0, gpc_regs + 0x10);
+		v = readl(gpc_regs + 0x10);
+		if (v) {
+			fr[which].where = "int-enable-not-zero";
+			ret = -EIO;
+			goto recover;
+		}
+		writel(0x40000000, gpc_regs);
+		cfg_n = 0;
+		if (which == 1) {
+			cfg_put64(0x3800, 0x0003550000300001ULL);
+			cfg_put(0x3808 | 0xff << 16);
+			cfg_put(1);
+		}
+		cfg_put(0xffff0000);
+		wmb();
+		msleep(100);
+		writel(0, gpc_regs + 0x20000);
+		ret = gpc_wait_idle();
+		fr[which].g_after20000 = readl(gpc_regs + GPC_STATE);
+		if (ret) {
+			fr[which].where = "after-20000-write";
+			goto recover;
+		}
 	}
 	fb_crumb_mark(3);
 	writel(0x11, gpc_regs + GPC_STATE);
@@ -472,7 +489,14 @@ static int step_f(int which)
 	if (ret || (g & 0x1f) != 0x01) {
 		fr[which].where = "state1-request";
 		ret = ret ? ret : -EIO;
-		goto out_noread;
+		goto out;
+	}
+	udelay(20);
+	fr[which].p5 = readl(pmgr + PM_PAGE5_4);
+	if (!(fr[which].p5 & 0x40000000)) {
+		fr[which].where = "pll-lock-clear";
+		ret = -EIO;
+		goto out;
 	}
 	fb_crumb_mark(5);
 	fr[which].s0 = readl(core_regs + 0x3800);
@@ -486,9 +510,7 @@ recover:
 	writel(0x11, gpc_regs + GPC_STATE);
 	gpc_wait_idle();
 	fr[which].g_after1 = readl(gpc_regs + GPC_STATE);
-out_noread:
 out:
-	local_irq_restore(flags);
 	fr[which].err = ret;
 	fr[which].done = true;
 	if (ret)
@@ -515,6 +537,8 @@ static ssize_t step_store(struct device *dev, struct device_attribute *attr, con
 		ret = step_w1();
 	else if (sysfs_streq(buf, "w2a"))
 		ret = step_w2a();
+	else if (sysfs_streq(buf, "f1a"))
+		ret = step_f(2);
 	else if (sysfs_streq(buf, "f1"))
 		ret = step_f(0);
 	else if (sysfs_streq(buf, "f2"))
@@ -543,13 +567,14 @@ static ssize_t status_show(struct device *dev, struct device_attribute *attr, ch
 	if (wr.w1_done)
 		n += sysfs_emit_at(buf, n, " w1_before=0x%08x w1_after=0x%08x", wr.w1_before, wr.w1_after);
 	{
+		static const char *const fn[3] = { "f1", "f2", "f1a" };
 		int k;
 
-		for (k = 0; k < 2; k++)
+		for (k = 0; k < 3; k++)
 			if (fr[k].done)
-				n += sysfs_emit_at(buf, n, " f%d_err=%d f%d_where=%s f%d_gpc=0x%08x/0x%08x/0x%08x/0x%08x f%d_rgx_read=%d f%d_core=0x%08x f%d_slc=0x%08x/0x%08x/0x%08x",
-						   k + 1, fr[k].err, k + 1, fr[k].where ? fr[k].where : "-", k + 1, fr[k].g_start, fr[k].g_after0,
-						   fr[k].g_after20000, fr[k].g_after1, k + 1, fr[k].rgx_read, k + 1, fr[k].core, k + 1, fr[k].s0, fr[k].s4, fr[k].s8);
+				n += sysfs_emit_at(buf, n, " %s_err=%d %s_where=%s %s_gpc=0x%08x/0x%08x/0x%08x/0x%08x %s_p5=0x%08x %s_rgx_read=%d %s_core=0x%08x %s_slc=0x%08x/0x%08x/0x%08x",
+						   fn[k], fr[k].err, fn[k], fr[k].where ? fr[k].where : "-", fn[k], fr[k].g_start, fr[k].g_after0,
+						   fr[k].g_after20000, fr[k].g_after1, fn[k], fr[k].p5, fn[k], fr[k].rgx_read, fn[k], fr[k].core, fn[k], fr[k].s0, fr[k].s4, fr[k].s8);
 	}
 	if (wr.w2a_done)
 		n += sysfs_emit_at(buf, n, " w2a_set=0x%016llx w2a_clear=0x%016llx w2a_core=0x%08x", wr.w2a_set, wr.w2a_clear, wr.w2a_core);

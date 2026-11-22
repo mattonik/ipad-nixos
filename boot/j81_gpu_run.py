@@ -130,7 +130,7 @@ def main() -> int:
     p.add_argument("--skip-pll4", action="store_true")
     p.add_argument("--peek", action="append", default=[])
     p.add_argument("--meta", action="append", default=[])
-    p.add_argument("--write", action="append", default=[], choices=["w1", "w2a", "f1", "f2"])
+    p.add_argument("--write", action="append", default=[], choices=["w1", "w2a", "f1a", "f1", "f2"])
     p.add_argument("--stop-dashboard", action="store_true")
     a = p.parse_args()
     for off in a.peek:

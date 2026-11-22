@@ -62,7 +62,7 @@ fi
 if [ -f /tmp/j81-gpu.writes ]; then
     exec 3<&0
     while IFS= read -r wstep; do
-        case "$wstep" in w1|w2a|f1|f2) ;; *) continue ;; esac
+        case "$wstep" in w1|w2a|f1a|f1|f2) ;; *) continue ;; esac
         printf 'stage=before-write-%s width=32\n' "$wstep"
         IFS= read -r reply <&3
         [ "$reply" = READ ] || exit 1
