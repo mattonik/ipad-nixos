@@ -372,16 +372,31 @@ static int step_w2a(void)
  * re-reads the identity. F2 cycles with two SLC writes (0x3800 <- 0x0003550000300001, 0x3808 <- 1) and reads them back: R1 saw
  * 0x00320001 / 0x00035500 / 0, a replay would show 0x00300001 / 0x00035500 / 1. Only SLC_CTRL_MISC is touched; META stays held.
  */
+/* Bounded poll of GPC_STATE bit 4 (busy); 10 us steps, 2 s bound (stock allows 30 s; the host watchdog is 20 s). */
 static int gpc_wait_idle(void)
 {
 	int i;
 
-	for (i = 0; i < 3000; i++) {	/* 10 us steps, 30 ms bound */
+	for (i = 0; i < 200000; i++) {
 		if (!(readl(gpc_regs + GPC_STATE) & 0x10))
 			return 0;
 		udelay(10);
 	}
 	return -ETIMEDOUT;
+}
+
+/* Blank the breadcrumb row so F-step marks 1..5 are not confused with the batch step's earlier marks 1..8. */
+static void fb_crumb_clear(void)
+{
+	u32 x, y, x1 = CRUMB_GAP + CRUMB_MAX * (CRUMB_SQ + CRUMB_GAP), y0;
+
+	if (!fb_crumb_dev.ok)
+		return;
+	y0 = fb_crumb_dev.height - CRUMB_SQ - CRUMB_GAP;
+	for (y = 0; y < CRUMB_SQ; y++)
+		for (x = 0; x < x1; x++)
+			__raw_writel(0, fb_crumb_dev.base + (u64)(y0 + y) * fb_crumb_dev.stride + x * 4);
+	wmb();
 }
 
 static u32 cfg_n;
@@ -399,27 +414,41 @@ static void cfg_put64(u32 reg, u64 v)
 	cfg_put(v & 0xffffffff);
 }
 
-static struct { bool done; u32 core, s0, s4, s8; } fr[2];
+static struct { bool done; u32 core, s0, s4, s8; u32 g_start, g_after0, g_after20000, g_after1; int err; const char *where; bool rgx_read; } fr[2];
 static atomic_t f_attempted[2] = { ATOMIC_INIT(0), ATOMIC_INIT(0) };
 
+/*
+ * Fixed after the 2026-11-22 run where F1 hung the bus: RGX registers are read ONLY when GPC_STATE reads back as state 1 with
+ * bit 4 clear (packet 8: RGX may be read only once the state is >= 1). On any timeout or unexpected state only GPC_STATE is
+ * read; one attempt to return to state 1 is made and its outcome recorded. Crumb squares (row cleared first): 1 before the
+ * state-0 request, 2 state 0 reached, 3 ConfigRAM + 0x20000 written, 4 state-1 request written, 5 state 1 verified (RGX reads next).
+ */
 static int step_f(int which)
 {
 	unsigned long flags;
 	int ret = 0;
-	u32 core, a, b, c;
+	u32 g;
 
 	if (state != ST_IDENTIFIED || !wr.w2a_done || (which && !fr[0].done))
 		return -EBUSY;
 	if (atomic_cmpxchg(&f_attempted[which], 0, 1))
 		return -EBUSY;
-	if ((readl(gpc_regs + GPC_STATE) & 0x1f) != 0x01)
+	g = readl(gpc_regs + GPC_STATE);
+	fr[which].g_start = g;
+	if ((g & 0x1f) != 0x01)
 		return fail(-EBUSY, "f-gpc-not-state-1");
+	fb_crumb_clear();
 	local_irq_save(flags);
+	fb_crumb_mark(1);
 	writel(0x10, gpc_regs + GPC_STATE);
-	if (gpc_wait_idle()) {
-		ret = -ETIMEDOUT;
-		goto out;
+	ret = gpc_wait_idle();
+	fr[which].g_after0 = readl(gpc_regs + GPC_STATE);
+	if (ret || (fr[which].g_after0 & 0x1f) != 0x00) {
+		fr[which].where = "state0-request";
+		ret = ret ? ret : -EIO;
+		goto recover;
 	}
+	fb_crumb_mark(2);
 	cfg_n = 0;
 	if (which) {
 		cfg_put64(0x3800, 0x0003550000300001ULL);
@@ -428,26 +457,43 @@ static int step_f(int which)
 	}
 	cfg_put(0xffff0000);
 	writel(0, gpc_regs + 0x20000);
-	if (gpc_wait_idle()) {
-		ret = -ETIMEDOUT;
-		goto out;
-	}
-	writel(0x11, gpc_regs + GPC_STATE);
 	ret = gpc_wait_idle();
+	fr[which].g_after20000 = readl(gpc_regs + GPC_STATE);
+	if (ret) {
+		fr[which].where = "after-20000-write";
+		goto recover;
+	}
+	fb_crumb_mark(3);
+	writel(0x11, gpc_regs + GPC_STATE);
+	fb_crumb_mark(4);
+	ret = gpc_wait_idle();
+	g = readl(gpc_regs + GPC_STATE);
+	fr[which].g_after1 = g;
+	if (ret || (g & 0x1f) != 0x01) {
+		fr[which].where = "state1-request";
+		ret = ret ? ret : -EIO;
+		goto out_noread;
+	}
+	fb_crumb_mark(5);
+	fr[which].s0 = readl(core_regs + 0x3800);
+	fr[which].s4 = readl(core_regs + 0x3804);
+	fr[which].s8 = readl(core_regs + 0x3808);
+	fr[which].core = readl(core_regs + 0x20);
+	fr[which].rgx_read = true;
+	goto out;
+recover:
+	/* one attempt back to state 1, GPC_STATE only */
+	writel(0x11, gpc_regs + GPC_STATE);
+	gpc_wait_idle();
+	fr[which].g_after1 = readl(gpc_regs + GPC_STATE);
+out_noread:
 out:
-	a = readl(core_regs + 0x3800);
-	b = readl(core_regs + 0x3804);
-	c = readl(core_regs + 0x3808);
-	core = readl(core_regs + 0x20);
 	local_irq_restore(flags);
-	fr[which].core = core;
-	fr[which].s0 = a;
-	fr[which].s4 = b;
-	fr[which].s8 = c;
+	fr[which].err = ret;
 	fr[which].done = true;
 	if (ret)
-		return fail(ret, "f-gpc-poll-timeout");
-	if (core != res.core)
+		return fail(ret, fr[which].where ? fr[which].where : "f-error");
+	if (fr[which].core != res.core)
 		return fail(-EIO, "f-core-mismatch");
 	return 0;
 }
@@ -496,10 +542,15 @@ static ssize_t status_show(struct device *dev, struct device_attribute *attr, ch
 				   res.bridge_ns, res.poll_to_core_ns, res.core_read_ns);
 	if (wr.w1_done)
 		n += sysfs_emit_at(buf, n, " w1_before=0x%08x w1_after=0x%08x", wr.w1_before, wr.w1_after);
-	if (fr[0].done)
-		n += sysfs_emit_at(buf, n, " f1_core=0x%08x f1_slc=0x%08x/0x%08x/0x%08x", fr[0].core, fr[0].s0, fr[0].s4, fr[0].s8);
-	if (fr[1].done)
-		n += sysfs_emit_at(buf, n, " f2_core=0x%08x f2_slc=0x%08x/0x%08x/0x%08x", fr[1].core, fr[1].s0, fr[1].s4, fr[1].s8);
+	{
+		int k;
+
+		for (k = 0; k < 2; k++)
+			if (fr[k].done)
+				n += sysfs_emit_at(buf, n, " f%d_err=%d f%d_where=%s f%d_gpc=0x%08x/0x%08x/0x%08x/0x%08x f%d_rgx_read=%d f%d_core=0x%08x f%d_slc=0x%08x/0x%08x/0x%08x",
+						   k + 1, fr[k].err, k + 1, fr[k].where ? fr[k].where : "-", k + 1, fr[k].g_start, fr[k].g_after0,
+						   fr[k].g_after20000, fr[k].g_after1, k + 1, fr[k].rgx_read, k + 1, fr[k].core, k + 1, fr[k].s0, fr[k].s4, fr[k].s8);
+	}
 	if (wr.w2a_done)
 		n += sysfs_emit_at(buf, n, " w2a_set=0x%016llx w2a_clear=0x%016llx w2a_core=0x%08x", wr.w2a_set, wr.w2a_clear, wr.w2a_core);
 	n += sysfs_emit_at(buf, n, "\n");
