@@ -1,0 +1,10 @@
+order	operation	identity evidence and expected discriminator if omitted	firmware evidence
+1	PLL1 +0x1008	Startup setting; no demonstrated direct GFX state selection. Expect old PLL word; identity may still pass.	unknown
+2	PLL4 +0x4008	Independent omission against full baseline. Expect old PLL4 word; direct core dependency unproven.	unknown
+3	SoC TVM +0x2d000	Expect TVM request/status may stay zero; compare GFX VID, SRAM code and PMIC delivery before testing identity.	unknown
+4	Five MCC bank bit-31 writes as one stock group	Omission may leave five known bank bits clear. Prior negative replay alone does not show dispensability with DWI on. Split by word only after group result.	unknown
+5	Two bridge tables	Stock native path uses both. Before considering omission, check inherited readable values. Identical inherited values test need for replay only. Changed values may affect fabric; stop at no-core result first.	unknown
+retain	MiscACG	Historical tests associate bit 0 with page-5 rise; DWI alone did not reliably open the aperture. No priority to remove.	unknown
+retain	DWI on before GFX	Best differential evidence on same recipe; two successes plus identity run. Early always-on is a separate ownership test.	unknown
+retain	Single GFX activation, GPC state-1 request/poll	PS active, GPC complete, page 5 high and external VID response define working control. No positive run without these conditions.	unknown
+observe only	Voltage manager/SRAM checks, page-5 sample, PMIC diagnostic	These record prerequisites or outcomes. The full recipe does not explicitly force the GFX voltage word.	unknown
