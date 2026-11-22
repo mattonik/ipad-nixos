@@ -35,7 +35,7 @@ def sh(cmd, timeout=10):
         c.close()
 
 
-def run(logdir: Path, module: Path, supervisor: Path, skip_pll1: bool, peeks: list[str], stop_dashboard: bool) -> int:
+def run(logdir: Path, module: Path, supervisor: Path, skip_pll1: bool, peeks: list[str], stop_dashboard: bool, metas: list[str] = []) -> int:
     logdir.mkdir(parents=True)  # refuses an existing directory
     wrapper = Path(__file__).resolve().parent / "j81-gpu-run"
     files = {"j81-gpu.ko": module.read_bytes(), "j81-gpu-run": wrapper.read_bytes(),
@@ -55,9 +55,11 @@ def run(logdir: Path, module: Path, supervisor: Path, skip_pll1: bool, peeks: li
         sh("touch /tmp/j81-gpu.skip-pll1")
     if peeks:
         sh("printf '%s\\n' " + " ".join(peeks) + " > /tmp/j81-gpu.peeks")
+    if metas:
+        sh("printf '%s\\n' " + " ".join(metas) + " > /tmp/j81-gpu.metas")
     if stop_dashboard:
         sh("pkill tablet-dashboard; killall tablet-dashboard 2>/dev/null; echo stopped")
-    (logdir / "plan.txt").write_text(f"boot={boot}\nshas={shas}\nskip_pll1={skip_pll1}\npeeks={peeks}\n")
+    (logdir / "plan.txt").write_text(f"boot={boot}\nshas={shas}\nskip_pll1={skip_pll1}\npeeks={peeks}\nmetas={metas}\n")
     cmd = (f'test "$(sha256sum /tmp/gpu-watchdog-supervisor | cut -d " " -f 1)" = {shas["gpu-watchdog-supervisor"]} && '
            f'test "$(sha256sum /tmp/j81-gpu-run | cut -d " " -f 1)" = {shas["j81-gpu-run"]} && '
            f'/tmp/gpu-watchdog-supervisor --j81-gpu {shas["j81-gpu.ko"]} {boot}\n')
@@ -122,12 +124,16 @@ def main() -> int:
     p.add_argument("--supervisor", type=Path, required=True)
     p.add_argument("--skip-pll1", action="store_true")
     p.add_argument("--peek", action="append", default=[])
+    p.add_argument("--meta", action="append", default=[])
     p.add_argument("--stop-dashboard", action="store_true")
     a = p.parse_args()
     for off in a.peek:
         if not re.fullmatch(r"0x[0-9a-f]{4}", off):
             raise SystemExit("bad --peek offset " + off)
-    return run(a.logdir, a.module, a.supervisor, a.skip_pll1, a.peek, a.stop_dashboard)
+    for addr in a.meta:
+        if not re.fullmatch(r"0x[0-9a-f]{8}", addr):
+            raise SystemExit("bad --meta address " + addr)
+    return run(a.logdir, a.module, a.supervisor, a.skip_pll1, a.peek, a.stop_dashboard, a.meta)
 
 
 if __name__ == "__main__":

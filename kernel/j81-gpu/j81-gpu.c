@@ -12,7 +12,9 @@
  *   batch      66 bridge stores, GPC state 1 request + poll, page-5 sample, then the identity reads
  *              (CORE_REVISION +0x20, CORE_ID +0x18, +0x24), all in one irq-off kernel batch
  *
- * After `batch`, `peek` reads allow-listed registers of the first RGX page (step 2: read-only survey).
+ * After `batch`, `peek` reads allow-listed registers of the first RGX page (step 2: read-only survey), and `meta` reads
+ * allow-listed registers of the META firmware processor through its slave port (step 3a: MSLVCTRL0 address select + MSLVDATAX,
+ * the sequence of the upstream PowerVR driver pvr_meta_cr_read32; bounded polls, no unbounded wait).
  *
  * Evidence: research/2026-11-22-j81-dwi-always-on-result.md (identical sequence from userspace tools),
  * research/2026-11-22-j81-ablation-a1-id-result.md (PLL1 not needed for the identity reads).
@@ -81,6 +83,18 @@ static const struct { u32 off; const char *name; } peek_list[] = {
 	{ 0x0a10, "META_SP_MSLVCTRL0" }, { 0x0a18, "META_SP_MSLVCTRL1" },
 };
 
+/* META register addresses `meta` may read (META address space; names from the upstream PowerVR headers). */
+static const struct { u32 addr; const char *name; } meta_list[] = {
+	{ 0x04831000, "META_CORE_ID" }, { 0x04800000, "T0ENABLE" }, { 0x04800010, "T0STATUS" },
+	{ 0x04801000, "T1ENABLE" }, { 0x04801010, "T1STATUS" }, { 0x048000b0, "TXCLKCTRL" },
+	{ 0x048000e8, "T0PRIVEXT" }, { 0x04830030, "SYSC_JTAG_THREAD" }, { 0x04830018, "MMCU_DCACHE_CTRL" },
+	{ 0x04830020, "MMCU_ICACHE_CTRL" }, { 0x04850000, "MMCU_SEG0_BASE" }, { 0x04850004, "MMCU_SEG0_LIMIT" },
+};
+#define MSLVCTRL0 0x0a10
+#define MSLVCTRL1 0x0a18
+#define MSLVDATAX 0x0a00
+#define MSLV_READY_IDLE 0x05000000U /* READY (24) | GBLPORT_IDLE (26) */
+
 static char *mode_unused;
 module_param_named(mode, mode_unused, charp, 0000);
 static int skip_pll1;
@@ -102,6 +116,8 @@ static struct {
 } res;
 static u32 peek_off, peek_val;
 static bool peek_valid;
+static u32 meta_addr, meta_val, meta_ctrl1;
+static bool meta_valid;
 static atomic_t batch_attempted = ATOMIC_INIT(0), activate_attempted = ATOMIC_INIT(0), pmgr_attempted = ATOMIC_INIT(0);
 
 static int fail(int err, const char *msg)
@@ -359,6 +375,77 @@ static ssize_t peek_show(struct device *dev, struct device_attribute *attr, char
 }
 static DEVICE_ATTR_RW(peek);
 
+static int meta_wait_ready(u32 *ctrl1)
+{
+	unsigned int i;
+
+	for (i = 0; i < 1000; i++) {
+		*ctrl1 = readl(core_regs + MSLVCTRL1);
+		if ((*ctrl1 & MSLV_READY_IDLE) == MSLV_READY_IDLE)
+			return 0;
+		udelay(1);
+	}
+	return -ETIMEDOUT;
+}
+
+/* meta: write an allow-listed META address (hex), read the value back. Slave-port read sequence, bounded waits. */
+static ssize_t meta_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+{
+	unsigned int i;
+	u32 addr, c1;
+	int ret = -EINVAL;
+
+	if (kstrtou32(buf, 0, &addr))
+		return -EINVAL;
+	mutex_lock(&lock);
+	if (state != ST_IDENTIFIED) {
+		ret = -EBUSY;
+		goto out;
+	}
+	for (i = 0; i < ARRAY_SIZE(meta_list); i++)
+		if (meta_list[i].addr == addr)
+			break;
+	if (i == ARRAY_SIZE(meta_list))
+		goto out;
+	ret = meta_wait_ready(&c1);
+	if (ret)
+		goto out;
+	writel(addr | 1U, core_regs + MSLVCTRL0); /* address select + RD_EN */
+	mb();
+	(void)readl(core_regs + MSLVCTRL0);
+	ret = meta_wait_ready(&c1);
+	if (ret)
+		goto out;
+	meta_addr = addr;
+	meta_ctrl1 = c1;
+	meta_val = readl(core_regs + MSLVDATAX);
+	meta_valid = true;
+	ret = count;
+out:
+	mutex_unlock(&lock);
+	return ret;
+}
+
+static ssize_t meta_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	unsigned int i;
+	const char *name = "?";
+	ssize_t n;
+
+	mutex_lock(&lock);
+	if (!meta_valid) {
+		n = sysfs_emit(buf, "no-meta-read\n");
+	} else {
+		for (i = 0; i < ARRAY_SIZE(meta_list); i++)
+			if (meta_list[i].addr == meta_addr)
+				name = meta_list[i].name;
+		n = sysfs_emit(buf, "addr=0x%08x name=%s value=0x%08x mslvctrl1=0x%08x\n", meta_addr, name, meta_val, meta_ctrl1);
+	}
+	mutex_unlock(&lock);
+	return n;
+}
+static DEVICE_ATTR_RW(meta);
+
 static int __init j81_gpu_init(void)
 {
 	struct device_node *gfx;
@@ -407,6 +494,8 @@ static int __init j81_gpu_init(void)
 		ret = device_create_file(consumer, &dev_attr_status);
 	if (!ret)
 		ret = device_create_file(consumer, &dev_attr_peek);
+	if (!ret)
+		ret = device_create_file(consumer, &dev_attr_meta);
 	if (!ret)
 		ret = pm_runtime_set_suspended(consumer);
 	if (ret)

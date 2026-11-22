@@ -45,4 +45,16 @@ if [ -f /tmp/j81-gpu.peeks ]; then
         printf 'stage=after-peek-%s %s\n' "$off" "$(cat $dev/peek)"
     done </tmp/j81-gpu.peeks
 fi
+# Optional META slave-port survey: addresses (0x + 8 hex digits, one per line) staged in /tmp/j81-gpu.metas.
+if [ -f /tmp/j81-gpu.metas ]; then
+    exec 3<&0
+    while IFS= read -r addr; do
+        case "$addr" in 0x????????) ;; *) continue ;; esac
+        printf 'stage=before-meta-%s width=32\n' "$addr"
+        IFS= read -r reply <&3
+        [ "$reply" = READ ] || exit 1
+        echo "$addr" >"$dev/meta" || { printf 'stage=failed-meta-%s\nstage=finished rc=1\n' "$addr"; exit 1; }
+        printf 'stage=after-meta-%s %s\n' "$addr" "$(cat $dev/meta)"
+    done </tmp/j81-gpu.metas
+fi
 printf 'stage=finished rc=0\n'
