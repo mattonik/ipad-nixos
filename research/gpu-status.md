@@ -6,6 +6,8 @@ Imagination GXA6850 (Rogue/G4G generation).
 
 For the stock 19H394 path from the core-ID read to running META firmware (LDR image, Fender-proxied start sequence, Rogue MMU, IRQ 138 doorbell, firmware interface) and the proposed read/write steps, see [j81-meta-boot/RESULT.md](j81-meta-boot/RESULT.md) (2026-11-22, offline).
 
+For the reproducible LDR layout tool, the Fender ConfigRAM correction (it is a write-only replay list at `+0x10000`, not a mailbox), the comparison with the public Imagination driver and the revised first-boot steps, see [j81-ldr-tool-fwif/RESULT.md](j81-ldr-tool-fwif/RESULT.md) (2026-11-22, offline).
+
 ## What has been observed
 
 - A three-boundary iPadOS 15.8.5 (`19H394`) planned-panic series now pins

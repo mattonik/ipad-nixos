@@ -1,0 +1,320 @@
+{
+ "tool": "j81_meta_ldr_layout.py",
+ "source_image_sha256": "55018c7eacef950ff438461f79ac6513e50b0c8528b191e8e064dfae40092c2f",
+ "header": {
+  "dev_id": "0x1aa5500",
+  "sl_code": "0x10",
+  "sl_data": "0x1190",
+  "pc_ctrl": "0x0",
+  "crc": "0xcaf"
+ },
+ "record_counts": {
+  "CONFIG": 2,
+  "COMMENT": 5,
+  "ZEROMEM": 13,
+  "LOADMEM": 67,
+  "START_THREADS": 1
+ },
+ "config_writes": 27,
+ "parameters": {
+  "gpu_va": "0xe1c0000000",
+  "align": "0x1000",
+  "dm": 7,
+  "coremem_base": "0x80000080",
+  "root_fw_addr": "0x0",
+  "state_fw_addr": "0x0"
+ },
+ "assumptions": [
+  "A1 buffer GPU VA = gpu_va (stock: firmware partition, must equal META 0x40000000 boot mapping)",
+  "A2 align = 1 << unresolved global (GOT 0x6f2a698)",
+  "A3 OUTA1 DM = dm (init+0x30c)",
+  "A4 tail root/state addresses supplied by caller, default 0"
+ ],
+ "buffer": {
+  "size": "0x212b4",
+  "gpu_va": "0xe1c0000000",
+  "regions": [
+   {
+    "name": "seg2",
+    "offset": "0x0",
+    "size": "0x1000",
+    "meta_min": "0x40000000",
+    "gpu_va": "0xe1c0000000",
+    "fw_addr": "0xc0000000"
+   },
+   {
+    "name": "seg0",
+    "offset": "0x1000",
+    "size": "0x18000",
+    "meta_min": "0x10000000",
+    "gpu_va": "0xe1c0001000",
+    "fw_addr": "0xc0001000"
+   },
+   {
+    "name": "seg1",
+    "offset": "0x19000",
+    "size": "0x2000",
+    "meta_min": "0x20000000",
+    "gpu_va": "0xe1c0019000",
+    "fw_addr": "0xc0019000"
+   },
+   {
+    "name": "seg3",
+    "offset": "0x1b000",
+    "size": "0x1000",
+    "meta_min": "0x60001000",
+    "gpu_va": "0xe1c001b000",
+    "fw_addr": "0xc001b000"
+   },
+   {
+    "name": "coremem",
+    "offset": "0x1c000",
+    "size": "0x52b4",
+    "meta_base": "0x80000080",
+    "gpu_va": "0xe1c001c000",
+    "fw_addr": "0x4001c000",
+    "note": "stock passes fw_addr, gpu_va, size to the firmware at init block +0x480/+0x484/+0x48c"
+   }
+  ],
+  "boot_list": {
+   "offset": "0x200",
+   "size": "0x144",
+   "pairs": [
+    [
+     "0x4850000",
+     "0x10000f02"
+    ],
+    [
+     "0x4850004",
+     "0x17fff"
+    ],
+    [
+     "0x4850008",
+     "0xc0001000"
+    ],
+    [
+     "0x485000c",
+     "0x7e1"
+    ],
+    [
+     "0x4850010",
+     "0x20000f02"
+    ],
+    [
+     "0x4850014",
+     "0x1fff"
+    ],
+    [
+     "0x4850018",
+     "0xc0019000"
+    ],
+    [
+     "0x485001c",
+     "0x7e1"
+    ],
+    [
+     "0x4850030",
+     "0x60001f02"
+    ],
+    [
+     "0x4850034",
+     "0xfff"
+    ],
+    [
+     "0x4850038",
+     "0xc001b000"
+    ],
+    [
+     "0x485003c",
+     "0x7e1"
+    ],
+    [
+     "0x4800070",
+     "0xf0f0"
+    ],
+    [
+     "0x4801070",
+     "0xf0f0"
+    ],
+    [
+     "0x4802070",
+     "0xf0f0"
+    ],
+    [
+     "0x4803070",
+     "0xf0f0"
+    ],
+    [
+     "0x4830010",
+     "0x0"
+    ],
+    [
+     "0x4830028",
+     "0x6"
+    ],
+    [
+     "0x4830600",
+     "0xc0c0"
+    ],
+    [
+     "0x4830038",
+     "0x1"
+    ],
+    [
+     "0x4830040",
+     "0x1"
+    ],
+    [
+     "0x4700000",
+     "0x0"
+    ],
+    [
+     "0x3000000",
+     "0x33ff"
+    ],
+    [
+     "0x3000008",
+     "0x33ff"
+    ],
+    [
+     "0x3000010",
+     "0x33ff"
+    ],
+    [
+     "0x3000018",
+     "0x33ff"
+    ],
+    [
+     "0x4830200",
+     "0x80000007"
+    ],
+    [
+     "0x4830208",
+     "0x80080007"
+    ],
+    [
+     "0x4830210",
+     "0x80000000"
+    ],
+    [
+     "0x4830218",
+     "0x80000000"
+    ],
+    [
+     "0x4830018",
+     "0x1"
+    ],
+    [
+     "0x4830220",
+     "0x7"
+    ],
+    [
+     "0x4830228",
+     "0x80007"
+    ],
+    [
+     "0x4830230",
+     "0x0"
+    ],
+    [
+     "0x4830238",
+     "0x0"
+    ],
+    [
+     "0x4830020",
+     "0x1"
+    ],
+    [
+     "0x40000c0",
+     "0x0"
+    ],
+    [
+     "0x48010e8",
+     "0x80"
+    ],
+    [
+     "0x48000e8",
+     "0x80"
+    ]
+   ],
+   "terminator_offset": "0x338",
+   "tail_word": "0xc0000ff8"
+  },
+  "tail": {
+   "offset": "0xff8",
+   "root_fw_addr": "0x0",
+   "state_fw_addr": "0x0"
+  }
+ },
+ "entry_points": {
+  "boot_pc_meta": "0x40000000 (META_BOOT master boot; seg2 at buffer offset 0)",
+  "threads": [
+   {
+    "thread": 1,
+    "sp": "0x8000b3c8",
+    "pc": "0x20000000",
+    "catch": "0x0"
+   },
+   {
+    "thread": 0,
+    "sp": "0x8000a3c8",
+    "pc": "0x10000000",
+    "catch": "0x0"
+   }
+  ],
+  "note": "stock host keeps only thread 1 (pc, sp) at fw+0xb48 (0x6690084)"
+ },
+ "skipped_records": [
+  [
+   "0x14b8",
+   "core-memory ZEROMEM skipped by stock"
+  ],
+  [
+   "0x158c",
+   "core-memory ZEROMEM skipped by stock"
+  ],
+  [
+   "0x3030",
+   "core-memory ZEROMEM skipped by stock"
+  ]
+ ],
+ "image_sha256": "ea87806bd70defa331046f757fd0e4db12981be35f8c90bd5cdccb503b839ce5",
+ "fender_configram": {
+  "base": "Fender+0x10000",
+  "pc_phys": "0x0",
+  "words": [
+   "0xff0104",
+   "0xe7ffff",
+   "0xff0100",
+   "0xfffffc1d",
+   "0xff0104",
+   "0xe7fe07",
+   "0xff0100",
+   "0x1ffffc1d",
+   "0xff0104",
+   "0x1",
+   "0xff0100",
+   "0x0",
+   "0xff0bf8",
+   "0x1",
+   "0xff1204",
+   "0x0",
+   "0xff1200",
+   "0x0",
+   "0xff3804",
+   "0x35500",
+   "0xff3800",
+   "0x300001",
+   "0xff380c",
+   "0x0",
+   "0xff3808",
+   "0x1",
+   "0xff0104",
+   "0x0",
+   "0xff0100",
+   "0x0",
+   "0xffff0000"
+  ],
+  "note": "stock J81 hardware-start list; applied at GPC state 0->1 [inferred]"
+ }
+}
