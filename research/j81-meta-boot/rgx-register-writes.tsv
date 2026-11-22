@@ -1,0 +1,15 @@
+order	instruction	register	width	value	context	tag
+1	0x6690c20	SOFT_RESET 0x100	64	0x00e7fffffffffc1d	fw+0xe0 via write64 (Fender-proxied on J81)	code
+2	0x6690c48	SOFT_RESET 0x100	64	0x00e7fe071ffffc1d	fw+0xe0	code
+3	0x6690c64	SOFT_RESET 0x100	64	0x0000000100000000	fw+0xe0; only META/GARTEN bit in reset [upstream-claim name]	code
+4	0x6690c80	META_BOOT 0xbf8	32	0x1	fw+0xe0; master boot	code
+5	0x6690ca0	BIF_CAT_BASE0 0x1200	64	page catalogue PA (no shift)	accel+0x740 0x6699228	code
+6	0x6699284	SLC_CTRL_MISC 0x3800	64	0x0003550000300001	accel+0x748 0x669924c	code
+7	0x66992a8	0x3808	64	0x1	accel+0x748	code
+8	0x6690cdc	SOFT_RESET 0x100	64	0x0	fw+0xe0 only if GPC bit set (J81 default), then Fender+0xb8	code
+9	0x6690364	SOFT_RESET 0x100	64	0x0	bootFirmware only if GPC bit clear	code
+stop1	0x6693ff8..0x669412c	T0ENABLE/T1ENABLE via slave port	32	0xfffffffe	power-down/stop	code
+stop2	0x669420c	0x1340	32	0x1	power-down	code
+stop3	0x6694214	BIF_CTRL 0x12a8	32	0x8	power-down	code
+stop4	0x669421c	SOFT_RESET 0x100	32	0x08000000 (SLC)	power-down; then poll SLC_IDLE 0x3898&0xff==0xff	code
+kick	0x6690e24.. (5 sites)	MTS_SCHEDULE 0xb00	32	0x10 TA/kick/devctl, 0x11 3D, 0x12 CL	submit paths	code

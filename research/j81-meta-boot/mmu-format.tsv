@@ -1,0 +1,10 @@
+item	va_bits	table	entry_or_value	evidence	tag
+PC	39:30	1024 x 4 B	((PD_pa>>12)<<4)|1	0x668592c..54	code
+PD	29:21	512 x 8 B	PT_pa|(pageshift-12)|1	0x6685a80..aa4	code
+PT	20:12 (4 KiB pages)	512 x 8 B	pa|1|flags (bit names inferred)	0x669dce4	code
+page shift			global 0x7a4cf80 default 12; may be overwritten at 0x666da4c		code/open
+CAT_BASE0			raw PC physical address	0x6699228	code
+FW heap			GPU VA 0xe1c0000000 (2 MiB) + 0xe1c0200000/0xe1c3200000/0xe1c4200000/0xe1c4600000	0x6685154	code
+META address			(u32)(va+0x40000000)|region; region 0xc0000000 default or 0x40000000	0x6691704	code
+seg n=0,1,3			BASE=base|0xf02 LIMIT=max(size,0x1000)-1 OUTA0=va[31:0] OUTA1=(va>>32)|(dm<<8)	0x66947cc	code
+seg 2			not programmed by host; boot default META 0x40000000 -> VA 0xe1c0000000	0x66947cc returns	code + upstream-claim

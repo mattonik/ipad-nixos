@@ -1,0 +1,11 @@
+object	size	content (all [code] from Appendix T4/T3 unless noted)
+root block	0x1490	firmware addresses of all rings, other blocks, config block at +0x454; address placed in bootloader-segment tail (0x6690250)
+state block	0x2058	includes temperature limit 120 at +0x24; address in bootloader-segment tail
+config block	0x318	9 MMIO window descriptors at +0x1c0 (FenderRegs 0x5000, RGXRegs 0x20000, AIC timer, AIC SW int, ...); AIC SW-set offset/mask at +0x2e4/+0x2e8
+TA/3D/CL/device-control rings	0x20 ctrl + 0x1400 each	256 x 20 B; FW read idx +0, host write idx +0x10, 8-bit wrap
+event ring	0x2c00	256 x 44 B; type 0 alive, type 1 completion bitmasks, 2-8 unresolved
+log ring	4 ch, 0xb000 + 0x36000	firmware printf
+FWTRACE	0x2c00	256 x 0x2c
+record ring	0x2400	256 x 0x24
+init struct fw+0x220		+0x300 = 0xe1c0000000, +0x308/+0x30c = {0,7}
+unresolved blocks	0x990, 0x8e0, 0x8c0, 0x938, 0x84	contents not decoded

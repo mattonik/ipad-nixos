@@ -1,0 +1,9 @@
+item	behaviour	tag
+AIC IRQ 134 (index 0)	reads RGX 0x1290 bit0 (BIF_MMU_ENTRY); no drain	adt+code
+AIC IRQ 135-137 (index 1-3)	Fender: read Fender+0x14, write back &7	adt+code
+AIC IRQ 138 (index 4)	FW->host doorbell (AIC SW interrupt): write 0x400 to SW_CLR 0x2_0e10_4090, drain event ring (fw+0x398 0x68c9fc), log ring, FWTRACE	adt+code
+meta-sw-interrupt	second record used: SW_SET 0x2_0e10_4010, SW_CLR 0x2_0e10_4090, mask 0x400; copied to config block +0x2e4/+0x2e8	adt+code
+non-GPC fallback clear	RGX MSLVIRQSTATUS 0xac8 <- 0 when accel+0x12c1==1	code
+host->FW kick	MTS_SCHEDULE 0xb00 <- 0x10/0x11/0x12	code
+alive	event-ring record type 0 -> fw+0x388 0x6693ea8 sets fw+0xb35, stores word+4 to fw+0xb38, wakes waitForFWAlive (IOCommandGate sleep, 10 x accel+0xc20)	code
+GPC boot request	Fender+0x20000 <- 0; poll Fender+0x1000 bit4 clear (10 us steps); Fender+0x1000 <- 0x11	code

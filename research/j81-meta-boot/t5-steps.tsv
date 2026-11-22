@@ -1,0 +1,10 @@
+step	kind	registers	expected/check	risk	watchdog/stop
+R1	read	RGX 0xbf8 0x1200 0x3800 0x3808 0x3898 0x12a8 0x1340 0xac8 0x1288 0x1290 0x12b0-0x12c8	expect META_BOOT=0, CAT_BASE0=0	none (reads Apple itself performs)	crumb per read; a hang = bus/aperture fault, stop
+R2	read (slave port)	META 0x04850010-0x0485003c, 0x048000e8, 0x04830018, 0x04830020, coremem 0x80000000/0x82000000	seg2 boot default; caches 0; PRIVEXT 0	low; slave port reads already proven	abort if MSLVCTRL1 leaves 0x07000040
+W0	memory only	page tables, firmware buffer at VA 0xe1c0000000 (seg2,seg0,seg1,seg3,coremem), list at +0x200, zero root block	offline dump matches ldr-segments.tsv	none to GPU	no MMIO
+W1	write	META_BOOT 0xbf8 <- R1 value (no-op)	readback unchanged	first RGX write; tests direct path vs Fender mailbox	if not observable, implement Fender mailbox 0x69c610 before W2
+W2	write x3	SOFT_RESET <- 0x00e7fffffffffc1d, 0x00e7fe071ffffc1d, 0x1_00000000	old 0 (capture); readback each	resets GPU blocks	unwind SOFT_RESET<-0 then re-read identity
+W3	write	META_BOOT <- 1	old from R1 (expect 0)	mode bit only while META in reset	readback 1
+W4	write	BIF_CAT_BASE0 <- W0 PC phys	old from R1	points MMU at Linux tables	readback
+W5	write	0x3800 <- 0x0003550000300001; 0x3808 <- 1	old from R1	SLC config	readback; stop on unexpected old value
+W6	write	SOFT_RESET <- 0, then GPC state 1 as existing recipe	-	FIRST FIRMWARE RUN (highest)	observe T0ENABLE bit0, MMCU cache=1, PRIVEXT=0x80, BIF fault 0x12b0, AIC IRQ 138; recovery = stock stop sequence or 20 s watchdog

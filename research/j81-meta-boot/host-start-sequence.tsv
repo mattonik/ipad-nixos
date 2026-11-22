@@ -1,0 +1,10 @@
+order	call_site	target	role	tag
+1	0x6673f58	accel+0x940 -> 0x669b178	createHardwareMappings()	code
+2	0x6673f6c	accel+0x950 -> 0x669b5dc	prepareHardwareMappings()	code
+3	0x6673f80	accel+0x958 -> 0x6673050	unnamed	code
+4	0x6673f94	fw+0xa8 -> 0x668fa88	prepareFirmwareData: wires ~14 descriptors (0x668a03c)	code
+5	0x6673fa8	fw+0x98 -> 0x668f770	MHz handoff; ends by calling fw+0xe0 hardware start 0x6690bbc	code
+6	0x6673fe0	accel+0x8a8(1) -> 0x6672800	unnamed enable	code
+7	0x6673ffc	fw+0xc0 -> 0x6690328	bootFirmware: Fender+0x20000=0, setGPCPerformanceState(1) (Fender+0x1000=0x11), waitForFWAlive 0x6694d40	code
+8	0x667400c	accel+0x7e8 -> 0x669ac18	post-boot	code
+earlier	0x666e8ec	fw+0xb8 -> 0x668fbc0 / 0x668fd58	LDR processor during accelerator start: image buffer, 4 views, seg tuples to list at +0x200	code

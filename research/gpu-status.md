@@ -4,6 +4,8 @@
 is the iPad Air 2 (J81, A8X/T7001), whose GPU is identified by this project as
 Imagination GXA6850 (Rogue/G4G generation).
 
+For the stock 19H394 path from the core-ID read to running META firmware (LDR image, Fender-proxied start sequence, Rogue MMU, IRQ 138 doorbell, firmware interface) and the proposed read/write steps, see [j81-meta-boot/RESULT.md](j81-meta-boot/RESULT.md) (2026-11-22, offline).
+
 ## What has been observed
 
 - A three-boundary iPadOS 15.8.5 (`19H394`) planned-panic series now pins
