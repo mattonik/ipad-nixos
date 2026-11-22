@@ -405,7 +405,9 @@ static ssize_t meta_store(struct device *dev, struct device_attribute *attr, con
 	for (i = 0; i < ARRAY_SIZE(meta_list); i++)
 		if (meta_list[i].addr == addr)
 			break;
-	if (i == ARRAY_SIZE(meta_list))
+	/* Also the first 64 words of the coremem code (0x80000000) and data (0x82000000) windows, read-only, word aligned. */
+	if (i == ARRAY_SIZE(meta_list) &&
+	    !(!(addr & 3) && ((addr - 0x80000000U) < 0x100 || (addr - 0x82000000U) < 0x100)))
 		goto out;
 	ret = meta_wait_ready(&c1);
 	if (ret)
@@ -439,6 +441,8 @@ static ssize_t meta_show(struct device *dev, struct device_attribute *attr, char
 		for (i = 0; i < ARRAY_SIZE(meta_list); i++)
 			if (meta_list[i].addr == meta_addr)
 				name = meta_list[i].name;
+		if (!strcmp(name, "?"))
+			name = (meta_addr - 0x80000000U) < 0x100 ? "coremem_code" : "coremem_data";
 		n = sysfs_emit(buf, "addr=0x%08x name=%s value=0x%08x mslvctrl1=0x%08x\n", meta_addr, name, meta_val, meta_ctrl1);
 	}
 	mutex_unlock(&lock);
