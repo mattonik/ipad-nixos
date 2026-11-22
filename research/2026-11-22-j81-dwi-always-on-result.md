@@ -10,3 +10,6 @@ Plan: `2026-11-22-j81-dwi-always-on-plan.md`. Kernel notes a2dda27 (Image identi
 
 Meaning: the patch (0125) is sufficient to replace the poke; the late store is not needed. Remaining: make it part of the production kernel, then ablations (queue note).
 Logs (private): `artifacts/live/private/j81-linux-dwialwayson-results-20261122-run1`.
+
+## Production wiring (commit f9e068d)
+Patch 0125 is applied in kernel/hoolock-pcie-j81-wifi-h1b.nix, so every kernel on the base has dwi always-on. `m1n1-hoolock-wifi` builds with it (artifacts/live/gcroot-prod-dwi-always-on, DTB has apple,always-on). Boot check of that payload (dwi reads 0xff, normal boot) still to do. Cost: dwi domain stays powered; power not measured.
