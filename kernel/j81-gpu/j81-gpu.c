@@ -826,22 +826,28 @@ static DEVICE_ATTR_WO(step);
 static ssize_t status_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
 	ssize_t n;
+	/*
+	 * The host supervisor (boot/gpu-watchdog-supervisor.c) reads each stage line into char line[512]; a longer line is never
+	 * forwarded and the watchdog is no longer fed. That, not a bus hang, ended the F1/f1a/z3/h0 runs of 2026-11-22..24 (lines of
+	 * 558-700 bytes). Once an f/h/z3 step has output, the status is compact, and it is capped below 500 bytes in any case.
+	 */
+	bool compact = hs.next || z3_done || fr[0].done || fr[1].done || fr[2].done;
 
 	mutex_lock(&lock);
 	n = sysfs_emit(buf, "state=%s reason=%s skip_pll1=%d skip_pll4=%d crumb=%s", st_name[state], reason, skip_pll1, skip_pll4, fb_crumb_state());
 	if (state >= ST_ACTIVE)
 		n += sysfs_emit_at(buf, n, " gfx_ps=0x%08x gfx_vid=0x%08x", res.gfx_ps, res.vid);
-	if (res.batch_done)
+	if (res.batch_done && !compact)
 		n += sysfs_emit_at(buf, n,
 				   " core=0x%08x id=0x%08x hi=0x%08x bvnc_rev=%u.%u.%u.%u gpc=0x%08x polls=%u page5=0x%08x bridge_ns=%llu poll_to_core_ns=%llu core_read_ns=%llu",
 				   res.core, res.id, res.hi, (res.core >> 24) & 0xff, (res.core >> 16) & 0xff,
 				   (res.core >> 8) & 0xff, res.core & 0xff, res.gpc_raw, res.polls, res.page5,
 				   res.bridge_ns, res.poll_to_core_ns, res.core_read_ns);
-	if (wr.w1_done)
+	if (wr.w1_done && !compact)
 		n += sysfs_emit_at(buf, n, " w1_before=0x%08x w1_after=0x%08x", wr.w1_before, wr.w1_after);
 	if (z3_done)
 		n += sysfs_emit_at(buf, n, " z3=%08x,%08x,%08x,%08x,%08x,%08x,%08x,%08x,%08x,%08x", z_last[0], z_last[1], z_last[2], z_last[3], z_last[4], z_last[5], z_last[6], z_last[7], z_last[8], z_last[9]);
-	if (gs.next)
+	if (gs.next && !compact)
 		n += sysfs_emit_at(buf, n, " g_next=%d g_r1=0x%08x g_poll_state=0x%08x g_perr=%d g_p5=0x%08x", gs.next, gs.r1, gs.polls_state, gs.perr, gs.p5);
 	{
 		static const char *const fn[3] = { "f1", "f2", "f1a" };
@@ -858,8 +864,10 @@ static ssize_t status_show(struct device *dev, struct device_attribute *attr, ch
 				   hs.next, hs.f2, hs.r1, hs.r3, hs.r5, hs.p5, hs.s0, hs.s4, hs.s8, hs.core,
 				   hs.obs[0][0], hs.obs[0][1], hs.obs[0][2], hs.obs[1][0], hs.obs[1][1], hs.obs[1][2], hs.obs[2][0], hs.obs[2][1], hs.obs[2][2],
 				   hs.obs[3][0], hs.obs[3][1], hs.obs[3][2], hs.obs[4][0], hs.obs[4][1], hs.obs[4][2]);
-	if (wr.w2a_done)
+	if (wr.w2a_done && !compact)
 		n += sysfs_emit_at(buf, n, " w2a_set=0x%016llx w2a_clear=0x%016llx w2a_core=0x%08x", wr.w2a_set, wr.w2a_clear, wr.w2a_core);
+	if (n > 480)
+		n = 480;	/* cap: see above; the tail (newest fields) is cut, never the newline */
 	n += sysfs_emit_at(buf, n, "\n");
 	mutex_unlock(&lock);
 	return n;
