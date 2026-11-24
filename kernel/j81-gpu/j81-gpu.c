@@ -605,7 +605,7 @@ static int step_g(int n)
  * H-steps (2026-11-24): F1/F2 split into one host-visible step per Fender access (the pattern of the passing g-run), so the last
  * stage line names the access that hangs. Plain readl/writel, no udelay between accesses; a host round trip separates every step.
  * PMGR observers (GFX PS 0x20320, sequencer 0x1c200, voltage 0x2300c) are sampled at h1/h5/h8/h10/h11 and shown in status.
- *   h0 state==1 check, crumb clear + mark 1, store GPC_STATE=0x10      h1 read GPC_STATE (+observers)   h2 bounded poll for busy clear
+ *   h0 state==1 check, store GPC_STATE=0x10      h1 read GPC_STATE (+observers)   h2 bounded poll for busy clear
  *   h3 msleep(100), read +0x10   h4 write +0x10=0   h5 read +0x10 (+observers; must be 0)   h6 write +0 = 0x40000000
  *   h7 ConfigRAM: terminator only (F1)   h7b ConfigRAM: F2 list (Apple 64-bit encoding) + terminator   h8 wmb, msleep(100), write +0x20000=0 (+observers)
  *   h9 bounded poll   h10 msleep(100), write GPC_STATE=0x11 (+observers)   h11 poll, state 1, PLL lock, SLC readback (only if state 1 and PLL set)
@@ -633,8 +633,7 @@ static int step_h(int n, bool f2)
 	case 0:
 		if ((readl(gpc_regs + GPC_STATE) & 0x1f) != 0x01)
 			return fail(-EBUSY, "h-gpc-not-state-1");
-		fb_crumb_clear();
-		fb_crumb_mark(1);
+		/* byte-identical to g0 (the passing run): no framebuffer writes in this call; run z0 before h0 for crumbs */
 		writel(0x10, gpc_regs + GPC_STATE);
 		return 0;
 	case 1:
