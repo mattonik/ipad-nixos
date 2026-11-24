@@ -427,7 +427,7 @@ static void cfg_put(u32 w)
 
 static void cfg_put64(u32 reg, u64 v)
 {
-	cfg_put((reg + 4) | 0xff << 16);
+	cfg_put(reg + 4);	/* Apple J81 stream writer (slot 0xc8): no flag byte on the first word */
 	cfg_put(v >> 32);
 	cfg_put(reg | 0xff << 16);
 	cfg_put(v & 0xffffffff);
@@ -600,6 +600,120 @@ static int step_g(int n)
 	return -EINVAL;
 }
 
+
+/*
+ * H-steps (2026-11-24): F1/F2 split into one host-visible step per Fender access (the pattern of the passing g-run), so the last
+ * stage line names the access that hangs. Plain readl/writel, no udelay between accesses; a host round trip separates every step.
+ * PMGR observers (GFX PS 0x20320, sequencer 0x1c200, voltage 0x2300c) are sampled at h1/h5/h8/h10/h11 and shown in status.
+ *   h0 state==1 check, crumb clear + mark 1, store GPC_STATE=0x10      h1 read GPC_STATE (+observers)   h2 bounded poll for busy clear
+ *   h3 msleep(100), read +0x10   h4 write +0x10=0   h5 read +0x10 (+observers; must be 0)   h6 write +0 = 0x40000000
+ *   h7 ConfigRAM: terminator only (F1)   h7b ConfigRAM: F2 list (Apple 64-bit encoding) + terminator   h8 wmb, msleep(100), write +0x20000=0 (+observers)
+ *   h9 bounded poll   h10 msleep(100), write GPC_STATE=0x11 (+observers)   h11 poll, state 1, PLL lock, SLC readback (only if state 1 and PLL set)
+ */
+static struct { int next; bool f2; u32 r1, r3, r5, p5, s0, s4, s8, core; u32 obs[5][3]; int err; } hs;
+
+static void h_obs(int k)
+{
+	hs.obs[k][0] = readl(pmgr + PM_GFX_PS);
+	hs.obs[k][1] = readl(pmgr + 0x1c200);
+	hs.obs[k][2] = readl(pmgr + 0x2300c);
+}
+
+static int step_h(int n, bool f2)
+{
+	int i;
+	u32 v = 0;
+
+	if (state != ST_IDENTIFIED || !wr.w2a_done || hs.next != n)
+		return -EBUSY;
+	if (n == 7 && f2)
+		hs.f2 = true;
+	hs.next = n + 1;
+	switch (n) {
+	case 0:
+		if ((readl(gpc_regs + GPC_STATE) & 0x1f) != 0x01)
+			return fail(-EBUSY, "h-gpc-not-state-1");
+		fb_crumb_clear();
+		fb_crumb_mark(1);
+		writel(0x10, gpc_regs + GPC_STATE);
+		return 0;
+	case 1:
+		hs.r1 = readl(gpc_regs + GPC_STATE);
+		h_obs(0);
+		return 0;
+	case 2:
+		for (i = 0; i < 200000; i++) {
+			v = readl(gpc_regs + GPC_STATE);
+			if (!(v & 0x10))
+				break;
+			udelay(10);
+		}
+		return i == 200000 ? fail(-ETIMEDOUT, "h2-poll-timeout") : 0;
+	case 3:
+		msleep(100);
+		hs.r3 = readl(gpc_regs + 0x10);
+		return 0;
+	case 4:
+		writel(0, gpc_regs + 0x10);
+		return 0;
+	case 5:
+		hs.r5 = readl(gpc_regs + 0x10);
+		h_obs(1);
+		return hs.r5 ? fail(-EIO, "h5-int-enable-not-zero") : 0;
+	case 6:
+		writel(0x40000000, gpc_regs);
+		return 0;
+	case 7:
+		cfg_n = 0;
+		if (hs.f2) {
+			cfg_put64(0x3800, 0x0003550000300001ULL);
+			cfg_put(0x3808 | 0xff << 16);
+			cfg_put(1);
+		}
+		cfg_put(0xffff0000);
+		return 0;
+	case 8:
+		wmb();
+		msleep(100);
+		writel(0, gpc_regs + 0x20000);
+		h_obs(2);
+		return 0;
+	case 9:
+		for (i = 0; i < 200000; i++) {
+			v = readl(gpc_regs + GPC_STATE);
+			if (!(v & 0x10))
+				break;
+			udelay(10);
+		}
+		return i == 200000 ? fail(-ETIMEDOUT, "h9-poll-timeout") : 0;
+	case 10:
+		msleep(100);
+		writel(0x11, gpc_regs + GPC_STATE);
+		h_obs(3);
+		return 0;
+	case 11:
+		for (i = 0; i < 200000; i++) {
+			v = readl(gpc_regs + GPC_STATE);
+			if (!(v & 0x10))
+				break;
+			udelay(10);
+		}
+		h_obs(4);
+		if (i == 200000 || (v & 0x1f) != 0x01)
+			return fail(-EIO, "h11-state1-not-reached");
+		udelay(20);
+		hs.p5 = readl(pmgr + PM_PAGE5_4);
+		if (!(hs.p5 & 0x40000000))
+			return fail(-EIO, "h11-pll-lock-clear");
+		hs.s0 = readl(core_regs + 0x3800);
+		hs.s4 = readl(core_regs + 0x3804);
+		hs.s8 = readl(core_regs + 0x3808);
+		hs.core = readl(core_regs + 0x20);
+		return hs.core != res.core ? fail(-EIO, "h11-core-mismatch") : 0;
+	}
+	return -EINVAL;
+}
+
 /*
  * Z-steps: isolate what the passing g-run did not do. Repeatable, no hardware access except the named one.
  *   z0  blank the crumb row and draw mark 1 (framebuffer writes only)
@@ -671,6 +785,32 @@ static ssize_t step_store(struct device *dev, struct device_attribute *attr, con
 		ret = step_g(3);
 	else if (sysfs_streq(buf, "g4"))
 		ret = step_g(4);
+	else if (sysfs_streq(buf, "h0"))
+		ret = step_h(0, false);
+	else if (sysfs_streq(buf, "h1"))
+		ret = step_h(1, false);
+	else if (sysfs_streq(buf, "h2"))
+		ret = step_h(2, false);
+	else if (sysfs_streq(buf, "h3"))
+		ret = step_h(3, false);
+	else if (sysfs_streq(buf, "h4"))
+		ret = step_h(4, false);
+	else if (sysfs_streq(buf, "h5"))
+		ret = step_h(5, false);
+	else if (sysfs_streq(buf, "h6"))
+		ret = step_h(6, false);
+	else if (sysfs_streq(buf, "h7"))
+		ret = step_h(7, false);
+	else if (sysfs_streq(buf, "h8"))
+		ret = step_h(8, false);
+	else if (sysfs_streq(buf, "h9"))
+		ret = step_h(9, false);
+	else if (sysfs_streq(buf, "h10"))
+		ret = step_h(10, false);
+	else if (sysfs_streq(buf, "h11"))
+		ret = step_h(11, false);
+	else if (sysfs_streq(buf, "h7b"))
+		ret = step_h(7, true);
 	else if (sysfs_streq(buf, "f1a"))
 		ret = step_f(2);
 	else if (sysfs_streq(buf, "f1"))
@@ -714,6 +854,11 @@ static ssize_t status_show(struct device *dev, struct device_attribute *attr, ch
 						   fn[k], fr[k].err, fn[k], fr[k].where ? fr[k].where : "-", fn[k], fr[k].g_start, fr[k].g_after0,
 						   fr[k].g_after20000, fr[k].g_after1, fn[k], fr[k].p5, fn[k], fr[k].rgx_read, fn[k], fr[k].core, fn[k], fr[k].s0, fr[k].s4, fr[k].s8);
 	}
+	if (hs.next)
+		n += sysfs_emit_at(buf, n, " h_next=%d h_f2=%d h_r1=0x%08x h_r3=0x%08x h_r5=0x%08x h_p5=0x%08x h_slc=0x%08x/0x%08x/0x%08x h_core=0x%08x h_obs=%08x,%08x,%08x/%08x,%08x,%08x/%08x,%08x,%08x/%08x,%08x,%08x/%08x,%08x,%08x",
+				   hs.next, hs.f2, hs.r1, hs.r3, hs.r5, hs.p5, hs.s0, hs.s4, hs.s8, hs.core,
+				   hs.obs[0][0], hs.obs[0][1], hs.obs[0][2], hs.obs[1][0], hs.obs[1][1], hs.obs[1][2], hs.obs[2][0], hs.obs[2][1], hs.obs[2][2],
+				   hs.obs[3][0], hs.obs[3][1], hs.obs[3][2], hs.obs[4][0], hs.obs[4][1], hs.obs[4][2]);
 	if (wr.w2a_done)
 		n += sysfs_emit_at(buf, n, " w2a_set=0x%016llx w2a_clear=0x%016llx w2a_core=0x%08x", wr.w2a_set, wr.w2a_clear, wr.w2a_core);
 	n += sysfs_emit_at(buf, n, "\n");
