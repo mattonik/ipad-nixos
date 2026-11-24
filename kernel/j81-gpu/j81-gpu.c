@@ -715,6 +715,24 @@ static int step_h(int n, int mode)
 		hs.s8 = readl(core_regs + 0x3808);
 		hs.core = readl(core_regs + 0x20);
 		return hs.core != res.core ? fail(-EIO, "h11-core-mismatch") : 0;
+	case 12:
+		/* only from state 1 with PLL locked (h11 passed): release the ConfigRAM walk, then re-read SLC and core */
+		if (hs.p5 != 0x40000000 || (readl(gpc_regs + GPC_STATE) & 0x1f) != 0x01)
+			return fail(-EBUSY, "h12-not-state-1");
+		msleep(100);
+		writel(0, gpc_regs + 0x20000);
+		for (i = 0; i < 200000; i++) {
+			v = readl(gpc_regs + GPC_STATE);
+			if (!(v & 0x10))
+				break;
+			udelay(10);
+		}
+		hs.r5 = v;
+		hs.s0 = readl(core_regs + 0x3800);
+		hs.s4 = readl(core_regs + 0x3804);
+		hs.s8 = readl(core_regs + 0x3808);
+		hs.core = readl(core_regs + 0x20);
+		return i == 200000 ? fail(-ETIMEDOUT, "h12-poll-timeout") : 0;
 	}
 	return -EINVAL;
 }
@@ -816,6 +834,8 @@ static ssize_t step_store(struct device *dev, struct device_attribute *attr, con
 		ret = step_h(10, 0);
 	else if (sysfs_streq(buf, "h11"))
 		ret = step_h(11, 0);
+	else if (sysfs_streq(buf, "h12"))
+		ret = step_h(12, 0);
 	else if (sysfs_streq(buf, "h7b"))
 		ret = step_h(7, 1);
 	else if (sysfs_streq(buf, "h7c"))
