@@ -610,7 +610,7 @@ static int step_g(int n)
  *   h7 ConfigRAM: terminator only (F1)   h7b ConfigRAM: F2 list (Apple 64-bit encoding) + terminator   h8 wmb, msleep(100), write +0x20000=0 (+observers)
  *   h9 bounded poll   h10 msleep(100), write GPC_STATE=0x11 (+observers)   h11 poll, state 1, PLL lock, SLC readback (only if state 1 and PLL set)
  */
-static struct { int next; int f2; u32 r1, r3, r5, p5, s0, s4, s8, core; u32 obs[5][3]; int err; } hs;
+static struct { int next; int f2; bool skip20000; u32 r1, r3, r5, p5, s0, s4, s8, core; u32 obs[5][3]; int err; } hs;
 
 static void h_obs(int k)
 {
@@ -628,6 +628,8 @@ static int step_h(int n, int mode)
 		return -EBUSY;
 	if (n == 7)
 		hs.f2 = mode;
+	if (n == 8)
+		hs.skip20000 = mode == 3;
 	hs.next = n + 1;
 	switch (n) {
 	case 0:
@@ -677,7 +679,8 @@ static int step_h(int n, int mode)
 	case 8:
 		wmb();
 		msleep(100);
-		writel(0, gpc_regs + 0x20000);
+		if (!hs.skip20000)	/* h8n: no core-word store (runs 12/13: any non-empty list hung at this store) */
+			writel(0, gpc_regs + 0x20000);
 		h_obs(2);
 		return 0;
 	case 9:
@@ -805,6 +808,8 @@ static ssize_t step_store(struct device *dev, struct device_attribute *attr, con
 		ret = step_h(7, 0);
 	else if (sysfs_streq(buf, "h8"))
 		ret = step_h(8, 0);
+	else if (sysfs_streq(buf, "h8n"))
+		ret = step_h(8, 3);
 	else if (sysfs_streq(buf, "h9"))
 		ret = step_h(9, 0);
 	else if (sysfs_streq(buf, "h10"))
