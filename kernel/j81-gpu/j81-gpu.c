@@ -670,6 +670,9 @@ static int step_h(int n, int mode)
 			cfg_put64(0x3800, 0x0003550000300001ULL);
 			cfg_put(0x3808 | 0xff << 16);
 			cfg_put(1);
+		} else if (hs.f2 == 4) {	/* h7d: ONE entry writing the CURRENT value (SLC 0x3808 <- 0) */
+			cfg_put(0x3808 | 0xff << 16);
+			cfg_put(0);
 		} else if (hs.f2 == 2) {	/* h7c: ONE 32-bit entry only (SLC 0x3808 <- 1) */
 			cfg_put(0x3808 | 0xff << 16);
 			cfg_put(1);
@@ -838,6 +841,8 @@ static ssize_t step_store(struct device *dev, struct device_attribute *attr, con
 		ret = step_h(12, 0);
 	else if (sysfs_streq(buf, "h7b"))
 		ret = step_h(7, 1);
+	else if (sysfs_streq(buf, "h7d"))
+		ret = step_h(7, 4);
 	else if (sysfs_streq(buf, "h7c"))
 		ret = step_h(7, 2);
 	else if (sysfs_streq(buf, "f1a"))
