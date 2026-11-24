@@ -610,7 +610,7 @@ static int step_g(int n)
  *   h7 ConfigRAM: terminator only (F1)   h7b ConfigRAM: F2 list (Apple 64-bit encoding) + terminator   h8 wmb, msleep(100), write +0x20000=0 (+observers)
  *   h9 bounded poll   h10 msleep(100), write GPC_STATE=0x11 (+observers)   h11 poll, state 1, PLL lock, SLC readback (only if state 1 and PLL set)
  */
-static struct { int next; bool f2; u32 r1, r3, r5, p5, s0, s4, s8, core; u32 obs[5][3]; int err; } hs;
+static struct { int next; int f2; u32 r1, r3, r5, p5, s0, s4, s8, core; u32 obs[5][3]; int err; } hs;
 
 static void h_obs(int k)
 {
@@ -619,15 +619,15 @@ static void h_obs(int k)
 	hs.obs[k][2] = readl(pmgr + 0x2300c);
 }
 
-static int step_h(int n, bool f2)
+static int step_h(int n, int mode)
 {
 	int i;
 	u32 v = 0;
 
 	if (state != ST_IDENTIFIED || !wr.w2a_done || hs.next != n)
 		return -EBUSY;
-	if (n == 7 && f2)
-		hs.f2 = true;
+	if (n == 7)
+		hs.f2 = mode;
 	hs.next = n + 1;
 	switch (n) {
 	case 0:
@@ -664,8 +664,11 @@ static int step_h(int n, bool f2)
 		return 0;
 	case 7:
 		cfg_n = 0;
-		if (hs.f2) {
+		if (hs.f2 == 1) {
 			cfg_put64(0x3800, 0x0003550000300001ULL);
+			cfg_put(0x3808 | 0xff << 16);
+			cfg_put(1);
+		} else if (hs.f2 == 2) {	/* h7c: ONE 32-bit entry only (SLC 0x3808 <- 1) */
 			cfg_put(0x3808 | 0xff << 16);
 			cfg_put(1);
 		}
@@ -785,31 +788,33 @@ static ssize_t step_store(struct device *dev, struct device_attribute *attr, con
 	else if (sysfs_streq(buf, "g4"))
 		ret = step_g(4);
 	else if (sysfs_streq(buf, "h0"))
-		ret = step_h(0, false);
+		ret = step_h(0, 0);
 	else if (sysfs_streq(buf, "h1"))
-		ret = step_h(1, false);
+		ret = step_h(1, 0);
 	else if (sysfs_streq(buf, "h2"))
-		ret = step_h(2, false);
+		ret = step_h(2, 0);
 	else if (sysfs_streq(buf, "h3"))
-		ret = step_h(3, false);
+		ret = step_h(3, 0);
 	else if (sysfs_streq(buf, "h4"))
-		ret = step_h(4, false);
+		ret = step_h(4, 0);
 	else if (sysfs_streq(buf, "h5"))
-		ret = step_h(5, false);
+		ret = step_h(5, 0);
 	else if (sysfs_streq(buf, "h6"))
-		ret = step_h(6, false);
+		ret = step_h(6, 0);
 	else if (sysfs_streq(buf, "h7"))
-		ret = step_h(7, false);
+		ret = step_h(7, 0);
 	else if (sysfs_streq(buf, "h8"))
-		ret = step_h(8, false);
+		ret = step_h(8, 0);
 	else if (sysfs_streq(buf, "h9"))
-		ret = step_h(9, false);
+		ret = step_h(9, 0);
 	else if (sysfs_streq(buf, "h10"))
-		ret = step_h(10, false);
+		ret = step_h(10, 0);
 	else if (sysfs_streq(buf, "h11"))
-		ret = step_h(11, false);
+		ret = step_h(11, 0);
 	else if (sysfs_streq(buf, "h7b"))
-		ret = step_h(7, true);
+		ret = step_h(7, 1);
+	else if (sysfs_streq(buf, "h7c"))
+		ret = step_h(7, 2);
 	else if (sysfs_streq(buf, "f1a"))
 		ret = step_f(2);
 	else if (sysfs_streq(buf, "f1"))
