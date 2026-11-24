@@ -420,9 +420,14 @@ static void fb_crumb_clear(void)
 
 static u32 cfg_n;
 
+static bool cfg_readback;	/* h7e: Apple's J81 kext loads back every ConfigRAM store (review 2026-11-24) */
+
 static void cfg_put(u32 w)
 {
-	gw(w, GPC_MASK + 4 * cfg_n++);
+	gw(w, GPC_MASK + 4 * cfg_n);
+	if (cfg_readback)
+		(void)gr(GPC_MASK + 4 * cfg_n);
+	cfg_n++;
 }
 
 static void cfg_put64(u32 reg, u64 v)
@@ -670,6 +675,10 @@ static int step_h(int n, int mode)
 			cfg_put64(0x3800, 0x0003550000300001ULL);
 			cfg_put(0x3808 | 0xff << 16);
 			cfg_put(1);
+		} else if (hs.f2 == 5) {	/* h7e: as h7d (no-op entry) but every store is loaded back, Apple-style */
+			cfg_readback = true;
+			cfg_put(0x3808 | 0xff << 16);
+			cfg_put(0);
 		} else if (hs.f2 == 4) {	/* h7d: ONE entry writing the CURRENT value (SLC 0x3808 <- 0) */
 			cfg_put(0x3808 | 0xff << 16);
 			cfg_put(0);
@@ -678,6 +687,7 @@ static int step_h(int n, int mode)
 			cfg_put(1);
 		}
 		cfg_put(0xffff0000);
+		cfg_readback = false;
 		return 0;
 	case 8:
 		wmb();
@@ -841,6 +851,8 @@ static ssize_t step_store(struct device *dev, struct device_attribute *attr, con
 		ret = step_h(12, 0);
 	else if (sysfs_streq(buf, "h7b"))
 		ret = step_h(7, 1);
+	else if (sysfs_streq(buf, "h7e"))
+		ret = step_h(7, 5);
 	else if (sysfs_streq(buf, "h7d"))
 		ret = step_h(7, 4);
 	else if (sysfs_streq(buf, "h7c"))
