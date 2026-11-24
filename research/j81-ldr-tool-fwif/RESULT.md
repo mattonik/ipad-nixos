@@ -47,8 +47,8 @@ Outputs:
 - Text tables and `manifest.json`, with SHA-256 hashes only. They may be public.
 - `fw-buffer.bin` and `boot-list.bin`, written only to a caller-named private directory (mode 0700/0600). The tool refuses a directory inside a Git work tree unless Git ignores it.
 
-`tool/test_j81_meta_ldr_layout.py` has 11 tests and all pass:
-- **Synthetic stream (always runs):** layout, copy and zero, boot list, tail, translator, rejection of non-write config types, ConfigRAM encoding, private-directory refusal, and a check that no table contains payload bytes.
+`tool/test_j81_meta_ldr_layout.py` has 15 tests and all pass (11 originally; 4 ConfigRAM decoder tests added 2026-11-24):
+- **Synthetic stream (always runs):** layout, copy and zero, boot list, tail, translator, rejection of non-write config types, ConfigRAM encoding (pinned to slot `0xc8`), the ConfigRAM decoder and checker, private-directory refusal, and a check that no table contains payload bytes.
 - **19H394 image:**
   - 88 records: 67 load, 13 zero, 2 config, 5 comment, 1 start; 27 config writes.
   - Segment bounds as in the previous result; core memory `0x80000080 + 0x52b4`; 3 core-memory zero records skipped.
@@ -100,7 +100,8 @@ The ConfigRAM methods are slots `0xa8`/`0xb0`/`0xb8`/`0xc0`/`0xc8` = `669c5dc`/`
 - **Advance (`0xb0`):** offset += 4.
 - **End (`0xb8`):** store `0xffff0000` at the current offset, then read it back.
 - **32-bit write:** two words, `reg | 0xff << 16` and the value.
-- **64-bit write:** four words, high half first: `(reg + 4) | 0xff << 16`, `val >> 32`, `reg | 0xff << 16`, `val & 0xffffffff`.
+- **64-bit write:** four words, high half first: `reg + 4` (no flag byte), `val >> 32`, `reg | 0xff << 16`, `val & 0xffffffff`.
+  - **Correction, 2026-11-24.** The first version of this result and of `fender-configram.tsv` put `0xff` on the `reg + 4` word as well (`0x00ff0104` instead of `0x00000104`). Slot `0xc8` stores `w1 + 4` with no flag byte, and its caller fw `+0x1e8` (`0x6691854`) passes the plain register. Fender would read the old encoding as two 32-bit writes. The tool and tables are fixed; check any list built from the old table with `tool/j81_meta_ldr_layout.py --decode-configram WORDS.txt`.
 
 [a10-claim + code] The A10 notes name the same methods (`initConfigRAMOffset` … `writeConfigRAMCommand64`) as panic stubs on G9P; on J81 they are implemented.
 

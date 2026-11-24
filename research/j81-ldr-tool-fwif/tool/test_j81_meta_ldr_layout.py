@@ -138,12 +138,42 @@ class Synthetic(unittest.TestCase):
         self.assertEqual(T.fw_address(0xE1C4200000), 0xC4200000)
 
     def test_configram(self):
+        # 19H394 Fender slot 0xc8 (0x669c66c), called from fw+0x1e8 (0x6691854) with the plain
+        # register and flags 0xff: {reg + 4, val >> 32, reg | 0xff << 16, val & 0xffffffff}.
+        # The high-half word carries no flag byte; only the low-half register word does.
         w = T.configram_words(0x123456000)
         self.assertEqual(len(w), 31)                       # 30 words + terminator (stock: +0x10000..+0x10078)
-        self.assertEqual(w[:2], [0x00FF0104, 0x00E7FFFF])  # SOFT_RESET high half first
-        self.assertEqual(w[12:14], [0x00FF0BF8, 1])         # META_BOOT
-        self.assertEqual(w[14:18], [0x00FF1204, 0x1, 0x00FF1200, 0x23456000])
+        self.assertEqual(w[:4], [0x00000104, 0x00E7FFFF, 0x00FF0100, 0xFFFFFC1D])
+        self.assertEqual(w[12:14], [0x00FF0BF8, 1])         # META_BOOT (slot 0xc0: reg | 0xff << 16, value)
+        self.assertEqual(w[14:18], [0x00001204, 0x1, 0x00FF1200, 0x23456000])
         self.assertEqual(w[-1], 0xFFFF0000)
+
+    def test_decode_configram_roundtrip(self):
+        writes, notes = T.decode_configram(T.configram_words(0x123456000))
+        self.assertEqual([(wd, r, v) for wd, r, v, _ in writes], T.stock_rgx_writes(0x123456000))
+        self.assertTrue(all(f == 0xFF for *_, f in writes))
+        self.assertTrue(any("starts the META" in n for n in notes))
+
+    def test_decode_configram_flags_request8_encoding(self):
+        # The request-8 tool put 0xff on the high-half word too; Fender would then see two 32-bit writes.
+        old = [0x00FF3804, 0x00035500, 0x00FF3800, 0x00300001, 0xFFFF0000]
+        writes, notes = T.decode_configram(old)
+        self.assertEqual([(wd, r) for wd, r, _, _ in writes], [(32, 0x3804), (32, 0x3800)])
+        self.assertTrue(any("not Apple's encoding" in n for n in notes))
+
+    def test_decode_configram_slc_only_is_safe(self):
+        words = [0x00003804, 0x00035500, 0x00FF3800, 0x00300001,
+                 0x0000380C, 0x00000000, 0x00FF3808, 0x00000001, 0xFFFF0000]
+        writes, notes = T.decode_configram(words)
+        self.assertEqual([(wd, r, v) for wd, r, v, _ in writes], [(64, 0x3800, 0x0003550000300001), (64, 0x3808, 1)])
+        self.assertEqual(notes, [])
+
+    def test_decode_configram_rejects_bad_lists(self):
+        for bad in ([0x00003804, 0x1, 0x00FF3808, 0x2, 0xFFFF0000],   # low half names another register
+                    [0x00FF3808, 0x1],                                  # no end marker
+                    [0x00003804, 0x1, 0xFFFF0000]):                     # truncated 64-bit entry
+            with self.assertRaises(T.LdrError):
+                T.decode_configram(bad)
 
     def test_config_type_rejected(self):
         bad = build_ldr([("config", {"writes": [(1, 2)], "type": 1})])

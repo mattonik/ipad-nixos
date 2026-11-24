@@ -100,16 +100,65 @@ def stock_rgx_writes(pc_phys):
             (64, 0x100, 0x0)]
 
 
+CONFIGRAM_END = 0xFFFF0000
+META_START_REGS = (0xBF8,)                # META_BOOT; with the SOFT_RESET release the replay boots META
+
+
 def configram_words(pc_phys, flag=0xFF):
-    """Word list written at Fender+0x10000 (32-bit: reg|flag<<16, value; 64-bit: high half first)."""
+    """Word list written at Fender+0x10000, as Fender slots 0xc0/0xc8 (0x669c610/0x669c66c) store it.
+
+    32-bit: reg | flag << 16, value.  64-bit: reg + 4 (no flag byte), val >> 32, reg | flag << 16,
+    val & 0xffffffff.  fw+0x1e0/+0x1e8 (0x6691818/0x6691854) pass the plain register and flag 0xff.
+    """
     words = []
     for width, reg, val in stock_rgx_writes(pc_phys):
         if width == 32:
             words += [(reg & 0xFF00FFFF) | (flag << 16), val & 0xFFFFFFFF]
         else:
-            words += [((reg + 4) & 0xFF00FFFF) | (flag << 16), val >> 32,
-                      (reg & 0xFF00FFFF) | (flag << 16), val & 0xFFFFFFFF]
-    return words + [0xFFFF0000]           # slot 0xb8 terminator (offset not advanced)
+            words += [reg + 4, val >> 32, (reg & 0xFF00FFFF) | (flag << 16), val & 0xFFFFFFFF]
+    return words + [CONFIGRAM_END]        # slot 0xb8 terminator (offset not advanced)
+
+
+def decode_configram(words):
+    """Decode a Fender ConfigRAM word list; return ([(width, reg, value, flag)], notes).
+
+    A word with flag byte (bits 23:16) 0 opens a 64-bit entry, as Apple encodes it; a flagged word is
+    a 32-bit write. Raises LdrError on a list Fender could not parse the way Apple writes it.
+    """
+    writes, notes, i = [], [], 0
+    while True:
+        if i >= len(words):
+            raise LdrError("no end marker 0xffff0000")
+        w = words[i]
+        if w == CONFIGRAM_END:
+            break
+        flag = (w >> 16) & 0xFF
+        if flag == 0:
+            if i + 3 >= len(words):
+                raise LdrError("64-bit entry at word %d is truncated" % i)
+            reg, low = w - 4, words[i + 2]
+            if low & 0xFF00FFFF != reg or (low >> 16) & 0xFF == 0:
+                raise LdrError("64-bit entry at word %d: low half %#x does not name %#x with a flag"
+                               % (i, low, reg))
+            writes.append((64, reg, words[i + 1] << 32 | words[i + 3], (low >> 16) & 0xFF))
+            i += 4
+        else:
+            if i + 1 >= len(words):
+                raise LdrError("32-bit entry at word %d is truncated" % i)
+            writes.append((32, w & 0xFF00FFFF, words[i + 1], flag))
+            i += 2
+    for (wa, ra, _, _), (wb, rb, _, _) in zip(writes, writes[1:]):
+        if wa == wb == 32 and ra & 7 == 4 and rb == ra - 4:
+            notes.append("32-bit writes to %#x then %#x: a 64-bit write with a flag on its high half, "
+                         "which is not Apple's encoding (high half carries flag byte 0)" % (ra, rb))
+    resets = [v for _, r, v, _ in writes if r == 0x100]
+    if any(r in META_START_REGS for _, r, _, _ in writes) or (resets and resets[-1] == 0):
+        notes.append("the list writes META_BOOT or ends the SOFT_RESET hold: a 0->1 replay starts the META "
+                     "on whatever the page catalogue maps; store it only with firmware memory in place")
+    for wd, r, v, _ in writes:
+        if r == 0x1200 and v == 0:
+            notes.append("BIF_CAT_BASE0 is 0: no page catalogue")
+    return writes, notes
 
 
 def parse(image):
@@ -397,8 +446,28 @@ def emit(hdr, recs, lay, args, tables, private):
     return manifest
 
 
+def decode_main(path):
+    """Print the register writes a ConfigRAM word list holds (hex words; '#' starts a comment)."""
+    with open(path) as f:
+        words = [int(t, 16) for line in f for t in line.split("#")[0].split()]
+    try:
+        writes, notes = decode_configram(words)
+    except LdrError as e:
+        print("not a valid ConfigRAM list: %s" % e)
+        return 1
+    for wd, reg, val, flag in writes:
+        print("%d-bit\t%#06x\t%#0*x\tflag %#04x" % (wd, reg, 18 if wd == 64 else 10, val, flag))
+    for n in notes:
+        print("note: " + n)
+    return 0
+
+
 def main(argv=None):
-    p = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    argv = sys.argv[1:] if argv is None else argv
+    if len(argv) == 2 and argv[0] == "--decode-configram":
+        return decode_main(argv[1])
+    p = argparse.ArgumentParser(description=__doc__.split("\n")[0],
+                                epilog="Also: --decode-configram WORDS.txt checks a ConfigRAM word list.")
     p.add_argument("image")
     p.add_argument("--offset", type=lambda x: int(x, 0), default=0)
     p.add_argument("--size", type=lambda x: int(x, 0), default=None)

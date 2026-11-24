@@ -18,7 +18,7 @@ Tags: [code] read from J81 19H394 AGXG4G disassembly; [a10-claim+code] OrchardLi
 | +0x14 | `…TIMER_POWER_INT_STATUS` | IRQ 135–137 handler (slot `0x28`): if non-zero, write back `& 7` (W1C). Kick: write 7 (slot `0x80`), then test bit 1 (slot `0x90`) as an alternative to SNOOP | W1C status bits 0–2. A10 saw +0x14 = 2 after the 0x11 request, which suggests bit 1 = power-up event. One IRQ per bit is inferred | a10-claim+code; bit-1 meaning inferred |
 | +0x1000 | `…VCM_PERF_STATE_CONTROL` | `setGPCPerformanceState(s)` (slot `0x10`, `6698d94`): poll bit 4 clear every 10 µs for ≤30 s (panics "Unable to change GPC performance state!"), then W `s | 0x10`, with no poll afterwards. Slot `0x18` returns `& 0xf` when powered | Low nibble = state, bit 4 = transition busy. J81 only ever uses s = 0 or 1 | a10-claim+code |
 | +0x1004 | `…VCM_PERFORMANCE_NEXT_STATE` | dump only | A10 live value 8 | code (name) |
-| +0x10000… | ConfigRAM | W only (slots `0xa8`/`0xb0`/`0xb8`/`0xc0`/`0xc8`) | Register-write program; see the protocol below | code |
+| +0x10000… | ConfigRAM | W, each store followed by a dummy load of the same word (slots `0xa8`/`0xb0`/`0xb8`/`0xc0`/`0xc8`) | Register-write program; see the protocol below | code |
 | +0x20000 | `…VCM_PERF_STATE_OVERRIDE` | slot `0x60(0)` writes 0. Slot `0x60(1)` writes `0x20`, polls bit 5 set (≤30 s), then polls +0x1000 bit 4 clear (≤30 s) | Holds the GPU at its current state (used by fw slot `0xd8` = `6906d0`, whose role is UNRESOLVED) | code |
 
 The host never touches A10's +0x2000…+0x2058 block (IOP window, run bit, reset poll). That block is [a10-claim] only: J81 has no A7 IOP. Map all of reg[1] (1 MiB) on J81, because the host touches +0x10000 and +0x20000. The 0x5000 FenderRegs window is only what the firmware gets. [code, adt]
@@ -27,7 +27,7 @@ The host never touches A10's +0x2000…+0x2058 block (IOP window, run bit, reset
 
 - **Start:** slot `0xa8`, `off = 0x10000`. This runs at object init and again at hw-start step 1.
 - **write32(reg, val)** (`69c610`): `[F+off] = (reg & 0xff00ffff) | (flag << 16)`, read back, `off += 4`; `[F+off] = val`, read back, `off += 4`.
-- **write64(reg, val)** (`69c66c`): the high half goes first. `{(reg+4) | flag<<16, val>>32}`, then `{reg | flag<<16, val & 0xffffffff}`. That is 4 words.
+- **write64(reg, val)** (`69c66c`): the high half goes first. `{reg+4, val>>32}` with **no flag byte** on `reg+4`, then `{reg | flag<<16, val & 0xffffffff}`. That is 4 words. (Corrected 2026-11-24: the first version put the flag on `reg+4` too.)
 - **End:** slot `0xb8` writes `[F+off] = 0xffff0000` without advancing. `flag` is the low byte of w3, and the only callers (the fw primitives `6691848`/`6691884`/`66918c8`) always pass **0xff**. Bits 16–23 are therefore always 0xff, and the terminator differs from a command by bits 24–31 = 0xff. What bits 16–23 mean is UNRESOLVED; they could be a per-state mask or byte enables [inferred]. Register offsets must be < 0x10000.
 - **Completion:** none per word; each store is just read back to flush the posted write. The program takes effect at the next GPC transition 0→1: `+0x20000 = 0`, then `setGPCPerformanceState(1)` (poll +0x1000 bit 4 clear, write 0x11), then `waitForFWAlive`. It is [inferred, strong] that Fender replays the program into RGX on that power-up. META_BOOT and the SOFT_RESET release exist only in ConfigRAM, yet the firmware boots. In addition, `AGXAccelerator::start` first drops the early state-1 power to state 0 (`666d958`: +0x1000 = 0x10, poll), so the boot request really is a 0→1 transition.
 - **Stock J81 program**, built by hw start `6690bbc` plus accel `+0x740`/`+0x748`: 30 words at F+0x10000…+0x10077, terminator at **+0x10078**:
@@ -38,7 +38,7 @@ The host never touches A10's +0x2000…+0x2058 block (IOP window, run bit, reset
   - `0x3808` ← 1
   - SOFT_RESET ← 0
 
-  The first word is `0x00ff0104`, followed by `0x00e7ffff`.
+  The first word is `0x00000104`, followed by `0x00e7ffff`, `0x00ff0100` and `0xfffffc1d` (corrected 2026-11-24; the first version said `0x00ff0104`).
 
 **Is every GPU register write routed through it?** No. [code] Only fw slots `0x1e0`/`0x1e8`/`0x1f0` (write32/64/64-shifted; entry `6691818`/`6691854`/`6691890`) are redirected. With bit 1 of `7a4d882` set, they *only* append to ConfigRAM: no direct store. If their `flags` argument is non-zero with bit 0 clear, they do nothing. A scan of every `[vt+0x1e0/0x1e8/0x1f0]` call site finds them used only by hw start, by accel `+0x740`/`+0x748` (called from hw start) and by the non-GPC `bootFirmware` branch. All runtime accesses are direct `str` to `accel+0xd10`: the MTS_SCHEDULE kick `0xb00`, the stop path (`0x1340` = 1, BIF_CTRL `0x12a8` = 8, SOFT_RESET = `0x08000000`), the META slave port, `0xac8`, and the MMU reads. The scan is by vtable-offset pattern, so indirect calls through other registers could be missed.
 
