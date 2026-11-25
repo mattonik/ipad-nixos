@@ -665,6 +665,56 @@ static void h_obs(int k)
 		hs.pll[k] = readl(pmgr + PM_PAGE5_4);
 }
 
+/* AT (request 11): Apple's timing. Power cycle + bridges as h3pb, then the second state-0 request WITHOUT waiting for it, and +0x10, +0, run 36's assert list, terminator and the override store in ONE irq-off call (no host round trip). A hang cannot be attributed inside this call. */
+static int step_at(void)
+{
+	unsigned long flags;
+	int i, t, ret;
+
+	hs.f2 = 17;
+	hs.next = 9;
+	ret = pm_runtime_put_sync(consumer);
+	hs.ps_off = readl(pmgr + PM_GFX_PS);
+	if (ret < 0)
+		return fail(ret, "at-runtime-put");
+	ret = pm_runtime_get_sync(consumer);
+	hs.ps_on = readl(pmgr + PM_GFX_PS);
+	if (ret < 0)
+		return fail(ret, "at-runtime-get");
+	if (hs.ps_on != 0x3ff)
+		return fail(-EIO, "at-gfx-not-active");
+	for (t = 0; t < 2; t++)
+		for (i = 0; i < 33; i++) {
+			writel(bridge_plan[t][i][1], bridge_regs[t] + bridge_plan[t][i][0]);
+			mb();
+		}
+	for (i = 0; i < 200000; i++) {
+		if (!(readl(gpc_regs + GPC_STATE) & 0x10))
+			break;
+		udelay(10);
+	}
+	if (i == 200000)
+		return fail(-ETIMEDOUT, "at-pre-poll");
+	local_irq_save(flags);
+	writel(0x10, gpc_regs + GPC_STATE);
+	(void)readl(gpc_regs + GPC_STATE);
+	writel(0, gpc_regs + 0x10);
+	writel(0x40000000, gpc_regs);
+	(void)readl(gpc_regs);
+	cfg_n = 0;
+	cfg_readback = true;
+	cfg_put64(0x100, 0x00e7fffffffffc1dULL);
+	cfg_put64(0x100, 0x00e7fe071ffffc1dULL);
+	cfg_put64(0x100, 0x0000000100000000ULL);
+	cfg_put64(0x100, 0);
+	cfg_put(0xffff0000);
+	cfg_readback = false;
+	wmb();
+	writel(0, gpc_regs + 0x20000);
+	local_irq_restore(flags);
+	return 0;
+}
+
 static int step_h(int n, int mode)
 {
 	int i;
@@ -677,6 +727,8 @@ static int step_h(int n, int mode)
 	if (n == 8)
 		hs.skip20000 = mode == 3;
 	hs.next = n + 1;
+	if (n == 3 && mode == 20)
+		return step_at();
 	if (n == 6 && mode >= 10) {	/* boot 26 (research request 7): h6+h7+h8 in ONE call, no sleep, Apple's order. mode 10 empty list, 11 h7d entry. Load-backs after every store except +0x20000. */
 		hs.f2 = mode;
 		hs.next = 9;
@@ -797,6 +849,12 @@ static int step_h(int n, int mode)
 			cfg_put64(0x100, 0x00e7fe071ffffc1dULL);
 			cfg_put64(0x100, 0x0000000100000000ULL);
 			cfg_put64(0x100, 0);
+		} else if (hs.f2 == 18) {	/* h7q (R1, request 11): GARTEN-only assert (Apple's third value) + release */
+			cfg_put64(0x100, 0x0000000100000000ULL);
+			cfg_put64(0x100, 0);
+		} else if (hs.f2 == 19) {	/* h7p (R2): SLC-only assert (bit 27, the value Apple's stop path writes) + release */
+			cfg_put64(0x100, 0x0000000008000000ULL);
+			cfg_put64(0x100, 0);
 		} else if (hs.f2 == 7) {	/* h7g: Apple's SOFT_RESET framing (3 asserts, no META_BOOT/BIF) around the 0x3808 no-op, then release */
 			cfg_put64(0x100, 0x00e7fffffffffc1dULL);
 			cfg_put64(0x100, 0x00e7fe071ffffc1dULL);
@@ -883,6 +941,8 @@ static int step_h(int n, int mode)
 		hs.s0 = readl(core_regs + 0x3800);
 		hs.s4 = readl(core_regs + 0x3804);
 		hs.s8 = readl(core_regs + 0x3808);
+		hs.x[0] = readl(core_regs + 0xbf8);	/* W1S: META_BOOT after a walk released in state 1 */
+		hs.x[1] = readl(core_regs + 0x100);	/* SOFT_RESET low word in state 1 */
 		hs.core = readl(core_regs + 0x20);
 		return i == 200000 ? fail(-ETIMEDOUT, "h12-poll-timeout") : 0;
 	}
@@ -1022,6 +1082,12 @@ static ssize_t step_store(struct device *dev, struct device_attribute *attr, con
 		ret = step_h(7, 16);
 	else if (sysfs_streq(buf, "h7y"))
 		ret = step_h(7, 17);
+	else if (sysfs_streq(buf, "h7q"))
+		ret = step_h(7, 18);
+	else if (sysfs_streq(buf, "h7p"))
+		ret = step_h(7, 19);
+	else if (sysfs_streq(buf, "h3at"))
+		ret = step_h(3, 20);
 	else if (sysfs_streq(buf, "h7d"))
 		ret = step_h(7, 4);
 	else if (sysfs_streq(buf, "h7c"))
