@@ -130,7 +130,7 @@ def main() -> int:
     p.add_argument("--skip-pll4", action="store_true")
     p.add_argument("--peek", action="append", default=[])
     p.add_argument("--meta", action="append", default=[])
-    p.add_argument("--write", action="append", default=[], choices=["pa", "hn", "w1", "w2a", "h0", "h1", "h2", "h3", "h4", "h5", "h6", "h7", "h8", "h9", "h10", "h11", "h7b", "h7c", "h7d", "h7e", "h7f", "h7g", "h7s", "h3p", "h3pb", "h6x", "h6m", "h6md", "h7x", "h8n", "h12", "z0", "z1", "z2", "z3", "g0", "g1", "g2", "g3", "g4", "f1a", "f1", "f2"])
+    p.add_argument("--write", action="append", default=[], choices=["pa", "hn", "w1", "w2a", "h0", "h1", "h2", "h3", "h4", "h5", "h6", "h7", "h8", "h9", "h10", "h11", "h7b", "h7c", "h7d", "h7e", "h7f", "h7g", "h7s", "h7m", "h3p", "h3pb", "h6x", "h6m", "h6md", "h7x", "h8n", "h12", "z0", "z1", "z2", "z3", "g0", "g1", "g2", "g3", "g4", "f1a", "f1", "f2"])
     p.add_argument("--stop-dashboard", action="store_true")
     a = p.parse_args()
     for off in a.peek:

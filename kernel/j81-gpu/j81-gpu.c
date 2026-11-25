@@ -779,6 +779,10 @@ static int step_h(int n, int mode)
 			cfg_put(1);
 		} else if (hs.f2 == 13) {	/* h7s (boot A, request 10): Apple's SLC_CTRL_MISC entry alone, 64-bit: 0x3800 <- 0x00035500_00300001 (decode mode 0x32 -> 0x30) */
 			cfg_put64(0x3800, 0x0003550000300001ULL);
+		} else if (hs.f2 == 14) {	/* h7m (boot D, request 10): META_BOOT 0x0bf8 <- 1 alone, 32-bit entry, each store loaded back. A change outside the SLC; read 0xbf8 in state 1 afterwards */
+			cfg_readback = true;
+			cfg_put(0x0bf8 | 0xff << 16);
+			cfg_put(1);
 		} else if (hs.f2 == 7) {	/* h7g: Apple's SOFT_RESET framing (3 asserts, no META_BOOT/BIF) around the 0x3808 no-op, then release */
 			cfg_put64(0x100, 0x00e7fffffffffc1dULL);
 			cfg_put64(0x100, 0x00e7fe071ffffc1dULL);
@@ -843,6 +847,7 @@ static int step_h(int n, int mode)
 		hs.p5 = readl(pmgr + PM_PAGE5_4);
 		if (!(hs.p5 & 0x40000000))
 			return fail(-EIO, "h11-pll-lock-clear");
+		hs.x[0] = readl(core_regs + 0xbf8);	/* boot D: META_BOOT after the walk (state 1) */
 		hs.s0 = readl(core_regs + 0x3800);
 		hs.s4 = readl(core_regs + 0x3804);
 		hs.s8 = readl(core_regs + 0x3808);
@@ -995,6 +1000,8 @@ static ssize_t step_store(struct device *dev, struct device_attribute *attr, con
 		ret = step_h(7, 6);
 	else if (sysfs_streq(buf, "h7s"))
 		ret = step_h(7, 13);
+	else if (sysfs_streq(buf, "h7m"))
+		ret = step_h(7, 14);
 	else if (sysfs_streq(buf, "h7d"))
 		ret = step_h(7, 4);
 	else if (sysfs_streq(buf, "h7c"))
