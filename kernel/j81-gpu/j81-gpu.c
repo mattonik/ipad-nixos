@@ -622,7 +622,7 @@ static void h_obs(int k)
 	hs.obs[k][0] = readl(pmgr + PM_GFX_PS);
 	hs.obs[k][1] = readl(pmgr + 0x1c200);
 	hs.obs[k][2] = readl(pmgr + 0x2300c);
-	if (k != 2 && k != 3)	/* run 20: a PLL5 read right after the +0x20000 store hung even with an empty list; sample it only before the store (k=0,1 and h8 pre-store) and in state 1 */
+	if (k == 0 || k == 1 || k == 4)	/* runs 20-24: PMGR +0x5004 hangs once +0 = 0x40000000 has been stored (h6), so sample it only before h6 and in state 1. Was: run 20: a PLL5 read right after the +0x20000 store hung even with an empty list; sample it only before the store (k=0,1 and h8 pre-store) and in state 1 */
 		hs.pll[k] = readl(pmgr + PM_PAGE5_4);
 }
 
@@ -732,7 +732,6 @@ static int step_h(int n, int mode)
 	case 8:
 		wmb();
 		msleep(100);
-		hs.pll[2] = readl(pmgr + PM_PAGE5_4);	/* state 0, BEFORE the core-word store */
 		if (!hs.skip20000)	/* h8n: no core-word store (runs 12/13: any non-empty list hung at this store) */
 			writel(0, gpc_regs + 0x20000);
 		return 0;	/* no PMGR/RGX read after the store: h_obs(2) now runs at the end of h9, after the Fender poll */
