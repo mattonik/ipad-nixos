@@ -638,6 +638,23 @@ static int step_h(int n, int mode)
 	if (n == 8)
 		hs.skip20000 = mode == 3;
 	hs.next = n + 1;
+	if (n == 6 && mode >= 10) {	/* boot 26 (research request 7): h6+h7+h8 in ONE call, no sleep, Apple's order. mode 10 empty list, 11 h7d entry. Load-backs after every store except +0x20000. */
+		hs.f2 = mode;
+		hs.next = 9;
+		cfg_n = 0;
+		writel(0x40000000, gpc_regs);
+		(void)readl(gpc_regs);
+		cfg_readback = true;
+		if (mode == 11) {
+			cfg_put(0x3808 | 0xff << 16);
+			cfg_put(0);
+		}
+		cfg_put(0xffff0000);
+		cfg_readback = false;
+		wmb();
+		writel(0, gpc_regs + 0x20000);
+		return 0;
+	}
 	switch (n) {
 	case 0:
 		if ((readl(gpc_regs + GPC_STATE) & 0x1f) != 0x01)
@@ -906,6 +923,10 @@ static ssize_t step_store(struct device *dev, struct device_attribute *attr, con
 		ret = step_h(7, 1);
 	else if (sysfs_streq(buf, "h7e"))
 		ret = step_h(7, 5);
+	else if (sysfs_streq(buf, "h6m"))
+		ret = step_h(6, 10);
+	else if (sysfs_streq(buf, "h6md"))
+		ret = step_h(6, 11);
 	else if (sysfs_streq(buf, "h6x"))
 		ret = step_h(6, 9);
 	else if (sysfs_streq(buf, "h7x"))
