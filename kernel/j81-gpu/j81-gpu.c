@@ -790,6 +790,8 @@ static int step_h(int n, int mode)
 			cfg_put64(0x3800, 0x0003550000300001ULL);
 			cfg_put64(0x3808, 1);
 			cfg_put64(0x100, 0);
+		} else if (hs.f2 == 16) {	/* h7z (run 34 follow-up (1)): SOFT_RESET release alone, 64-bit 0x100 <- 0 (the current value, a no-op write) */
+			cfg_put64(0x100, 0);
 		} else if (hs.f2 == 7) {	/* h7g: Apple's SOFT_RESET framing (3 asserts, no META_BOOT/BIF) around the 0x3808 no-op, then release */
 			cfg_put64(0x100, 0x00e7fffffffffc1dULL);
 			cfg_put64(0x100, 0x00e7fe071ffffc1dULL);
@@ -1011,6 +1013,8 @@ static ssize_t step_store(struct device *dev, struct device_attribute *attr, con
 		ret = step_h(7, 14);
 	else if (sysfs_streq(buf, "h7r"))
 		ret = step_h(7, 15);
+	else if (sysfs_streq(buf, "h7z"))
+		ret = step_h(7, 16);
 	else if (sysfs_streq(buf, "h7d"))
 		ret = step_h(7, 4);
 	else if (sysfs_streq(buf, "h7c"))
