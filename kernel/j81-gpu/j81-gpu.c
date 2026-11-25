@@ -615,13 +615,14 @@ static int step_g(int n)
  *   h7 ConfigRAM: terminator only (F1)   h7b ConfigRAM: F2 list (Apple 64-bit encoding) + terminator   h8 wmb, msleep(100), write +0x20000=0 (+observers)
  *   h9 bounded poll   h10 msleep(100), write GPC_STATE=0x11 (+observers)   h11 poll, state 1, PLL lock, SLC readback (only if state 1 and PLL set)
  */
-static struct { int next; int f2; bool skip20000; u32 r1, r3, r5, p5, s0, s4, s8, core; u32 obs[5][3]; int err; } hs;
+static struct { int next; int f2; bool skip20000; u32 r1, r3, r5, p5, s0, s4, s8, core; u32 obs[5][3]; u32 pll[5]; int err; } hs;
 
 static void h_obs(int k)
 {
 	hs.obs[k][0] = readl(pmgr + PM_GFX_PS);
 	hs.obs[k][1] = readl(pmgr + 0x1c200);
 	hs.obs[k][2] = readl(pmgr + 0x2300c);
+	hs.pll[k] = readl(pmgr + PM_PAGE5_4);	/* PLL5 lock (bit 30) at each observation point, incl. state 0 */
 }
 
 static int step_h(int n, int mode)
@@ -919,10 +920,11 @@ static ssize_t status_show(struct device *dev, struct device_attribute *attr, ch
 						   fr[k].g_after20000, fr[k].g_after1, fn[k], fr[k].p5, fn[k], fr[k].rgx_read, fn[k], fr[k].core, fn[k], fr[k].s0, fr[k].s4, fr[k].s8);
 	}
 	if (hs.next)
-		n += sysfs_emit_at(buf, n, " h_next=%d h_f2=%d h_r1=0x%08x h_r3=0x%08x h_r5=0x%08x h_p5=0x%08x h_slc=0x%08x/0x%08x/0x%08x h_core=0x%08x h_obs=%08x,%08x,%08x/%08x,%08x,%08x/%08x,%08x,%08x/%08x,%08x,%08x/%08x,%08x,%08x",
+		n += sysfs_emit_at(buf, n, " h_next=%d h_f2=%d h_r1=0x%08x h_r3=0x%08x h_r5=0x%08x h_p5=0x%08x h_slc=0x%08x/0x%08x/0x%08x h_core=0x%08x h_obs=%08x,%08x,%08x/%08x,%08x,%08x/%08x,%08x,%08x/%08x,%08x,%08x/%08x,%08x,%08x h_pll=%08x,%08x,%08x,%08x,%08x",
 				   hs.next, hs.f2, hs.r1, hs.r3, hs.r5, hs.p5, hs.s0, hs.s4, hs.s8, hs.core,
 				   hs.obs[0][0], hs.obs[0][1], hs.obs[0][2], hs.obs[1][0], hs.obs[1][1], hs.obs[1][2], hs.obs[2][0], hs.obs[2][1], hs.obs[2][2],
-				   hs.obs[3][0], hs.obs[3][1], hs.obs[3][2], hs.obs[4][0], hs.obs[4][1], hs.obs[4][2]);
+				   hs.obs[3][0], hs.obs[3][1], hs.obs[3][2], hs.obs[4][0], hs.obs[4][1], hs.obs[4][2],
+				   hs.pll[0], hs.pll[1], hs.pll[2], hs.pll[3], hs.pll[4]);
 	if (wr.w2a_done && !compact)
 		n += sysfs_emit_at(buf, n, " w2a_set=0x%016llx w2a_clear=0x%016llx w2a_core=0x%08x", wr.w2a_set, wr.w2a_clear, wr.w2a_core);
 	if (n > 480)
