@@ -1,0 +1,17 @@
+order	address	access	object (how identified)	MMIO	tag
+1	0x6672814-0x667281c	load accel +0xe28 ("sources enabled" flag); return at once if already 1	-	no	code
+2	0x6672820-0x667282c	accel slot 0x7c0 = 0x669abd8: returns accel +0xe70 bit 8	G4G accelerator subclass sets bit 8 unconditionally (0x669919c-0x66991a4), so this test is always true on J81	no	code
+3	0x6672834-0x6672848	skip the enables below if (0x7a4d882 & 0x12) == 0x10 (bit 4 set and Fender not used)	J81 uses Fender (bit 1), so the enables run	no	code; inferred (J81 bit values)
+4	0x667284c	accel +0xe38 = 0	memory flag	no	code
+5	0x6672850-0x667285c	accel +0xe30 -> vtable +0xb0 (enable)	timer event source: created by stub 0x66b139c(owner, action 0x6673b14) at 0x666ed14; its other calls are vtable +0x138 and +0xf0, the shape of IOTimerEventSource cancelTimeout/setTimeout	no (enable does not arm a timeout)	code (calls); inferred (class)
+6	0x6672860-0x667286c	accel +0xde8 -> vtable +0xb0 (enable)	software interrupt event source: stub 0x66b154c(owner, action 0x6673c24, provider 0, index 0) at 0x666ed84; signalled through vtable +0xf8	no (no provider, so no interrupt controller)	code (calls); inferred (class)
+7	0x6672870-0x667287c	accel +0xd30 -> vtable +0xb0 (enable)	software interrupt event source on the second work loop accel +0xdf0: stub 0x66b154c(owner, action 0x6673cfc, 0, 0) at 0x666edd4	no	code (calls); inferred (class)
+8	0x6672880-0x6672890	accel +0xe00 (= +0xdf8[1]) -> vtable +0xb0 (enable), if non-null	GPU interrupt source for ADT interrupt index 1 (AIC 0x87): stub 0x66b15dc(owner, action vtable +0x890 = 0x6672760, filter vtable +0x888 = 0x6672758, provider, index) at 0x666ecb8, the shape of IOFilterInterruptEventSource	yes: interrupt-controller unmask of AIC line 0x87 (AIC at 0x20e100000), not a GPU register	code (calls); inferred (unmask from IOInterruptEventSource::enable semantics)
+9	0x6672894-0x66728a8, 0x6672950-0x6672958	if accel +0xeb9: +0xdf8[0] -> vtable slot 0x16 (+0xb0, enable)	GPU interrupt source index 0 (AIC 0x86). +0xeb8/+0xeb9 come from the halfword 0x104 that 0x66712d4 stores when the sgx node has 5 interrupts (J81: 0x86-0x8a), so +0xeb8 = 4 and +0xeb9 = 1	yes: unmask AIC 0x86	code; adt
+10	0x6672974-0x6672988	+0xdf8[+0xeb8 = 4] -> vtable slot 0x16 (enable)	GPU interrupt source index 4 (AIC 0x8a)	yes: unmask AIC 0x8a	code; adt
+11	0x667298c	accel +0xe28 = 1	memory flag	no	code
+-	0x6672758	filter for every GPU interrupt source	returns 1, reads nothing	no	code
+-	0x6672760	action for every GPU interrupt source	gets the source's index (vtable +0xe8) and calls fw slot 0x1f8 = 0x668bba0 with it	see next rows	code
+-	0x668bbb8-0x668bbe0	fw slot 0x1f8, index 1, 2 or 3	tail-calls Fender slot 0x28 = 0x669901c: if Fender powered, read +0x14 (TIMER_POWER_INT_STATUS); if non-zero, write (value & 7) back and load it (write-1-to-clear)	Fender +0x14 only, and only when an interrupt fires	code
+-	0x668bc0c-0x668bcf8	fw slot 0x1f8, index 0 or 4	firmware/META interrupt: accel slot 0x898, fw slots 0x390/0x398/0x3a0, then drains a firmware message ring	not decoded; only runs when the interrupt fires	code
+-	none	summary	0x8a8 (1) writes no GPU register, no Fender register and no PMGR register. Its only hardware effect is unmasking GPU interrupt lines 0, 1 and 4 at the interrupt controller. Fender host interrupts stay off because +0x10 = 0 (enableGPCHostInterrupts type 3), so no Fender interrupt can be raised at the store	-	code; inferred (no interrupt)

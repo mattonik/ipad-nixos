@@ -1,0 +1,10 @@
+address	caller	what it does with +0 (TIMER_SLEEP_CONTROL) or +0x20000	tag
+0x668398c	probe first wake	+0 = 0x40000000 (no load-back), after the empty end marker, before +0x1000 = 0x11	code
+0x6690bec	fw slot 0xe0 hardware start	+0 = 0x40000000 + load (slot 0x58) before the ConfigRAM stream	code
+0x6690718-0x6690724	fw slot 0xd8 (META slave-port access)	if Fender powered: override hold (slot 0x60 (1): +0x20000 = 0x20, wait bit 5, wait busy clear), THEN +0 = 0x40000000, THEN check state >= 1 (fw slot 0x240), THEN META slave-port registers on RGX (+0xa18 |= 0x10, +0xa10, +0xa08, polls)	code
+0x6693f1c-0x6693f28, 0x6694220-0x6694244	META reset/recovery	+0 = 0x40000000 first; then RGX META slave port, R0 +0x1340 = 1, +0x12a8 = 8, +0x100 = 0x8000000; then +0 = a value read from firmware shared memory (fw +0x358[fw +0x338] + 4, a 44-byte-entry ring; origin not decoded); then +0x20000 = 0; then state request 0	code; value origin not decoded
+0x6690d4c	fw "can power off" (wraps Fender slot 0xa0)	true only if +0 has bits 29 AND 30 set, busy clear, state 0, TIMER_KICK_STATUS == 0	code
+0x66926f4-0x669270c	fw slot 0x228 (0) power-off branch	after the reference count drops: if Fender slot 0x98 is true ("can power off", or state 0 with +0 bits 31:30 == 01) or fw +0x1ca is set, go on to the provider gate calls; otherwise branch to 0x6692804	code
+0x6690df0-0x6690eb8	doorbell before RGX MTS_SCHEDULE (R0 +0xb00 = 0x10)	clears +0x14 (= 7); if state != 0, kick; if state == 0 and +0 == 0 and idle power-off is off, call 0x668ea90 ("About to kick uninitialized GPU with idle poweroff disabled!": stop, gate off, gate on, fw 0x98 stream, bootFirmware); if +0 bit 29 (SNOOP) or +0x14 bit 1 is set, kick; otherwise log "About to write MTS_SCHEDULE without SNOOP set! (+0) (+0x14)" and kick anyway	code
+0x669c3e4	Fender slot 0x78	bit 29 alone	code
+-	whole kext	the only constants written to +0 are 0x40000000 (0x668398c, 0x669c228) and the firmware-memory value above. No code writes bit 29. No code in the kext uses offset 0x5004 (no PLL5 access; search)	code (by search)

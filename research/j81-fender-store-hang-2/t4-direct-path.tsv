@@ -1,0 +1,12 @@
+item	address	detail	tag
+gpu_gpc boot-arg	0x66834a8-0x6683534, 0x6683750-0x668377c	gpu_gpc=0 or 1 sets bit 1 of 0x7a4d882 ("Will[ NOT] use GPC/Fender because you specified gpu_gpc=N")	code
+bit 2 (first wake, 1 -> 0, power cycle)	0x6683784-0x66837c8	bit 2 = 4 only if a Fender register range exists (0x7a4d87d != 0xff) AND (bit 1 OR bit 3) AND bit 0 (bit 0 is set earlier; its source was not decoded). With gpu_gpc=0 and bit 3 clear, bit 2 is 0: no first wake, no 1 -> 0 request, no GFX power cycle at accelerator start	code
+fw write helpers	0x6691818 (32-bit), 0x6691854 (64-bit)	flags == 0 or bit 0 set: if bit 1 of 0x7a4d882 is clear, store straight to RGX (accel +0xd10 + reg); if set, append to ConfigRAM with flag 0xff. Flags non-zero with bit 0 clear: do nothing	code
+hardware start, Fender part	0x6690bcc-0x6690c00	only if a Fender object exists: +0x10 = 0, +0 = 0x40000000, cursor = 0x10000	code
+first RGX write, both paths	0x6690c04-0x6690c20	SOFT_RESET (0x100) = 0x00e7fffffffffc1d (64-bit, flags 1). Nothing writes RGX before it on either path	code
+next writes	0x6690c24-0x6690c48 and on	SOFT_RESET = 0x00e7fe071ffffc1d, then 0x0000000100000000, then the rest of the 30-word program (fender-configram.tsv in the request 4 result)	code
+end of hardware start	0x6690cc4-0x6690cec (t3 of request 6)	with Fender: SOFT_RESET = 0 as a ConfigRAM entry, then the end marker	code
+bootFirmware without Fender	0x6690340-0x6690368	SOFT_RESET = 0 written straight to RGX (fw +0x1e8, flags 1), then waitForFWAlive	code
+bootFirmware with Fender	0x669036c-0x6690394	+0x20000 = 0, then +0x1000 = 0x11, then waitForFWAlive. The override release and the 0 -> 1 request take the place of the direct "SOFT_RESET = 0" release	code
+clocks on the direct path	-	nothing besides the provider gate calls (+0x568/+0x570, GFX id 124). No META/BIF clock write, no PMGR write, no "gpu_gpc"-specific RGX write before SOFT_RESET exists in the kext	code (by search)
+interrupt sources with gpu_gpc=0	0x6672834-0x6672848	if bit 4 is set and Fender is not used, 0x8a8 skips enabling every event source	code

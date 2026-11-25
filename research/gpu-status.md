@@ -10,7 +10,7 @@ For the reproducible LDR layout tool, the Fender ConfigRAM correction (it is a w
 
 For the comparison with Orchard's A8 GPU driver (OrchardLinux/orchard PR #196): J81 combines the A8 boot path with the A9 firmware-interface layout, PMGR `+0x5004` bit 30 is the GPU PLL-lock bit, and the revised first-boot steps, see [j81-orchard-a8-gpu/RESULT.md](j81-orchard-a8-gpu/RESULT.md) (2026-11-22, offline).
 
-For why the Fender `+0x20000 = 0` store (`VCM_PERF_STATE_OVERRIDE`) hangs with a non-empty ConfigRAM list: Apple switches the GFX domain off and on again between the first wake and the stream, and Linux does not. See [j81-fender-store-hang/RESULT.md](j81-fender-store-hang/RESULT.md) (2026-11-25, offline; the link to the hang is inferred).
+For why the Fender `+0x20000 = 0` store (`VCM_PERF_STATE_OVERRIDE`) hangs with a non-empty ConfigRAM list: Apple's GFX power cycle between the first wake and the stream ([j81-fender-store-hang/RESULT.md](j81-fender-store-hang/RESULT.md)) was reproduced in run 24 and did not stop the hang. The current lead is timing: Fender's sleep timer (`+0` bit 30) may have put the GPU to sleep before the store, because the runner waits over 100 ms where Apple waits well under 1 ms. See [j81-fender-store-hang-2/RESULT.md](j81-fender-store-hang-2/RESULT.md) (2026-11-25, offline; inferred, with a read-only check proposed as boot 25).
 
 ## What has been observed
 
