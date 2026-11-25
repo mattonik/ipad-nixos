@@ -1,0 +1,11 @@
+step	probe first wake (0x6683904-0x66839ac)	accelerator start and boot (t1)	Linux runner (j81-gpu.c, runs 11-21)	tag
+GPU gate on	provider +0x568 (1, 0), then +0x570 (1, &out, 0), if 0x7a4d882 bit 0	off at t1 rows 5-6, then on again at rows 12-13	once: pm_runtime_get_sync, then PS = 0x3ff (step_activate)	code; capture (runner source)
+GPU gate off between the first wake and the stream	-	yes: after the 1 -> 0 request (t1 rows 3-6)	no	code; capture (runner source)
+end marker before the wake	yes, +0x10000 = 0xffff0000 (skipped if 0x7a4d882 bit 3)	end marker closes the full stream	yes (step_batch)	code
++0 before the wake	0x40000000, no load-back	0x40000000 with a load-back (Fender slot 0x58)	0x40000000	code
+GPC request	+0x1000 = 0x11, tight poll on bit 4, then IODelay(10)	state 0 requested twice (rows 3, 17); 0x11 only after the override store	0x11 at first wake; later 0x10, stream, override, 0x11	code
+Fender object	none yet; raw mapping 0x7a4d8a8	created at t1 row 10, marked powered at row 15	-	code
++0x10 (interrupt enable)	not touched	cleared twice (rows 16 and 24)	read, 0, read	code
+VCM_PERF_STATE_OVERRIDE (+0x20000)	not touched	0 once, just before the 0x11 request	0 just before 0x11; hangs with a non-empty list	code; capture (runs 12-21)
+direct R0 writes before the stream	none	none on the Fender path (SOFT_RESET goes through the stream)	W1 META_BOOT rewrite, W2a SOFT_RESET set and clear, both direct	code; capture (runner source)
+0x68ea90 restart	-	not on the boot path; the doorbell 0x6690e04 calls it at state 0 with +0 == 0 and accel +0xe70 bit 0 clear	-	code (review 2026-11-24)

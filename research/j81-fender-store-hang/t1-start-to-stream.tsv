@@ -1,0 +1,28 @@
+order	address	caller_or_slot	access	effect	tag
+1	0x666d924-0x666d940	accelerator start	global checks	runs only if 0x7a4d880 (GPU powered at probe) != 0, 0x7a4d882 bit 2 and 0x7a4d87f != 0; the probe's first wake (0x6683950-0x668395c) needs the same two conditions	code
+2	0x666d944-0x666d954	accelerator start	map 0x7a4d8a8 slot 0x78	Fender virtual base (no Fender object exists yet)	code
+3	0x666d95c	accelerator start	Fender +0x1000 = 0x10	the 1 -> 0 request; no pre-poll	code
+4	0x666d960-0x666d964	accelerator start	Fender +0x1000 load loop	tight poll on bit 4 (busy), no delay, no timeout	code
+5	0x666d978	accelerator start	provider (0x7a4d870) vtable +0x570 (0, 0, 0)	GPU gate off, first of two calls	code (call); inferred (gate)
+6	0x666d994	accelerator start	provider (0x7a4d870) vtable +0x568 (0, 0)	GPU gate off, second call	code (call); inferred (gate)
+7	0x666d9a4	accelerator start	0x7a4d880 = 0	"powered at probe" flag cleared	code
+8	0x666d9b4-0x666d9e0	accelerator start	kdebug trace 0x85930c60	no MMIO	code
+9	0x666e838	accelerator start	fw slot 0x78 = 0x668f2d4	fw power-on and state-0 entry	code
+10	0x668f2e4	fw slot 0x78	0x668735c	creates the Fender object (fw+0x160) on the Fender mapping; no Fender MMIO seen	code
+11	0x668f2f4	fw slot 0x78	fw slot 0x228 (1) = 0x66926b8	GPU power on	code
+12	0x6692720	fw slot 0x228	provider (accel+0x368) vtable +0x568 (1, 0)	GPU gate on, first of two calls (reverse of rows 5-6)	code (call); inferred (gate)
+13	0x669274c	fw slot 0x228	provider (accel+0x368) vtable +0x570 (1, &out, 0)	GPU gate on, second call	code (call); inferred (gate)
+14	0x66927b0	fw slot 0x228	kdebug trace 0x85930c0c	no MMIO	code
+15	0x66927c8	fw slot 0x228	Fender slot 0x30 (1)	object +0xc = 1 ("Fender powered"); memory only	code
+16	0x66927e0	fw slot 0x228	Fender slot 0x20 (3) = 0x6698f44	load +0x10, store +0x10 = 0 (type 3 = all GPC host interrupts off), load +0x10	code
+17	0x668f318	fw slot 0x78	Fender slot 0x10 (0) = 0x6698d94	second state-0 request: poll +0x1000 bit 4 every 10 us (up to ~30 s), store +0x1000 = 0x10, one load; no poll after	code
+18	0x668f31c-0x668f33c	fw slot 0x78	fw +0xb34..+0xb58 = 0	boot flags cleared ("booted" +0xb37 among them); memory only	code
+19	0x666e8a4, 0x666e8e4	accelerator start	fw slot 0xf8, fw slot 0xb8 (LDR processor)	no Fender or R0 access found	code
+20	0x666f034	accelerator start continuation	runAction(0x6673f00)	host start sequence (research packet 7, host-start-sequence.tsv)	code
+21	0x6673f58-0x6673f94	0x6673f00	accel +0x940, +0x950, +0x958; fw slot 0xa8	hardware mappings and firmware data; memory only as far as decoded	code
+22	0x6673fa8	0x6673f00	fw slot 0x98 = 0x668f770	MHz handoff; firmware config memory only	code
+23	0x668fa40-0x668fa64	fw slot 0x98	Fender object +0xc test	calls fw slot 0xe0 (hardware start) only if Fender is marked powered (row 15); without a Fender object it checks the R0 licence fw slot 0x240 first	code
+24	0x6690bd8	fw slot 0xe0	Fender slot 0x20 (3)	+0x10 load, store 0, load (second time after row 16)	code
+25	0x6690bec	fw slot 0xe0	Fender slot 0x58	store +0 = 0x40000000, load	code
+26	0x6690bfc	fw slot 0xe0	Fender slot 0xa8	stream cursor = 0x10000; memory only	code
+27	0x6690c20	fw slot 0xe0	first stream entry via fw +0x1e8	SOFT_RESET (0x100) = 0x00e7fffffffffc1d: the first ConfigRAM store	code

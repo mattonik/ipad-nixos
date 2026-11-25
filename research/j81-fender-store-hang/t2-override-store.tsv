@@ -1,0 +1,10 @@
+item	address	detail	tag
+register name	0x669bc74 onward (Fender slot 0x40, register dump)	+0x20000 is AGX_CR_FNDR_VCM_PERF_STATE_OVERRIDE; the same dump names +0 TIMER_SLEEP_CONTROL, +0x8 TIMER_KICK_STATUS, +0x10 TIMER_POWER_INT_ENABLE, +0x14 TIMER_POWER_INT_STATUS, +0x1000 VCM_PERF_STATE_CONTROL, +0x1004 VCM_PERFORMANCE_NEXT_STATE	code
+slot 0x60 body, arg 0	0x669c24c-0x669c268	value = (arg != 0) ? 0x20 : 0; store +0x20000 = value; load +0x20000 (value discarded); return. No state check, no flag check, no poll, no barrier, no delay	code
+slot 0x60 body, arg != 0	0x669c26c-0x669c2d8	after the same store and load: poll +0x20000 bit 5 every 10 us up to ~30 s ("Timed out waiting for GPC register" otherwise), then poll +0x1000 bit 4 clear the same way	code
+caller 1: bootFirmware (fw slot 0xc0)	0x6690340-0x6690394	if 0x7a4d882 bit 1 (use Fender): slot 0x60 (0), then slot 0x10 (1) = poll busy, store +0x1000 = 0x11, one load. Then waitForFWAlive 0x6694d40. Without Fender it writes R0 0x100 = 0 through fw +0x1e8 instead	code
+caller 1, Fender state at the store	rows 17 and 27 of t1	the last state request before this store is row 17 (state 0, after the power-on). Between them: the whole stream with META_BOOT and SOFT_RESET release, the end marker, interrupt event sources. So Apple does make this store in state 0 with the stream just written	code (order); inferred (state stays 0)
+caller 2: fw slot 0xc8 (stop or park)	0x6690424-0x6690454	only if the Fender object exists and is marked powered (+0xc): slot 0x60 (0), then slot 0x10 (0)	code
+caller 3: META reset or recovery	0x6694200-0x6694270	after polling R0 +0xa18 for META slave port idle (0x5000000): R0 +0x1340 = 1, R0 +0x12a8 = 8, R0 +0x100 = 0x8000000, Fender slot 0x68 (+0 = a saved mode value), slot 0x60 (0), then tail call slot 0x10 (0)	code
+only caller with arg 1	0x669070c (fw slot 0xd8 = 0x66906d0)	META slave-port routine; it also touches R0 +0xa18	code (request 9)
+load or barrier between end marker and store	0x669c608; t3	the end marker store is followed by its own dummy load. No dmb, dsb or isb on the path to 0x669c260. Device-memory ordering keeps the stores in order anyway	code

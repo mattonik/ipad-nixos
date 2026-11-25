@@ -1,0 +1,8 @@
+order	address	access	MMIO	tag
+1	0x6690cc4-0x6690cdc	R0 SOFT_RESET (0x100) = 0 as a stream entry (fw +0x1e8), only if 0x7a4d882 bit 1	ConfigRAM words, each stored and loaded back	code
+2	0x6690cec (Fender slot 0xb8 = 0x669c5f8)	end marker 0xffff0000 at the cursor, then a load of the same address	yes, Fender ConfigRAM	code
+3	0x6690cf8 (fw slot 0x340 = 0x668c994)	timestamp into firmware config +0x310	no	code
+4	0x6673fe0 (accel slot 0x8a8 (1) = 0x6672800)	enables the accelerator's interrupt and event sources (+0xe30, +0xde8, +0xd30, +0xe00, slot 0xb0); skipped when (0x7a4d882 & 0x12) == 0x10	none in this function; the event-source enable itself is not decoded	code; inferred (no GPU MMIO)
+5	0x6690340	bootFirmware reads 0x7a4d882	no	code
+6	0x6690378 -> 0x669c260	Fender +0x20000 = 0, then a load	yes	code
+none	-	Fender +0 is not written again between row 2 and row 6; +0x14 is not written; no RGX register is read or written outside the stream	-	code
