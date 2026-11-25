@@ -6,6 +6,7 @@
 #   tests: gpu-pmgr-once   GFX power-up through gpu-pmgr-once.ko
 #          perf-peek       read-only gpu-pmgr-perf-peek
 #          gpc-page5-kpoll in-kernel GPC poll and page-5 sample (fresh cycle-payload boot)
+#          gfx-request-observer PMGR GFX setter observer (fresh observer-kernel boot)
 #
 # PREFLIGHT_TRANSCRIPT=<file> evaluates a saved transcript instead of
 # connecting (used by boot/test_j81_preflight.py).
@@ -13,11 +14,12 @@ set -u
 TEST="${1:-}"
 HOST="${2:-172.16.42.1}"
 GPU_NOTES=82ff70e850df341559fb775819962a9787a7bd85712a04b210d0fbfd407b7014
+GFX_OBSERVER_NOTES=a2dda2719fef771c109dd2ca2baee4bdc31ec13902aed677f4ea7d9aad7b7f4a
 GFX_NODE=/proc/device-tree/soc/power-management@20e000000/power-controller@20320
 
 case "$TEST" in
-  gpu-pmgr-once|perf-peek|gpc-page5-kpoll) ;;
-  *) echo "usage: $0 gpu-pmgr-once|perf-peek|gpc-page5-kpoll [host]" >&2; exit 2 ;;
+  gpu-pmgr-once|perf-peek|gpc-page5-kpoll|gfx-request-observer) ;;
+  *) echo "usage: $0 gpu-pmgr-once|perf-peek|gpc-page5-kpoll|gfx-request-observer [host]" >&2; exit 2 ;;
 esac
 
 probe() {
@@ -82,6 +84,16 @@ case "$TEST" in
     case ",$(get TMP)" in *.once,*) used=yes ;; *) used=no ;; esac
     need fresh-tmp "$used" no "a one-shot test already ran this boot; this needs a fresh boot"
     echo "      clocksource: $(get CLOCKSOURCE)"
+    ;;
+  gfx-request-observer)
+    need kernel "$(get NOTES)" "$GFX_OBSERVER_NOTES" "boot the checksum-verified GFX observer payload"
+    need release "$(get RELEASE)" 7.3.0-rc1 "module vermagic is 7.3.0-rc1"
+    need dt-guard "$(get DT_GUARD)" no "boot the PMGR cycle payload, not the gpu-pmgr-once device tree"
+    need gfx-pwrstate "$(get GFX_PWRSTATE)" yes "the observer payload's GFX power-controller node is missing"
+    need ram-root "$(get RAMROOT)" yes "the observer test only runs from the RAM root"
+    need devmem "$(get DEVMEM)" yes "gpu-pmgr-peek must inspect PMGR before the cycle"
+    case ",$(get MODULES)" in *,gpu_pmgr_cycle,*) used=yes ;; *) used=no ;; esac
+    need fresh-cycle-module "$used" no "the PMGR cycle is one-shot; boot fresh before observing it"
     ;;
   perf-peek)
     need devmem "$(get DEVMEM)" yes "the read needs /dev/mem"

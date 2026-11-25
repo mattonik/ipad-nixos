@@ -7,6 +7,7 @@ from pathlib import Path
 
 script = Path(__file__).with_name("j81_preflight.sh")
 GPU = "82ff70e850df341559fb775819962a9787a7bd85712a04b210d0fbfd407b7014"
+OBSERVER = "a2dda2719fef771c109dd2ca2baee4bdc31ec13902aed677f4ea7d9aad7b7f4a"
 
 
 def run(test, facts, complete=True):
@@ -55,5 +56,14 @@ for change, why in ((dict(NOTES="0" * 64), "FAIL kernel"), (dict(DT_GUARD="yes")
 # Missing facts (an older boot that does not answer the new probes) are a NO-GO, never a GO.
 rc, out = run("gpc-page5-kpoll", base)
 assert rc == 1 and "NO-GO" in out, out
+observer = dict(kp, NOTES=OBSERVER, WATCHDOG="no")
+rc, out = run("gfx-request-observer", observer)
+assert rc == 0 and "GO: gfx-request-observer" in out, out
+for change, why in ((dict(NOTES="0" * 64), "FAIL kernel"),
+                    (dict(RAMROOT="no"), "FAIL ram-root"),
+                    (dict(DEVMEM="no"), "FAIL devmem"),
+                    (dict(MODULES="gpu_pmgr_cycle,"), "FAIL fresh-cycle-module")):
+    rc, out = run("gfx-request-observer", dict(observer, **change))
+    assert rc == 1 and why in out and "NO-GO: gfx-request-observer" in out, (change, out)
 assert subprocess.run(["bash", str(script), "bogus"], capture_output=True).returncode == 2
 print("PASS: preflight go/no-go decisions")
