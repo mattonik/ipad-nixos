@@ -1,0 +1,20 @@
+step	address	access or check	effect for GFX (group 3, index 4, level 0xf, auto 1)	tag
+1	0x6bc6efc-0x6bc6f30	checks group < group count (+0x25f8), index < 32, ps-regs valid-mask bit set	group 3 mask 0x1f: index 4 valid	code; adt
+2	0x6bc6f40-0x6bc6f54	checks the PS-to-device map entry is not reserved (panic string _psRegToDeviceIDMap at 0x6bc750c)	GFX id 0x7c mapped	code
+3	0x6bc6f58-0x6bc6f60	checks die < die count (+0x2724)	die 0	code
+4	0x6bc6f64-0x6bc6f70	register = ps-regs[group].offset + index * 8 in regmap ps-regs[group].regmap	regmap 0, offset 0x20300 + 0x20 = 0x20320	code; adt
+5	0x6bc6f74-0x6bc7130	optional log line only (MANUAL_PS / AUTO_PM_EN), no MMIO	none	code
+6	0x6bc7134-0x6bc714c	read PS (vtable +0x980, readReg32 0x6bd0478: plain 32-bit load)	reads 0x3ff in the runner	code
+7	0x6bc7154-0x6bc717c	no-change test: target == level AND bit 28 == auto AND bit 30 == 0 AND bit 10 == 0 -> log, return	bit 28 reads 0 with auto 1, so the test never passes: every call runs the full sequence	code; capture
+8	0x6bc718c-0x6bc7210	only if bit 28 is already 1: require target 0xf (else panic 'Unexpected PS state', 0x6bc754c), write PS & 0xeffffcff (bit 28 and bits 8-9 cleared), poll (PS & 0xf0) == 0xf0	not taken (bit 28 never reads 1)	code
+9	0x6bc7190 / 0x6bc7214-0x6bc721c	value = PS with bits 8-9 and bits 3:0 cleared, bits 3:0 = level	0x0f-style value with bits 8-9 written 0	code
+10	0x6bc7220-0x6bc7248	only if level <= 0xe: set bits 8-9 (write-1 clears the was-gated history) and, if the device has a power-gate record, _setPSAutoMinLevel(record, 3)	not taken (level 0xf)	code
+11	0x6bc724c-0x6bc7268	write PS (vtable +0x988, writeReg32 0x6bd04f0: plain 32-bit store)	first store	code
+12	0x6bc726c-0x6bc7294	poll (PS & 0xf0) == level << 4 (vtable +0x990, 0x6bd0564: repeated readReg32 against mach_absolute_time, timeout 0x2ee00 ticks)	actual 0xf	code
+13	0x6bc7298-0x6bc72bc	only if level == 0xf and the device has a power-gate record (ADT device byte 0xe != 0, 0x6bd1b68): PWR_x_CFG0 SLEEP_DEPTH write (0x6bd1bb0)	not taken: GFX byte 0xe = 0, no power-gate record	code; adt
+14	0x6bc72c0	clear bits 8-9 in the value again	value keeps bits 8-9 = 0	code
+15	0x6bc72c4-0x6bc735c	if auto != 0: value |= 0x10000000, write PS	second store with bit 28 set; this is the only bit-28 store; nothing reads it back to check it	code
+16	0x6bc7360-0x6bc7384	if bit 30 set in the value: clear it, write PS	not taken (bit 30 = 0 in 0x3ff)	code; capture
+17	0x6bc7388-0x6bc73c4	if bit 10 set: clear it, write PS (tail call)	not taken (bit 10 = 0)	code; capture
+-	0x6bc6da0	_setPSAutoMinLevel (called by every device-on path BEFORE _setPSLevel when device flags bit 2 is clear): read PS, value = PS & 0xfff0fcff, bits 19:16 = min level, write PS	GFX min level = ADT device byte 0xf & 0xf = 0; writes bits 19:16 = 0 and bits 8-9 = 0	code; adt
+-	vtables 0x6fcda50, 0x6fd2118, 0x6fe5e28, 0x6fe69c0	slots +0x980/+0x988/+0x990/+0x998 are the same base ApplePMGR functions in all four (two in ApplePMGR, two in AppleT7001PMGR); no subclass override of the register accessors	PS and bridge writes are plain MMIO stores on T7001	code
