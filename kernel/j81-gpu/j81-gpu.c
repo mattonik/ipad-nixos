@@ -353,6 +353,12 @@ static int step_pa(void)
 	mb();
 	udelay(100);
 	after = readl(pmgr + PM_GFX_PS);
+	if (!(after & 0x10000000) && !(after & 0x300)) {	/* 27c: Apple order: bit 28 in a SECOND store once target reached and bits 8-9 are clear */
+		writel(after | 0x10000000, pmgr + PM_GFX_PS);
+		mb();
+		udelay(100);
+		after = readl(pmgr + PM_GFX_PS);
+	}
 	pa_x[0] = before;
 	pa_x[1] = after;
 	if (!(after & 0x10000000))
