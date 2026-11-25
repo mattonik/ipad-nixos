@@ -615,7 +615,7 @@ static int step_g(int n)
  *   h7 ConfigRAM: terminator only (F1)   h7b ConfigRAM: F2 list (Apple 64-bit encoding) + terminator   h8 wmb, msleep(100), write +0x20000=0 (+observers)
  *   h9 bounded poll   h10 msleep(100), write GPC_STATE=0x11 (+observers)   h11 poll, state 1, PLL lock, SLC readback (only if state 1 and PLL set)
  */
-static struct { int next; int f2; bool skip20000; u32 r1, r3, r5, p5, s0, s4, s8, core; u32 obs[5][3]; u32 pll[5]; u32 ps_off, ps_on; int err; } hs;
+static struct { int next; int f2; bool skip20000; u32 x[3]; u32 r1, r3, r5, p5, s0, s4, s8, core; u32 obs[5][3]; u32 pll[5]; u32 ps_off, ps_on; int err; } hs;
 
 static void h_obs(int k)
 {
@@ -699,6 +699,11 @@ static int step_h(int n, int mode)
 		h_obs(1);
 		return hs.r5 ? fail(-EIO, "h5-int-enable-not-zero") : 0;
 	case 6:
+		if (mode == 9) {	/* boot 25 (research request 7): read the override's reset value once, >=1 ms after the last Fender access */
+			udelay(2000);
+			hs.x[0] = readl(gpc_regs + 0x20000);
+			udelay(2000);
+		}
 		writel(0x40000000, gpc_regs);
 		return 0;
 	case 7:
@@ -728,6 +733,12 @@ static int step_h(int n, int mode)
 		}
 		cfg_put(0xffff0000);
 		cfg_readback = false;
+		if (hs.f2 == 9) {	/* boot 25: empty list (run 11 sequence), then +0 (bit 29 = Fender timer sleep?) and GPC_STATE, >=1 ms apart */
+			msleep(100);
+			hs.x[1] = readl(gpc_regs);
+			udelay(2000);
+			hs.x[2] = readl(gpc_regs + GPC_STATE);
+		}
 		return 0;
 	case 8:
 		wmb();
@@ -895,6 +906,10 @@ static ssize_t step_store(struct device *dev, struct device_attribute *attr, con
 		ret = step_h(7, 1);
 	else if (sysfs_streq(buf, "h7e"))
 		ret = step_h(7, 5);
+	else if (sysfs_streq(buf, "h6x"))
+		ret = step_h(6, 9);
+	else if (sysfs_streq(buf, "h7x"))
+		ret = step_h(7, 9);
 	else if (sysfs_streq(buf, "h3p"))
 		ret = step_h(3, 8);
 	else if (sysfs_streq(buf, "h7g"))
@@ -955,8 +970,8 @@ static ssize_t status_show(struct device *dev, struct device_attribute *attr, ch
 						   fr[k].g_after20000, fr[k].g_after1, fn[k], fr[k].p5, fn[k], fr[k].rgx_read, fn[k], fr[k].core, fn[k], fr[k].s0, fr[k].s4, fr[k].s8);
 	}
 	if (hs.next)
-		n += sysfs_emit_at(buf, n, " h_ps=%08x,%08x h_next=%d h_f2=%d h_r1=0x%08x h_r3=0x%08x h_r5=0x%08x h_p5=0x%08x h_slc=0x%08x/0x%08x/0x%08x h_core=0x%08x h_obs=%08x,%08x,%08x/%08x,%08x,%08x/%08x,%08x,%08x/%08x,%08x,%08x/%08x,%08x,%08x h_pll=%08x,%08x,%08x,%08x,%08x",
-				   hs.ps_off, hs.ps_on, hs.next, hs.f2, hs.r1, hs.r3, hs.r5, hs.p5, hs.s0, hs.s4, hs.s8, hs.core,
+		n += sysfs_emit_at(buf, n, " h_x=%08x,%08x,%08x h_ps=%08x,%08x h_next=%d h_f2=%d h_r1=%08x h_r3=%08x h_r5=%08x h_p5=%08x h_slc=%08x/%08x/%08x h_core=%08x h_obs=%08x,%08x,%08x/%08x,%08x,%08x/%08x,%08x,%08x/%08x,%08x,%08x/%08x,%08x,%08x h_pll=%08x,%08x,%08x,%08x,%08x",
+				   hs.x[0], hs.x[1], hs.x[2], hs.ps_off, hs.ps_on, hs.next, hs.f2, hs.r1, hs.r3, hs.r5, hs.p5, hs.s0, hs.s4, hs.s8, hs.core,
 				   hs.obs[0][0], hs.obs[0][1], hs.obs[0][2], hs.obs[1][0], hs.obs[1][1], hs.obs[1][2], hs.obs[2][0], hs.obs[2][1], hs.obs[2][2],
 				   hs.obs[3][0], hs.obs[3][1], hs.obs[3][2], hs.obs[4][0], hs.obs[4][1], hs.obs[4][2],
 				   hs.pll[0], hs.pll[1], hs.pll[2], hs.pll[3], hs.pll[4]);
