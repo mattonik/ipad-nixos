@@ -714,7 +714,7 @@ static int step_h(int n, int mode)
 		}
 		return i == 200000 ? fail(-ETIMEDOUT, "h2-poll-timeout") : 0;
 	case 3:
-		if (mode == 8) {	/* h3p (research request 6): Apple power-cycles GFX between the first wake and the stream. Off, read PS only, on, 2nd state-0 request. */
+		if (mode == 8 || mode == 12) {	/* h3pb (mode 12) = h3p plus bridge re-apply (boot 30); h3p (research request 6): Apple power-cycles GFX between the first wake and the stream. Off, read PS only, on, 2nd state-0 request. */
 			int ret;
 
 			ret = pm_runtime_put_sync(consumer);
@@ -727,6 +727,15 @@ static int step_h(int n, int mode)
 				return fail(ret, "h3p-runtime-get");
 			if (hs.ps_on != 0x3ff)
 				return fail(-EIO, "h3p-gfx-not-active");
+			if (mode == 12) {	/* Apple re-applies bridge-settings-9/10 (66 stores) after every GFX power-on (request 9); the runner did it only once in batch */
+				int t;
+
+				for (t = 0; t < 2; t++)
+					for (i = 0; i < 33; i++) {
+						writel(bridge_plan[t][i][1], bridge_regs[t] + bridge_plan[t][i][0]);
+						mb();
+					}
+			}
 			for (i = 0; i < 200000; i++) {	/* Apple setter: poll busy, store 0x10, one load */
 				if (!(readl(gpc_regs + GPC_STATE) & 0x10))
 					break;
@@ -974,6 +983,8 @@ static ssize_t step_store(struct device *dev, struct device_attribute *attr, con
 		ret = step_h(6, 9);
 	else if (sysfs_streq(buf, "h7x"))
 		ret = step_h(7, 9);
+	else if (sysfs_streq(buf, "h3pb"))
+		ret = step_h(3, 12);
 	else if (sysfs_streq(buf, "h3p"))
 		ret = step_h(3, 8);
 	else if (sysfs_streq(buf, "h7g"))
