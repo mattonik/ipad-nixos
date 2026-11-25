@@ -587,36 +587,6 @@ static int step_g(int n)
 		gs.perr = i == 200000 ? -ETIMEDOUT : 0;
 		return gs.perr ? fail(gs.perr, "g2-poll-timeout") : 0;
 	case 3:
-		if (mode == 8) {	/* h3p (research request 6): Apple power-cycles GFX between the first wake and the stream. Off, read PS only, on, 2nd state-0 request. */
-			int ret;
-
-			ret = pm_runtime_put_sync(consumer);
-			hs.ps_off = readl(pmgr + PM_GFX_PS);
-			if (ret < 0)
-				return fail(ret, "h3p-runtime-put");
-			ret = pm_runtime_get_sync(consumer);
-			hs.ps_on = readl(pmgr + PM_GFX_PS);
-			if (ret < 0)
-				return fail(ret, "h3p-runtime-get");
-			if (hs.ps_on != 0x3ff)
-				return fail(-EIO, "h3p-gfx-not-active");
-			for (i = 0; i < 200000; i++) {	/* Apple setter: poll busy, store 0x10, one load */
-				if (!(readl(gpc_regs + GPC_STATE) & 0x10))
-					break;
-				udelay(10);
-			}
-			if (i == 200000)
-				return fail(-ETIMEDOUT, "h3p-pre-poll");
-			writel(0x10, gpc_regs + GPC_STATE);
-			(void)readl(gpc_regs + GPC_STATE);
-			for (i = 0; i < 200000; i++) {
-				if (!(readl(gpc_regs + GPC_STATE) & 0x10))
-					break;
-				udelay(10);
-			}
-			if (i == 200000)
-				return fail(-ETIMEDOUT, "h3p-post-poll");
-		}
 		msleep(100);
 		writel(0x11, gpc_regs + GPC_STATE);
 		return 0;
@@ -688,6 +658,36 @@ static int step_h(int n, int mode)
 		}
 		return i == 200000 ? fail(-ETIMEDOUT, "h2-poll-timeout") : 0;
 	case 3:
+		if (mode == 8) {	/* h3p (research request 6): Apple power-cycles GFX between the first wake and the stream. Off, read PS only, on, 2nd state-0 request. */
+			int ret;
+
+			ret = pm_runtime_put_sync(consumer);
+			hs.ps_off = readl(pmgr + PM_GFX_PS);
+			if (ret < 0)
+				return fail(ret, "h3p-runtime-put");
+			ret = pm_runtime_get_sync(consumer);
+			hs.ps_on = readl(pmgr + PM_GFX_PS);
+			if (ret < 0)
+				return fail(ret, "h3p-runtime-get");
+			if (hs.ps_on != 0x3ff)
+				return fail(-EIO, "h3p-gfx-not-active");
+			for (i = 0; i < 200000; i++) {	/* Apple setter: poll busy, store 0x10, one load */
+				if (!(readl(gpc_regs + GPC_STATE) & 0x10))
+					break;
+				udelay(10);
+			}
+			if (i == 200000)
+				return fail(-ETIMEDOUT, "h3p-pre-poll");
+			writel(0x10, gpc_regs + GPC_STATE);
+			(void)readl(gpc_regs + GPC_STATE);
+			for (i = 0; i < 200000; i++) {
+				if (!(readl(gpc_regs + GPC_STATE) & 0x10))
+					break;
+				udelay(10);
+			}
+			if (i == 200000)
+				return fail(-ETIMEDOUT, "h3p-post-poll");
+		}
 		msleep(100);
 		hs.r3 = readl(gpc_regs + 0x10);
 		return 0;
