@@ -675,6 +675,12 @@ static int step_h(int n, int mode)
 			cfg_put64(0x3800, 0x0003550000300001ULL);
 			cfg_put(0x3808 | 0xff << 16);
 			cfg_put(1);
+		} else if (hs.f2 == 7) {	/* h7g: Apple's SOFT_RESET framing (3 asserts, no META_BOOT/BIF) around the 0x3808 no-op, then release */
+			cfg_put64(0x100, 0x00e7fffffffffc1dULL);
+			cfg_put64(0x100, 0x00e7fe071ffffc1dULL);
+			cfg_put64(0x100, 0x0000000100000000ULL);
+			cfg_put64(0x3808, 0);
+			cfg_put64(0x100, 0);
 		} else if (hs.f2 == 6) {	/* h7f: Apple's exact 64-bit encoding of the 0x3808 no-op (0x3808 <- 0): {reg+4, hi, reg|ff, lo} */
 			cfg_put64(0x3808, 0);
 		} else if (hs.f2 == 5) {	/* h7e: as h7d (no-op entry) but every store is loaded back, Apple-style */
@@ -855,6 +861,8 @@ static ssize_t step_store(struct device *dev, struct device_attribute *attr, con
 		ret = step_h(7, 1);
 	else if (sysfs_streq(buf, "h7e"))
 		ret = step_h(7, 5);
+	else if (sysfs_streq(buf, "h7g"))
+		ret = step_h(7, 7);
 	else if (sysfs_streq(buf, "h7f"))
 		ret = step_h(7, 6);
 	else if (sysfs_streq(buf, "h7d"))
