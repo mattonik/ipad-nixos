@@ -705,8 +705,7 @@ static int step_h(int n, int mode)
 		hs.pll[2] = readl(pmgr + PM_PAGE5_4);	/* state 0, BEFORE the core-word store */
 		if (!hs.skip20000)	/* h8n: no core-word store (runs 12/13: any non-empty list hung at this store) */
 			writel(0, gpc_regs + 0x20000);
-		h_obs(2);
-		return 0;
+		return 0;	/* no PMGR/RGX read after the store: h_obs(2) now runs at the end of h9, after the Fender poll */
 	case 9:
 		for (i = 0; i < 200000; i++) {
 			v = readl(gpc_regs + GPC_STATE);
@@ -714,7 +713,10 @@ static int step_h(int n, int mode)
 				break;
 			udelay(10);
 		}
-		return i == 200000 ? fail(-ETIMEDOUT, "h9-poll-timeout") : 0;
+		if (i == 200000)
+			return fail(-ETIMEDOUT, "h9-poll-timeout");
+		h_obs(2);
+		return 0;
 	case 10:
 		msleep(100);
 		writel(0x11, gpc_regs + GPC_STATE);
