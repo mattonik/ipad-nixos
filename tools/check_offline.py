@@ -58,6 +58,7 @@ HOST_TESTS = (
     "boot/test_gpu_gpc_init_capture.py",
     "boot/test_gpu_gpc_capture.py",
     "boot/test_gpu_gpc_peek_run.py",
+    "boot/test_pongo_gpu_split.py",
     "kernel/test_gpu_pmgr_failure_patch.py",
     "kernel/test_gpu_pmgr_once.py",
     "kernel/test_page5_read_once.py",
