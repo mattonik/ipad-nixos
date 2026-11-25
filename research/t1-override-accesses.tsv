@@ -1,0 +1,9 @@
+site	address	context and GPC state	what is written or read	what follows immediately	tag
+bootFirmware (fw +0xc0)	0x669036c-0x6690394	boot: after fw +0x228 (1) power-on, fw +0xe0 hardware start (stream stored) and accel 0x8a8 (1); GPC state 0	slot 0x60 (0): +0x20000 = 0, load-back	slot 0x10 (1): poll +0x1000 bit 4 clear, store 0x11, one load; then waitForFWAlive (0x6694d40, sleeps on the fw +0xb35 alive flag; no RGX read)	code
+stop / park (fw +0xc8)	0x6690424-0x6690454	only if the Fender object is marked powered (+0xc); GPU running (state >= 1)	slot 0x60 (0): +0x20000 = 0, load-back	slot 0x10 (0): request state 0; no RGX read in between	code
+META reset / recovery	0x6694220-0x6694244	after META slave-port idle poll and R0 +0x1340 / +0x12a8 / +0x100 writes; +0 = saved value (slot 0x68)	slot 0x60 (0): +0x20000 = 0, load-back	tail call to a state-0 request	code (request 7)
+hold (fw +0xd8)	0x66906f8-0x6690738	only from the GPU restart path (caller 0x6675590, after the '%s restart' log); only if Fender is marked powered	slot 0x60 (1): +0x20000 = 0x20, load-back, poll bit 5 == 1, poll +0x1000 bit 4 clear (10 us steps, ~30 s)	+0 = 0x40000000 (slot 0x58), then fw +0x240 'host may touch RGX' check, then META slave-port registers; no release in this routine	code
+snapshot (Fender slot 0x48)	0x669c1a0, caller 0x66a6608	'Pre-inspection fender snapshot', only when Fender is marked powered	read +0x20000	-	code
+register dump (Fender slot 0x40)	0x669bd24	failure report	read +0x20000	-	code
+boot order	0x6671f98-0x6672014	accelerator boot routine: fw +0x228 (1), fw +0xe0, accel 0x8a8 (1), fw +0xc0	-	the hold routine is not on this path	code
+summary	-	every release (value 0) is followed at once by a state request (1 at boot, 0 at stop/recovery); the hold (0x20) is the only other value and is taken only before META slave-port access in a restart	-	-	code

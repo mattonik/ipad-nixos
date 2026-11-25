@@ -1,0 +1,8 @@
+item	address	finding	tag
+host-may-touch-RGX check (fw +0x240)	0x6692828-0x66928cc	with Fender: true only if 1 <= GPC state (+0x1000 bits 3:0) <= the firmware's maximum state (fw +0x220 -> +0x29c) AND +0 bit 29 (SNOOP) is clear. Without Fender: (0x7a4d882 & 0x12) == 0x10, else the accelerator +0x12c1 flag	code
+its callers	0x6675b50, 0x6675cf0, 0x668bc1c, 0x668fa6c, 0x66904e0, 0x669072c, 0x6693890, 0x6693924, 0x6699780, 0x669986c	Apple gates its direct RGX accesses on this check (META slave port in fw +0xd8 at 0x669072c among them)	code (call sites; each caller's purpose not decoded)
+after bootFirmware's release	0x6690384-0x669039c	no RGX read: state-1 request, then waitForFWAlive, which sleeps on its alive flag (fw +0xb35) through the command gate (accel +0xd18) with a deadline of accel +0xc20 seconds (scale 1e9), until the interrupt path sets the flag or it logs 'Timedout waiting for META alive'	code
+clock start	-	no host write starts an RGX or META clock: CLK_CTRL is never written (request 11); no PMGR perf write (request 8). PLL5 bit 30 sets after the 0x11 request (runs 11, 33, 38, 39)	code; capture
+reads the runner has done safely	h11 in runs 33, 35, 38, 39	in state 1 after a 0 -> 1 transition with no release since: 0xbf8, 0x3800, 0x3804, 0x3808, 0x20 all return	capture
+reads Apple never makes	-	any RGX read right after a release in state 1 (h12). Apple's state-1 releases (stop, recovery) are followed by a state-0 request and no RGX access	code
+META_BOOT baseline	runs 35, W1	0xbf8 reads 0 before W1 and at h11 of run 35 (list without META_BOOT, after h3pb), so its power-on value is 0; runs 38/39's 1 at h11 without any release means the walk ran at the 0 -> 1 transition	capture
