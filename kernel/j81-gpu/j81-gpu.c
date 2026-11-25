@@ -349,7 +349,7 @@ static int step_pa(void)
 	if (before != 0x3ff)
 		return fail(-EIO, "pa-ps-not-3ff");
 	autopm_done = true;
-	writel(0x1000000f, pmgr + PM_GFX_PS);
+	writel(before | 0x10000000, pmgr + PM_GFX_PS);	/* 27b: read-modify-write, keeps status bits 8-9 (27 wrote 0x1000000f: no effect) */
 	mb();
 	udelay(100);
 	after = readl(pmgr + PM_GFX_PS);
