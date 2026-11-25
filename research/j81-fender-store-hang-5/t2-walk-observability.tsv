@@ -1,0 +1,8 @@
+register	what Apple reads and when	what it can tell about the walk	safe after the override store?	tag
++0x20000 VCM_PERF_STATE_OVERRIDE	slot 0x60 (0) loads it back immediately after storing 0 (0x669c24c-0x669c268); never reads it before writing on the boot path	nothing: the store's completion is the only sign; a non-posted store that returns means Fender accepted it (inferred: the walk, if it runs at release, has finished or been skipped)	yes, once, right after the store returns (Apple's own load-back); never before the store (run 25)	code; capture
++0x1000 PERF_STATE_CONTROL	setter 0x6698d94 polls bit 4 (busy) every 10 us before storing 0x11 and loads once after	bits 3:0 the requested state, bit 4 busy; no walk field	yes: runner's h9 already polls it	code; capture
++0x1004 NEXT_STATE	register dump only (0x669bcf0)	meaning not decoded	not tried; no Apple use on the boot path	code
++0x14 POWER_INT_STATUS	interrupt handler 0x669901c, doorbell (writes 7), slot 0x90 bit 1	Fender host interrupt bits 0-2; interrupts are disabled at this point (+0x10 = 0)	plausible in state 1 (Apple reads it in the doorbell), but it says nothing about the walk	code
++0x8 KICK_STATUS	'can power off' test (0x669c524), state 0 only	firmware kick bookkeeping, not the walk	not needed	code
+ConfigRAM +0x10000..	written and loaded back word by word before the store; never read after it	none: no cursor, status or completion field is read by Apple	not tried; no Apple use after the store	code (request 4, 7)
+target registers in state 1	Apple never verifies the walk; it waits for firmware alive (0x6694d40)	the only proof: read the written RGX register in state 1 (runner's h11 already reads 0x3800/0x3804/0x3808)	yes in state 1 (runs 11, 30)	code; capture
