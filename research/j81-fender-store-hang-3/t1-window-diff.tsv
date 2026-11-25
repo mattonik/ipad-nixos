@@ -1,0 +1,12 @@
+side	step	where	detail	tag
+Apple only	GFX power-on through ApplePMGR, ending with AUTO_PM_EN set	provider +0x568/+0x570 (AGX 0x6692720, 0x669274c; probe 0x6683920, 0x668393c) -> ApplePMGR set-PS 0x6bc6ed8 (t2)	set-PS writes target 0xf, polls actual == 0xf, then ORs in bit 28 (AUTO_PM_EN) and writes again (0x6bc733c-0x6bc735c) when its auto argument is 1. The device-on callers pass auto = (device flags & 4) == 0 (0x6bcd4a0-0x6bcd4bc, 0x6bd8770-0x6bd8794); GFX's ADT flags byte is 0x00, so GFX is turned on with AUTO_PM_EN = 1	code; adt; inferred (which caller the AGX provider call reaches was not traced instruction by instruction)
+runner only	GFX on with AUTO_PM_EN clear	j81-gpu.c step_activate (pm_runtime_get_sync)	PM_GFX_PS (0x20e020320) reads 0x3ff at every observation point: target 0xf, actual 0xf, bits 8-9 set, bit 28 clear	capture
+Apple only	GFX power cycle after the 1 -> 0 request	accelerator start 0x666d978-0x666d994; fw slot 0x228 (1)	reproduced by the runner in run 24 (h3p), did not change the result	code; capture
+Apple only	interrupt-controller unmask of GPU lines 0, 1, 4	accel slot 0x8a8 (1), request 7 t1	no Fender, GPU or PMGR register	code
+Apple only	+0x10 cleared a second time at hardware start	Fender slot 0x20 (3), 0x6690bd8	same value as the first clear; idempotent	code
+runner only	W1: META_BOOT (RGX +0xbf8) rewritten with its own value	step_w1	direct RGX access before the stream; Apple's Fender path never writes RGX directly before bootFirmware	capture; code
+runner only	W2a: SOFT_RESET (RGX +0x100) set to 0x00e7fffffffffc1d, then cleared	step_w2a	direct RGX access before the stream, at state 1; leaves SOFT_RESET = 0	capture; code
+runner only	PMGR reads during the window	h_obs (PS 0x20320, 0x1c200, 0x2300c; 0x5004 in runs 20-23)	no Apple driver reads PMGR +0x5004 (t3)	capture; code (by search)
+runner only	Fender reads between +0 and the store	h7x (run 25b), observers	Apple reads only +0x1000 (busy polls) in this window	capture; code
+runner only	host round trips and sleeps between steps	every sysfs step; 100 ms in h7/h8	Apple's window is straight-line kernel code (request 7); not measured	capture; inferred
+both	end marker, +0 = 0x40000000, ConfigRAM entries with load-backs, +0x20000 = 0	request 6 t1 rows 24-27, t3	same order; the runner's +0x20000 store has no load-back, Apple's has one (0x669c264)	code; capture

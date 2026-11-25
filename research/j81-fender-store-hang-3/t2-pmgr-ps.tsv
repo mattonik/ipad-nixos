@@ -1,0 +1,12 @@
+item	value or bits	source	tag
+GFX device entry	id 0x7c, flags 0x00, no parent, PS group 3 index 4, count byte 2 with list 0x09 0x0a	ADT /arm-io/pmgr "devices", 48-byte entries (byte 0 flags, byte 3 id, byte 4 parent, byte 10 PS index, byte 11 PS group, byte 24 count, bytes 28.. list)	adt (field names inferred from the driver's use of bytes 0, 0xa, 0xb)
+GFX PS register	PMGR +0x20300 + 4 * 8 = +0x20320 (0x20e020320)	ADT "ps-regs" group 3 = (reg 0, offset 0x20300, valid mask 0x1f); the driver uses group base + index * 8 (0x6bc6f68-0x6bc6f70)	adt; code
+bits 3:0	target state (MANUAL_PS); 0xf = on	set-PS 0x6bc721c (bfxil of the requested state into bits 3:0)	code
+bits 7:4	actual state	set-PS polls (value & 0xf0) == state << 4 (0x6bc71fc-0x6bc7210, 0x6bc726c-0x6bc7294)	code
+bits 9:8	status bits, cleared before every write (masked with 0xfffffcff)	0x6bc7190, 0x6bc72c0	code; inferred (write-1-to-clear)
+bit 10	set by _enablePSNoWakeup (and 0xfffff8ff, orr 0x400); set-PS takes a separate path when it is set	0x6bce9f8-0x6bce9fc; 0x6bc72d0	code
+bit 28	AUTO_PM_EN; set-PS clears it first, sets the target, then sets it again when its auto argument is 1	0x6bc7168, 0x6bc718c-0x6bc71b0, 0x6bc733c	code
+bit 30	cleared by set-PS when found set (and 0xbfffffff); meaning not decoded	0x6bc7364	code
+auto-PM default	auto = (device flags & 4) == 0; GFX flags 0x00, so auto = 1	0x6bcd4a0, 0x6bd8770, 0x6bc2a44	code; adt
+other per-device PMGR controls	auto min level (_setPSAutoMinLevel), power-gate sleep depth (PWR_x_CFG0 SLEEP_DEPTH), autoClockGating, NoWakeup, ForceNoAccess	ApplePMGR strings and the functions that reference them	code (names); register effects not decoded
+runner value	0x3ff: target 0xf, actual 0xf, bits 8-9 set, bit 10 clear, bit 28 clear	run log h5 observers	capture

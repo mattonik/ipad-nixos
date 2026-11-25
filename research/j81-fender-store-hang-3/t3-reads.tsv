@@ -1,0 +1,9 @@
+read	when Apple does it	guard	tag
+Fender +0x20000 (override)	Fender slot 0x48 "Pre-inspection fender snapshot" (0x669c1a0)	only if the Fender object is marked powered (+0xc, 0x669c190)	code
+Fender +0x20000 (override)	Fender slot 0x40 register dump (0x669bd24), used for restart/failure reports	none before the read; the accel +0x16f0 flag only selects where the text goes	code
+Fender +0x20000 (override)	slot 0x60 with argument 0 (store then load)	none; always just after its own store	code
+Fender +0x20000 (override)	never on the boot path before it has been written	-	code
+Fender +0 and +0x1000	doorbell in state 0 (0x6690e48); busy polls everywhere	none	code
+PMGR +0x5004	never: no access to offset 0x5004 in AGXG4G, ApplePMGR, AppleT7001PMGR (which also holds AppleT7000PMGR) or AppleARMPlatform	-	code (by search)
+PMGR 0x50x8 offsets	AppleT7000PMGR code uses 0x5008, 0x5018, 0x5028, 0x5038, 0x5048, 0x5058, 0x5068, 0x5078 (stride 0x10)	not decoded	code
+PLL raised by the host before state 1	no AGX or PMGR code found that does it for GFX; the runner sees PMGR +0x5004 bit 30 set only after the 0 -> 1 request	-	code (by search); capture
