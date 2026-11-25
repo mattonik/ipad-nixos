@@ -336,6 +336,30 @@ static int step_w1(void)
  * Fender mailbox when its global bit is set, which is unresolved: a readback that is not the value written means direct
  * stores do not land). Interrupts are off for the whole window; only SOFT_RESET itself is read while blocks are in reset.
  */
+/* boot 27 (research request 8): Apple's GFX-on sets AUTO_PM_EN (PS bit 28) after the state reaches target; Linux's genpd leaves it clear. One store, one load; result in hs.x[0]/x[1]. */
+static bool autopm_done;
+static u32 pa_x[2];
+static int step_pa(void)
+{
+	u32 before, after;
+
+	if (state != ST_IDENTIFIED || autopm_done)
+		return -EBUSY;
+	before = readl(pmgr + PM_GFX_PS);
+	if (before != 0x3ff)
+		return fail(-EIO, "pa-ps-not-3ff");
+	autopm_done = true;
+	writel(0x1000000f, pmgr + PM_GFX_PS);
+	mb();
+	udelay(100);
+	after = readl(pmgr + PM_GFX_PS);
+	pa_x[0] = before;
+	pa_x[1] = after;
+	if (!(after & 0x10000000))
+		return fail(-EIO, "pa-bit28-not-set");
+	return 0;
+}
+
 static int step_w2a(void)
 {
 	unsigned long flags;
@@ -871,6 +895,8 @@ static ssize_t step_store(struct device *dev, struct device_attribute *attr, con
 		ret = step_batch();
 	else if (sysfs_streq(buf, "w1"))
 		ret = step_w1();
+	else if (sysfs_streq(buf, "pa"))
+		ret = step_pa();
 	else if (sysfs_streq(buf, "w2a"))
 		ret = step_w2a();
 	else if (sysfs_streq(buf, "z0"))
@@ -962,7 +988,7 @@ static ssize_t status_show(struct device *dev, struct device_attribute *attr, ch
 	 * forwarded and the watchdog is no longer fed. That, not a bus hang, ended the F1/f1a/z3/h0 runs of 2026-11-22..24 (lines of
 	 * 558-700 bytes). Once an f/h/z3 step has output, the status is compact, and it is capped below 500 bytes in any case.
 	 */
-	bool compact = hs.next || z3_done || fr[0].done || fr[1].done || fr[2].done;
+	bool compact = hs.next || autopm_done || z3_done || fr[0].done || fr[1].done || fr[2].done;
 
 	mutex_lock(&lock);
 	n = sysfs_emit(buf, "state=%s reason=%s skip_pll1=%d skip_pll4=%d crumb=%s", st_name[state], reason, skip_pll1, skip_pll4, fb_crumb_state());
@@ -990,6 +1016,8 @@ static ssize_t status_show(struct device *dev, struct device_attribute *attr, ch
 						   fn[k], fr[k].err, fn[k], fr[k].where ? fr[k].where : "-", fn[k], fr[k].g_start, fr[k].g_after0,
 						   fr[k].g_after20000, fr[k].g_after1, fn[k], fr[k].p5, fn[k], fr[k].rgx_read, fn[k], fr[k].core, fn[k], fr[k].s0, fr[k].s4, fr[k].s8);
 	}
+	if (autopm_done)
+		n += sysfs_emit_at(buf, n, " pa=%08x,%08x", pa_x[0], pa_x[1]);
 	if (hs.next)
 		n += sysfs_emit_at(buf, n, " h_x=%08x,%08x,%08x h_ps=%08x,%08x h_next=%d h_f2=%d h_r1=%08x h_r3=%08x h_r5=%08x h_p5=%08x h_slc=%08x/%08x/%08x h_core=%08x h_obs=%08x,%08x,%08x/%08x,%08x,%08x/%08x,%08x,%08x/%08x,%08x,%08x/%08x,%08x,%08x h_pll=%08x,%08x,%08x,%08x,%08x",
 				   hs.x[0], hs.x[1], hs.x[2], hs.ps_off, hs.ps_on, hs.next, hs.f2, hs.r1, hs.r3, hs.r5, hs.p5, hs.s0, hs.s4, hs.s8, hs.core,
