@@ -783,6 +783,13 @@ static int step_h(int n, int mode)
 			cfg_readback = true;
 			cfg_put(0x0bf8 | 0xff << 16);
 			cfg_put(1);
+		} else if (hs.f2 == 15) {	/* h7r (boot C, request 10): Apple's SLC framing: SOFT_RESET x3, SLC pair (0x3800, 0x3808<-1, both 64-bit), SOFT_RESET <- 0. No META_BOOT, no BIF. */
+			cfg_put64(0x100, 0x00e7fffffffffc1dULL);
+			cfg_put64(0x100, 0x00e7fe071ffffc1dULL);
+			cfg_put64(0x100, 0x0000000100000000ULL);
+			cfg_put64(0x3800, 0x0003550000300001ULL);
+			cfg_put64(0x3808, 1);
+			cfg_put64(0x100, 0);
 		} else if (hs.f2 == 7) {	/* h7g: Apple's SOFT_RESET framing (3 asserts, no META_BOOT/BIF) around the 0x3808 no-op, then release */
 			cfg_put64(0x100, 0x00e7fffffffffc1dULL);
 			cfg_put64(0x100, 0x00e7fe071ffffc1dULL);
@@ -1002,6 +1009,8 @@ static ssize_t step_store(struct device *dev, struct device_attribute *attr, con
 		ret = step_h(7, 13);
 	else if (sysfs_streq(buf, "h7m"))
 		ret = step_h(7, 14);
+	else if (sysfs_streq(buf, "h7r"))
+		ret = step_h(7, 15);
 	else if (sysfs_streq(buf, "h7d"))
 		ret = step_h(7, 4);
 	else if (sysfs_streq(buf, "h7c"))
