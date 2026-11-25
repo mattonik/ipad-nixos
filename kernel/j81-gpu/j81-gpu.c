@@ -338,6 +338,7 @@ static int step_w1(void)
  */
 /* boot 27 (research request 8): Apple's GFX-on sets AUTO_PM_EN (PS bit 28) after the state reaches target; Linux's genpd leaves it clear. One store, one load; result in hs.x[0]/x[1]. */
 static bool autopm_done;
+static bool h_nowr;	/* boot 29 (request 9): h-steps without W1/W2a, i.e. no host RGX write before the stream (batch's identity read still happens) */
 static u32 pa_x[2];
 static int step_pa(void)
 {
@@ -363,6 +364,14 @@ static int step_pa(void)
 	pa_x[1] = after;
 	if (!(after & 0x10000000))
 		return fail(-EIO, "pa-bit28-not-set");
+	return 0;
+}
+
+static int step_hn(void)
+{
+	if (state != ST_IDENTIFIED || h_nowr || wr.w1_done || wr.w2a_done)
+		return -EBUSY;
+	h_nowr = true;
 	return 0;
 }
 
@@ -661,7 +670,7 @@ static int step_h(int n, int mode)
 	int i;
 	u32 v = 0;
 
-	if (state != ST_IDENTIFIED || !wr.w2a_done || hs.next != n)
+	if (state != ST_IDENTIFIED || !(wr.w2a_done || h_nowr) || hs.next != n)
 		return -EBUSY;
 	if (n == 7)
 		hs.f2 = mode;
@@ -901,6 +910,8 @@ static ssize_t step_store(struct device *dev, struct device_attribute *attr, con
 		ret = step_batch();
 	else if (sysfs_streq(buf, "w1"))
 		ret = step_w1();
+	else if (sysfs_streq(buf, "hn"))
+		ret = step_hn();
 	else if (sysfs_streq(buf, "pa"))
 		ret = step_pa();
 	else if (sysfs_streq(buf, "w2a"))
