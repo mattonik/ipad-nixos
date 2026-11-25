@@ -942,7 +942,7 @@ static int step_h(int n, int mode)
 		hs.s4 = readl(core_regs + 0x3804);
 		hs.s8 = readl(core_regs + 0x3808);
 		hs.x[0] = readl(core_regs + 0xbf8);	/* W1S: META_BOOT after a walk released in state 1 */
-		hs.x[1] = readl(core_regs + 0x100);	/* SOFT_RESET low word in state 1 */
+		/* SOFT_RESET read removed: it hung h12 in run 38 */
 		hs.core = readl(core_regs + 0x20);
 		return i == 200000 ? fail(-ETIMEDOUT, "h12-poll-timeout") : 0;
 	}
