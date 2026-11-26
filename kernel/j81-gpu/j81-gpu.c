@@ -737,6 +737,7 @@ static int step_at(void)
 #define F3_PC		0x108000u
 #define F3_PD		0x109000u
 #define F3_PT		0x10a000u
+#define F3_PT2		0x10b000u	/* GPU MMU partition 9 (VA 0xe1c4200000): MMIO windows, 66 MiB above the heap -> PD[33] */
 #define F3_MAGIC	0x31413346u	/* "F3A1" */
 #define F3_GPU_VA	0xe1c0000000ULL
 
@@ -749,7 +750,7 @@ static struct {
 	u32 polls, wr, rec[3], fault, fault_valid;
 	void *snap;
 	u32 chg, chg_off[3], chg_val[3], sum2, meta[6];
-	bool late;
+	bool late, win;
 	u32 m2[8], m2sel, m2match;
 } f3;
 
@@ -813,10 +814,20 @@ static int f3_load(void)
 	writel(pc >> 32, f3.cpu + hdr + 0x40 + 4 * cat_hi);
 	writel((u32)pc, f3.cpu + hdr + 0x40 + 4 * cat_lo);
 	/* GPU page tables: PT maps heap pages 0..used (4 KiB each, valid bit only); PD[0] -> PT; PC[va >> 30 & 0x3ff] -> PD */
-	memset(f3.cpu + F3_PC, 0, 0x3000);
+	memset(f3.cpu + F3_PC, 0, 0x4000);
 	for (i = 0; i < used / 0x1000; i++)
 		f3_put64(F3_PT + 8 * i, (f3.dma + (u64)i * 0x1000) | 1);
 	f3_put64(F3_PD, pt | 1);
+	if (f3_rd(hdr + 32) == 1) {	/* C2 (request 14 t2): Fender 5 pages, AIC timer, AIC SW-int in partition 9; valid-only PT entries */
+		u64 pt2 = f3.dma + F3_PT2;
+
+		for (i = 0; i < 5; i++)
+			f3_put64(F3_PT2 + 8 * i, (0x201e00000ULL + (u64)i * 0x1000) | 1);
+		f3_put64(F3_PT2 + 8 * 5, 0x20e101000ULL | 1);
+		f3_put64(F3_PT2 + 8 * 6, 0x20e104000ULL | 1);
+		f3_put64(F3_PD + 8 * 33, pt2 | 1);
+		f3.win = true;
+	}
 	writel(((pd >> 12) << 4) | 1, f3.cpu + F3_PC + 4 * ((F3_GPU_VA >> 30) & 0x3ff));
 	wmb();
 	/* walk back: heap offsets 0, 0x22000 and the last page must resolve to dma + offset */
@@ -837,6 +848,15 @@ static int f3_load(void)
 			goto walk_done;
 	}
 	f3.walk |= 4;
+	if (f3.win) {
+		v = f3_get64(F3_PD + 8 * 33);
+		if (!(v & 1) || (v & ~0xfffULL) != f3.dma + F3_PT2)
+			goto walk_done;
+		v = f3_get64(F3_PT2 + 8 * 6);
+		if (v != (0x20e104000ULL | 1))
+			goto walk_done;
+		f3.walk |= 8;
+	}
 walk_done:
 	for (i = 0; i < used; i += 4)
 		sum += f3_rd(i);
@@ -846,7 +866,7 @@ walk_done:
 		memcpy(f3.snap, f3.cpu, used);
 	f3.pw[0] = pc >> 32;
 	f3.pw[1] = (u32)pc;
-	f3.loaded = f3.walk == 7;
+	f3.loaded = f3.walk == (f3.win ? 15 : 7);
 	return f3.loaded ? 0 : fail(-EIO, "f3-walk");
 }
 

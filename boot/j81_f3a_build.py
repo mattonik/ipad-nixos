@@ -10,7 +10,7 @@ Firmware bytes (the Apple META LDR) come from a private, git-ignored file; the b
 Layout and field values: requests 4 (appendix-t2-ddk.md sec. 3/4), 8, 12, 13. Every value marked GUESS below is not decoded from the
 kext yet (research request 14): the first-boot run may fail on exactly those.
 
-usage: j81_f3a_build.py LDR_IMAGE OUT_DIR [CFG_2F0]   (OUT_DIR must not exist and must be git-ignored; CFG_2F0 = u64 for config +0x2f0, default 0)
+usage: j81_f3a_build.py LDR_IMAGE OUT_DIR [CFG_2F0] [WINDOWS]   (OUT_DIR must not exist and must be git-ignored; CFG_2F0 = u64 for config +0x2f0, default 0; WINDOWS=1 fills the MMIO window table and tells the module to map the pages)
 """
 import hashlib
 import struct
@@ -40,11 +40,12 @@ def fwaddr(off):
 
 
 def main() -> int:
-    if len(sys.argv) not in (3, 4):
+    if len(sys.argv) not in (3, 4, 5):
         print(__doc__)
         return 2
     ldr, out = Path(sys.argv[1]), Path(sys.argv[2])
-    cfg2f0 = int(sys.argv[3], 0) if len(sys.argv) == 4 else 0
+    cfg2f0 = int(sys.argv[3], 0) if len(sys.argv) >= 4 else 0
+    windows = len(sys.argv) == 5 and sys.argv[4] == "1"
     out.mkdir(parents=True, mode=0o700)
     tool = Path(__file__).resolve().parent.parent / "tools" / "j81_meta_ldr_layout.py"
     tables, priv = out / "tables", out / "priv"
@@ -103,7 +104,13 @@ def main() -> int:
         p32(CONFIG, off, v)
     p64(CONFIG, 0x300, 0xE1C0000000)
     p64(CONFIG, 0x2F0, cfg2f0)   # request 4: u64 from an LDR-stream record, 32-bit halves swapped (0x69008c); the host keeps only thread 1's (pc, sp)
-    # MMIO window table (+0x1c0, 9 entries), +0x2f0 (LDR record), +0x30..+0x1b8, +0x290..: left zero (GUESS / unresolved, request 14)
+    if windows:   # request 14 t2: {u64 phys, u32 fwaddr, u32 size}; partition 9 VA 0xe1c4200000 -> fwaddr 0xc42xxxxx; RGX (index 3) is never mapped (fwaddr 0)
+        for i, (phys, fwa, size) in enumerate(((0x201E00000, 0xC4200000, 0x5000), (0x20E101000, 0xC4205000, 0x1000),
+                                                (0x20E104000, 0xC4206000, 0x1000), (0x201000000, 0, 0x20000))):
+            p64(CONFIG, 0x1C0 + 16 * i, phys)
+            p32(CONFIG, 0x1C0 + 16 * i + 8, fwa)
+            p32(CONFIG, 0x1C0 + 16 * i + 12, size)
+    # +0x2f0 (LDR record), +0x30..+0x1b8, +0x290..: see request 14 t1 (left zero unless set above)
     # list-head blocks: {0, self, 0, self+8} (two empty TAILQ heads), 0x8e0 also +0x778 = 0xffffffff
     for blk in (BLK990, BLK8E0, BLK8C0):
         p32(blk, 4, fwaddr(blk))
@@ -111,7 +118,7 @@ def main() -> int:
     p32(BLK8E0, 0x778, 0xFFFFFFFF)
     # header + ConfigRAM template
     ev_ctl, ev_buf = RINGS["EVENT"]
-    struct.pack_into("<8I", img, HDR, 0x31413346, len(words), rel_idx, ev_ctl, ev_buf, HEAP_USED, cat_hi, cat_lo)
+    struct.pack_into("<9I", img, HDR, 0x31413346, len(words), rel_idx, ev_ctl, ev_buf, HEAP_USED, cat_hi, cat_lo, 1 if windows else 0)
     for i, w in enumerate(words):
         struct.pack_into("<I", img, HDR + 0x40 + 4 * i, w)
     blob = out / "j81-f3a.blob"
