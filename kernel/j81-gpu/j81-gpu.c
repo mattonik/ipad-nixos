@@ -752,6 +752,7 @@ static struct {
 	u32 chg, chg_off[3], chg_val[3], sum2, meta[6];
 	bool late, win;
 	u32 m2[8], m2sel, m2match;
+	u32 cur, chg4[8], chgsel;
 } f3;
 
 static int meta_wait_ready(u32 *ctrl1);
@@ -1007,6 +1008,31 @@ static int f3_meta3(void)
 			f3.m2match |= 1u << i;
 	}
 	f3.m2sel = 3;
+	return 0;
+}
+
+/* f3chg: walk the words the firmware changed in the heap, four per call (offset, value), cursor in f3.cur; wraps to 0 after the last. */
+static int f3_chg(void)
+{
+	u32 i, k = 0, n = 0;
+
+	if (state != ST_IDENTIFIED || !f3.loaded || !f3.snap)
+		return -EBUSY;
+	memset(f3.chg4, 0, sizeof(f3.chg4));
+	for (i = 0; i < f3.heap_used; i += 4) {
+		u32 v = f3_rd(i);
+
+		if (v == ((u32 *)f3.snap)[i / 4])
+			continue;
+		if (k >= f3.cur && n < 4) {
+			f3.chg4[2 * n] = i;
+			f3.chg4[2 * n + 1] = v;
+			n++;
+		}
+		k++;
+	}
+	f3.chgsel = 1 + f3.cur;
+	f3.cur = n < 4 ? 0 : f3.cur + 4;
 	return 0;
 }
 
@@ -1416,6 +1442,8 @@ static ssize_t step_store(struct device *dev, struct device_attribute *attr, con
 		ret = f3_bif();
 	else if (sysfs_streq(buf, "f3sum"))
 		ret = f3_sum();
+	else if (sysfs_streq(buf, "f3chg"))
+		ret = f3_chg();
 	else if (sysfs_streq(buf, "f3meta"))
 		ret = f3_meta();
 	else if (sysfs_streq(buf, "f3metaA"))
@@ -1519,7 +1547,9 @@ static ssize_t status_show(struct device *dev, struct device_attribute *attr, ch
 		n += sysfs_emit_at(buf, n, " pa=%08x,%08x", pa_x[0], pa_x[1]);
 	if (f3.show) {
 		n += sysfs_emit_at(buf, n, " f3=%llx,%u,w%u,s%08x,pc%08x%08x,n%u,e%u,%08x/%08x,%08x,%08x,%08x,bif%d:%08x", (u64)f3.dma, f3.loaded, f3.walk, f3.sum, f3.pw[0], f3.pw[1], f3.nwords, f3.polls, f3.wr, f3.ev_ctl, f3.rec[0], f3.rec[1], f3.rec[2], f3.fault_valid, f3.fault);
-		if (f3.late)
+		if (f3.chgsel)
+			n += sysfs_emit_at(buf, n, " chg@%u=%x:%08x,%x:%08x,%x:%08x,%x:%08x", f3.chgsel - 1, f3.chg4[0], f3.chg4[1], f3.chg4[2], f3.chg4[3], f3.chg4[4], f3.chg4[5], f3.chg4[6], f3.chg4[7]);
+		else if (f3.late)
 			n += sysfs_emit_at(buf, n, " f3x=c%u,%x:%08x,%x:%08x,%x:%08x,s%08x m=%08x,%08x,%08x,%08x,%08x,%08x", f3.chg, f3.chg_off[0], f3.chg_val[0], f3.chg_off[1], f3.chg_val[1], f3.chg_off[2], f3.chg_val[2], f3.sum2,
 					   f3.meta[0], f3.meta[1], f3.meta[2], f3.meta[3], f3.meta[4], f3.meta[5]);
 		if (f3.m2sel)
