@@ -1248,6 +1248,93 @@ static int f3_core(int idx)
 	return 0;
 }
 
+/* f3tb (request 16 T1): the whole AIC timebase page 0x20e101000 (64 words) read twice 1 ms apart. m2 = nonzero words (first read), changed words, first changed
+ * offset, its first value, its second value, first nonzero offset, its value, OR of all words. Read-only. */
+static int f3_tb(void)
+{
+	void __iomem *t;
+	u32 a[64], b[64], i, nz = 0, ch = 0, orr = 0, fch = 0xffffffff, fnz = 0xffffffff;
+
+	if (state != ST_IDENTIFIED)
+		return -EBUSY;
+	t = ioremap_np(0x20e101000ULL, 0x1000);
+	if (!t)
+		return fail(-ENOMEM, "f3tb-map");
+	for (i = 0; i < 64; i++)
+		a[i] = readl(t + 4 * i);
+	msleep(1);
+	for (i = 0; i < 64; i++)
+		b[i] = readl(t + 4 * i);
+	iounmap(t);
+	memset(f3.m2, 0, sizeof(f3.m2));
+	for (i = 0; i < 64; i++) {
+		orr |= a[i] | b[i];
+		if (a[i]) {
+			nz++;
+			if (fnz == 0xffffffff)
+				fnz = i;
+		}
+		if (a[i] != b[i]) {
+			ch++;
+			if (fch == 0xffffffff)
+				fch = i;
+		}
+	}
+	f3.m2[0] = nz;
+	f3.m2[1] = ch;
+	f3.m2[2] = fch == 0xffffffff ? fch : 4 * fch;
+	f3.m2[3] = fch == 0xffffffff ? 0 : a[fch];
+	f3.m2[4] = fch == 0xffffffff ? 0 : b[fch];
+	f3.m2[5] = fnz == 0xffffffff ? fnz : 4 * fnz;
+	f3.m2[6] = fnz == 0xffffffff ? 0 : a[fnz];
+	f3.m2[7] = orr;
+	f3.m2sel = 20;
+	f3.show = true;
+	return 0;
+}
+
+/* f3usc (request 16 U1): RGX 0xe100 + 8i and 0xe200 + 8i, i = 0..31 (the USC exception/state slots Apple's failure dump walks), through a temporary mapping (core_regs only covers 0x4000).
+ * m2 = [count with bit 0 set at 0xe1xx, first such slot, its value, same for 0xe2xx x3, OR of all 0xe1xx values] and m2[7] = OR of all 0xe2xx values. Read-only, state 1 only. */
+static int f3_usc(void)
+{
+	void __iomem *t;
+	u32 i, base, cnt, first, fv, orr, k;
+
+	if (state != ST_IDENTIFIED)
+		return -EBUSY;
+	if ((readl(gpc_regs + GPC_STATE) & 0x1f) != 0x01)
+		return fail(-EBUSY, "f3usc-not-state-1");
+	t = ioremap_np(CORE_BASE + 0xe000, 0x1000);
+	if (!t)
+		return fail(-ENOMEM, "f3usc-map");
+	memset(f3.m2, 0, sizeof(f3.m2));
+	for (k = 0; k < 2; k++) {
+		base = k ? 0x200 : 0x100;
+		cnt = 0;
+		first = 0xffffffff;
+		fv = 0;
+		orr = 0;
+		for (i = 0; i < 32; i++) {
+			u32 v = readl(t + base + 8 * i);
+
+			orr |= v;
+			if ((v & 1) && first == 0xffffffff) {
+				first = i;
+				fv = v;
+			}
+			if (v & 1)
+				cnt++;
+		}
+		f3.m2[3 * k] = cnt;
+		f3.m2[3 * k + 1] = first;
+		f3.m2[3 * k + 2] = fv;
+		f3.m2[6 + k] = orr;
+	}
+	iounmap(t);
+	f3.m2sel = 21;
+	return 0;
+}
+
 static ssize_t f3_img_write(struct file *file, struct kobject *kobj, const struct bin_attribute *attr, char *buf, loff_t off, size_t count)
 {
 	if (!f3.cpu || f3.loaded || off < 0 || off + count > F3_BLOB)
@@ -1666,6 +1753,10 @@ static ssize_t step_store(struct device *dev, struct device_attribute *attr, con
 		ret = f3_reg(2);
 	else if (sysfs_streq(buf, "f3pch"))
 		ret = f3_pch();
+	else if (sysfs_streq(buf, "f3tb"))
+		ret = f3_tb();
+	else if (sysfs_streq(buf, "f3usc"))
+		ret = f3_usc();
 	else if (sysfs_streq(buf, "f3coreA"))
 		ret = f3_core(0);
 	else if (sysfs_streq(buf, "f3coreB"))
@@ -1790,6 +1881,8 @@ static ssize_t status_show(struct device *dev, struct device_attribute *attr, ch
 					   f3.meta[0], f3.meta[1], f3.meta[2], f3.meta[3], f3.meta[4], f3.meta[5]);
 		if (f3.m2sel == 10)
 			n += sysfs_emit_at(buf, n, " mH%u=%08x*%u,%08x*%u,%08x*%u,%08x*%u,%08x*%u,%08x*%u", f3.hn, f3.hpc[0], f3.hcnt[0], f3.hpc[1], f3.hcnt[1], f3.hpc[2], f3.hcnt[2], f3.hpc[3], f3.hcnt[3], f3.hpc[4], f3.hcnt[4], f3.hpc[5], f3.hcnt[5]);
+		else if (f3.m2sel == 20 || f3.m2sel == 21)
+			n += sysfs_emit_at(buf, n, " m%s=%08x,%08x,%08x,%08x,%08x,%08x,%08x,%08x", f3.m2sel == 20 ? "TB" : "US", f3.m2[0], f3.m2[1], f3.m2[2], f3.m2[3], f3.m2[4], f3.m2[5], f3.m2[6], f3.m2[7]);
 		else if (f3.m2sel >= 11)
 			n += sysfs_emit_at(buf, n, " mK%c=%08x,%08x,%08x,%08x,%08x,%08x,%08x,%08x", 'A' + f3.m2sel - 11, f3.m2[0], f3.m2[1], f3.m2[2], f3.m2[3], f3.m2[4], f3.m2[5], f3.m2[6], f3.m2[7]);
 		else if (f3.m2sel)
