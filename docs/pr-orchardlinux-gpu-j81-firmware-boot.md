@@ -21,7 +21,7 @@ Follow-up to #8 (identity words, `dwi` always-on, META core reads). On the iPad 
 
 **What it does not claim**: no GPU job was submitted and no frame rendered; the firmware does not post its first event record, and why is unknown because its code is MiniM (no public decoder). J81's `gpu = "missing"` in `devices/j81/device.toml` is unchanged.
 
-**Apple data**: none committed. The module and runner live in mattonik/ipad-nixos and depend on a table of GFX bridge settings extracted from the iPadOS kernelcache, which is not published.
+**Apple data**: none committed here: no firmware, kernelcache content or captures, and the table of GFX bridge settings the module replays is not part of this PR. The module and runner live in mattonik/ipad-nixos (which already carries that table, `kernel/j81-gpu/gfx-bridge-plan.h`).
 
 **Checked**: `python3 -I tools/a8x/test_j81_meta_ldr_layout.py` (11 tests, 2 skipped without images); with a real 19H394 image `j81_f3a_build.py` reproduces the blob used for the runs (sha256 `d9398bc5…a021`, heap checksum `7e5703a0`); the runs themselves are logged (runs 12 to 64) in the linked notes.
 
