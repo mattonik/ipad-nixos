@@ -753,6 +753,7 @@ static struct {
 	bool late, win;
 	u32 m2[8], m2sel, m2match;
 	u32 cur, chg4[8], chgsel;
+	u32 hpc[6], hcnt[6], hn;
 } f3;
 
 static int meta_wait_ready(u32 *ctrl1);
@@ -1129,6 +1130,101 @@ static int f3_timer(void)
 	iounmap(t);
 	f3.m2sel = 6;
 	f3.show = true;
+	return 0;
+}
+
+/* f3reg A/B/C: thread 0 general registers through the core-register port (TXUXXRXRQ 0x0480fff8: RDnWR bit 16, thread bits 15:12, register bits 11:4, unit bits 3:0;
+ * units: 1 = D0, 2 = D1, 3 = A0, 4 = A1, 5 = PC), value in TXUXXRXDT 0x0480fff0. Snapshot of a RUNNING thread: values can be mutually inconsistent (request 15 t3). */
+static int f3_reg(int which)
+{
+	static const u32 req[3][8] = {
+		{ 0x00010001, 0x00010011, 0x00010021, 0x00010031, 0x00010041, 0x00010051, 0x00010061, 0x00010071 },	/* D0.0..7 */
+		{ 0x00010002, 0x00010012, 0x00010022, 0x00010032, 0x00010042, 0x00010052, 0x00010062, 0x00010072 },	/* D1.0..7 */
+		{ 0x00010003, 0x00010013, 0x00010023, 0x00010033, 0x00010004, 0x00010014, 0x00010024, 0x00010034 },	/* A0.0..3, A1.0..3 */
+	};
+	u32 i, k, v = 0;
+	int ret;
+
+	if (state != ST_IDENTIFIED || !f3.loaded)
+		return -EBUSY;
+	memset(f3.m2, 0, sizeof(f3.m2));
+	for (i = 0; i < 8; i++) {
+		ret = f3_mwrite(0x0480fff8, req[which][i]);
+		if (ret)
+			return fail(ret, "f3reg-write");
+		for (k = 0; k < 100; k++) {
+			ret = f3_mread(0x0480fff8, &v);
+			if (ret)
+				return fail(ret, "f3reg-poll");
+			if (v & 0x80000000U)
+				break;
+		}
+		if (k == 100)
+			break;
+		ret = f3_mread(0x0480fff0, &f3.m2[i]);
+		if (ret)
+			return fail(ret, "f3reg-read");
+	}
+	f3.m2sel = 7 + which;	/* 7 = R0 (D0), 8 = R1 (D1), 9 = RA (A0/A1) */
+	return 0;
+}
+
+/* f3pch: 200 PC samples ~1 ms apart, the six most frequent PCs with counts (histogram of where thread 0 spends its time). */
+static int f3_pch(void)
+{
+	u32 i, k, j, v = 0, pc, ns = 0;
+	u32 spc[200];
+	int ret;
+
+	if (state != ST_IDENTIFIED || !f3.loaded)
+		return -EBUSY;
+	for (i = 0; i < 200; i++) {
+		ret = f3_mwrite(0x0480fff8, 0x00010005);
+		if (ret)
+			return fail(ret, "f3pch-write");
+		for (k = 0; k < 100; k++) {
+			ret = f3_mread(0x0480fff8, &v);
+			if (ret)
+				return fail(ret, "f3pch-poll");
+			if (v & 0x80000000U)
+				break;
+		}
+		if (k == 100)
+			continue;
+		ret = f3_mread(0x0480fff0, &pc);
+		if (ret)
+			return fail(ret, "f3pch-read");
+		spc[ns++] = pc;
+		usleep_range(500, 700);
+	}
+	memset(f3.hpc, 0, sizeof(f3.hpc));
+	memset(f3.hcnt, 0, sizeof(f3.hcnt));
+	for (i = 0; i < ns; i++) {
+		bool seen = false;
+
+		for (j = 0; j < i; j++)
+			if (spc[j] == spc[i])
+				seen = true;
+		if (seen)
+			continue;
+		pc = 0;
+		for (j = 0; j < ns; j++)
+			if (spc[j] == spc[i])
+				pc++;
+		/* insert into the top six by count */
+		for (j = 0; j < 6; j++)
+			if (pc > f3.hcnt[j]) {
+				for (k = 5; k > j; k--) {
+					f3.hpc[k] = f3.hpc[k - 1];
+					f3.hcnt[k] = f3.hcnt[k - 1];
+				}
+				f3.hpc[j] = spc[i];
+				f3.hcnt[j] = pc;
+				break;
+			}
+	}
+	f3.hn = ns;
+	f3.m2sel = 10;
 	return 0;
 }
 
@@ -1542,6 +1638,14 @@ static ssize_t step_store(struct device *dev, struct device_attribute *attr, con
 		ret = f3_chg();
 	else if (sysfs_streq(buf, "f3pc"))
 		ret = f3_pc();
+	else if (sysfs_streq(buf, "f3regA"))
+		ret = f3_reg(0);
+	else if (sysfs_streq(buf, "f3regB"))
+		ret = f3_reg(1);
+	else if (sysfs_streq(buf, "f3regC"))
+		ret = f3_reg(2);
+	else if (sysfs_streq(buf, "f3pch"))
+		ret = f3_pch();
 	else if (sysfs_streq(buf, "f3timer"))
 		ret = f3_timer();
 	else if (sysfs_streq(buf, "f3meta"))
@@ -1652,8 +1756,10 @@ static ssize_t status_show(struct device *dev, struct device_attribute *attr, ch
 		else if (f3.late)
 			n += sysfs_emit_at(buf, n, " f3x=c%u,%x:%08x,%x:%08x,%x:%08x,s%08x m=%08x,%08x,%08x,%08x,%08x,%08x", f3.chg, f3.chg_off[0], f3.chg_val[0], f3.chg_off[1], f3.chg_val[1], f3.chg_off[2], f3.chg_val[2], f3.sum2,
 					   f3.meta[0], f3.meta[1], f3.meta[2], f3.meta[3], f3.meta[4], f3.meta[5]);
-		if (f3.m2sel)
-			n += sysfs_emit_at(buf, n, " m%c=%08x,%08x,%08x,%08x,%08x,%08x,%08x,%08x k%02x", f3.m2sel == 1 ? 'A' : f3.m2sel == 2 ? 'B' : f3.m2sel == 3 ? 'C' : f3.m2sel == 4 ? 'D' : f3.m2sel == 5 ? 'P' : 'T', f3.m2[0], f3.m2[1], f3.m2[2], f3.m2[3], f3.m2[4], f3.m2[5], f3.m2[6], f3.m2[7], f3.m2match);
+		if (f3.m2sel == 10)
+			n += sysfs_emit_at(buf, n, " mH%u=%08x*%u,%08x*%u,%08x*%u,%08x*%u,%08x*%u,%08x*%u", f3.hn, f3.hpc[0], f3.hcnt[0], f3.hpc[1], f3.hcnt[1], f3.hpc[2], f3.hcnt[2], f3.hpc[3], f3.hcnt[3], f3.hpc[4], f3.hcnt[4], f3.hpc[5], f3.hcnt[5]);
+		else if (f3.m2sel)
+			n += sysfs_emit_at(buf, n, " m%c=%08x,%08x,%08x,%08x,%08x,%08x,%08x,%08x k%02x", f3.m2sel == 1 ? 'A' : f3.m2sel == 2 ? 'B' : f3.m2sel == 3 ? 'C' : f3.m2sel == 4 ? 'D' : f3.m2sel == 5 ? 'P' : f3.m2sel == 7 ? 'X' : f3.m2sel == 8 ? 'Y' : f3.m2sel == 9 ? 'Z' : 'T', f3.m2[0], f3.m2[1], f3.m2[2], f3.m2[3], f3.m2[4], f3.m2[5], f3.m2[6], f3.m2[7], f3.m2match);
 		else if (hs.next)
 			n += sysfs_emit_at(buf, n, " h_x=%08x h_next=%d h_f2=%d h_p5=%08x h_slc=%08x/%08x/%08x h_core=%08x", hs.x[0], hs.next, hs.f2, hs.p5, hs.s0, hs.s4, hs.s8, hs.core);
 	} else if (hs.next)
