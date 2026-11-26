@@ -1,0 +1,11 @@
+field	value for J81	source	tag
+config +0x29c	4 (gpu-num-perf-states, capped by boot-arg gpu_limit_max_pstates)	0x66875c0-0x66875fc; research/2026-11-08-j81-orchard-perf-state-layout.md	code; adt (live ADT values from earlier work, not our zero capture)
+config +0x2a0	16 (perf-state-count)	0x666e504-0x666e5a0	code; adt
+config +0x2a4 + 4*i, i = 0..15	MHz: 0, 365, 450, 500, 550, 182, 225, 250, 275, then 0 for 9..15 (Hz / 10^6, integer)	0x6689ecc-0x6689f3c; perf-states rows from research/2026-11-08-j81-orchard-perf-state-layout.md	code; adt (derived)
+POLICY +0x10	0x3f800000 (1.0f)	0x6689d24-0x6689d28	code
+POLICY +0x28	0x00000001_00000001	0x6689d2c-0x6689d30	code
+POLICY +0x38	100	0x6689d38-0x6689d3c	code
+POLICY +0x8f8	current 24 MHz time (Apple: mach_absolute_time; use the AIC timebase at window 1 +0x20 that the firmware reads)	0x6689d14-0x6689d20	code; inferred
+POLICY +0x6fc, +0x7cc	fw +0x57c * 100 = 400	0x6689e68-0x6689e94	code
+POLICY rest	governor floats from fw +0x5c8..+0x66c (ADT gpu-pwr-*/gpu-perf-* properties) and 0x160 bytes from fw +0x408: not decoded; Orchard's A9 reached alive with only the fields above plus perf pins	0x6689cc0-0x668a000	code; orchard
+timer period	none on J81: no 24000 constant and no config +0x278..+0x280 store in the 19H394 kext	search	code

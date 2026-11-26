@@ -1,0 +1,6 @@
+object	GPU VA (A8 layout)	size	flags	contents for a first boot	named in (J81 config / block)	J81 kext source	tag
+YUV CSC buffer	0x8_00000000	0x4000	SLC bypass only (no protect)	zero (Orchard zeroes it, S:3781)	config +0x30	accel +0x1828 object, its slot 0x88 VA (0x6689a2c)	orchard; code
+BRN44455 object	0x8_00004000	0x4000	SLC bypass only	zero	fw +0x218 block +0x0 (u64)	accel +0x1c10	orchard; code (request 9)
+BorderColorTable	0x8_00008000	0x4000 (0x800 used)	SLC bypass only	0x800 bytes of kext data at 0x7a4c4f0 (Apple data: extract locally from your own kernelcache; do not ship); zero may do for a first boot (inferred)	config +0x1b8	slot 0x920 -> accel +0x1c18 (0x669b120, 0x669b2e0-0x669b300)	orchard; code
+FenceBuffer	0x8_00010000	0x4000	SLC bypass only	zero	config +0x2f8 and fw +0x218 block +0x8	slot 0x928 -> accel +0x1c20 (0x669b144, 0x669b3a4)	orchard; code
+CSC blocks	-	2 x 0xc0	-	from accel +0x18f0 / +0x19b0 (J81-specific values; A8 has 2 x 0xa8 Q13 coefficients); zero for a first boot (inferred)	config +0x38..+0x1b7	loop 0x6689a40	orchard; code
