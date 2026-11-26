@@ -863,6 +863,16 @@ static int step_h(int n, int mode)
 			cfg_readback = true;
 			cfg_put(0x0bf8 | 0xff << 16);
 			cfg_put(1);
+		} else if (hs.f2 == 22) {	/* h7l (X4, request 12): X1's four SOFT_RESET entries, then the SLC pair (0x3800, 0x3808 <- 1, 64-bit), META_BOOT last (loaded back). Use with h8n; expect 0x3800/0x3808 changed at h11 */
+			cfg_put64(0x100, 0x00e7fffffffffc1dULL);
+			cfg_put64(0x100, 0x00e7fe071ffffc1dULL);
+			cfg_put64(0x100, 0x0000000100000000ULL);
+			cfg_put64(0x100, 0);
+			cfg_put64(0x3800, 0x0003550000300001ULL);
+			cfg_put64(0x3808, 1);
+			cfg_readback = true;
+			cfg_put(0x0bf8 | 0xff << 16);
+			cfg_put(1);
 		} else if (hs.f2 == 7) {	/* h7g: Apple's SOFT_RESET framing (3 asserts, no META_BOOT/BIF) around the 0x3808 no-op, then release */
 			cfg_put64(0x100, 0x00e7fffffffffc1dULL);
 			cfg_put64(0x100, 0x00e7fe071ffffc1dULL);
@@ -1066,6 +1076,8 @@ static ssize_t step_store(struct device *dev, struct device_attribute *attr, con
 		ret = step_h(12, 1);
 	else if (sysfs_streq(buf, "h7k"))
 		ret = step_h(7, 21);
+	else if (sysfs_streq(buf, "h7l"))
+		ret = step_h(7, 22);
 	else if (sysfs_streq(buf, "h7b"))
 		ret = step_h(7, 1);
 	else if (sysfs_streq(buf, "h7e"))
