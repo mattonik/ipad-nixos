@@ -1,0 +1,7 @@
+rank	boot	change (one per boot)	read afterwards	settles	tag
+0	E0: was alive posted?	none; read-only on a run like 64: read AIC 0x20e104010 (SW_SET word 4) and 0x20e104210 (state word 4), bit 10 = IRQ 138; then write RGX 0x3818 = 0x1 (SLC_CTRL_FLUSH_INVAL ALL), poll RGX 0x3898 & 0xff == 0xff, re-read event ctl +0x10 and the heap diff	IRQ-138 bit; event write index after the flush	whether the firmware already posted alive and the record sits in the SLC (our PTEs do not bypass it)	orchard; source; inferred
+1	E1: Apple/Orchard PTE flags	heap and root/shared pages: valid | bit 3 (SLC bypass) | bit 62 (PM/META protect); MMIO window pages: valid | bit 3	event write index, heap diff, T0 PC	the mapping-flag difference	orchard; code
+2	E2: perf table	config +0x29c = 4, +0x2a0 = 16, +0x2a4.. = 0, 365, 450, 500, 550, 182, 225, 250, 275, 0 x 7	as E1	whether the firmware needs a non-empty perf table to run its scheduler	code
+3	E3: POLICY minimum	POLICY +0x10 = 1.0f, +0x28 = 0x1_00000001, +0x38 = 100, +0x6fc = +0x7cc = 400, +0x8f8 = AIC time now	as E1	the governor record Apple fills on the boot path	code; orchard
+4	E4: hardware objects	four zeroed 0x4000 pages at 0x8_00000000 + {0, 0x4000, 0x8000, 0x10000}, PTE valid | bit 3 only; config +0x30 = 0x8_00000000, +0x1b8 = 0x8_00008000, +0x2f8 = 0x8_00010000; fw +0x218 block = {0x8_00004000, 0x8_00010000}	as E1	Orchard's 'alive needs the hardware objects'	orchard; code
+note	-	E1-E4 change only the memory image and PTEs; none needs a new register write. Keep each on its own boot after E0	-	-	inferred
