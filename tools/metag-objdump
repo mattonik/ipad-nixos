@@ -1,0 +1,3 @@
+#!/bin/sh
+# Wrapper for the NAS copy of the metag binutils 2.30 objdump (see README.md next to it). Usage: tools/metag-objdump [objdump args]
+exec /Volumes/martin/Projects/Archive/ipad-nixos/tools/metag-binutils-2.30/bin/objdump "$@"
