@@ -1429,6 +1429,50 @@ static int f3_kick(void)
 	return 0;
 }
 
+/* f3t1start (K2): emulate the LDR START_THREADS record for thread 1 through the core-register port, as DDK/Apple's loader would: write data to TXUXXRXDT (0x0480fff0), then the request to
+ * TXUXXRXRQ (0x0480fff8) with RDnWR clear (thread 1 = bits 15:12, register bits 11:4, unit bits 3:0): A0StP (unit 3, reg 0) <- 0x8000b3c8, PC (unit 5) <- 0x20000000; read both back;
+ * then TXENABLE of thread 1 (0x04801000) <- (value | 1). Never touches thread 0. m2 = pc readback, sp readback, t1enable after, t1status after, t1 pc after 5 ms, after 50 ms, event write idx, err. */
+static int f3_t1start(void)
+{
+	u32 v;
+	int ret;
+
+	if (state != ST_IDENTIFIED || !f3.loaded)
+		return -EBUSY;
+	memset(f3.m2, 0, sizeof(f3.m2));
+	ret = f3_mread(0x04801000, &v);
+	if (ret)
+		return fail(ret, "f3t1s-read");
+	if (v & 1)
+		return fail(-EBUSY, "f3t1s-already-enabled");
+	ret = f3_mwrite(0x0480fff0, 0x8000b3c8);
+	if (!ret)
+		ret = f3_mwrite(0x0480fff8, 0x00001003);
+	if (!ret)
+		ret = f3_mwrite(0x0480fff0, 0x20000000);
+	if (!ret)
+		ret = f3_mwrite(0x0480fff8, 0x00001005);
+	if (ret)
+		return fail(ret, "f3t1s-write");
+	ret = f3_creg(0x00011005, &f3.m2[0]);
+	if (!ret)
+		ret = f3_creg(0x00011003, &f3.m2[1]);
+	if (ret)
+		return fail(ret, "f3t1s-readback");
+	ret = f3_mwrite(0x04801000, v | 1);
+	if (ret)
+		return fail(ret, "f3t1s-enable");
+	msleep(5);
+	(void)f3_mread(0x04801000, &f3.m2[2]);
+	(void)f3_mread(0x04801010, &f3.m2[3]);
+	(void)f3_creg(0x00011005, &f3.m2[4]);
+	msleep(45);
+	(void)f3_creg(0x00011005, &f3.m2[5]);
+	f3.m2[6] = f3_rd(f3.ev_ctl + 0x10);
+	f3.m2sel = 25;
+	return 0;
+}
+
 static ssize_t f3_img_write(struct file *file, struct kobject *kobj, const struct bin_attribute *attr, char *buf, loff_t off, size_t count)
 {
 	if (!f3.cpu || f3.loaded || off < 0 || off + count > F3_BLOB)
@@ -1857,6 +1901,8 @@ static ssize_t step_store(struct device *dev, struct device_attribute *attr, con
 		ret = f3_t1();
 	else if (sysfs_streq(buf, "f3kick"))
 		ret = f3_kick();
+	else if (sysfs_streq(buf, "f3t1start"))
+		ret = f3_t1start();
 	else if (sysfs_streq(buf, "f3coreA"))
 		ret = f3_core(0);
 	else if (sysfs_streq(buf, "f3coreB"))
@@ -1981,6 +2027,8 @@ static ssize_t status_show(struct device *dev, struct device_attribute *attr, ch
 					   f3.meta[0], f3.meta[1], f3.meta[2], f3.meta[3], f3.meta[4], f3.meta[5]);
 		if (f3.m2sel == 10)
 			n += sysfs_emit_at(buf, n, " mH%u=%08x*%u,%08x*%u,%08x*%u,%08x*%u,%08x*%u,%08x*%u", f3.hn, f3.hpc[0], f3.hcnt[0], f3.hpc[1], f3.hcnt[1], f3.hpc[2], f3.hcnt[2], f3.hpc[3], f3.hcnt[3], f3.hpc[4], f3.hcnt[4], f3.hpc[5], f3.hcnt[5]);
+		else if (f3.m2sel == 25)
+			n += sysfs_emit_at(buf, n, " mS1=%08x,%08x,%08x,%08x,%08x,%08x,%08x", f3.m2[0], f3.m2[1], f3.m2[2], f3.m2[3], f3.m2[4], f3.m2[5], f3.m2[6]);
 		else if (f3.m2sel == 23)
 			n += sysfs_emit_at(buf, n, " mT1=%08x,%08x,%08x,%08x", f3.m2[0], f3.m2[1], f3.m2[2], f3.m2[3]);
 		else if (f3.m2sel == 24)
