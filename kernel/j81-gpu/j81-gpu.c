@@ -43,7 +43,7 @@
 #define PMGR_BASE 0x20e000000ULL
 #define PMGR_SIZE 0x40000
 #define GPC_BASE 0x201e00000ULL
-#define GPC_SIZE 0x11000
+#define GPC_SIZE 0x21000	/* request 13: was 0x11000, which never mapped +0x20000 (every override access hit stray memory) */
 #define GPC_STATE 0x1000
 #define GPC_MASK 0x10000
 #define CORE_BASE 0x201000000ULL
