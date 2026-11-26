@@ -1,0 +1,5 @@
+rank	boot	change	read afterwards	what it tells	risk	tag
+1	P1: where is thread 0	run 54 unchanged; after 1 s and 5 s read thread 0's PC three times 100 ms apart (t3 recipe), plus TXSTATUS, TXDEFR, TXTIMER	PC samples	a fixed PC or a short PC range is a wait loop; its address is what to decode first	low: one slave-port write to the core-register request port, never TXENABLE	source; code
+2	P2: what moves	run 54 unchanged; diff the heap image at 1 s and again at 5 s	which firmware words keep changing (polling counters, timer copies) and which settle	separates 'spinning on a condition' from 'stopped'	none	capture
+3	P3: timer	read-only from the host: read the AIC timer page 0x20e101000 twice, 1 ms apart, before the GPU steps	whether its counter advances	a stopped timer explains a stuck delay loop	none	inferred
+4	after a META disassembler is available	map the PC samples and the 121 changed words onto the firmware code; then fill whichever config or root field the wait reads	-	the actual wait condition	none (offline)	inferred

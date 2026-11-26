@@ -1,0 +1,8 @@
+input	what Apple's host does before waitForFWAlive	runner today	matters for the alive record?	tag
+MTS kick (RGX 0xb00)	none at boot (the first kick comes after alive, through the doorbell 0x6690df0)	none	no	code (request 13)
+Fender host interrupts (+0x10)	cleared to 0, twice (0x66927d0, 0x6690bcc)	0	no: Apple boots with them off	code
+AIC lines 0x86, 0x87, 0x8a (GPU IRQ indices 0, 1, 4)	unmasked by accel 0x8a8 (1) (0x6671fe4) via IOInterruptEventSource enable	masked	not for writing the record; the record goes to memory first and IRQ 138 rings after it. A firmware that waits for its previous doorbell to be cleared would wait on AIC SW_SET state, not on the unmask	code; inferred
+AIC SW-int doorbell	the firmware writes SW_SET (window 2 + 0x10, bit 0x400); the host's handler clears it	window mapped (run 54)	only after the record is written; the event-ring write index is still 0, so the firmware is stuck before that	code; capture; inferred
+AIC timer page 0x20e101000	mapped as window 1	mapped	possible: a firmware delay or timeout loop reading a timer that does not advance would sit forever. Check from the host that the page's counter advances	inferred
+GPC state	state 1 requested and reached before alive	state 1 reached	the firmware can read GPC_STATE through window 0 (Fender); state 1 is what Apple also has	code; capture
+thread 1	not started by the host; the host only passes {pc, sp} in config +0x2f0	+0x2f0 set, thread 1 still off	thread 0 starts thread 1 itself (inferred); thread 1 still being off means thread 0 has not reached that point, or starts it only after alive	code; capture; inferred

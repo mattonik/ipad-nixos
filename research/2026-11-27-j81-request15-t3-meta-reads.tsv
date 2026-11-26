@@ -1,0 +1,11 @@
+step	access	value	wait	source	tag
+slave-port write 1	read RGX 0xa18 (MSLVCTRL1)	-	until (value & 0x05000000) == 0x05000000 (READY and GBLPORT_IDLE)	Apple stop path 0x6693f38-0x6693f44	code
+slave-port write 2	write RGX 0xa10 (MSLVCTRL0)	META address, bit 0 clear (write)	-	0x6693ff4-0x6693ff8	code
+slave-port write 3	write RGX 0xa08 (MSLVDATAT)	data	-	0x6694000	code
+slave-port write 4	read RGX 0xa18	-	until bits 0x05000000 set again	0x6694004-0x6694010	code
+slave-port read	write 0xa10 = address | 1 (RD_EN), read 0xa10 back (fence), poll 0xa18 for 0x05000000, read RGX 0xa00 (MSLVDATAX)	-	as left	upstream pvr_meta_cr_read32	source
+PC read 1	slave-port write of META 0x0480fff8 (TXUXXRXRQ)	0x00010005 = thread 0, register 0, unit PC (5), RDnWR	-	pvr_rogue_meta.h META_CR_THR0_PC	source
+PC read 2	slave-port read of META 0x0480fff8	-	until bit 31 (DREADY) set; give up after ~100 tries	pvr_rogue_meta.h	source
+PC read 3	slave-port read of META 0x0480fff0 (TXUXXRXDT)	-	-	pvr_rogue_meta.h	source
+safe reads while thread 0 runs	TXENABLE / TXSTATUS / TXDEFR / TXTIMER (CT.4, 0x04800020) / TXCATCH0-3 for T0 and T1, MMCU segment registers, SYSC_JTAG_THREAD	-	-	slave-port control-register reads; upstream reads TxVECINT_BHALT the same way during firmware operation	source; inferred
+do not	write TXENABLE (0x04800000) unless you mean to stop the thread: Apple's stop writes 0xfffffffe there	-	-	0x6694000	code
