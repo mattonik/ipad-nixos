@@ -1,0 +1,15 @@
+field	offset	size	meaning	example	source	tag
+ring control: consumer	ctl +0x00	u32	read index; written by the firmware for host-to-firmware rings (device control, TA, 3D, CL), by the host for firmware-to-host rings (events, log)	0 at boot	submitDeviceControl 0x66915d8 reads it; Orchard S:196 S8003_RING_CONSUMER	code; orchard
+ring control: producer	ctl +0x10	u32	write index; written by the host for host-to-firmware rings	0 at boot	0x66915d0, 0x6691624; S:197	code; orchard
+ring control size	-	0x20 per lane on J81 (A9 layout); A8 uses 0x30	-	-	request 9 t2; S:198, S:3412	code; orchard
+entries	-	256; indices wrap with & 0xff	-	-	0x6691620 (and w9, w9, #0xff); APPLE_RING_ENTRIES	code; orchard
+full rule	-	-	full when consumer == (producer + 1) & 0xff; Apple sleeps 10 us and retries	-	0x66915cc-0x66915e0, 0x66915c4	code
+empty rule	-	-	consumer == producer: the firmware has taken everything	-	0x668d554-0x668d560	code
+entry size	-	20 bytes (AGFIAcceleratorRingEntry)	copied as 16 + 4 bytes to buffer + producer * 20	-	0x66915ec-0x6691600; S:200 S8003_DC_SIZE	code; orchard
+entry +0x00	+0x00	u32	command type (see t2)	8	template 0x57c339c; S:1605	code; orchard
+entry +0x04	+0x04	u32	argument (slot number for type 3, 0 for type 8)	0	S:1606; S:1638	orchard
+entry +0x08..+0x13	+0x08	12 bytes	zero for types 3 and 8	0	template 0x57c339c = {8, 0, 0, 0, 0}; Orchard memsets the entry	code; orchard
+order	-	-	write the entry; dmb ish; producer = (producer + 1) & 0xff; dmb ish; Fender +0x14 = 7; check GPC state; RGX 0xb00 = 0x10	-	0x6691610-0x6691668; S:1608-1615, S:1564-1574	code; orchard
+kick value	RGX 0xb00	u32	0x10 = MTS_SCHEDULE TASK_COUNTED | DM0 for device control (the same value as TA); 3D 0x11, CL 0x12	0x10	0x6691664-0x6691668; 3D 0x6691018, CL 0x66911f0; S:208	code; orchard
+kick condition	-	-	only when the submit flags (bits 1:0) ask for it; state 0 takes the SNOOP path as in request 17	-	0x6691628-0x669165c	code
+completion	ctl +0x00	-	the firmware moves the consumer past the entry; Apple polls the consumer with a deadline of accel +0xc20 seconds and logs 'Timeout while waiting for firmware to process submitted command (command type %s)'; no event record is needed	-	0x668d540-0x668d5bc; Orchard polls up to 3 s (S:1616-1617)	code; orchard

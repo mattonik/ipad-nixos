@@ -1,0 +1,11 @@
+type	Apple's name (kext table 0x6f2dd38)	Orchard use	payload / arguments	tag
+0	SubmitTA	-	TA channel work	code
+1	Submit3D	-	3D channel work	code
+2	SubmitCL	-	compute work	code
+3	DeviceSetGARTPhysical	S8003_DC_SLOT: '(re)load a slot's page-table root' (S:1338)	entry +4 = slot; before it MMU_ROOT[slot] (u64) = page-catalogue phys and TAG_HOST[slot] (u32) = tag; the firmware copies the tag into TAG_SEEN[slot] (S:1634-1660)	code; orchard
+4..7	PerfCtrSamplerSetBuffer / Reset / Start / Stop	-	performance counters	code
+8	PerfCtrSamplerCommitCounterList	S8003_DC_NONE, the first command (S:2981-2991), with CONTROL +0x1020 = 0	payload copied to state +0x40, state +0x1020 = payload size / 32 (0x668c8cc-0x668c940); with +0x1020 = 0 it carries nothing	code; orchard
+9..11	RDESetBuffer / RDESetBufferState / RDECommitCommandTable	-	-	code
+12	DevicePMAllocation	-	parameter-manager memory	code
+13	AckChannelError	-	-	code
+14	GPUIdlePowerOff	-	-	code

@@ -1,0 +1,5 @@
+object	J81 location	size	content for slot loads	source	tag
+MMU_ROOT	fw +0x400 block, fwaddr in state +0x1048	8 x u64 (0x40)	slot n's page-catalogue physical address; slot 0 = the firmware's own context (Orchard writes the kernel VM's catalogue there before boot)	request 9 t2; S:869-870, S:1642	code; orchard
+TAG_HOST	fw +0x3f0 block, fwaddr in state +0x1044	8 x u32 (0x20)	the host's tag per slot; first tag 0x00400000 (S8003_TAG_FIRST), bumped by 0x00400000 and never 0 or equal to TAG_SEEN	S:154-155, S:1643, pvr_apple_chip.h tag_bump	orchard
+TAG_SEEN	fw +0x3f8 block, fwaddr in root +0x458	8 x u32 (0x20)	written by the firmware: the tag it last loaded for the slot	S:1652-1660	orchard
+slots	8 on J81/A8; host slots start at 1, one per VM	-	slot 0 is the firmware's	T7000_SLOTS 8, T7000_SLOT_FIRST 1, vm_slots 1 (S:3379-3380, S:6079-6081)	orchard; code (slot 0x760 = 8)
