@@ -935,9 +935,11 @@ static int f3_meta(void)
  * B = SEG3 BASE/LIMIT/OUTA0/OUTA1, D/I cache ctrl, T0PRIVEXT, TXCLKCTRL. Only the latest set is shown in the status line (480-byte cap). */
 static int f3_meta2(int which)
 {
-	static const u32 set[2][8] = {
+	static const u32 set[3][8] = {
 		{ 0x04850000, 0x04850004, 0x04850008, 0x0485000c, 0x04850010, 0x04850014, 0x04850018, 0x0485001c },
 		{ 0x04850030, 0x04850034, 0x04850038, 0x0485003c, 0x04830018, 0x04830020, 0x048000e8, 0x048000b0 },
+		/* D (request 14 M1): TXCATCH0..3 (the failed access), TXDEFR, TXPRIVEXT, T0STATUS, T1STATUS. Read-only; T0 is halted. */
+		{ 0x04800080, 0x04800088, 0x04800090, 0x04800098, 0x048000a0, 0x048000e8, 0x04800010, 0x04801010 },
 	};
 	u32 i, c1;
 	int ret;
@@ -956,7 +958,7 @@ static int f3_meta2(int which)
 			return fail(ret, "f3meta2-read-timeout");
 		f3.m2[i] = readl(core_regs + MSLVDATAX);
 	}
-	f3.m2sel = which + 1;
+	f3.m2sel = which == 2 ? 4 : which + 1;
 	return 0;
 }
 
@@ -1400,6 +1402,8 @@ static ssize_t step_store(struct device *dev, struct device_attribute *attr, con
 		ret = f3_meta2(0);
 	else if (sysfs_streq(buf, "f3metaB"))
 		ret = f3_meta2(1);
+	else if (sysfs_streq(buf, "f3metaD"))
+		ret = f3_meta2(2);
 	else if (sysfs_streq(buf, "f3metaC"))
 		ret = f3_meta3();
 	else if (sysfs_streq(buf, "h7b"))
@@ -1499,7 +1503,7 @@ static ssize_t status_show(struct device *dev, struct device_attribute *attr, ch
 			n += sysfs_emit_at(buf, n, " f3x=c%u,%x:%08x,%x:%08x,%x:%08x,s%08x m=%08x,%08x,%08x,%08x,%08x,%08x", f3.chg, f3.chg_off[0], f3.chg_val[0], f3.chg_off[1], f3.chg_val[1], f3.chg_off[2], f3.chg_val[2], f3.sum2,
 					   f3.meta[0], f3.meta[1], f3.meta[2], f3.meta[3], f3.meta[4], f3.meta[5]);
 		if (f3.m2sel)
-			n += sysfs_emit_at(buf, n, " m%c=%08x,%08x,%08x,%08x,%08x,%08x,%08x,%08x k%02x", f3.m2sel == 1 ? 'A' : f3.m2sel == 2 ? 'B' : 'C', f3.m2[0], f3.m2[1], f3.m2[2], f3.m2[3], f3.m2[4], f3.m2[5], f3.m2[6], f3.m2[7], f3.m2match);
+			n += sysfs_emit_at(buf, n, " m%c=%08x,%08x,%08x,%08x,%08x,%08x,%08x,%08x k%02x", f3.m2sel == 1 ? 'A' : f3.m2sel == 2 ? 'B' : f3.m2sel == 3 ? 'C' : 'D', f3.m2[0], f3.m2[1], f3.m2[2], f3.m2[3], f3.m2[4], f3.m2[5], f3.m2[6], f3.m2[7], f3.m2match);
 		else if (hs.next)
 			n += sysfs_emit_at(buf, n, " h_x=%08x h_next=%d h_f2=%d h_p5=%08x h_slc=%08x/%08x/%08x h_core=%08x", hs.x[0], hs.next, hs.f2, hs.p5, hs.s0, hs.s4, hs.s8, hs.core);
 	} else if (hs.next)
