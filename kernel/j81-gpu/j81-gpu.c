@@ -847,13 +847,14 @@ static int f3_poll(void)
 
 	if (state != ST_IDENTIFIED || !f3.loaded)
 		return -EBUSY;
-	for (i = 0; i < 10000; i++) {
+	/* 250 ms slice per call (repeat the step for a timeline: run 47 died inside one 10 s poll); f3.polls counts elapsed ms across calls */
+	for (i = 0; i < 250; i++) {
 		f3.wr = f3_rd(f3.ev_ctl + 0x10);
 		if (f3.wr)
 			break;
 		msleep(1);
 	}
-	f3.polls = i;
+	f3.polls += i;
 	if (f3.wr) {
 		f3.rec[0] = f3_rd(f3.ev_buf);
 		f3.rec[1] = f3_rd(f3.ev_buf + 4);
