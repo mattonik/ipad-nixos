@@ -855,6 +855,14 @@ static int step_h(int n, int mode)
 		} else if (hs.f2 == 19) {	/* h7p (R2): SLC-only assert (bit 27, the value Apple's stop path writes) + release */
 			cfg_put64(0x100, 0x0000000008000000ULL);
 			cfg_put64(0x100, 0);
+		} else if (hs.f2 == 21) {	/* h7k (X1, request 12): run 36's four SOFT_RESET entries, META_BOOT 0x0bf8 <- 1 last (loaded back). Use with h8n: no state-0 release, the 0->1 request applies the list */
+			cfg_put64(0x100, 0x00e7fffffffffc1dULL);
+			cfg_put64(0x100, 0x00e7fe071ffffc1dULL);
+			cfg_put64(0x100, 0x0000000100000000ULL);
+			cfg_put64(0x100, 0);
+			cfg_readback = true;
+			cfg_put(0x0bf8 | 0xff << 16);
+			cfg_put(1);
 		} else if (hs.f2 == 7) {	/* h7g: Apple's SOFT_RESET framing (3 asserts, no META_BOOT/BIF) around the 0x3808 no-op, then release */
 			cfg_put64(0x100, 0x00e7fffffffffc1dULL);
 			cfg_put64(0x100, 0x00e7fe071ffffc1dULL);
@@ -938,6 +946,8 @@ static int step_h(int n, int mode)
 			udelay(10);
 		}
 		hs.r5 = v;
+		if (mode == 1)	/* h12s (X2, request 12): store + poll only, no RGX read after the release */
+			return i == 200000 ? fail(-ETIMEDOUT, "h12-poll-timeout") : 0;
 		hs.s0 = readl(core_regs + 0x3800);
 		hs.s4 = readl(core_regs + 0x3804);
 		hs.s8 = readl(core_regs + 0x3808);
@@ -1052,6 +1062,10 @@ static ssize_t step_store(struct device *dev, struct device_attribute *attr, con
 		ret = step_h(11, 0);
 	else if (sysfs_streq(buf, "h12"))
 		ret = step_h(12, 0);
+	else if (sysfs_streq(buf, "h12s"))
+		ret = step_h(12, 1);
+	else if (sysfs_streq(buf, "h7k"))
+		ret = step_h(7, 21);
 	else if (sysfs_streq(buf, "h7b"))
 		ret = step_h(7, 1);
 	else if (sysfs_streq(buf, "h7e"))
