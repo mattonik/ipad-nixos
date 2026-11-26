@@ -747,7 +747,12 @@ static struct {
 	u32 sum, nwords, rel_idx, ev_ctl, ev_buf, heap_used, walk;
 	u32 pw[2];
 	u32 polls, wr, rec[3], fault, fault_valid;
+	void *snap;
+	u32 chg, chg_off[3], chg_val[3], sum2, meta[6];
+	bool late;
 } f3;
+
+static int meta_wait_ready(u32 *ctrl1);
 
 static u32 f3_rd(u32 off)
 {
@@ -835,6 +840,9 @@ walk_done:
 	for (i = 0; i < used; i += 4)
 		sum += f3_rd(i);
 	f3.sum = sum;
+	f3.snap = vmalloc(used);
+	if (f3.snap)
+		memcpy(f3.snap, f3.cpu, used);
 	f3.pw[0] = pc >> 32;
 	f3.pw[1] = (u32)pc;
 	f3.loaded = f3.walk == 7;
@@ -870,6 +878,55 @@ static int f3_bif(void)
 		return -EBUSY;
 	f3.fault = readl(core_regs + 0x12b0);
 	f3.fault_valid = 1;
+	return 0;
+}
+
+/* f3sum: diff the heap against the snapshot taken by f3load (did the firmware write anything?). Read-only on our side. */
+static int f3_sum(void)
+{
+	u32 i, sum = 0, v;
+
+	if (state != ST_IDENTIFIED || !f3.loaded || !f3.snap)
+		return -EBUSY;
+	f3.chg = 0;
+	for (i = 0; i < f3.heap_used; i += 4) {
+		v = f3_rd(i);
+		sum += v;
+		if (v != ((u32 *)f3.snap)[i / 4]) {
+			if (f3.chg < 3) {
+				f3.chg_off[f3.chg] = i;
+				f3.chg_val[f3.chg] = v;
+			}
+			f3.chg++;
+		}
+	}
+	f3.sum2 = sum;
+	f3.late = true;
+	return 0;
+}
+
+/* f3meta: six allow-listed META slave-port reads (T0/T1 ENABLE and STATUS, MMCU SEG2 BASE/LIMIT) after the firmware had its chance to run. */
+static int f3_meta(void)
+{
+	static const u32 addrs[6] = { 0x04800000, 0x04800010, 0x04801000, 0x04801010, 0x04850020, 0x04850024 };
+	u32 i, c1;
+	int ret;
+
+	if (state != ST_IDENTIFIED || !f3.loaded)
+		return -EBUSY;
+	for (i = 0; i < 6; i++) {
+		ret = meta_wait_ready(&c1);
+		if (ret)
+			return fail(ret, "f3meta-not-ready");
+		writel(addrs[i] | 1U, core_regs + MSLVCTRL0);
+		mb();
+		(void)readl(core_regs + MSLVCTRL0);
+		ret = meta_wait_ready(&c1);
+		if (ret)
+			return fail(ret, "f3meta-read-timeout");
+		f3.meta[i] = readl(core_regs + MSLVDATAX);
+	}
+	f3.late = true;
 	return 0;
 }
 
@@ -1277,6 +1334,10 @@ static ssize_t step_store(struct device *dev, struct device_attribute *attr, con
 		ret = f3_poll();
 	else if (sysfs_streq(buf, "f3bif"))
 		ret = f3_bif();
+	else if (sysfs_streq(buf, "f3sum"))
+		ret = f3_sum();
+	else if (sysfs_streq(buf, "f3meta"))
+		ret = f3_meta();
 	else if (sysfs_streq(buf, "h7b"))
 		ret = step_h(7, 1);
 	else if (sysfs_streq(buf, "h7e"))
@@ -1370,7 +1431,10 @@ static ssize_t status_show(struct device *dev, struct device_attribute *attr, ch
 		n += sysfs_emit_at(buf, n, " pa=%08x,%08x", pa_x[0], pa_x[1]);
 	if (f3.show) {
 		n += sysfs_emit_at(buf, n, " f3=%llx,%u,w%u,s%08x,pc%08x%08x,n%u,e%u,%08x/%08x,%08x,%08x,%08x,bif%d:%08x", (u64)f3.dma, f3.loaded, f3.walk, f3.sum, f3.pw[0], f3.pw[1], f3.nwords, f3.polls, f3.wr, f3.ev_ctl, f3.rec[0], f3.rec[1], f3.rec[2], f3.fault_valid, f3.fault);
-		if (hs.next)
+		if (f3.late)
+			n += sysfs_emit_at(buf, n, " f3x=c%u,%x:%08x,%x:%08x,%x:%08x,s%08x m=%08x,%08x,%08x,%08x,%08x,%08x", f3.chg, f3.chg_off[0], f3.chg_val[0], f3.chg_off[1], f3.chg_val[1], f3.chg_off[2], f3.chg_val[2], f3.sum2,
+					   f3.meta[0], f3.meta[1], f3.meta[2], f3.meta[3], f3.meta[4], f3.meta[5]);
+		else if (hs.next)
 			n += sysfs_emit_at(buf, n, " h_x=%08x h_next=%d h_f2=%d h_p5=%08x h_slc=%08x/%08x/%08x h_core=%08x", hs.x[0], hs.next, hs.f2, hs.p5, hs.s0, hs.s4, hs.s8, hs.core);
 	} else if (hs.next)
 		n += sysfs_emit_at(buf, n, " h_x=%08x,%08x,%08x h_ps=%08x,%08x h_next=%d h_f2=%d h_r1=%08x h_r3=%08x h_r5=%08x h_p5=%08x h_slc=%08x/%08x/%08x h_core=%08x h_obs=%08x,%08x,%08x/%08x,%08x,%08x/%08x,%08x,%08x/%08x,%08x,%08x/%08x,%08x,%08x h_pll=%08x,%08x,%08x,%08x,%08x",
