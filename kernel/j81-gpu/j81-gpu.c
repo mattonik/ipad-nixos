@@ -750,6 +750,7 @@ static struct {
 	void *snap;
 	u32 chg, chg_off[3], chg_val[3], sum2, meta[6];
 	bool late;
+	u32 m2[8], m2sel;
 } f3;
 
 static int meta_wait_ready(u32 *ctrl1);
@@ -927,6 +928,35 @@ static int f3_meta(void)
 		f3.meta[i] = readl(core_regs + MSLVDATAX);
 	}
 	f3.late = true;
+	return 0;
+}
+
+/* f3metaA / f3metaB (read-only, allow-listed META addresses): A = MMCU SEG0 and SEG1 BASE/LIMIT/OUTA0/OUTA1 (did the boot list program them?),
+ * B = SEG3 BASE/LIMIT/OUTA0/OUTA1, D/I cache ctrl, T0PRIVEXT, TXCLKCTRL. Only the latest set is shown in the status line (480-byte cap). */
+static int f3_meta2(int which)
+{
+	static const u32 set[2][8] = {
+		{ 0x04850000, 0x04850004, 0x04850008, 0x0485000c, 0x04850010, 0x04850014, 0x04850018, 0x0485001c },
+		{ 0x04850030, 0x04850034, 0x04850038, 0x0485003c, 0x04830018, 0x04830020, 0x048000e8, 0x048000b0 },
+	};
+	u32 i, c1;
+	int ret;
+
+	if (state != ST_IDENTIFIED || !f3.loaded)
+		return -EBUSY;
+	for (i = 0; i < 8; i++) {
+		ret = meta_wait_ready(&c1);
+		if (ret)
+			return fail(ret, "f3meta2-not-ready");
+		writel(set[which][i] | 1U, core_regs + MSLVCTRL0);
+		mb();
+		(void)readl(core_regs + MSLVCTRL0);
+		ret = meta_wait_ready(&c1);
+		if (ret)
+			return fail(ret, "f3meta2-read-timeout");
+		f3.m2[i] = readl(core_regs + MSLVDATAX);
+	}
+	f3.m2sel = which + 1;
 	return 0;
 }
 
@@ -1338,6 +1368,10 @@ static ssize_t step_store(struct device *dev, struct device_attribute *attr, con
 		ret = f3_sum();
 	else if (sysfs_streq(buf, "f3meta"))
 		ret = f3_meta();
+	else if (sysfs_streq(buf, "f3metaA"))
+		ret = f3_meta2(0);
+	else if (sysfs_streq(buf, "f3metaB"))
+		ret = f3_meta2(1);
 	else if (sysfs_streq(buf, "h7b"))
 		ret = step_h(7, 1);
 	else if (sysfs_streq(buf, "h7e"))
@@ -1434,6 +1468,8 @@ static ssize_t status_show(struct device *dev, struct device_attribute *attr, ch
 		if (f3.late)
 			n += sysfs_emit_at(buf, n, " f3x=c%u,%x:%08x,%x:%08x,%x:%08x,s%08x m=%08x,%08x,%08x,%08x,%08x,%08x", f3.chg, f3.chg_off[0], f3.chg_val[0], f3.chg_off[1], f3.chg_val[1], f3.chg_off[2], f3.chg_val[2], f3.sum2,
 					   f3.meta[0], f3.meta[1], f3.meta[2], f3.meta[3], f3.meta[4], f3.meta[5]);
+		if (f3.m2sel)
+			n += sysfs_emit_at(buf, n, " m%c=%08x,%08x,%08x,%08x,%08x,%08x,%08x,%08x", f3.m2sel == 1 ? 'A' : 'B', f3.m2[0], f3.m2[1], f3.m2[2], f3.m2[3], f3.m2[4], f3.m2[5], f3.m2[6], f3.m2[7]);
 		else if (hs.next)
 			n += sysfs_emit_at(buf, n, " h_x=%08x h_next=%d h_f2=%d h_p5=%08x h_slc=%08x/%08x/%08x h_core=%08x", hs.x[0], hs.next, hs.f2, hs.p5, hs.s0, hs.s4, hs.s8, hs.core);
 	} else if (hs.next)
