@@ -1,6 +1,6 @@
 # Draft: forum message (not posted; the forum itself is not decided)
 
-**Subject:** iPad Air 2 (J81, A8X): Apple's GPU firmware boots under Linux, stuck at the first handshake: does anyone have MiniM tooling?
+**Subject:** iPad Air 2 (J81, A8X): Apple's GPU firmware boots to its alive event under Linux
 
 Short version: on an iPad Air 2 I can now power the GPU, replay Apple's start sequence, and boot Apple's own META firmware from a memory image I build on the host. It runs through its whole initialisation and then idles with both threads parked, and it never posts the first "alive" event, so the handshake iPadOS completes does not. I'm stuck because the firmware is MiniM code (META's compressed 16-bit ISA) and I cannot find any public decoder.
 

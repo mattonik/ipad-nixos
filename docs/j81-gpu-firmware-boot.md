@@ -4,7 +4,7 @@ Status report, 26 November 2026. One device (iPad Air 2 Wi-Fi, J81, A8X/T7001, P
 
 ## Result in one paragraph
 
-Linux can now power the GPU, replay Apple's Fender ConfigRAM start sequence, and boot Apple's own META MTP219 firmware (loaded from a memory image we build) all the way through the firmware's initialisation: the bootloader runs from our image through GPU page tables we build, the firmware loads its code into core memory, reads our root and state blocks, builds its internal tables, enables thread 0 and parks it in its scheduler idle loop. No fault, no BIF fault, the SoC stays up. **What does not happen yet:** the firmware never posts its first ("alive") event record, so the host handshake that iPadOS completes does not complete. Thread 1 is never started by the firmware; started by us it runs and also parks. The firmware is MiniM code (compressed 16-bit instruction set) for which no public decoder exists, so what both threads wait on is unknown. This is where the work stops for now.
+Linux can now power the GPU, replay Apple's Fender ConfigRAM start sequence, and boot Apple's own META MTP219 firmware (loaded from a memory image we build) all the way to its **alive event**: the bootloader runs from our image through GPU page tables we build, the firmware loads its code into core memory, reads our root and state blocks, builds its internal tables, enables thread 0, posts the type-0 alive record (with the PC of its idle loop, `0x80009c14` in core memory) and idles. No fault, no BIF fault, the SoC stays up. For most of the work we did not see the record: our page-table entries for the heap are valid-only, so the firmware's writes sat in the SLC (a write-back cache) while our host read uncached DRAM; one SLC flush (RGX `0x3818 <- 1`) made the record visible (run 65). Still to do: give the heap pages Apple's flags (SLC bypass, PM/META protect) so no flush is needed, then the perf-state table, POLICY and the hardware objects, before any job. No job has been submitted and nothing rendered.
 
 ## The working sequence
 
@@ -33,30 +33,32 @@ Linux can now power the GPU, replay Apple's Fender ConfigRAM start sequence, and
 | runs 57-58 | The racy `0x80009c74` and `0x1002xxxx` PC samples were bad reads of a running thread; the PC page it showed in core memory held unwritten SRAM | explained by run 60 |
 | run 60 | Halted snapshot (`TXENABLE <- 0xfffffffe`): PC `0x10000358` stable, PCX `0x10000454`; D1.5 points at the scheduler's `enqueued_commands[0]` | measured |
 | run 61-64 | Thread 1 never ran; started by us (PC `0x20000000`, SP `0x8000b3c8`, then `T1ENABLE | 1`) it runs to PC `0x200004b8` and parks; neither the MTS kick (`RGX 0xb00 <- 0x10` after Fender `+0x14 <- 7`) nor a running thread 1 produces an event | measured |
+| run 65 | **One SLC flush (RGX `0x3818 <- 1`) shows the alive record**: event write index 1, type 0, idle PC `0x80009c14`, `0x8000a2c8`; the heap diff goes from 121 to 323 words. The firmware had booted to alive long before; its writes sat in the write-back SLC because our heap PTEs are valid-only (Orchard's A8/A9 driver maps firmware pages with SLC bypass + PM/META protect) | measured (request 18 E0) |
 
-## What the firmware has done, per the heap diff (121 words)
+## What the firmware has done, per the heap diff (121 words, 323 after an SLC flush)
 
-Early in boot (within 2 s, then nothing for at least 6 s): it read our tail word and stored root and state addresses in its globals (block at META `0x10013c00`), initialised 16-entry context lists in the 0x22000-area and the 0x8e0/0x990/0x8c0-byte list-head blocks (counters 1 to 0xf at 0x30-byte stride, self-pointers, counts `0x10`/`0xffff`), set a few scalars and a core-memory table at `0x8000a000` (flag, a pointer, nine USC exception-slot register offsets `0xe200..0xe240`, stride 8). It never wrote the event ring, the log buffers or the state block.
+(The 121 words are what had left the SLC; after the flush the diff grows to 323 words and includes the alive record in the event ring, run 65.) Early in boot (within 2 s): it read our tail word and stored root and state addresses in its globals (block at META `0x10013c00`), initialised 16-entry context lists in the 0x22000-area and the 0x8e0/0x990/0x8c0-byte list-head blocks (counters 1 to 0xf at 0x30-byte stride, self-pointers, counts `0x10`/`0xffff`), set a few scalars and a core-memory table at `0x8000a000` (flag, a pointer, nine USC exception-slot register offsets `0xe200..0xe240`, stride 8). It never wrote the event ring, the log buffers or the state block.
 
 ## What the firmware is doing now
 
-- Thread 0: parked at PC `0x10000358` (a small loop at about `0x10000340` to `0x100003a0`, reached from the routine at `0x10000260`), polling the priority-0 `enqueued_commands` counter of the firmware scheduler block (the `0x8e0`-byte block at heap `+0x29000`, `+0x78c`). `T0ENABLE 0x0201c031`, no catch registers, `TXSTATUS` toggles `0x00020000`..`0x00020809`.
-- Thread 1: dead until we start it, then parked at `0x200004b8`.
-- Fender interrupt status `+0x14` reads `0x00000002` after the walk; we clear it with a write of 7 (no effect observed).
-- No USC exception pending (RGX `0xe100`/`0xe200` slots read invalid). The BIF fault register is 0 throughout.
+- Thread 0: idle loop in core memory at about `0x80009c14` to `0x80009c74` (the reported "waiting for BG kick" PC is `0x80009c14`); earlier halted snapshots put the PC at `0x10000358`, a seg0 loop that polls the priority-0 `enqueued_commands` counter of the scheduler block (heap `+0x29000`, `+0x78c`): both are parts of the scheduler idle path. `T0ENABLE 0x0201c031`, no catch registers.
+- Thread 1: never started by the firmware, and not needed (Orchard's A9 path does not start it either); started by us it parks at `0x200004b8`.
+- The MTS kick (`RGX 0xb00 <- 0x10`) changes nothing with empty queues, as expected.
+- Fender interrupt status `+0x14` reads `0x00000002` after the walk; no USC exception pending; BIF fault 0 throughout. The AIC timebase runs (counter at page offset `0x20`).
 
-## Open question
+## Remaining work (from request 18, Orchard's A8/A9 reference driver)
 
-What does the firmware wait on before posting the type-0 event record (the record carries the PC of the "waiting for BG kick" idle loop; Apple's host sets `fw+0xb35` from the interrupt path and `waitForFWAlive` returns)? On iOS the host gives it nothing beyond the release, the 0 to 1 request and the AIC unmask for lines `0x86`/`0x87`/`0x8a`. Candidates not excluded: something thread 1 does at a point it never reaches because it is not started by the firmware; a config or state field left at zero (config `+0x30`, `+0x38..+0x1b7`, `+0x1b8`, `+0x290..+0x29b`, `+0x2f8`, root `+0x490..`); an AIC interrupt (we did not unmask lines `0x86`/`0x87`/`0x8a`, which should not matter because the record is written to memory first); the first real command. All of these need the firmware code to settle.
+1. **E1, page-table flags:** heap, root and shared pages `valid | bit 3 (SLC bypass) | bit 62 (PM/META protect)`; MMIO window pages `valid | bit 3`. Expected: the alive record appears without any flush.
+2. **E2, the perf-state table** in config `+0x29c..+0x2e3` (counts 4 and 16, a 16-entry MHz list: 365, 450, 500, 550, 182, 225, 250, 275, rest 0) which our captured ADT leaves empty; Apple's kext refuses to start without it.
+3. **E3, POLICY** (the `0x938` block, filled on Apple's boot path): `+0x10 = 1.0f`, `+0x28 = 0x1_00000001`, `+0x38 = 100`, `+0x6fc = +0x7cc = 400`, `+0x8f8` = timestamp.
+4. **E4, the four hardware objects** at `0x8_00000000 + {0, 0x4000, 0x8000, 0x10000}` (colour-conversion table, BRN44455 workaround, the border-colour table which is kext data to be extracted locally, a fence buffer), named in config `+0x30`, `+0x1b8`, `+0x2f8` and the `fw+0x218` block.
+5. Then the first real command (Orchard's A9 path: ring entry plus the MTS kick `0x10` TA, `0x11` 3D, `0x12` compute), after Apple's stop procedure is understood.
 
-## What would unblock it
-
-1. **A MiniM decoder** (none public; binutils 2.30, the last release with the `metag` target, has classic META only: `opcodes/metag-dis.c` contains no MiniM; a built copy is on the NAS under `tools/metag-binutils-2.30/` for classic code). Options: reverse the compressed encoding from the image with the register snapshots as anchors (days), or find someone with IMG's toolchain.
-2. Halted single-stepping of thread 0 through the core-register port (not tried): would give a PC trace and register effects per instruction.
-3. Systematic field probing (config/state fields), low expected value.
+Still unexplained: why slave-port reads of core memory at `0x80009c40..0x80009cc0` returned noise while the thread idles near `0x80009c74`; the name and role of scheduler `+0x778`; MiniM remains undecodable (no public decoder), which is no longer a blocker for boot.
 
 ## Safety and hazards (what bit us, and what is still risky)
 
+- The SLC is write-back for GPU pages with valid-only PTEs: the CPU (uncached DRAM view) does not see the firmware's writes until the SLC is flushed (`RGX 0x3818 <- 1`, poll `0x3898 & 0xff == 0xff`) or the pages are mapped with SLC bypass (bit 3).
 - Never access a Fender or RGX register outside the mapped window. Map what you touch (the module's first mapping was too small; the RGX mapping covers only `0x4000`, higher registers need their own mapping).
 - In GPC state 0 a Fender access right after another one hung the bus (spacing of 1 ms between accesses); RGX is read only in state 1 after a 0 to 1 transition.
 - No single module step longer than about 2 s; the host supervisor feeds the watchdog once per stage.
@@ -69,7 +71,7 @@ See the runbook. In short: `kernel/j81-gpu/` (module h47: step interface under `
 
 ## Research requests (to the builder-side research agent, via the NAS mailbox)
 
-Requests 7 to 17 were written between 25 and 26 November 2026; each result is copied under `research/2026-11-2x-j81-requestNN-*`. Highlights: 12 (the walk runs at 0 to 1, the release is not needed), 13 (the override "hang" is a mapping bug), 14 (config fields, MMIO window table, T0STATUS decode, `+0x2f0`), 15 (partial, no MiniM tooling; slave-port write protocol), 16 (partial; the `0x8000a000` structure is a USC exception slot list), 17 (the idle loop is the scheduler poll; ring layout correct; the kick value `0x10`).
+Requests 7 to 17 were written between 25 and 26 November 2026; each result is copied under `research/2026-11-2x-j81-requestNN-*`. Highlights: 12 (the walk runs at 0 to 1, the release is not needed), 13 (the override "hang" is a mapping bug), 14 (config fields, MMIO window table, T0STATUS decode, `+0x2f0`), 15 (partial, no MiniM tooling; slave-port write protocol), 16 (partial; the `0x8000a000` structure is a USC exception slot list), 17 (the idle loop is the scheduler poll; ring layout correct; the kick value `0x10`), 18 (Orchard's A8/A9 reference driver: PTE flags with SLC bypass and PM/META protect, POLICY, perf table, hardware objects; led to the SLC flush test that found the alive record).
 
 ## Credits and method
 
