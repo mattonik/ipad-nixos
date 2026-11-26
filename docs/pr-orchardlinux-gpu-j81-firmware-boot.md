@@ -1,8 +1,6 @@
-# Draft: PR to OrchardLinux/gpu (not opened)
+# PR to OrchardLinux/gpu: https://github.com/OrchardLinux/gpu/pull/10 (opened 26 November 2026)
 
-Branch: `j81-firmware-boot-20261126` in the local clone `~/Work/Sandbox/orchardlinux/gpu` (commit `0b9261b`, one commit on top of `origin/main` `e425018`). Push target: `mattonik/gpu` (remote `fork`), PR into `OrchardLinux/gpu` `main`. **Nothing has been pushed or opened.**
-
-Before opening: (1) push `mattonik/ipad-nixos` (the notes link to `docs/j81-gpu-firmware-boot.md`, `docs/j81-f3a-runbook.md` and the run log there; the firmware words have been redacted from the log, but review `research/` once more for anything Apple's before pushing 90+ unpushed commits); (2) check the links in `a8x/FIRMWARE-BOOT.md` resolve; (3) decide whether to attach the forum message.
+Branch: `j81-firmware-boot-20261126` in the local clone `~/Work/Sandbox/orchardlinux/gpu` (commit `3583df1`, one commit on top of `origin/main` `e425018`). Push target: `mattonik/gpu` (remote `fork`), PR into `OrchardLinux/gpu` `main`. Pushed to `mattonik/gpu` and opened as OrchardLinux/gpu#10 on 26 November 2026, after `mattonik/ipad-nixos` was pushed (history rewritten first to drop the firmware words).
 
 ## Title
 

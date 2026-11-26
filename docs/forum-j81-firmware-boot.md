@@ -15,4 +15,4 @@ Short version: on an iPad Air 2 I can now power the GPU, replay Apple's start se
 
 **The ask:** binutils 2.30 (the last release with the `metag` target) decodes classic META but not MiniM; I found no MiniM spec. If anyone has IMG's toolchain, MiniM documentation, or has decoded this ISA, I'd love to hear. Halted single-stepping through the core-register port is my fallback.
 
-Notes, runbook and the run log: https://github.com/mattonik/ipad-nixos (`docs/j81-gpu-firmware-boot.md`), offline tools and the report in the OrchardLinux/gpu PR (link once opened). No Apple data is published; the tools read from your own kernelcache. Written with AI assistance (Claude), checked on the hardware.
+Notes, runbook and the run log: https://github.com/mattonik/ipad-nixos (`docs/j81-gpu-firmware-boot.md`), offline tools and the report in the OrchardLinux/gpu PR https://github.com/OrchardLinux/gpu/pull/10. No Apple data is published; the tools read from your own kernelcache. Written with AI assistance (Claude), checked on the hardware.
