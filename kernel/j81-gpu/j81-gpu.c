@@ -1383,6 +1383,52 @@ static int f3_halt(void)
 	return 0;
 }
 
+/* f3t1 (request 17 R1): thread 1 state: T1ENABLE 0x04801000, T1STATUS 0x04801010, PC through the core-register port (TXUXXRXRQ 0x00011005 = thread 1, unit PC, read) twice, 10 ms apart.
+ * m2 = t1enable, t1status, pc, pc, 0, 0, 0, 0. Read-only. */
+static int f3_t1(void)
+{
+	int ret;
+
+	if (state != ST_IDENTIFIED || !f3.loaded)
+		return -EBUSY;
+	memset(f3.m2, 0, sizeof(f3.m2));
+	ret = f3_mread(0x04801000, &f3.m2[0]);
+	if (!ret)
+		ret = f3_mread(0x04801010, &f3.m2[1]);
+	if (!ret)
+		ret = f3_creg(0x00011005, &f3.m2[2]);
+	msleep(10);
+	if (!ret)
+		ret = f3_creg(0x00011005, &f3.m2[3]);
+	if (ret)
+		return fail(ret, "f3t1-read");
+	f3.m2sel = 23;
+	return 0;
+}
+
+/* f3kick (request 17 K1): Apple's doorbell with empty queues: Fender +0x14 <- 7 (clear all status), GPC state must be 1, then ONE write RGX 0xb00 (MTS_SCHEDULE) <- 0x10
+ * (TASK_COUNTED, DM0, context 0, priority 0). Never before the firmware had its chance to post alive (run it after the poll). m2 = fender+0x14 before, after, gpc state, event write index. */
+static int f3_kick(void)
+{
+	if (state != ST_IDENTIFIED || !f3.loaded)
+		return -EBUSY;
+	if ((readl(gpc_regs + GPC_STATE) & 0x1f) != 0x01)
+		return fail(-EBUSY, "f3kick-not-state-1");
+	memset(f3.m2, 0, sizeof(f3.m2));
+	f3.m2[0] = readl(gpc_regs + 0x14);
+	writel(7, gpc_regs + 0x14);
+	mb();
+	f3.m2[1] = readl(gpc_regs + 0x14);
+	f3.m2[2] = readl(gpc_regs + GPC_STATE);
+	mb();
+	writel(0x10, core_regs + 0xb00);
+	mb();
+	msleep(50);
+	f3.m2[3] = f3_rd(f3.ev_ctl + 0x10);
+	f3.m2sel = 24;
+	return 0;
+}
+
 static ssize_t f3_img_write(struct file *file, struct kobject *kobj, const struct bin_attribute *attr, char *buf, loff_t off, size_t count)
 {
 	if (!f3.cpu || f3.loaded || off < 0 || off + count > F3_BLOB)
@@ -1807,6 +1853,10 @@ static ssize_t step_store(struct device *dev, struct device_attribute *attr, con
 		ret = f3_usc();
 	else if (sysfs_streq(buf, "f3halt"))
 		ret = f3_halt();
+	else if (sysfs_streq(buf, "f3t1"))
+		ret = f3_t1();
+	else if (sysfs_streq(buf, "f3kick"))
+		ret = f3_kick();
 	else if (sysfs_streq(buf, "f3coreA"))
 		ret = f3_core(0);
 	else if (sysfs_streq(buf, "f3coreB"))
@@ -1931,6 +1981,10 @@ static ssize_t status_show(struct device *dev, struct device_attribute *attr, ch
 					   f3.meta[0], f3.meta[1], f3.meta[2], f3.meta[3], f3.meta[4], f3.meta[5]);
 		if (f3.m2sel == 10)
 			n += sysfs_emit_at(buf, n, " mH%u=%08x*%u,%08x*%u,%08x*%u,%08x*%u,%08x*%u,%08x*%u", f3.hn, f3.hpc[0], f3.hcnt[0], f3.hpc[1], f3.hcnt[1], f3.hpc[2], f3.hcnt[2], f3.hpc[3], f3.hcnt[3], f3.hpc[4], f3.hcnt[4], f3.hpc[5], f3.hcnt[5]);
+		else if (f3.m2sel == 23)
+			n += sysfs_emit_at(buf, n, " mT1=%08x,%08x,%08x,%08x", f3.m2[0], f3.m2[1], f3.m2[2], f3.m2[3]);
+		else if (f3.m2sel == 24)
+			n += sysfs_emit_at(buf, n, " mKK=%08x,%08x,%08x,%08x", f3.m2[0], f3.m2[1], f3.m2[2], f3.m2[3]);
 		else if (f3.m2sel == 22)
 			n += sysfs_emit_at(buf, n, " mHL=%08x,%08x,%08x,%08x,%08x", f3.m2[0], f3.m2[1], f3.m2[2], f3.m2[3], f3.m2[4]);
 		else if (f3.m2sel == 20 || f3.m2sel == 21)
