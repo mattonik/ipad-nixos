@@ -1036,6 +1036,102 @@ static int f3_chg(void)
 	return 0;
 }
 
+/* META slave-port helpers (request 15 t3). Read = upstream pvr_meta_cr_read32; write = Apple's stop path (poll ready, MSLVCTRL0 = addr with RD_EN clear, MSLVDATAT = data, poll ready). */
+#define MSLVDATAT 0x0a08
+
+static int f3_mread(u32 addr, u32 *v)
+{
+	u32 c1;
+	int ret = meta_wait_ready(&c1);
+
+	if (ret)
+		return ret;
+	writel(addr | 1U, core_regs + MSLVCTRL0);
+	mb();
+	(void)readl(core_regs + MSLVCTRL0);
+	ret = meta_wait_ready(&c1);
+	if (ret)
+		return ret;
+	*v = readl(core_regs + MSLVDATAX);
+	return 0;
+}
+
+static int f3_mwrite(u32 addr, u32 data)
+{
+	u32 c1;
+	int ret = meta_wait_ready(&c1);
+
+	if (ret)
+		return ret;
+	writel(addr & ~1U, core_regs + MSLVCTRL0);
+	mb();
+	writel(data, core_regs + MSLVDATAT);
+	mb();
+	return meta_wait_ready(&c1);
+}
+
+/* f3pc: three samples of thread 0's PC through the core-register port (write TXUXXRXRQ 0x0480fff8 = 0x00010005 (thread 0, PC, read), poll
+ * DREADY bit 31, read TXUXXRXDT 0x0480fff0), 100 ms apart, then TXSTATUS, TXDEFR, TXTIMER. Never touches TXENABLE. m2 = pc0, pc1, pc2, status, defr, timer, tries, err. */
+static int f3_pc(void)
+{
+	u32 i, k, v = 0, tries = 0;
+	int ret;
+
+	if (state != ST_IDENTIFIED || !f3.loaded)
+		return -EBUSY;
+	memset(f3.m2, 0, sizeof(f3.m2));
+	for (i = 0; i < 3; i++) {
+		ret = f3_mwrite(0x0480fff8, 0x00010005);
+		if (ret)
+			return fail(ret, "f3pc-write");
+		for (k = 0; k < 100; k++) {
+			ret = f3_mread(0x0480fff8, &v);
+			if (ret)
+				return fail(ret, "f3pc-poll");
+			tries++;
+			if (v & 0x80000000U)
+				break;
+		}
+		if (k == 100) {
+			f3.m2[7] = 1;
+			break;
+		}
+		ret = f3_mread(0x0480fff0, &f3.m2[i]);
+		if (ret)
+			return fail(ret, "f3pc-read");
+		if (i < 2)
+			msleep(100);
+	}
+	(void)f3_mread(0x04800010, &f3.m2[3]);
+	(void)f3_mread(0x048000a0, &f3.m2[4]);
+	(void)f3_mread(0x04800020, &f3.m2[5]);
+	f3.m2[6] = tries;
+	f3.m2sel = 5;
+	return 0;
+}
+
+/* f3timer: read-only, AIC timer page 0x20e101000 (the window the firmware sees), words 0 and 1, twice, 1 ms apart (request 15 P3). m2 = a0, a1, b0, b1. */
+static int f3_timer(void)
+{
+	void __iomem *t;
+
+	if (state != ST_IDENTIFIED)
+		return -EBUSY;
+	t = ioremap_np(0x20e101000ULL, 0x1000);
+	if (!t)
+		return fail(-ENOMEM, "f3timer-map");
+	memset(f3.m2, 0, sizeof(f3.m2));
+	f3.m2[0] = readl(t);
+	f3.m2[1] = readl(t + 4);
+	msleep(1);
+	f3.m2[2] = readl(t);
+	f3.m2[3] = readl(t + 4);
+	iounmap(t);
+	f3.m2sel = 6;
+	f3.show = true;
+	return 0;
+}
+
 static ssize_t f3_img_write(struct file *file, struct kobject *kobj, const struct bin_attribute *attr, char *buf, loff_t off, size_t count)
 {
 	if (!f3.cpu || f3.loaded || off < 0 || off + count > F3_BLOB)
@@ -1444,6 +1540,10 @@ static ssize_t step_store(struct device *dev, struct device_attribute *attr, con
 		ret = f3_sum();
 	else if (sysfs_streq(buf, "f3chg"))
 		ret = f3_chg();
+	else if (sysfs_streq(buf, "f3pc"))
+		ret = f3_pc();
+	else if (sysfs_streq(buf, "f3timer"))
+		ret = f3_timer();
 	else if (sysfs_streq(buf, "f3meta"))
 		ret = f3_meta();
 	else if (sysfs_streq(buf, "f3metaA"))
@@ -1553,7 +1653,7 @@ static ssize_t status_show(struct device *dev, struct device_attribute *attr, ch
 			n += sysfs_emit_at(buf, n, " f3x=c%u,%x:%08x,%x:%08x,%x:%08x,s%08x m=%08x,%08x,%08x,%08x,%08x,%08x", f3.chg, f3.chg_off[0], f3.chg_val[0], f3.chg_off[1], f3.chg_val[1], f3.chg_off[2], f3.chg_val[2], f3.sum2,
 					   f3.meta[0], f3.meta[1], f3.meta[2], f3.meta[3], f3.meta[4], f3.meta[5]);
 		if (f3.m2sel)
-			n += sysfs_emit_at(buf, n, " m%c=%08x,%08x,%08x,%08x,%08x,%08x,%08x,%08x k%02x", f3.m2sel == 1 ? 'A' : f3.m2sel == 2 ? 'B' : f3.m2sel == 3 ? 'C' : 'D', f3.m2[0], f3.m2[1], f3.m2[2], f3.m2[3], f3.m2[4], f3.m2[5], f3.m2[6], f3.m2[7], f3.m2match);
+			n += sysfs_emit_at(buf, n, " m%c=%08x,%08x,%08x,%08x,%08x,%08x,%08x,%08x k%02x", f3.m2sel == 1 ? 'A' : f3.m2sel == 2 ? 'B' : f3.m2sel == 3 ? 'C' : f3.m2sel == 4 ? 'D' : f3.m2sel == 5 ? 'P' : 'T', f3.m2[0], f3.m2[1], f3.m2[2], f3.m2[3], f3.m2[4], f3.m2[5], f3.m2[6], f3.m2[7], f3.m2match);
 		else if (hs.next)
 			n += sysfs_emit_at(buf, n, " h_x=%08x h_next=%d h_f2=%d h_p5=%08x h_slc=%08x/%08x/%08x h_core=%08x", hs.x[0], hs.next, hs.f2, hs.p5, hs.s0, hs.s4, hs.s8, hs.core);
 	} else if (hs.next)
