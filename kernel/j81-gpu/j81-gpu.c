@@ -1228,6 +1228,26 @@ static int f3_pch(void)
 	return 0;
 }
 
+/* f3coreA..F (request 16 follow-up, run 57): read-only dump of 8 words each from core memory: A 0x80009c40, B 0x80009c60, C 0x80009c80, D 0x80009ca0 (the hot loop at ~0x80009c74),
+ * E 0x8000a000, F 0x8000a020 (the data the loop works on). Slave-port reads only. */
+static int f3_core(int idx)
+{
+	static const u32 base[6] = { 0x80009c40, 0x80009c60, 0x80009c80, 0x80009ca0, 0x8000a000, 0x8000a020 };
+	u32 i;
+	int ret;
+
+	if (state != ST_IDENTIFIED || !f3.loaded)
+		return -EBUSY;
+	memset(f3.m2, 0, sizeof(f3.m2));
+	for (i = 0; i < 8; i++) {
+		ret = f3_mread(base[idx] + 4 * i, &f3.m2[i]);
+		if (ret)
+			return fail(ret, "f3core-read");
+	}
+	f3.m2sel = 11 + idx;
+	return 0;
+}
+
 static ssize_t f3_img_write(struct file *file, struct kobject *kobj, const struct bin_attribute *attr, char *buf, loff_t off, size_t count)
 {
 	if (!f3.cpu || f3.loaded || off < 0 || off + count > F3_BLOB)
@@ -1646,6 +1666,18 @@ static ssize_t step_store(struct device *dev, struct device_attribute *attr, con
 		ret = f3_reg(2);
 	else if (sysfs_streq(buf, "f3pch"))
 		ret = f3_pch();
+	else if (sysfs_streq(buf, "f3coreA"))
+		ret = f3_core(0);
+	else if (sysfs_streq(buf, "f3coreB"))
+		ret = f3_core(1);
+	else if (sysfs_streq(buf, "f3coreC"))
+		ret = f3_core(2);
+	else if (sysfs_streq(buf, "f3coreD"))
+		ret = f3_core(3);
+	else if (sysfs_streq(buf, "f3coreE"))
+		ret = f3_core(4);
+	else if (sysfs_streq(buf, "f3coreF"))
+		ret = f3_core(5);
 	else if (sysfs_streq(buf, "f3timer"))
 		ret = f3_timer();
 	else if (sysfs_streq(buf, "f3meta"))
@@ -1758,6 +1790,8 @@ static ssize_t status_show(struct device *dev, struct device_attribute *attr, ch
 					   f3.meta[0], f3.meta[1], f3.meta[2], f3.meta[3], f3.meta[4], f3.meta[5]);
 		if (f3.m2sel == 10)
 			n += sysfs_emit_at(buf, n, " mH%u=%08x*%u,%08x*%u,%08x*%u,%08x*%u,%08x*%u,%08x*%u", f3.hn, f3.hpc[0], f3.hcnt[0], f3.hpc[1], f3.hcnt[1], f3.hpc[2], f3.hcnt[2], f3.hpc[3], f3.hcnt[3], f3.hpc[4], f3.hcnt[4], f3.hpc[5], f3.hcnt[5]);
+		else if (f3.m2sel >= 11)
+			n += sysfs_emit_at(buf, n, " mK%c=%08x,%08x,%08x,%08x,%08x,%08x,%08x,%08x", 'A' + f3.m2sel - 11, f3.m2[0], f3.m2[1], f3.m2[2], f3.m2[3], f3.m2[4], f3.m2[5], f3.m2[6], f3.m2[7]);
 		else if (f3.m2sel)
 			n += sysfs_emit_at(buf, n, " m%c=%08x,%08x,%08x,%08x,%08x,%08x,%08x,%08x k%02x", f3.m2sel == 1 ? 'A' : f3.m2sel == 2 ? 'B' : f3.m2sel == 3 ? 'C' : f3.m2sel == 4 ? 'D' : f3.m2sel == 5 ? 'P' : f3.m2sel == 7 ? 'X' : f3.m2sel == 8 ? 'Y' : f3.m2sel == 9 ? 'Z' : 'T', f3.m2[0], f3.m2[1], f3.m2[2], f3.m2[3], f3.m2[4], f3.m2[5], f3.m2[6], f3.m2[7], f3.m2match);
 		else if (hs.next)
