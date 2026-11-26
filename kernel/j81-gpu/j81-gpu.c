@@ -1473,6 +1473,49 @@ static int f3_t1start(void)
 	return 0;
 }
 
+/* f3slc (request 18 E0): was the alive record posted and parked in the SLC? Our host reads uncached DRAM while the firmware's pages (valid-only PTEs, no SLC bypass) are write-back through the SLC.
+ * Reads the AIC SW-int words for IRQ 138 (0x20e104010 and 0x20e104210), the event write index; flushes the SLC (RGX 0x3818 <- 1, SLC_CTRL_FLUSH_INVAL ALL), polls RGX 0x3898 & 0xff == 0xff
+ * (bounded, 1 ms steps, 200 ms), then re-reads the event write index and its first record word and diffs the heap again.
+ * m2 = aic0x10, aic0x210, wr before, 0x3898 after, poll iterations, wr after, record type, changed heap words after. */
+static int f3_slc(void)
+{
+	void __iomem *t;
+	u32 i, v = 0;
+	int ret;
+
+	if (state != ST_IDENTIFIED || !f3.loaded)
+		return -EBUSY;
+	if ((readl(gpc_regs + GPC_STATE) & 0x1f) != 0x01)
+		return fail(-EBUSY, "f3slc-not-state-1");
+	memset(f3.m2, 0, sizeof(f3.m2));
+	t = ioremap_np(0x20e104000ULL, 0x1000);
+	if (!t)
+		return fail(-ENOMEM, "f3slc-map");
+	f3.m2[0] = readl(t + 0x10);
+	f3.m2[1] = readl(t + 0x210);
+	iounmap(t);
+	f3.m2[2] = f3_rd(f3.ev_ctl + 0x10);
+	writel(1, core_regs + 0x3818);
+	mb();
+	for (i = 0; i < 200; i++) {
+		v = readl(core_regs + 0x3898);
+		if ((v & 0xff) == 0xff)
+			break;
+		msleep(1);
+	}
+	f3.m2[3] = v;
+	f3.m2[4] = i;
+	msleep(5);
+	f3.m2[5] = f3_rd(f3.ev_ctl + 0x10);
+	f3.m2[6] = f3_rd(f3.ev_buf);
+	ret = f3_sum();
+	if (ret)
+		return ret;
+	f3.m2[7] = f3.chg;
+	f3.m2sel = 26;
+	return 0;
+}
+
 static ssize_t f3_img_write(struct file *file, struct kobject *kobj, const struct bin_attribute *attr, char *buf, loff_t off, size_t count)
 {
 	if (!f3.cpu || f3.loaded || off < 0 || off + count > F3_BLOB)
@@ -1901,6 +1944,8 @@ static ssize_t step_store(struct device *dev, struct device_attribute *attr, con
 		ret = f3_t1();
 	else if (sysfs_streq(buf, "f3kick"))
 		ret = f3_kick();
+	else if (sysfs_streq(buf, "f3slc"))
+		ret = f3_slc();
 	else if (sysfs_streq(buf, "f3t1start"))
 		ret = f3_t1start();
 	else if (sysfs_streq(buf, "f3coreA"))
@@ -2027,6 +2072,8 @@ static ssize_t status_show(struct device *dev, struct device_attribute *attr, ch
 					   f3.meta[0], f3.meta[1], f3.meta[2], f3.meta[3], f3.meta[4], f3.meta[5]);
 		if (f3.m2sel == 10)
 			n += sysfs_emit_at(buf, n, " mH%u=%08x*%u,%08x*%u,%08x*%u,%08x*%u,%08x*%u,%08x*%u", f3.hn, f3.hpc[0], f3.hcnt[0], f3.hpc[1], f3.hcnt[1], f3.hpc[2], f3.hcnt[2], f3.hpc[3], f3.hcnt[3], f3.hpc[4], f3.hcnt[4], f3.hpc[5], f3.hcnt[5]);
+		else if (f3.m2sel == 26)
+			n += sysfs_emit_at(buf, n, " mSL=%08x,%08x,%08x,%08x,%u,%08x,%08x,%u", f3.m2[0], f3.m2[1], f3.m2[2], f3.m2[3], f3.m2[4], f3.m2[5], f3.m2[6], f3.m2[7]);
 		else if (f3.m2sel == 25)
 			n += sysfs_emit_at(buf, n, " mS1=%08x,%08x,%08x,%08x,%08x,%08x,%08x", f3.m2[0], f3.m2[1], f3.m2[2], f3.m2[3], f3.m2[4], f3.m2[5], f3.m2[6]);
 		else if (f3.m2sel == 23)
