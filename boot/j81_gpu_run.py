@@ -35,11 +35,13 @@ def sh(cmd, timeout=10):
         c.close()
 
 
-def run(logdir: Path, module: Path, supervisor: Path, skip_pll1: bool, peeks: list[str], stop_dashboard: bool, metas: list[str] = [], skip_pll4: bool = False, writes: list[str] = []) -> int:
+def run(logdir: Path, module: Path, supervisor: Path, skip_pll1: bool, peeks: list[str], stop_dashboard: bool, metas: list[str] = [], skip_pll4: bool = False, writes: list[str] = [], f3a_blob: Path | None = None) -> int:
     logdir.mkdir(parents=True)  # refuses an existing directory
     wrapper = Path(__file__).resolve().parent / "j81-gpu-run"
     files = {"j81-gpu.ko": module.read_bytes(), "j81-gpu-run": wrapper.read_bytes(),
              "gpu-watchdog-supervisor": supervisor.read_bytes()}
+    if f3a_blob is not None:
+        files["j81-f3a.blob"] = f3a_blob.read_bytes()
     shas = {k: hashlib.sha256(v).hexdigest() for k, v in files.items()}
     out = sh("cat /proc/sys/kernel/random/boot_id")
     m = BOOT.search(out)
@@ -130,7 +132,8 @@ def main() -> int:
     p.add_argument("--skip-pll4", action="store_true")
     p.add_argument("--peek", action="append", default=[])
     p.add_argument("--meta", action="append", default=[])
-    p.add_argument("--write", action="append", default=[], choices=["pa", "hn", "w1", "w2a", "h0", "h1", "h2", "h3", "h4", "h5", "h6", "h7", "h8", "h9", "h10", "h11", "h7b", "h7c", "h7d", "h7e", "h7f", "h7g", "h7s", "h7m", "h7r", "h7z", "h7y", "h7q", "h7p", "h3at", "h3p", "h3pb", "h6x", "h6m", "h6md", "h7x", "h8n", "h12", "h12s", "h7k", "h7l", "h7a", "z0", "z1", "z2", "z3", "g0", "g1", "g2", "g3", "g4", "f1a", "f1", "f2"])
+    p.add_argument("--f3a-blob", type=Path, default=None, help="position-independent F3a blob from boot/j81_f3a_build.py; staged as /tmp/j81-f3a.blob and written by the f3upload step")
+    p.add_argument("--write", action="append", default=[], choices=["pa", "hn", "w1", "w2a", "h0", "h1", "h2", "h3", "h4", "h5", "h6", "h7", "h8", "h9", "h10", "h11", "h7b", "h7c", "h7d", "h7e", "h7f", "h7g", "h7s", "h7m", "h7r", "h7z", "h7y", "h7q", "h7p", "h3at", "h3p", "h3pb", "h6x", "h6m", "h6md", "h7x", "h8n", "h12", "h12s", "h7k", "h7l", "h7a", "h7f1", "h7f2", "f3alloc", "f3upload", "f3load", "f3poll", "f3bif", "z0", "z1", "z2", "z3", "g0", "g1", "g2", "g3", "g4", "f1a", "f1", "f2"])
     p.add_argument("--stop-dashboard", action="store_true")
     a = p.parse_args()
     for off in a.peek:
@@ -139,7 +142,7 @@ def main() -> int:
     for addr in a.meta:
         if not re.fullmatch(r"0x[0-9a-f]{8}", addr):
             raise SystemExit("bad --meta address " + addr)
-    return run(a.logdir, a.module, a.supervisor, a.skip_pll1, a.peek, a.stop_dashboard, a.meta, a.skip_pll4, a.write)
+    return run(a.logdir, a.module, a.supervisor, a.skip_pll1, a.peek, a.stop_dashboard, a.meta, a.skip_pll4, a.write, a.f3a_blob)
 
 
 if __name__ == "__main__":

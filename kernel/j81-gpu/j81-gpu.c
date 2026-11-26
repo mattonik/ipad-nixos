@@ -24,9 +24,11 @@
  */
 #include <linux/atomic.h>
 #include <linux/delay.h>
+#include <linux/dma-mapping.h>
 #include <linux/device.h>
 #include <linux/io.h>
 #include <linux/irqflags.h>
+#include <linux/mm.h>
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/of_platform.h>
@@ -35,6 +37,7 @@
 #include <linux/pm_runtime.h>
 #include <linux/string.h>
 #include <linux/timekeeping.h>
+#include <linux/vmalloc.h>
 
 #include "gfx-bridge-plan.h"
 #include "fb_breadcrumb.h"
@@ -715,6 +718,169 @@ static int step_at(void)
 	return 0;
 }
 
+
+/*
+ * F3a (first firmware run, plan research/2026-11-26-j81-f3a-plan.md). The module owns one 8 MiB DMA-coherent region (uncached for the CPU,
+ * physically contiguous). The host builds a position-independent blob (boot/j81_f3a_build.py: firmware heap image at region offset 0,
+ * header and ConfigRAM word template at F3_HDR) and writes it through the f3_img binary attribute; f3load builds the three GPU page-table
+ * levels (PC/PD/PT, 4 KiB pages) at F3_PT and patches BIF_CAT_BASE0 into the ConfigRAM list with the real physical address.
+ *   f3alloc : allocate + zero, report the physical base
+ *   f3load  : verify header, build tables, verify the walk of 0xe1c0000000, checksum the heap image
+ *   h7f1    : stage the ConfigRAM list WITHOUT the final SOFT_RESET release (META stays in reset), for the h8..h11 sequence
+ *   h7f2    : the full list (META starts at the 0->1 walk)
+ *   f3poll  : poll the event-ring write index in memory for up to 10 s, record the first record (type, words)
+ *   f3bif   : read the BIF fault register once (after f3poll)
+ */
+#define F3_SIZE		(8u << 20)
+#define F3_HDR		0x100000u
+#define F3_BLOB		(F3_HDR + 0x1000u)
+#define F3_PC		0x108000u
+#define F3_PD		0x109000u
+#define F3_PT		0x10a000u
+#define F3_MAGIC	0x31413346u	/* "F3A1" */
+#define F3_GPU_VA	0xe1c0000000ULL
+
+static struct {
+	void *cpu;
+	dma_addr_t dma;
+	bool show, loaded, alive_seen;
+	u32 sum, nwords, rel_idx, ev_ctl, ev_buf, heap_used, walk;
+	u32 pw[2];
+	u32 polls, wr, rec[3], fault, fault_valid;
+} f3;
+
+static u32 f3_rd(u32 off)
+{
+	return readl(f3.cpu + off);
+}
+
+static int f3_alloc(void)
+{
+	u64 phys;
+
+	if (state != ST_IDENTIFIED || f3.cpu)
+		return -EBUSY;
+	if (dma_coerce_mask_and_coherent(consumer, DMA_BIT_MASK(36)))
+		return fail(-EIO, "f3-dma-mask");
+	f3.cpu = dma_alloc_coherent(consumer, F3_SIZE, &f3.dma, GFP_KERNEL);
+	if (!f3.cpu)
+		return fail(-ENOMEM, "f3-alloc");
+	phys = is_vmalloc_addr(f3.cpu) ? (u64)vmalloc_to_pfn(f3.cpu) << PAGE_SHIFT : virt_to_phys(f3.cpu);
+	if (phys != f3.dma)
+		return fail(-EIO, "f3-phys-mismatch");
+	memset(f3.cpu, 0, F3_SIZE);
+	f3.show = true;
+	return 0;
+}
+
+static void f3_put64(u32 off, u64 v)
+{
+	writel((u32)v, f3.cpu + off);
+	writel(v >> 32, f3.cpu + off + 4);
+}
+
+static u64 f3_get64(u32 off)
+{
+	return (u64)f3_rd(off) | (u64)f3_rd(off + 4) << 32;
+}
+
+static int f3_load(void)
+{
+	u32 i, hdr = F3_HDR, sum = 0, cat_hi, cat_lo, used;
+	u64 pc = f3.dma + F3_PC, pd = f3.dma + F3_PD, pt = f3.dma + F3_PT, e, v;
+
+	if (state != ST_IDENTIFIED || !f3.cpu || f3.loaded)
+		return -EBUSY;
+	if (f3_rd(hdr) != F3_MAGIC)
+		return fail(-EINVAL, "f3-blob-magic");
+	f3.nwords = f3_rd(hdr + 4);
+	f3.rel_idx = f3_rd(hdr + 8);
+	f3.ev_ctl = f3_rd(hdr + 12);
+	f3.ev_buf = f3_rd(hdr + 16);
+	used = f3.heap_used = f3_rd(hdr + 20);
+	cat_hi = f3_rd(hdr + 24);
+	cat_lo = f3_rd(hdr + 28);
+	if (f3.nwords < 8 || f3.nwords > 60 || f3.rel_idx + 5 != f3.nwords || cat_hi >= f3.nwords || cat_lo >= f3.nwords ||
+	    used == 0 || used > 0x100000 || (used & 0xfff) || f3.ev_ctl + 0x20 > used || f3.ev_buf >= used)
+		return fail(-EINVAL, "f3-blob-header");
+	/* patch BIF_CAT_BASE0 (page catalogue physical address) into the staged ConfigRAM word list */
+	writel(pc >> 32, f3.cpu + hdr + 0x40 + 4 * cat_hi);
+	writel((u32)pc, f3.cpu + hdr + 0x40 + 4 * cat_lo);
+	/* GPU page tables: PT maps heap pages 0..used (4 KiB each, valid bit only); PD[0] -> PT; PC[va >> 30 & 0x3ff] -> PD */
+	memset(f3.cpu + F3_PC, 0, 0x3000);
+	for (i = 0; i < used / 0x1000; i++)
+		f3_put64(F3_PT + 8 * i, (f3.dma + (u64)i * 0x1000) | 1);
+	f3_put64(F3_PD, pt | 1);
+	writel(((pd >> 12) << 4) | 1, f3.cpu + F3_PC + 4 * ((F3_GPU_VA >> 30) & 0x3ff));
+	wmb();
+	/* walk back: heap offsets 0, 0x22000 and the last page must resolve to dma + offset */
+	f3.walk = 0;
+	e = f3_rd(F3_PC + 4 * ((F3_GPU_VA >> 30) & 0x3ff));
+	if (!(e & 1) || ((e >> 4) << 12) != pd)
+		goto walk_done;
+	f3.walk |= 1;
+	v = f3_get64(F3_PD);
+	if (!(v & 1) || (v & ~0xfffULL) != pt)
+		goto walk_done;
+	f3.walk |= 2;
+	for (i = 0; i < 3; i++) {
+		u32 pg = i == 0 ? 0 : i == 1 ? 0x22 : used / 0x1000 - 1;
+
+		v = f3_get64(F3_PT + 8 * pg);
+		if (!(v & 1) || (v & ~0xfffULL) != f3.dma + (u64)pg * 0x1000)
+			goto walk_done;
+	}
+	f3.walk |= 4;
+walk_done:
+	for (i = 0; i < used; i += 4)
+		sum += f3_rd(i);
+	f3.sum = sum;
+	f3.pw[0] = pc >> 32;
+	f3.pw[1] = (u32)pc;
+	f3.loaded = f3.walk == 7;
+	return f3.loaded ? 0 : fail(-EIO, "f3-walk");
+}
+
+static int f3_poll(void)
+{
+	u32 i;
+
+	if (state != ST_IDENTIFIED || !f3.loaded)
+		return -EBUSY;
+	for (i = 0; i < 10000; i++) {
+		f3.wr = f3_rd(f3.ev_ctl + 0x10);
+		if (f3.wr)
+			break;
+		msleep(1);
+	}
+	f3.polls = i;
+	if (f3.wr) {
+		f3.rec[0] = f3_rd(f3.ev_buf);
+		f3.rec[1] = f3_rd(f3.ev_buf + 4);
+		f3.rec[2] = f3_rd(f3.ev_buf + 8);
+		f3.alive_seen = f3.rec[0] == 0;
+	}
+	return 0;
+}
+
+static int f3_bif(void)
+{
+	if (state != ST_IDENTIFIED)
+		return -EBUSY;
+	f3.fault = readl(core_regs + 0x12b0);
+	f3.fault_valid = 1;
+	return 0;
+}
+
+static ssize_t f3_img_write(struct file *file, struct kobject *kobj, const struct bin_attribute *attr, char *buf, loff_t off, size_t count)
+{
+	if (!f3.cpu || f3.loaded || off < 0 || off + count > F3_BLOB)
+		return -EINVAL;
+	memcpy(f3.cpu + off, buf, count);
+	return count;
+}
+static const BIN_ATTR_WO(f3_img, F3_BLOB);
+
 static int step_h(int n, int mode)
 {
 	int i;
@@ -883,6 +1049,14 @@ static int step_h(int n, int mode)
 			cfg_readback = true;
 			cfg_put(0x0bf8 | 0xff << 16);
 			cfg_put(1);
+		} else if (hs.f2 == 24 || hs.f2 == 25) {	/* h7f1 / h7f2 (F3a): the blob's ConfigRAM list; f1 omits the final SOFT_RESET release (5 words incl. terminator), META stays in reset */
+			u32 k, nw = hs.f2 == 24 ? f3.rel_idx : f3.nwords - 1;
+
+			if (!f3.loaded)
+				return fail(-EBUSY, "h7f-not-loaded");
+			cfg_readback = true;
+			for (k = 0; k < nw; k++)
+				cfg_put(f3_rd(F3_HDR + 0x40 + 4 * k));
 		} else if (hs.f2 == 7) {	/* h7g: Apple's SOFT_RESET framing (3 asserts, no META_BOOT/BIF) around the 0x3808 no-op, then release */
 			cfg_put64(0x100, 0x00e7fffffffffc1dULL);
 			cfg_put64(0x100, 0x00e7fe071ffffc1dULL);
@@ -1090,6 +1264,18 @@ static ssize_t step_store(struct device *dev, struct device_attribute *attr, con
 		ret = step_h(7, 22);
 	else if (sysfs_streq(buf, "h7a"))
 		ret = step_h(7, 23);
+	else if (sysfs_streq(buf, "h7f1"))
+		ret = step_h(7, 24);
+	else if (sysfs_streq(buf, "h7f2"))
+		ret = step_h(7, 25);
+	else if (sysfs_streq(buf, "f3alloc"))
+		ret = f3_alloc();
+	else if (sysfs_streq(buf, "f3load"))
+		ret = f3_load();
+	else if (sysfs_streq(buf, "f3poll"))
+		ret = f3_poll();
+	else if (sysfs_streq(buf, "f3bif"))
+		ret = f3_bif();
 	else if (sysfs_streq(buf, "h7b"))
 		ret = step_h(7, 1);
 	else if (sysfs_streq(buf, "h7e"))
@@ -1181,7 +1367,11 @@ static ssize_t status_show(struct device *dev, struct device_attribute *attr, ch
 	}
 	if (autopm_done)
 		n += sysfs_emit_at(buf, n, " pa=%08x,%08x", pa_x[0], pa_x[1]);
-	if (hs.next)
+	if (f3.show) {
+		n += sysfs_emit_at(buf, n, " f3=%llx,%u,w%u,s%08x,pc%08x%08x,n%u,e%u,%08x/%08x,%08x,%08x,%08x,bif%d:%08x", (u64)f3.dma, f3.loaded, f3.walk, f3.sum, f3.pw[0], f3.pw[1], f3.nwords, f3.polls, f3.wr, f3.ev_ctl, f3.rec[0], f3.rec[1], f3.rec[2], f3.fault_valid, f3.fault);
+		if (hs.next)
+			n += sysfs_emit_at(buf, n, " h_x=%08x h_next=%d h_f2=%d h_p5=%08x h_slc=%08x/%08x/%08x h_core=%08x", hs.x[0], hs.next, hs.f2, hs.p5, hs.s0, hs.s4, hs.s8, hs.core);
+	} else if (hs.next)
 		n += sysfs_emit_at(buf, n, " h_x=%08x,%08x,%08x h_ps=%08x,%08x h_next=%d h_f2=%d h_r1=%08x h_r3=%08x h_r5=%08x h_p5=%08x h_slc=%08x/%08x/%08x h_core=%08x h_obs=%08x,%08x,%08x/%08x,%08x,%08x/%08x,%08x,%08x/%08x,%08x,%08x/%08x,%08x,%08x h_pll=%08x,%08x,%08x,%08x,%08x",
 				   hs.x[0], hs.x[1], hs.x[2], hs.ps_off, hs.ps_on, hs.next, hs.f2, hs.r1, hs.r3, hs.r5, hs.p5, hs.s0, hs.s4, hs.s8, hs.core,
 				   hs.obs[0][0], hs.obs[0][1], hs.obs[0][2], hs.obs[1][0], hs.obs[1][1], hs.obs[1][2], hs.obs[2][0], hs.obs[2][1], hs.obs[2][2],
@@ -1369,6 +1559,8 @@ static int __init j81_gpu_init(void)
 		ret = device_create_file(consumer, &dev_attr_peek);
 	if (!ret)
 		ret = device_create_file(consumer, &dev_attr_meta);
+	if (!ret)
+		ret = device_create_bin_file(consumer, &bin_attr_f3_img);
 	if (!ret)
 		ret = pm_runtime_set_suspended(consumer);
 	if (ret)
