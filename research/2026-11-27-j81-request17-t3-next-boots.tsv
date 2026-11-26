@@ -1,0 +1,5 @@
+rank	boot	change	read afterwards	what it settles	risk	tag
+1	R1: thread 1 state (read-only)	run 54 unchanged	thread 1's PC through the core-register port (request 15 t3 recipe with 0x00011005 = thread 1, unit PC, RDnWR), T1ENABLE, T1STATUS	whether thread 1 ever ran (PC still 0x20000000 or 0)	none	source; capture
+2	K1: one kick	run 54; after 5 s idle write RGX 0xb00 = 0x10 once (state 1, after Fender +0x14 = 7, as Apple's doorbell does)	event ctl +0x10 (write index), heap diff, T0 PC, T1ENABLE	whether the firmware answers a background kick; if a type-0 record appears, alive is deferred to the first kick on this setup	low-moderate: Apple never kicks before alive; with empty queues the firmware should return to idle (inferred)	code; inferred
+3	C1: config fields	fill only what the request-14 table derives (+0x30, +0x1b8, +0x2f8 stay 0 when their source objects are absent on iOS too)	PC, heap diff	low value until the code shows they are read	low	code
+4	A1: AIC IRQ 138 unmask	not needed for posting the record (memory first, doorbell after)	-	-	-	inferred
