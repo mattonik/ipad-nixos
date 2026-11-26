@@ -1,0 +1,7 @@
+step	access	value	condition	address	tag
+1 alive check	fw +0xb35	-	if clear, call waitForFWAlive first; no kick is ever sent before alive	0x6690dcc-0x6690dd0, 0x6690ebc	code
+2 enqueue	scheduler and channel structures in firmware memory	command	-	0x668a570	code
+3 barrier	dmb ish	-	-	0x6690dec	code
+4 Fender interrupt status	Fender +0x14	7 (clear all, slot 0x80)	if the Fender object exists	0x6690df0-0x6690e00	code
+5 state check	Fender +0x1000 (slot 0x18)	-	state != 0: go to the kick; state 0 with +0 == 0: full restart (0x668ea90); otherwise SNOOP checks and a warning	0x6690e04-0x6690eb8	code
+6 kick	RGX 0xb00 MTS_SCHEDULE	0x10 = TASK_COUNTED, DM0, context 0, priority 0	-	0x6690e18-0x6690e24	code; source (field names)
