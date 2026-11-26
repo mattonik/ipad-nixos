@@ -1,0 +1,6 @@
+rank	boot	change	read / expect	settles	risk	tag
+1	T1: timebase	none (read-only, before or after the GPU steps)	read all of 0x20e101000-0x20e1010fc twice, 1 ms apart; any word that changes is the counter. All static: the timebase is stopped on this boot	whether a time-based wait can ever end	none	adt; inferred
+2	U1: USC slots	run 54 unchanged; in state 1 while the firmware runs, read RGX 0xe100-0xe1f8 and 0xe200-0xe2f8 (RGX reads in state 1 are safe, runs 33-42)	bit 0 set in any slot means a USC exception or an occupied slot the firmware is waiting on	whether the loop is waiting on the USC	low	code
+3	H1: halted snapshot	at the end of a run: Apple's stop write of 0xfffffffe to T0 TXENABLE (request 14/15 t3 slave-port write), then read PC, PCX and D0/D1/A0/A1 through the core-register port	one consistent register set instead of racy samples; also tests the 0x80009c74 PC	where the thread really is	low (ends the run)	code; source
+4	P4: dense samples with registers	as run 57 but read D0/D1/A0/A1 with each PC sample	which registers carry the polled address (D0.1/D1.5/D1.6 = 0x8000a000 and D1.4 = 0x100103a8 in run 57 are candidates)	the polled location	low	capture
+5	if T1 shows a stopped timebase	find the enable (not decoded here; do not guess writes) or provide a running time source the firmware accepts	-	-	-	inferred
