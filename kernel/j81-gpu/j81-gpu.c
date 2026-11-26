@@ -1335,6 +1335,54 @@ static int f3_usc(void)
 	return 0;
 }
 
+/* f3halt (request 16 H1): halt thread 0 with Apple's stop write (META TXENABLE 0x04800000 <- 0xfffffffe through the slave-port write sequence), then read TXENABLE, TXSTATUS, PC (TXUXXRXRQ
+ * 0x00010005) and PCX (0x00010015). m2 = txenable-after, txstatus, pc, pcx, then pc again 10 ms later, err. One-shot: the run ends with this thread stopped. */
+static int f3_creg(u32 req, u32 *out)
+{
+	u32 k, v = 0;
+	int ret = f3_mwrite(0x0480fff8, req);
+
+	if (ret)
+		return ret;
+	for (k = 0; k < 100; k++) {
+		ret = f3_mread(0x0480fff8, &v);
+		if (ret)
+			return ret;
+		if (v & 0x80000000U)
+			break;
+	}
+	if (k == 100)
+		return -ETIMEDOUT;
+	return f3_mread(0x0480fff0, out);
+}
+
+static int f3_halt(void)
+{
+	int ret;
+
+	if (state != ST_IDENTIFIED || !f3.loaded)
+		return -EBUSY;
+	memset(f3.m2, 0, sizeof(f3.m2));
+	ret = f3_mwrite(0x04800000, 0xfffffffe);
+	if (ret)
+		return fail(ret, "f3halt-write");
+	msleep(2);
+	ret = f3_mread(0x04800000, &f3.m2[0]);
+	if (!ret)
+		ret = f3_mread(0x04800010, &f3.m2[1]);
+	if (!ret)
+		ret = f3_creg(0x00010005, &f3.m2[2]);
+	if (!ret)
+		ret = f3_creg(0x00010015, &f3.m2[3]);
+	msleep(10);
+	if (!ret)
+		ret = f3_creg(0x00010005, &f3.m2[4]);
+	if (ret)
+		return fail(ret, "f3halt-read");
+	f3.m2sel = 22;
+	return 0;
+}
+
 static ssize_t f3_img_write(struct file *file, struct kobject *kobj, const struct bin_attribute *attr, char *buf, loff_t off, size_t count)
 {
 	if (!f3.cpu || f3.loaded || off < 0 || off + count > F3_BLOB)
@@ -1757,6 +1805,8 @@ static ssize_t step_store(struct device *dev, struct device_attribute *attr, con
 		ret = f3_tb();
 	else if (sysfs_streq(buf, "f3usc"))
 		ret = f3_usc();
+	else if (sysfs_streq(buf, "f3halt"))
+		ret = f3_halt();
 	else if (sysfs_streq(buf, "f3coreA"))
 		ret = f3_core(0);
 	else if (sysfs_streq(buf, "f3coreB"))
@@ -1881,6 +1931,8 @@ static ssize_t status_show(struct device *dev, struct device_attribute *attr, ch
 					   f3.meta[0], f3.meta[1], f3.meta[2], f3.meta[3], f3.meta[4], f3.meta[5]);
 		if (f3.m2sel == 10)
 			n += sysfs_emit_at(buf, n, " mH%u=%08x*%u,%08x*%u,%08x*%u,%08x*%u,%08x*%u,%08x*%u", f3.hn, f3.hpc[0], f3.hcnt[0], f3.hpc[1], f3.hcnt[1], f3.hpc[2], f3.hcnt[2], f3.hpc[3], f3.hcnt[3], f3.hpc[4], f3.hcnt[4], f3.hpc[5], f3.hcnt[5]);
+		else if (f3.m2sel == 22)
+			n += sysfs_emit_at(buf, n, " mHL=%08x,%08x,%08x,%08x,%08x", f3.m2[0], f3.m2[1], f3.m2[2], f3.m2[3], f3.m2[4]);
 		else if (f3.m2sel == 20 || f3.m2sel == 21)
 			n += sysfs_emit_at(buf, n, " m%s=%08x,%08x,%08x,%08x,%08x,%08x,%08x,%08x", f3.m2sel == 20 ? "TB" : "US", f3.m2[0], f3.m2[1], f3.m2[2], f3.m2[3], f3.m2[4], f3.m2[5], f3.m2[6], f3.m2[7]);
 		else if (f3.m2sel >= 11)
