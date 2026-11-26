@@ -1,0 +1,18 @@
+step	register (physical)	value	width	wait / condition	code address	tag
+1 power on	PMGR PS GFX 0x20e020320 via provider +0x568 (1, 0) / +0x570 (1, &out, 0)	target 0xf, auto 1	32	PS actual == 0xf; then bridges 9/10 (0x201f00000, 0x201f80000), 33 pairs each	0x6692718-0x669275c; ApplePMGR 0x6bc6ed8, 0x6bd90a8	code (requests 6, 9)
+2 Fender object powered	-	software flag +0xc	-	-	0x66927b4 (slot 0x30)	code
+3 Fender host interrupts off	Fender +0x10 (0x201e00010)	0	32	load, store, load	0x66927d0 (slot 0x20 (3))	code
+4 hw start: interrupts off again	Fender +0x10	0	32	as above	0x6690bcc	code
+5 sleep control	Fender +0 (0x201e00000)	0x40000000	32	load-back	0x6690be4 (slot 0x58)	code
+6 ConfigRAM start	-	cursor = 0x10000	-	-	0x6690bf4 (slot 0xa8)	code
+7 stream	ConfigRAM 0x201e10000..	SOFT_RESET x3, META_BOOT 0x0bf8 <- 1, BIF_CAT_BASE0 0x1200 <- page-catalogue phys, SLC 0x3800 / 0x3808, SOFT_RESET <- 0	32 per word, each loaded back	-	0x6690c20 first entry (fw +0x1e8); accel +0x740 / +0x748	code (requests 4, 10)
+8 end marker	ConfigRAM next word	0xffff0000	32	load-back	0x6690ce0 (slot 0xb8)	code
+9 events and IRQs	AIC lines 0x86, 0x87, 0x8a (GPU interrupt indices 0, 1, 4); timer and two software event sources	enable	-	-	accel 0x8a8 (1), 0x6671fe4	code (request 7)
+10 override release	Fender +0x20000 (0x201e20000)	0	32	load-back	0x669036c (slot 0x60 (0))	code
+11 state 1	Fender +0x1000 (0x201e01000)	0x11	32	pre-poll bit 4 clear every 10 us up to ~30 s; one load after	0x6690384 (slot 0x10 (1)), 0x6698d94	code
+12 walk	RGX 0x201000100, 0x201000bf8, 0x201001200, 0x201003800, 0x201003808	the stream values	64-bit entries	applied by Fender at the 0 -> 1 request (runs 40-42); META leaves reset at the last SOFT_RESET <- 0	-	capture; code
+13 META boot	firmware memory at GPU VA 0xe1c0000000 (seg2 at +0)	boot list at +0x200 (segment MMU pairs + LDR config), tail word at +0xff8	-	META boots through the default seg2 mapping	loader 0x668fc0c / 0x668fd58 / 0x668ffe8; boot list 0x668ff04	code (request 4)
+14 alive	event ring record type 0, word +4 = META PC of the idle loop; AIC software IRQ 138 (0x8a)	-	-	handler 0x6693ea8: stores word +4 to fw +0xb38, sets fw +0x1c8 and +0xb35, wakes the gate	0x6693ea8-0x6694088	code
+15 wait	fw +0xb35	-	-	waitForFWAlive sleeps on +0xb35 with a deadline of accel +0xc20 seconds; no RGX read	0x6694d40	code
+16 booted	fw +0xb37 = 1	-	-	log 'GPU firmware booted successfully'	0x66903e0-0x66903ec	code
+held override	-	-	-	none of steps 1-16 runs with the override held; the hold (0x20) exists only in the restart path	0x66906f8	code
