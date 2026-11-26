@@ -1,0 +1,11 @@
+index	name (Apple's string)	phys	size	GPU-MMU mapping	fwaddr written to the table	tag
+0	FenderRegs	Fender window base (0x201e00000)	0x5000	yes: partition 9 (GPU VA 0xe1c4200000, 4 MiB), map options 0x90007	fwaddr of the mapping + in-page offset; with sequential allocation 0xc4200000	code (0x66719bc-0x66719cc, 0x668f3bc-0x668f4ac); VA placement inferred
+1	AICTimerRegs	0x20e101000 (immediate & page mask)	1 page (0x1000)	yes, partition 9	0xc4205000 with sequential allocation	code; placement inferred
+2	AICSWIntRegs	accel +0x1ba8 & page mask: the AIC SW_SET page 0x20e104000 (SET register 0x20e104010)	1 page	yes, partition 9	0xc4206000 with sequential allocation	code (0x6671a14-0x6671a28); phys inferred from +0x2e4 = 0x10 and +0x2e8 = 0x400 (IRQ 138)
+3	RGXRegs	global 0x7a4d888 (RGX base 0x201000000)	0x20000	no: the mapping loop skips index 3 (0x668f3c8-0x668f3d0)	0 (0x668f8a0 stores zero)	code
+4	UVDRegs, or 'Unused' when absent	an optional provider region & page mask	1 page	yes if present	as above	code (0x6671a58-0x6671a78); presence on J81 not resolved
+5	Unused	0	0	no	0	code
+6	DisplayUnderrunWA (unused)	0	0	no	0	code
+7, 8	(cleared, no name)	0	0	no	0	code
+translator	-	-	-	-	fwaddr = (u32)(va + 0x40000000) | region; region 0xc0000000, except 0x40000000 for VAs in [0xe1c3200000, 0xe1c4200000) when fw +0x1c9 == 0 (0x6691704-0x6691750). Windows in partition 9 therefore get 0xc42xxxxx	code
+PT flags	-	-	-	-	PTE = valid | (a & 0xc) | (a bit 0 -> bit 1, read-only) | (a bit 4 -> bit 62, PM/META protect) (MMU slot 0x180, 0x669dce4). Upstream names: bit 2 cache-coherent, bit 3 SLC bypass. How the map option 7 becomes 'a' for 0x60007 (heap) and 0x90007 (windows) was not traced	code; names from upstream pvr_rogue_mmu_defs.h

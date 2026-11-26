@@ -1,0 +1,18 @@
+config offset	first-boot value on J81	source	code address	builder today	tag
++0x00	0x0000000500000000	16-byte constant at 0x57c30c0 (first half)	0x66898d0-0x66898dc	same	code
++0x08	0x0000000600000000	same constant (second half)	0x66898dc	same	code
++0x10, +0x18	0x0000000100000000 each	immediate (dup)	0x66898d4-0x66898dc	same	code
++0x20, +0x28	0x0000000300000000 each	immediate (dup)	0x66898e0-0x66898e8	same	code
++0x30	GPU VA of the accel +0x1828 object (its slot 0x88), else 0	accelerator object	0x6689a2c	0	code; value not resolved
++0x38..+0x1b7	2 x (8 x 24 B) copied from accel +0x18f0 and accel +0x19b0 (+0x19b0 is the MMU format descriptor, request 4 t3)	accelerator tables	loop 0x6689a40	0	code; contents not decoded
++0x1b8	accel slot 0x920 = object at accel +0x1c18 if its +0x10 bit 0 is set, else 0	optional object	0x669b120	0	code
++0x1c0..+0x24f	MMIO window table, 9 x {u64 phys, u32 fwaddr, u32 size}: see t2	accel +0xed0 + 0x18*i	0x6689918-0x66899d4 (phys, size), 0x668f804-0x668fa14 (fwaddr)	all 0	code
++0x250	1 (GPC bit of 0x7a4d882)	global flag	0x6689aa0	per appendix	code (request 4)
++0x2e4	0x10 = AIC SW_SET register minus its window page: (u32)accel +0x1ba8 - window 2 phys	accel +0x1ba8	0x66899d8-0x66899e0	per appendix	code
++0x2e8	0x400 = accel +0x1bb8 (IRQ 138 bit within its SW_SET word: 138 = 4*32 + 10)	accel +0x1bb8	0x66899e4-0x66899e8	per appendix	code; IRQ mapping inferred
++0x2ec	0x20 = 0x1020 & (page - 1) for 4 KiB pages	page shift global 0x6f2a698	0x66899ec-0x6689a08	per appendix	code
++0x290 / +0x298	accel +0xd38 (u64) / accel +0xd44 (u32)	accelerator fields	0x6689ad0 / 0x6689ad8	0	code; values not resolved
++0x2f0	0x8000b3c8_20000000 = thread 1 {pc 0x20000000 (low word), sp 0x8000b3c8 (high word)} from the LDR START_THREADS record	LDR record cmd 3, thread == 1, two words swapped (0x6690050-0x669008c) into fw +0xb48	0x668fa30-0x668fa34	0 (WRONG)	code; values from request 4 ldr-records.tsv
++0x2f8	accel slot 0x928 = object at accel +0x1c20 if its +0x10 bit 0 is set, else 0	optional object	0x6689900, 0x669b144	0	code
++0x300	0x000000e1c0000000	boot device VA	0x668f798	per appendix	code
++0x308 / +0x30c	0 / 7 (PC index / BIF data master)	8-byte constant at 0x57c2d68	0x668fa24-0x668fa2c	per appendix	code
