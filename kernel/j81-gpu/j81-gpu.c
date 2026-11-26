@@ -750,7 +750,7 @@ static struct {
 	void *snap;
 	u32 chg, chg_off[3], chg_val[3], sum2, meta[6];
 	bool late;
-	u32 m2[8], m2sel;
+	u32 m2[8], m2sel, m2match;
 } f3;
 
 static int meta_wait_ready(u32 *ctrl1);
@@ -957,6 +957,34 @@ static int f3_meta2(int which)
 		f3.m2[i] = readl(core_regs + MSLVDATAX);
 	}
 	f3.m2sel = which + 1;
+	return 0;
+}
+
+/* f3metaC: coremem code window, 8 words at 0x80000080 (the LDR places the first code word there; the image copy is at heap +0x1c000).
+ * m2match is a bitmask of words equal to the image copy, i.e. did the bootloader copy the coremem image into the core memory? */
+static int f3_meta3(void)
+{
+	u32 i, c1;
+	int ret;
+
+	if (state != ST_IDENTIFIED || !f3.loaded)
+		return -EBUSY;
+	f3.m2match = 0;
+	for (i = 0; i < 8; i++) {
+		ret = meta_wait_ready(&c1);
+		if (ret)
+			return fail(ret, "f3metaC-not-ready");
+		writel((0x80000080U + 4 * i) | 1U, core_regs + MSLVCTRL0);
+		mb();
+		(void)readl(core_regs + MSLVCTRL0);
+		ret = meta_wait_ready(&c1);
+		if (ret)
+			return fail(ret, "f3metaC-read-timeout");
+		f3.m2[i] = readl(core_regs + MSLVDATAX);
+		if (f3.m2[i] == f3_rd(0x1c000 + 4 * i))
+			f3.m2match |= 1u << i;
+	}
+	f3.m2sel = 3;
 	return 0;
 }
 
@@ -1372,6 +1400,8 @@ static ssize_t step_store(struct device *dev, struct device_attribute *attr, con
 		ret = f3_meta2(0);
 	else if (sysfs_streq(buf, "f3metaB"))
 		ret = f3_meta2(1);
+	else if (sysfs_streq(buf, "f3metaC"))
+		ret = f3_meta3();
 	else if (sysfs_streq(buf, "h7b"))
 		ret = step_h(7, 1);
 	else if (sysfs_streq(buf, "h7e"))
@@ -1469,7 +1499,7 @@ static ssize_t status_show(struct device *dev, struct device_attribute *attr, ch
 			n += sysfs_emit_at(buf, n, " f3x=c%u,%x:%08x,%x:%08x,%x:%08x,s%08x m=%08x,%08x,%08x,%08x,%08x,%08x", f3.chg, f3.chg_off[0], f3.chg_val[0], f3.chg_off[1], f3.chg_val[1], f3.chg_off[2], f3.chg_val[2], f3.sum2,
 					   f3.meta[0], f3.meta[1], f3.meta[2], f3.meta[3], f3.meta[4], f3.meta[5]);
 		if (f3.m2sel)
-			n += sysfs_emit_at(buf, n, " m%c=%08x,%08x,%08x,%08x,%08x,%08x,%08x,%08x", f3.m2sel == 1 ? 'A' : 'B', f3.m2[0], f3.m2[1], f3.m2[2], f3.m2[3], f3.m2[4], f3.m2[5], f3.m2[6], f3.m2[7]);
+			n += sysfs_emit_at(buf, n, " m%c=%08x,%08x,%08x,%08x,%08x,%08x,%08x,%08x k%02x", f3.m2sel == 1 ? 'A' : f3.m2sel == 2 ? 'B' : 'C', f3.m2[0], f3.m2[1], f3.m2[2], f3.m2[3], f3.m2[4], f3.m2[5], f3.m2[6], f3.m2[7], f3.m2match);
 		else if (hs.next)
 			n += sysfs_emit_at(buf, n, " h_x=%08x h_next=%d h_f2=%d h_p5=%08x h_slc=%08x/%08x/%08x h_core=%08x", hs.x[0], hs.next, hs.f2, hs.p5, hs.s0, hs.s4, hs.s8, hs.core);
 	} else if (hs.next)
