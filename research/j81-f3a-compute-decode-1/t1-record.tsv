@@ -1,0 +1,23 @@
+W offset	width	J81 19H394 source (kext)	A9 (Orchard s8003_submit_compute)	empty-job value	tag
++0x000	2 x u32	constant {3, 0} (0x57c2cc8)	3	3, 0	code; orchard
++0x008	u32	command +0x1a0: the slot	slot	1	code; orchard
++0x00c	u32	fwaddr of command +0x178 (the dependency object)	channel + 0x980	fwaddr(channel) + 0x980	code; orchard
++0x010	u32	command +0xe0 (HAL 0x669cbd8)	config[0]	0 (inferred)	code; orchard; inferred
++0x014	u32	CDM item mode: table {0, 2, 3}[command +0x198], 0 if out of range (HAL)	config[1]	0	code
++0x018	u32	cluster mask: 0xff, or 0xf when command byte +0x19a is set (HAL). On the A8X 16G77 this word is +0x20	-	0xff	code; orchard
++0x060	u64	command +0xf8 (HAL)	tail	0 for an empty job (inferred)	code; orchard; inferred
++0x068	u64	command +0xd8 (HAL)	PDS terminate program	GPU VA of the fence-terminate PDS program	code; orchard
++0x070	u64	command +0xa0 (HAL)	CDM control stream base	GPU VA of the control stream	code; orchard
++0x078 + 8i	u64 x N	per-cluster array, N = accelerator +0xd44 (8 on A8X, inferred): command +0x148 + i x command +0x150, or-ed with 1 or (command +0x154 << 1); all 0 when command +0x150 = 0	-	0 (stride 0)	code; inferred
++0x1c8/+0x1d0/+0x1d8	u64/u32/u32	command +0x148 / +0x150 / +0x154 (the per-cluster base, stride, flags)	-	0	code
++0x1e0/+0x1e4	u32	microsequence fwaddr / size (returned by the microsequence finaliser 0x66a7700)	channel + 0x800 / 0xc0	fwaddr(channel) + 0x800 / its byte length	code; orchard
++0x1e8	u32	0	(used by 0x32/0x33)	0	code; orchard
++0x1ec..+0x23c	block	copied from the user command: +0x1ec/+0x1f4 = cmd +0xa8/+0xb0; +0x1fc (16 B) = cmd +0xb8; +0x20c (16 B) = cmd +0xf8; +0x21c = cmd +0xc8; +0x224 = cmd +0xd0; +0x22c = cmd +0xd8; +0x234 = cmd +0xe0; +0x23c = cmd +0xe8	state[4], tail, terminate, PDS store/resume, terminate	from the job (Mesa)	code; orchard
++0x244	u32	command +0xf0: the compute terminate word comes from user space on 19H394, not from a kext constant	0x00a00004 (A9)	try 0x00900004 (A8 family, Orchard's A8 value) first, 0x00a00004 second	code; orchard; inferred
++0x24c/+0x250/+0x254/+0x255	u8/u32/u8/u16	command +0x128 / +0x12c / +0x198 / +0x199..0x19a	-	0	code
++0x258/+0x25c	u32	stamp addresses (fwaddr; computed from an accelerator object at +0x1810 plus offsets)	channel + 0x940 / + 0x944	fwaddr(channel) + 0x940 / + 0x944	code; orchard; inferred
++0x260..+0x26c	u32	counters (seq-like values computed before)	+0x260 = seq	seq (1) at +0x260; 0 elsewhere (inferred)	code; orchard; inferred
++0x270	u32	command +0x40: the job number	seq	1	code; orchard
++0x278	u64	0	(wait address in 0x18 ops)	0	code; orchard
++0x280/+0x284	u32	fwaddr of command +0x138 / +0x140, or 0	(0x18 operands)	0 / 0 (inferred safe for no dependency)	code; inferred
+size	-	the last field written is +0x284 (4 bytes): at least 0x288; the A9's 0x290 fits, 0x298 (A8) does not match the field set	0x290	0x290	code; orchard; inferred

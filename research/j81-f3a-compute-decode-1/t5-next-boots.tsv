@@ -1,0 +1,6 @@
+rank	boot	change	read	tells	risk	tag
+1	J1	the empty job of t3 with +0x244 = 0x00900004, cluster mask +0x18 = 0xff, record 0x290	stamps +0x940/+0x944, watermarks +0x100..+0x140, CL consumer, event ring (record types), log ring root +0x28, 0x130, 0x12b0/0x12b8 (bank 0, the CDM's), 0x12c0/0x12c8	stamps 1 and watermarks 1 = the job ran end to end. Consumer moved but stamps 0 = the record or microsequence was rejected or stalls (check the event ring for a fault record). A bank-0 fault = a bad GPU VA in slot 1 (control stream or PDS)	moderate: a wrong record may fault the CDM or stall the firmware; a SoC hang is not expected (inferred)	code; orchard; inferred
+2	J1b	only if J1 stalls without a fault: +0x244 = 0x00a00004	as J1	the terminate-word variant	moderate	orchard; inferred
+3	J1c	only if J1/J1b fail before the CDM: cluster mask 0xf	as J1	the mask	moderate	code
+4	J2	a PDS-only program that stores one word to a page in slot 1	the target word	a first kernel	moderate	inferred
+skip	record size 0x298	-	-	the J81 field set ends at +0x288, so 0x298 is not indicated	-	code

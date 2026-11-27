@@ -1,0 +1,9 @@
+item	J1 value	tag
+channel page	as J0 (heap 0x130000, fwaddr 0xc0130000), plus: ring[0] (+0x200) = 0xc0130400; host watermark +0x140 = 1 just before the producer	capture; orchard
+record	t1 'empty-job value' column at channel +0x400, 0x290 bytes, zeroed first	code; orchard; inferred
+microsequence	t2 for seq = 1, slot = 1, channel = 0xc0130000, W = 0xc0130400, global = fwaddr(root +0x6c block) + 0x720, all cmd bytes 0; the 0x33 op's last word -0x6c; end 0x40000017; written at channel +0x800; W+0x1e0 = 0xc0130800, W+0x1e4 = byte length 0x9c (39 words including the end word; within 0xc0)	code; orchard; inferred
+CL entry	{2, 0xc0130000, end = 1}, producer + 1, Fender +0x14 = 7, 0xb00 = 0x12	code; capture
+CDM control stream	one STREAM_TERMINATE control word (Mesa csbgen ROGUE_CDMCTRL_STREAM_TERMINATE), in a page mapped in slot 1; W+0x70 = its GPU VA	source (Mesa); orchard
+PDS terminate program	Mesa's fence-terminate PDS program (pvr_pds_generate_fence_terminate_program), in the PDS heap mapped in slot 1 (Orchard A8: GPU VA 0x3_0000_0000; PDS addresses are 38-bit); W+0x68 = its GPU VA. The W +0x1ec..+0x23c block (state, terminate, PDS store/resume) comes from Mesa's compute job set-up; for an empty job state and store/resume can be 0 and the terminate fields point at the same fence-terminate program (inferred)	source (Mesa); orchard; inferred
+done when	both stamps (channel +0x940 and +0x944) reach 1 and the five watermarks (+0x100..+0x140) reach end = 1	orchard
+other inputs before the CDM starts	the per-cluster array (stride 0: none); config heap bases +0x00..+0x28 (already in blob f); the hardware objects at 0x8_00000000 (map them in slot 1 as Orchard maps them in every VM); a zero page at VA 0 in slot 1 (Orchard A8)	code; orchard; capture

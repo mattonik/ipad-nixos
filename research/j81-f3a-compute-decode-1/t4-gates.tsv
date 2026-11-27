@@ -1,0 +1,6 @@
+gate	finding	tag
+host handshake before DM2 work	none in Apple's path: submitCLChannel enqueues, acknowledges the Fender power-interrupt status, checks the state and kicks; no event or answer is awaited	code
+perf state during a job	the firmware's governor sets the GPC perf state itself through its policy (the pins set for run 87 hold it); the host only answers through events it already drains	code; capture; inferred
+PM id / charge grant	TA and 3D need a parameter-manager set per VM (Orchard: PM id per VM; A8 charge grant); compute does not touch the PM, so neither applies to J1	orchard; inferred
+slot and tag	slot 1 must be loaded (done in run 87, tag 0x00400000); the firmware compares the tag when the job starts and drops the slot's translations if it changed	orchard; capture
+cluster count	accelerator +0xd44 drives the per-cluster array; with stride 0 nothing per cluster is needed	code

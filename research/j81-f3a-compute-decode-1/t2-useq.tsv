@@ -1,0 +1,10 @@
+op	words (J81 kext emitter)	A9 (Orchard)	tag
+0x32 start (0x669ca18, 13 words)	0x32, W+0x10, W+0x60, global+0x720, channel, [W+8] slot, [[cmd+0x180]], cmd+0x19c, [W+0x268], W+0x1e8, byte cmd+0x199, 0, seq ([W+0x270])	0x32, W+0x10, W+0x60, global+0x720, channel, slot, 0, 0, 0, W+0x1e8, 0, 0, seq	code; orchard
+0x80000018 wait (5 words)	0x80000018, W+0x278, W+0x280, W+0x280, seq	identical	code; orchard
+0x40000020 / 0xc0000020 (optional, 4 words)	{0x40000020 or 0xc0000020, cmd+0x12c, x, y}: emitted only when an accelerator feature (+0x12b8 object +0x34, +0x28 == 1) and cmd byte +0x128 allow it	not used	code
+0x101 event wait (0x669cd98, 4 words)	0x101, 0x004a000a, 1, 1	identical	code; orchard
+0x18 (5 words)	0x18, W+0x278, W+0x280, W+0x284, seq	identical	code; orchard
+0x33 finish (11 words)	0x33, global+0x720, channel, slot, W+0x1e8, byte cmd+0x199, 0, seq, [W+0x25c] (the second stamp address), [W+0x260] (seq), a relative offset computed from the microsequence cursor	0x33, global+0x720, channel, slot, W+0x1e8, 0, 0, seq, channel+0x944, seq, -0x6c	code; orchard
+end	0x40000017 per the A9 (the J81 finaliser 0x66a7700 was not traced; assume the same end word)	0x40000017	orchard; inferred
+which are what	constants: the opcodes, 0x004a000a, 1, 1; fwaddrs: W+..., global+0x720 (root +0x6c block + 0x720), channel; counters: seq; flags: the cmd bytes (0 for an empty job); the relative offset equals -0x6c when the layout matches the A9's (13 + 5 + 4 + 5 words before 0x33)	-	code; inferred
+global	root +0x6c, the 0x8c0 compute block (firmware's CL reader passes it to 0x10004d64)	S8003_CHANNEL + 2	fwdis; orchard
