@@ -1,0 +1,4 @@
+option	finding	risk	tag
+(a) slave-port write of TXCLKCTRL before boot	possible in principle (slave-port reads worked while META ran before E1), but pointless: TXCLKCTRL resets to DEFON and nothing sets AUTO	low, but no expected effect	source; capture; inferred
+(b) LDR records	the boot list holds 12 segment-MMU tuples and 27 CONFIG writes: TXDRCTRL 0xf0f0 on T0-T3; SYSC/MMCU cache set-up (0x04830010, 0x04830028, 0x04830600 = 0xc0c0, 0x04830038/40, DC/IC partitions 0x04830200-0x04830238, DCACHE/ICACHE_CTRL = 1); four words at 0x03000000-0x03000018, 0x04700000 and 0x040000c0; TXPRIVEXT MINIMON (0x80) on T0/T1. No clock or trigger register. Ours is Apple's, copied from the LDR	-	code; capture
+(c) RGX-side override	CLK_CTRL SIDEKICK = ON (0x0000100000000000 at bits 45:44) would force the sidekick domain on. CLK_STATUS already shows it running, and the firmware rewrites CLK_CTRL itself	moderate; no expected effect	source; fwdis; capture

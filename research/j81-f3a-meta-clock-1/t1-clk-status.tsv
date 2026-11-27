@@ -1,0 +1,6 @@
+register	field	value seen	meaning	tag
+RGX CLK_STATUS 0x0008	bit 22 SIDEKICK	1	RUNNING (upstream SIDEKICK_RUNNING = 0x400000)	source; capture
+RGX CLK_STATUS 0x0008	bit 21 BIF_SIDEKICK	1	RUNNING (BIF_SIDEKICK_RUNNING = 0x200000)	source; capture
+RGX CLK_STATUS 0x0008	all other unit bits (ISP..CDM, BIF 20, SLC 8, USC, TPU, MCU, ...; MASKFULL 0x1FFF077FF)	0	GATED: an idle GPU in automatic clock mode	source; capture
+reading	-	0x00600000 at every sample	the sidekick domain (garten, META wrapper, host interface: upstream polls SIDEKICK_IDLE_GARTEN for META) and its BIF port are clocked; the 3D units are idle-gated. So META's domain is not clock-gated. An idle iOS GPU after alive should look the same (inferred); a busy one adds the units in use	source; capture; inferred
+RGX CLK_CTRL 0x0000	SIDEKICK bits 45:44 (OFF 0, ON 0x100000000000, AUTO 0x200000000000), BIF_SIDEKICK 43:42	not read yet	the RGX-level clock mode of that domain. The firmware writes CLK_CTRL itself (about 13 accesses); Apple's host only reads it in the failure dump	source; fwdis; code

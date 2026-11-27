@@ -1,0 +1,6 @@
+rank	boot	change (one variable)	read afterwards	what it tells	risk	tag
+1	W1, wake detector plus P3	issue the slave-port read of T0 TXENABLE after alive (it stays pending, as before), then kick with RGX 0xb00 = 0x00000000 (non-counted DM0, the firmware's own self-kick value) instead of 0x10	MSLVCTRL1 0xa18 READY every 10 ms for 3 s; 0xb10; 0xba0 bits 7:0; 0xba8; DC consumer; 0xac8 bit 2	READY rising = thread 0 woke (whatever it then does). Consumer 1 = the pass ran. 0xb10 changing to 0 = the presented task was taken	low	fwdis; inferred
+2	W2, other DMs	as W1 but 0xb00 = 0x00000001 (DM1), then on another boot 0x00000002 (DM2): the firmware's own 3D/CL self-kick values; both DMs are on thread 0 (0xb30)	READY, 0xb10	whether any DM's background kick raises line 0. DM1/DM2 passes may fail their gate silently, but READY still shows the wake	low	fwdis
+3	R, read-only	read RGX CLK_CTRL 0x0000 (64-bit) after alive	SIDEKICK / BIF_SIDEKICK modes	whether the firmware left the sidekick domain in AUTO	none	source
+4	W3, counted kick with the detector	W1's detector with the usual 0xb00 = 0x10	READY	tells 'counted never wakes' apart from 'nothing wakes'	low	inferred
+skip	TXCLKCTRL ALL_ON through the slave port	-	-	reset value is already DEFON	-	source

@@ -1,0 +1,8 @@
+register	value (run 70/79)	meaning	tag
+0xb30 BGCTX_THREAD0_DM_ASSOC	0xffdf	background tasks of every DM except DM5 go to thread 0 (DM0, DM1, DM2 included)	source; capture; fwdis
+0xb38 BGCTX_THREAD1_DM_ASSOC	0	none to thread 1 (its setup branch never ran)	source; capture; fwdis
+0xb40 INTCTX_THREAD0_DM_ASSOC	0xffff	interrupt-context tasks of every DM go to thread 0	source; capture
+0xb48 INTCTX_THREAD1_DM_ASSOC	0	none	source; capture
+0xb58..0xb80 DMn_INTERRUPT_ENABLE	DM0 0xc0, DM1 0, DM2 0x8000, DM3 0x12c, DM4 0x200, DM5 0	which GPU event bits (MTS_GPU_INT_STATUS) start an interrupt-context task for each DM; set by the firmware (0x10020928). Not part of the background kick path	source; fwdis; capture
+routing for a DM0 background kick	DM0 to thread 0 (0xb30 bit 0), to external line 0 (inferred), vector 0x04820700 = 5, TXMASK bit 5	complete on the firmware side; nothing else META-side to write: TXMASKI swaps are the firmware's critical sections, and TXSTATI is used once by the interrupt path	fwdis; inferred
+lines the firmware programs	line 0 -> trigger 5 (thread 0); line 1 -> trigger 9 (thread 1); line 4 -> trigger 2 (thread 1); plus thread 0's timer (trigger 0, masked when idle)	which hardware signal drives each line is not visible	fwdis
