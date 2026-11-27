@@ -1,0 +1,9 @@
+register	offset	what it latches	read in runs 96-98	source	tag
+BIF_FAULT_BANK0_MMU_STATUS / REQ_STATUS	0x12b0 / 0x12b8 (+0x12bc high)	faults of the main BIF requesters (USC, MCU, PDS, CDM ...)	yes: 0	Mesa cr.xml; upstream cr_defs	source; capture
+BIF_FAULT_BANK1_MMU_STATUS / REQ_STATUS	0x12c0 / 0x12c8 (+0x12cc)	the second bank (META in run 81)	yes: the boot-time META fetch only	same	source; capture
+TEXAS_BIF_FAULT_BANK0_MMU_STATUS / REQ_STATUS	0x1430 / 0x1438 (+0x143c)	the TEXAS BIF (texture and image paths)	no	upstream cr_defs	source
+BIF_MMU_STATUS	0x12d0	MMU stalled / paused / busy, PC/PD/PT data	no	upstream cr_defs	source
+BIF_FAULT_READ	0x13e0	the last faulting read address	no	upstream cr_defs	source
+EVENT_STATUS	0x130	bit 9 MMU_PAGE_FAULT (and other events)	runs 81/82 only	upstream cr_defs	source; capture
+USC requester tags	-	IMG's tag table (not in the upstream headers read here): a USC write reports as its own TAG_ID through the main BIF bank. Unverified	-	-	source (not re-read); inferred
+reading	with the lane disabled no request is issued at all, so no register fires: run 98's silence is what the lane theory predicts	-	-	-	inferred

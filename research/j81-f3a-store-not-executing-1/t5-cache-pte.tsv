@@ -1,0 +1,4 @@
+item	finding	source	tag
+cache path	USC stores go through the MCU to the SLC. The SLC flush (0x3818) after the job's stamps reads 1 is enough when the job ends with Orchard's A8 tail: its fenced DOUTC task (K0 0x7) completes after the kernel's memory traffic. J2c has that tail. Orchard reads results after the job completes and does nothing else on the A8	pvr_arch_g5p_compute.c g5p_compute_end_pass_g4p; a8/n102/SHADERS.md	orchard; inferred
+A9 partial-line note	on the A9 Orchard lost the last workgroups' image stores without its end barrier; on the A8 the two-record tail is their tested equivalent	pvr_arch_g5p_compute.c 816-833	orchard
+PTE flags for the output	Orchard maps compute buffers as ordinary GPU buffers in the job VM (no protect bit). valid or bit 3 (SLC bypass) is not a known blocker; with bypass the SLC flush is moot. The slot is the job's VM (slot 1, W+0x8), the same catalogue as the heap	pvr_apple.c pvr_apple_vm_init; request 30	orchard; inferred

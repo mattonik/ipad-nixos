@@ -1,0 +1,5 @@
+rank	boot	change (one variable)	expect	tells	risk	tag
+1	J2c-fix	binding data: dword 4 = 0x10000002, dword 5 = 0, dword 6 = 0x90004001 (or keep the data and change code word 2 to 0xf4050100)	output word = 0xcafe0001	confirms the control-word index bug	low	orchard; inferred
+2	J2L, loop kernel	the kernel record's USC code = t3a (the proven empty kernel with jump distance 0)	the job never completes (stamps stay 0); the firmware may report a lockup; the supervisor resets in ~20 s	proves our USC code is fetched and executed, whatever the lane mask	moderate: a wedged GPU until reset	derived; inferred
+3	J2F, fixed-address store	USC = t3b (address 0x203000 from immediates, no common-store moves); keep the binding (the prologue still needs common dword 2)	output word = 0xcafe0001	separates the address path from the lane path: J2F stores but J2c does not = the common-store address words; neither stores = lanes or the store form	low	derived; inferred
+4	J2c read-back	after any J2c, read the five fault banks of t2 together	-	a fault anywhere = the store ran with a bad address	none	source

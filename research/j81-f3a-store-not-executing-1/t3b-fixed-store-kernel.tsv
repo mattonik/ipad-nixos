@@ -1,0 +1,66 @@
+byte offset	word	instruction	decode	confidence	source
++0x00	1181	prologue	entry; compares r0 (local ID) with common half 4 (dword 2 = threads per group, both halves) and disables lanes past it: still needs common dword 2 = 0x00010001	captured	g9p_isa.h 136-153
++0x02	8189				
++0x04	4100				
++0x06	acb7				
++0x08	01c8	push_init(3)	execution-mask stack in r3	derived	g9p.py
++0x0a	0306				
++0x0c	0101				
++0x0e	0120				
++0x10	46d1				
++0x12	0198	r0 = 0x00203000	address low (32-bit move)	derived	g9p.py mov_imm
++0x14	0300				
++0x16	0101				
++0x18	6121				
++0x1a	0120				
++0x1c	0154				
++0x1e	0038				
++0x20	0198	r1 = 0	address high	derived	g9p.py mov_imm
++0x22	0302				
++0x24	0101				
++0x26	0120				
++0x28	0154				
++0x2a	0038				
++0x2c	0198	r2 = 0xcafe0001	data	derived	g9p.py mov_imm
++0x2e	0304				
++0x30	0103				
++0x32	0121				
++0x34	cbfe				
++0x36	0154				
++0x38	0038				
++0x3a	0900	branch_to	to the epilogue	derived	g9p.py
++0x3c	010e				
++0x3e	0000				
++0x40	2510	store u32 r2 -> [r0:r1]	A8 address-pair store	captured (k_store_one)	g9p_isa.h 467-480
++0x42	0504				
++0x44	8100				
++0x46	4020				
++0x48	21c8	pop(3)	epilogue	derived	g9p.py
++0x4a	0306				
++0x4c	018c				
++0x4e	46d2				
++0x50	0100	jump to end	forward 0x30	derived	g9p.py
++0x52	0130				
++0x54	0000				
++0x56	c000	padding		captured pattern	ISA.md
++0x58	c000				
++0x5a	c000				
++0x5c	c000				
++0x5e	c000				
++0x60	c000				
++0x62	c000				
++0x64	c000				
++0x66	c000				
++0x68	c000				
++0x6a	c000				
++0x6c	c000				
++0x6e	c000				
++0x70	c000				
++0x72	c000				
++0x74	c000				
++0x76	c000				
++0x78	c000				
++0x7a	c000				
++0x7c	c000				
++0x7e	c000				
++0x80	8000	end	end word at 0x80	captured pattern	ISA.md
