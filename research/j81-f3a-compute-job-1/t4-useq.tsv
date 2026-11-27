@@ -1,0 +1,9 @@
+words (A9 microsequence, in order)	reading	tag
+0x32, W+0x10, W+0x60, global+0x720, channel, slot, 0, 0, 0, W+0x1e8, 0, 0, seq	start the compute job	orchard
+0x80000018, W+0x278, W+0x280, W+0x280, seq	wait for the engine	orchard
+0x101, 0x004a000a, 1, 1	wait for the 'finished' event and its status	orchard
+0x18, W+0x278, W+0x280, W+0x284, seq	-	orchard
+0x33, global+0x720, channel, slot, W+0x1e8, 0, 0, seq	finish	orchard
+channel+0x944, seq, -0x6c	the stamp write	orchard
+0x40000017	end	orchard
+J81 status	the 19H394 firmware's microsequence opcodes are not verified here (the decoded dispatcher was not traced); A8 and A9 share the opcodes Orchard uses, with different argument counts for 3D (23 against 20)	orchard; inferred

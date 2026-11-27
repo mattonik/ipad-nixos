@@ -1,0 +1,15 @@
+offset in the channel page	content (A9; a quarter page, one job at a time)	initial value	tag
++0x000	control address	fwaddr(channel) + 0x100	orchard
++0x004	ring address	fwaddr(channel) + 0x200	orchard
++0x008	TQ address	fwaddr(channel) + 0x900	orchard
++0x00c	-	4	orchard
++0x018	-	0xffffffff	orchard
++0x100..+0x140	five watermarks, 16 bytes apart; +0x140 is the host's (how far the ring is filled)	0	orchard
++0x150	ring entries	16	orchard
++0x200	pointer ring: 16 u32 entries, entry (seq - 1) % 16 = fwaddr of the record (channel + 0x400)	0	orchard
++0x400	the job record W (0x290 bytes on the A9)	per job	orchard
++0x800	microsequence (0xc0 bytes)	per job	orchard
++0x900	TQ; +0x904 = its own address	fwaddr(channel) + 0x900 at +0x904	orchard
++0x940	finish stamps, two words	0	orchard
++0x980	dependency object: +0x30 (u64) = 1, +0x48 (u64) = ~0, +0x50 = ~0, and +8 = 0xf in every 16-byte entry from +0x70 to +0x260	as listed	orchard
+placement on J81	one 4 KiB page in the firmware heap, at a fwaddr the firmware reaches: heap offset 0x120000 gives fwaddr 0xc0120000 (fwaddr = 0xc0000000 + heap offset, as Orchard's s8003_meta_addr computes for the shared VA)	-	orchard; capture; inferred

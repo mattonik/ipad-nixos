@@ -1,0 +1,16 @@
+W offset	field (A9 s8003_submit_compute)	value for a first job	J81 status	tag
++0x000	-	3	unverified for 19H394	orchard
++0x008	slot	the VM's geometry slot: 1	same model (slot 1 loaded, run 87)	orchard; capture
++0x00c	dependency object	fwaddr(channel) + 0x980	-	orchard
++0x010/+0x014	compute config words	from the user driver	unknown	orchard
++0x060	tail (u64)	from the user driver	-	orchard
++0x068	PDS terminate program (u64)	Mesa's fence-terminate program	-	orchard
++0x070	CDM control stream base (u64)	GPU VA of the control stream	-	orchard
++0x1e0/+0x1e4	microsequence address / size	fwaddr(channel) + 0x800 / 0xc0	-	orchard
++0x1ec..+0x20b	four state words (u64)	from the user driver	-	orchard
++0x20c..+0x23c	tail, terminate, PDS store (+0x21c, +0x224), PDS resume (+0x22c, +0x234), terminate	from the user driver	-	orchard
++0x244	compute terminate word	A9 0x00a00004; A8 0x00900004 (Orchard BRINGUP)	which one 19H394 wants is not known: it follows the GPU core, and J81's core is the A8 family	orchard; inferred
++0x258/+0x25c	stamp addresses	fwaddr(channel) + 0x940 / + 0x944	-	orchard
++0x260, +0x270	seq	1 for the first job	-	orchard
+cluster mask	A8X 16G77 sets W +0x20 = 0xff (all eight clusters)	-	the A9 record has no such write; 19H394 not checked	orchard
+record size	A9 0x290, A8 0x298	-	19H394's builder was not located in the kext; the object sizes follow the A9 (Orchard notes section 1), so 0x290 is the likelier	orchard; inferred

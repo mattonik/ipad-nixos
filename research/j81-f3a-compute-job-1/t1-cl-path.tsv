@@ -1,0 +1,9 @@
+step	J81 19H394 (Apple's host / the firmware)	Orchard A9 (s8003)	tag
+submit function	AGXMetaFirmware::submitCLChannel(AGXChannel*, u32, u32, u32) at 0x6691150; enqueue 0x668a884	s8003_submit_compute S:2847, s8003_publish S:2440	code; orchard
+ring	CL lane: host control fw +0x2f8, buffer fw +0x300 = root +0x10/+0x14 (our 0x46000/0x47000). Waits while full (consumer == producer + 1)	work ring of engine 2	code; capture; orchard
+entry (20 bytes)	+0 = 2 (engine: compute); +4 = the channel's firmware address (AGXChannel +0x120, through the accelerator's address translation); +8 = end (also kept in AGXChannel +0x118); +0xc/+0x10 = 0	+0 = 2, +4 = channel fwaddr, +8 = end, rest 0	code; orchard
+order	entry, dmb, producer = (producer + 1) & 0xff, then Fender +0x14 = 7, state check, MTS	entry, wmb, channel host watermark (+0x140) = end, wmb, producer + 1	code; orchard
+host watermark	not traced in the J81 enqueue (Apple's channel object keeps its own queue, +0x168/+0x170/+0x174); write it as Orchard does: channel +0x140 = end before the producer	channel +0x100 + 0x40 = end	orchard; inferred
+doorbell	MTS_SCHEDULE 0xb00 = 0x12 (counted, DM2), the J81 kext's value (0x66911d0). Not the A9's: there compute rides the geometry doorbell (DM0)	DM0	code; orchard
+firmware reader	0x10002cd8..0x10002d08: reads [root +0x10] control, [root +0x14] buffer, entry type must be 2; then calls 0x10004d64(the 0x8c0 block at root +0x6c, entry +4 channel, entry +8 end); consumer = (consumer + 1) & 0xff	-	fwdis
+which channel block	root +0x6c = the 0x8c0 block (Orchard's CHANNEL + 2, the compute scheduler); the A9 microsequence names it as 'global' (+0x720)	S8003_CHANNEL + 2	fwdis; orchard

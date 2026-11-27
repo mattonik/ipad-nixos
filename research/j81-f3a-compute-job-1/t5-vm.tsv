@@ -1,0 +1,5 @@
+item	finding	tag
+slot	compute runs on its VM's geometry slot (W +0x8); use slot 1, already loaded with our catalogue and tag 0x00400000 (run 87)	orchard; capture
+one VM for everything	works for a first job: the firmware loads slot 1 from MMU_ROOT[1], and the same catalogue as slot 0 maps the heap, the channel page and the job buffers. Separate VMs only add isolation	inferred
+what the job VM must map	the CDM control stream; the PDS heap (Orchard A8: GPU VA 0x3_0000_0000) with the terminate/store/resume programs; USC code and data, for a real kernel; the four hardware objects at 0x8_00000000 (Orchard: in every VM); a zero page at VA 0 (Orchard A8). The channel page is reached by the firmware through its own context	orchard; inferred
+page-table format	the same PC/PD/PT 4 KiB tables as the firmware's context	capture
