@@ -1,0 +1,9 @@
+field	value (runs 81/82)	meaning	tag
+bank 1 MMU_STATUS 0x12c0	0x00000001	FAULT (bit 0) only: no FAULT_RO (4), no FAULT_PM_META_RO (2), DATA_TYPE (7:5) 0, PAGE_SIZE (11:8) 0, CAT_BASE (15:12) 0: the walk was in context 0	source; capture
+bank 1 REQ_STATUS 0x12cc:0x12c8	0x000413e1_c000df80	ADDRESS (39:4) = 0xe1c000df80; TAG_ID (43:40) = 3; TAG_SB (49:44) = 1; RNW (50) = 1 (read)	source; capture
+TAG_ID 3 / TAG_SB 1	-	META, thread 0 instruction-cache fetch (IMG's DDK debug decode for classic Rogue: TAG_ID 3 = META; sideband 0/1/2/3 = DCache/ICache/JTAG/slave bus of thread 0, 4-7 the same for thread 1). This table is not in the upstream files read here; it is quoted from memory of IMG's rgxdebug.c, so treat it as unverified	source (not re-read); inferred
+the address	GPU VA 0xe1c000df80	buffer offset 0xdf80 = seg0 storage 0x1000cf80, a 64-byte instruction line in the firmware text (MiniM PCs around 0x10019f00)	capture; fwdis
+context	CAT_BASE 0	META's segments name page catalogue 0 and BIF DM 7: boot-list OUTA1 0x7e1 decodes, through upstream's classic-BIF macro OUTADDR_TOP_SLC(pc, bifdm) = pc << 44 or bifdm << 40, as address bits 39:32 = 0xe1, BIF DM 7 (upstream META_BIFDM_ID) and PC index 0. META is not in CAT_BASE_INDEX (0x1240: TA, PIXEL, CDM, TDM, TLA, HOST, RAY, RVTX); it always uses CAT_BASE0	source; capture
+BIF_MMU_STATUS 0x12d0	0	not STALLED (2), not PAUSED (1), not BUSY (0): the fault did not stall the MMU	source; capture
+EVENT_STATUS 0x130	0x200 from h11 on	MMU_PAGE_FAULT latched at META's release (h11 is the release), before alive	source; capture
+MTS 0xbb0 / 0xb98	0 / 0	no GPU interrupt status in the MTS and no interrupt-context schedule, although event bit 9 is pending and DM4_INTERRUPT_ENABLE has bit 9	capture; inferred

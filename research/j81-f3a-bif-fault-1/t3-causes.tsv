@@ -1,0 +1,7 @@
+rank	cause of a READ fault on a mapped page	fit for our case	tag
+1	a fetch before the context is in effect: META's first instruction-cache line fills at release, raced against the MMU taking CAT_BASE0 (or an MMU cache still holding the state from before the power cycle). The later accesses work	high: the fault is latched exactly at the release (h11), is a single event, is an ICache read, and the firmware then reaches alive	capture; inferred
+2	a prefetch beyond the code the thread runs (the MMU or ICache auto prefetch, BIF_CTRL ENABLE_MMU_AUTO_PREFETCH bit 6) hitting a not-yet-valid walk	medium; the same timing	source; inferred
+3	a PT or PD entry format issue for that page alone (page index 0xd of the first PT)	low: the walk check covers pages 0, 0x22 and the last, not 0xd; a format error would fault more widely. Check entry 0xd	capture; inferred
+4	protect rules (PM/META protect bit 62)	low: no FAULT_PM_META_RO or FAULT_RO flag, and B1 (no bit 62) ran the same	source; capture
+5	the 40-bit physical address (0x800d00000 + ...)	low: the PD/PT entries hold bits 39:12, and the heap works	source; capture
+6	walker coherency (the walker reading our tables through a stale SLC line)	low: the tables are written before power-up and are not changed afterwards	inferred
