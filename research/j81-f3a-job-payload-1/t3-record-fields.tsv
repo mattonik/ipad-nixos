@@ -1,0 +1,10 @@
+record field	meaning (Orchard pvr_apple.h struct pvr_apple_g5p_compute_regs, A9 offsets)	empty-job value (mirroring Orchard)	tag
+W+0x060 and W+0x20c	tail (u64, 16-byte aligned)	the stream address (0x200000), inferred for a stream with no kernel	orchard; inferred
+W+0x068	pds_terminate (u64, PDS code or data << 32)	the HALT: code 0x201000, data 0x201000 (see t4 on the address convention)	orchard; inferred
+W+0x070	CDM control stream base (u64)	0x200000	orchard
+W+0x1ec..+0x20b	state[4]: context state buffers	0 for an empty job (nothing to store or resume), inferred	orchard; inferred
+W+0x214 and W+0x23c	terminate (u64): 'address of the control stream's terminate word'	0x200000	orchard
+W+0x21c / W+0x224	pds_store (code or data << 32) / pds_store1	the HALT, as pds_terminate / the descriptor word (0x00900004)	orchard; inferred
+W+0x22c / W+0x234	pds_resume / pds_resume1	the HALT / the descriptor word	orchard; inferred
+W+0x244	the descriptor word (t2)	0x00900004 (then 0x00a00004)	code; orchard; inferred
+W+0x010/+0x014	config[0..1]: kext copies cmd +0xe0 to +0x10 and sets +0x14 to the item mode	0 / 0	code; orchard
