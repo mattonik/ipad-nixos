@@ -1,0 +1,7 @@
+item	finding	source	tag
+32-bit entry (GPC +0xc0, 0x669c610)	two words: 0x00FF0000 or reg (the mask byte 0xff in bits 23:16), then the value	0x669c624-0x669c64c	code
+64-bit entry (GPC +0xc8, 0x669c66c)	four words: reg + 4 (mask byte 0), the high half, then 0x00FF0000 or reg, the low half. Matches the run-18 note {0x380c, 0, 0x00ff3808, 0}	0x669c68c-0x669c6fc	code; capture
+cursor	starts at Fender +0x10000 (GPC +0xa8); +4 per word (GPC +0xb0)	0x669c5dc-0x669c5f4	code
+terminator	0xFFFF0000 written at the cursor (GPC +0xb8)	0x669c5f8-0x669c608	code
+writer modes	fw +0x1e0 (32-bit), +0x1e8 (64-bit) and +0x1f0 (64-bit with a right shift) go to ConfigRAM when the global flag 0x7a4d882 bit 1 is set, and straight to RGX otherwise	0x6691818-0x66918c0	code
+room	ConfigRAM runs from Fender +0x10000 up to the override at +0x20000: 0x10000 bytes = 16,384 words; the list uses 31	fw +0xa8 cursor; requests 6-8	code; inferred

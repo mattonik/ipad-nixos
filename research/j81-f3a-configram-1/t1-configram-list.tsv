@@ -1,0 +1,13 @@
+index	words	RGX offset	name	value	Apple writer	in our 31-word list	tag
+1	0-3	0x100	SOFT_RESET (64-bit)	0x00E7FFFFFFFFFC1D	fw vtable +0x1e8 at 0x6690c08	yes, same value	code; capture
+2	4-7	0x100	SOFT_RESET (64-bit)	0x00E7FE071FFFFC1D	0x6690c28	yes	code; capture
+3	8-11	0x100	SOFT_RESET (64-bit)	0x0000000100000000	0x6690c50	yes	code; capture
+4	12-13	0xbf8	META_BOOT (32-bit)	0x1 (MODE_EN)	fw vtable +0x1e0 at 0x6690c6c	yes	code; capture
+5	14-17	0x1200 + 8 x ctx (ctx 0)	BIF_CAT_BASE0 (64-bit)	page-catalogue phys (fw +0x3e8 object), no shift	accel +0x740 (0x6699228, through fw +0x1f0 with shift 0)	yes, with our catalogue	code; capture
+6	18-21	0x3800	SLC_CTRL_MISC (64-bit)	0x0003550000300001	accel +0x748 (0x669924c)	yes	code; capture
+7	22-25	0x3808	SLC (64-bit)	0x1	accel +0x748	yes	code; capture
+8	26-29	0x100	SOFT_RESET release (64-bit)	0x0	0x6690cc8, only when the global flag 0x7a4d882 bit 1 (ConfigRAM mode) is set	yes	code; capture
+9	30	-	terminator	0xFFFF0000 at the cursor, cursor not advanced	GPC vtable +0xb8 (0x669c5f8) at 0x6690cec	yes	code; capture
+outside ConfigRAM, same builder	-	Fender +0x10	TIMER_POWER_INT_ENABLE	enableGPCHostInterrupts(3) = 0: type 3 is the jump table's fall-through, which stores 0 (all power interrupts off)	GPC vtable +0x20 at 0x6690bd8	check: the notes do not say whether our sequence writes Fender +0x10	code
+outside ConfigRAM, same builder	-	Fender +0x0	TIMER_SLEEP_CONTROL	0x40000000	GPC vtable +0x58 at 0x6690bec	yes (as noted in earlier runs)	code; capture
+outside ConfigRAM, same builder	-	Fender +0x10000	cursor reset	-	GPC vtable +0xa8 (cursor = 0x10000)	yes	code

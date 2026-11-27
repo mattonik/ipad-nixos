@@ -1,0 +1,5 @@
+rank	boot	change (one variable)	read afterwards	what it tells	risk	tag
+0	none for ConfigRAM	-	-	the list already matches Apple's; appending entries has no basis	-	code
+1	F1, Fender power-interrupt enable	write Fender +0x10 = 0 at hardware start, as Apple does (only if our sequence does not already)	Fender +0x10/+0x14 after state 1; then the usual kick reads	parity with Apple's hardware start; it turns GPC power interrupts off and should not affect the MTS path (inferred)	low	code; inferred
+2	N3 (request 21)	CONTROL +0x20 = 1 (iOS idle power off)	Fender +0x1000 over 30 s, 0xac8, DC consumer	the remaining host input that differs from iOS. If the firmware parks, iOS's park/wake path (event 6, Fender snoop) takes over	moderate: park	code
+3	S2 (request 24)	clear MSLVIRQSTATUS 0xac8 bit 2 (write 0xfffffffb) after alive, kick, poll 1 s	0xac8 bit 2	any firmware activity after the kick	low	source

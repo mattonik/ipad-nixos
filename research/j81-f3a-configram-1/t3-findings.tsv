@@ -1,0 +1,7 @@
+item	finding	tag
+the '12 computed entries' of request 24	not ConfigRAM entries. They are vtable slot +0x1e8 calls on other classes: 11 with x1 = 0, right after an OSMetaClass cast of a registry or dictionary object (0x666dd00, 0x6682a3c, 0x6683ab0..0x6683ec4). Request 24 counted every '[x8, #0x1e8]' call; that was wrong	code
+Apple's complete list	nine entries / 31 words (t1), built only by the hardware-start function fw +0xe0 (0x6690bbc) and its two accelerator helpers. No other code writes ConfigRAM	code
+MTS or META-path entries	none: no entry touches 0xa00-0xbff (MTS, slave port, MSLVIRQ), clock gating or idle control. The only META-related entry is META_BOOT 0xbf8 = 1	code
+run-time values	only BIF_CAT_BASE0 (the page-catalogue address, ours) depends on run time; everything else is a constant for J81	code
+firmware reads	the firmware never reads SOFT_RESET, META_BOOT, BIF_CAT_BASE0 or the SLC pair back; of those registers it only writes the SLC flush 0x3818 (four sites)	fwdis
+conclusion	our ConfigRAM list equals Apple's, word for word. The trigger problem is not in ConfigRAM. Nothing to append	code; capture
