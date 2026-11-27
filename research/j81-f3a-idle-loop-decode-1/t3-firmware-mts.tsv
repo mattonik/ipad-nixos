@@ -1,0 +1,11 @@
+RGX offset	direction	PC(s)	value or source	guard or context	tag
+0xb00 MTS_SCHEDULE	write	0x1001f154, 0x1001f174, 0x1001f1e8, 0x1001f204, 0x1001f24c, 0x1001fdf4, 0x1001fe44, 0x1001fe94, 0x80009e2c, 0x80009e48	0 at 0x1001f154 (DM0, non-counted, background); others from registers	the firmware kicks itself; kick-state +252 bits 0/1 are set around it	fwdis
+0xb08 (not defined upstream)	write	0x80009c0c; 0x800099d8	0 before every sleep; 2 in the interrupt handler 0x80009970	inferred: an MTS context-done or status word	fwdis; inferred
+0xb10 (not defined upstream)	read	0x80009cd8	low 4 bits = the DM of the presented task	after a non-timer wake	fwdis
+0xb20 (not defined upstream)	read	0x10022d74	bit 0 and bits 5:2 stored into a status record	status/dump helper	fwdis
+0xb30 / 0xb40	write	0x10020cc8 / 0x10020cc0	0xffdf / 0xffff	thread-0 MTS setup	fwdis; capture
+0xb38 / 0xb48	write	0x10020d40 / 0x10020d38	0xffff / 0xffff	thread-1 MTS setup (not run on our boots)	fwdis; capture
+0xb58	write	0x10020984	computed (run 70: 0xc0)	setup next to vector 0x04820720 = 2	fwdis; capture
+0xb68	write	0x1001a1e8	computed (run 70: 0x8000)	-	fwdis; capture
+0xb70, 0xb78	no store found in decoded code	-	run 70: 0x12c, 0x200	reset values, or an access in an UNKNOWN line	fwdis; inferred
+0xb98, 0xba0, 0xba8, 0xbb0, 0xbb8, 0xbc0, 0xbc8	never accessed	-	-	searched: immediate offsets, constructed addresses (ADD/MOV/MOVT), and data words 0xbxx / 0x02000bxx in every segment. None found	fwdis

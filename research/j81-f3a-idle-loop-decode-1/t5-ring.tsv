@@ -1,0 +1,7 @@
+item	finding	source	tag
+consumer function	0x10001cfc, called once per DM pass with the DC producer read at the start of that pass	0x100025a4-0x100025a8	fwdis
+control and buffer	control = [root +0x18], buffer = [root +0x1c]; consumer at control +0, producer at control +0x10	0x10001d10-0x10001d40; 0x10002554/0x10002588	fwdis
+entry	buffer + consumer x 20; type at +0. Types 3-10 go through a jump table (type 8 included); other types go to 0x10001e2c	0x10001d48-0x10001d90	fwdis
+nothing to do	consumer == producer snapshot: returns at once	0x10001d18-0x10001d24	fwdis
+what it writes back	the consumer advance after a handled entry is in the jump-table targets (0x1000201c, 0x10002194, 0x1000228c, ...), not traced entry by entry	-	fwdis
+the layout matches the host	stride 20, the producer at +0x10 and the consumer at +0 agree with Apple's submitDeviceControl and with run 69. No size or mask field is read	request 19	fwdis; code

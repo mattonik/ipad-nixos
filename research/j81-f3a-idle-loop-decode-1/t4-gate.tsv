@@ -1,0 +1,8 @@
+condition on the path to a device-control pass	who provides it	ours	tag
+MTS raises the hardware trigger routed by vector 0x04820700 to thread-0 trigger 5	hardware, after the 0xb00 kick	unknown: run 70 saw no effect. Whether the MTS needs 0xbc8 to raise it is a hardware question. Neither Apple's host nor the firmware writes 0xbc8, apart from 12 ConfigRAM entries whose register is computed (not resolved)	fwdis; code; inferred
+RGX 0xb10 & 0xf names DM0	hardware	not read yet	fwdis
+root +0x70 = fwaddr of POLICY, with POLICY +8 <= 1	host (iOS root fill 0x6689b68: fw +0x258)	+8 is 0 unless blob f sets it (the E3 minimum does not list it). Confirm that root +0x70 holds POLICY's fwaddr	fwdis; code
+root +0x74 = fwaddr of the 0x28-byte object, with word 0 = 0 and 0x1000374c returning 0	host (0x6689b88: fw +0x260)	confirm that root +0x74 is set and its object zeroed (request 9's table names it)	fwdis; code
+priv +0x170 bit 1 clear	firmware	-	fwdis
+producer (DC control +0x10) already written when the pass starts	host	run 69/70: written before the kick	fwdis; capture
+0xbc8 (SCHEDULE_ENABLE)	nobody	0, the same as an iOS boot where nothing writes it, unless a computed ConfigRAM entry or iBoot sets it	code; fwdis; inferred

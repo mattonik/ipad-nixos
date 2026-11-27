@@ -1,0 +1,6 @@
+rank	boot	change (one variable)	read afterwards	what it tells	risk	tag
+1	P1, read-only	run 70 unchanged	RGX 0xb08, 0xb10 and 0xb20 before the kick, immediately after it, and 10 ms later. Also N1's Fender reads, and the log ring (root +0x28)	0xb10 & 0xf changing to 0, or 0xb20 moving, means the MTS presented the DM0 task. 0xb08 changing to 2 means the firmware's interrupt handler ran. Unchanged means the kick never reached META	none: RGX reads in state 1 are proven	fwdis; inferred
+2	P2, root gate pointers	only if blob f lacks them: root +0x70 = fwaddr of POLICY; root +0x74 = fwaddr of a zeroed 0x28-byte object (iOS: fw +0x258 and fw +0x260 objects, 0x6689b64-0x6689b88)	DC consumer, event write index	whether the gate was what held the pass	low: memory-only blob change	fwdis; code
+3	P3, non-counted kick	RGX 0xb00 = 0x00 (DM0, non-counted: the value of the firmware's own self-kick at 0x1001f154) instead of 0x10	P1's reads and the DC consumer	whether the counted form is the issue. Apple's host uses 0x10, so a pass here points at MTS counted-task state	low	fwdis; code
+4	N2 from request 21	RGX 0xbc8 = 0x1	read-back, then P1's reads	now only a hardware-level test: neither the host nor the firmware writes 0xbc8	low to moderate	fwdis; inferred
+5	N3 from request 21	CONTROL +0x20 = 1	as in request 21	iOS parity	moderate (park)	code
