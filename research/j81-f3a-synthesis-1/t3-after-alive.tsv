@@ -1,0 +1,9 @@
+step after alive	Orchard (A8 BRINGUP section 5; A9 lane IP2)	ours	tag
+drain events	yes (read index advanced as records are read)	yes	orchard; capture
+zero page at GPU VA 0 and hardware objects in every VM	mapped before boot (A8)	objects yes; zero page no	orchard; capture
+write the ring entry, barrier	yes	yes	orchard; capture
+Fender R1 +0x14 = 7 (Orchard calls it a wake; it is the power-interrupt status acknowledge, request 21)	yes	yes	orchard; code; capture
+read the Fender state without waiting, then MTS 0xb00 unconditionally (TA 0x10, 3D 0x11, compute 0x12; DC 0x10)	yes	yes	orchard; capture
+wait for the consumer	yes (3 s)	yes	orchard; capture
+A9: arm self-park only after the epoch completes (CONTROL +0x20 = 1, policy +4 = 16, coefficient block)	after the first command	not done; tried +0x20 = 1 at map (run 73), no change	orchard; capture
+AIC: IRQ-driven completion (250 us poll)	host-side only; Orchard's first command was consumed with polling	polling	orchard

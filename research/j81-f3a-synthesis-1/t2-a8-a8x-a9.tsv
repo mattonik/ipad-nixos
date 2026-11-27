@@ -1,0 +1,10 @@
+item	A8 (T7000, N102)	A8X (T7001, J81, ours)	A9 (S8000/S8003)	source	tag
+working first command	yes: 'Boot to the alive event, the device-control ring and the slot load worked from the first module stage'	no (ours); Orchard has not run its driver on an A8X	yes (type 8 consumed about 0.2 s after alive, lane IP2)	a8_n102_BRINGUP section 4; a8_n102_A8X; IP2	orchard
+firmware	META LDR g4p_b0, 0x24000, no core memory	G4G g4g_a0, 0x29000, core memory 0xc590 at 0x80000080 (the A9 path)	0x30000, core memory	a8_n102_A8X	orchard; code
+LDR	same format and the same 27 configuration writes (byte for byte)	same (our boot list is Apple's)	same loader family	a8_n102_A8X; request 27	orchard; code
+objects	INIT 0x1118, POLICY 0x1058, PLATFORM 0x4dc, CONTROL 0x1528, ring control 0x30	same object table and 0x30-byte ring control as the A8	ring control 0x20	a8_n102_A8X	orchard
+MMU	classic BIF, BIF_CAT_BASE0	classic BIF (ours)	XE MMU 0xe140/0xe148	BRINGUP	orchard
+hardware objects	0x8_ window at 0x8_00000000 mapped in every VM, plus a plain zero page at GPU VA 0	hardware objects present (E4); zero page at VA 0 NOT mapped	no fence buffer named	BRINGUP; request 18	orchard; capture
+bridges, power	33 bridge stores; MISC_ACG + SOC_TVM before PS_GFX	66 stores; dwi must stay on; MISC_ACG on	power domain plus Fender	A8X note; BRINGUP	orchard; capture
+SLC	SLC_CTRL_MISC 32-bit 0x200001	64-bit with scramble word (ours: Apple's 0x0003550000300001)	SLC3, scramble, spare page	A8X note; request 25	orchard; code
+A8X-only	-	one builder writes RGX 0x8238 (0 then 1) for an unknown job type	-	A8X note	orchard
