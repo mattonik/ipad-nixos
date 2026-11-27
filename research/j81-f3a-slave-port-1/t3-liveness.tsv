@@ -1,0 +1,10 @@
+signal	address	asleep	running a pass or posting	how to use	tag
+META-to-host interrupt	RGX 0xac8 MSLVIRQSTATUS bit 2 (TRIGVECT2); enable 0xad0 = 4 (EVENT0) and level 0xad8 = 1 are set by the firmware (0x10020960/0x1002094c)	stays 0 once cleared	goes to 1 when the firmware raises its host interrupt (it did for alive, inferred)	read it; clear it with a write of 0xfffffffb (upstream pvr_fw_meta.c 562, TRIGVECT2_CLRMSK); then kick and poll. A 1 means the firmware ran and posted something. It is the same line as AIC IRQ 138 on the SoC side	source; fwdis; inferred
+event ring write index	event control +0x10 (root +0x20)	unchanged	advances by one per event	already used; a DC pass posts no event for type 8, so it shows only other activity	code; capture
+DC consumer	DC control +0x0 (root +0x18)	0	1 after the type-8 entry	already used	fwdis; capture
+type-8 side effect	root +0x1480 = state +0x1020	unchanged	the handler writes it (0 to 0, so invisible)	set state +0x1020 to a marker such as 0x5a first and root +0x1480 shows whether the handler ran, even if the consumer write were lost	fwdis
+slave-port READY	RGX 0xa18 bit 24	stays 0 with a request pending	goes to 1 when META wakes and services it	free liveness: after the stalled read, keep polling 0xa18 for 30 s. READY appearing on its own dates the first wake (likely the first timer tick)	capture; inferred
+MTS presentation	RGX 0xb10	0x10 after the kick	read by the firmware after a wake; it does not write it	only shows the MTS side	fwdis; capture
+RGX 0xb08	-	0	firmware writes 0 before every sleep, 2 in its interrupt handler	not usable: host writes are ignored (run 75/76), which ends request 23's L1	capture; fwdis
+RGX TIMER 0x160/0x164, EVENT_STATUS 0x130	-	hardware counters/status	not firmware liveness	not useful for this	source
+firmware memory heartbeat	-	none in DDR: the idle loop writes only core memory (priv 0x8000a000, kick state 0x8000a2c8) and META registers	-	not visible to the host without the slave port	fwdis

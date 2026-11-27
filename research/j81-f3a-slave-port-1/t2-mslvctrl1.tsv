@@ -1,0 +1,14 @@
+bit(s)	upstream name	0x06000040	meaning	tag
+31:30	DEFERRTHREAD	0	-	source; capture
+29	LOCK2_INTERLOCK	0	-	source; capture
+28	ATOMIC_INTERLOCK	0	-	source; capture
+26	GBLPORT_IDLE	1	the global (memory) port is idle	source; capture
+25	COREMEM_IDLE	1	core memory is idle	source; capture
+24	READY	0	the slave port has not finished the request; upstream and Apple both wait for READY and GBLPORT_IDLE (0x05000000) before and after every request	source; code; capture
+23:21	DEFERRID	0	-	source; capture
+20	DEFERR	0	no deferred error	source; capture
+18	WR_ACTIVE	0	no write in flight	source; capture
+6	(not defined upstream)	1	set here, unknown; perhaps this META version's pending-read or wait flag (inferred)	source; capture; inferred
+5:4	THREAD	0	thread 0	source; capture
+3:2 / 1:0	TRANS_SIZE / BYTE_ROUND	0 / 0	-	source; capture
+reading	-	-	both idle bits with READY clear: a core-register request was accepted and waits inside META with no memory traffic. Slave-port reads worked in runs 54-61, while the pre-E1 firmware was busy (PC samples, TXSTATUS, TXTIMER all read). They stall since the firmware reaches its idle loop and blocks in a TXSTAT read with thread 1 off. The protect bit was ruled out by run 76. So the likely cause is that the META core does not service core-register requests (clock or idle gated) while every thread is blocked on a trigger, until a trigger wakes it (inferred). Apple never reads in that state; it stops thread 0 with a write first, and only after the firmware asked	capture; code; inferred
