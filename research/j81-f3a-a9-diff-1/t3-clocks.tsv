@@ -1,0 +1,7 @@
+register	what it controls	who writes it	reading for J81	tag
+RGX CLK_CTRL 0x0000	per-unit clock modes (ISP, TSP, TE, ..., BIF, SIDEKICK, ...); no META field upstream	the firmware (about 13 accesses through its RGX base); Apple's host only reads it in the failure dump	not META's clock	source; fwdis; code
+RGX CLK_STATUS 0x0008	per-unit clock status	-	safe read: shows whether the GPU units are clocked	source
+META TXCLKCTRL 0x048000b0	META's own clock gating (upstream: ALL_ON 0x55111111, ALL_AUTO 0xAA222222)	neither Apple's host nor the firmware writes it (the firmware only reads 0x048000b8)	left at its reset value; reachable only through the slave port	source; fwdis; code
+MTS_GARTEN_WRAPPER_CONFIG 0xb50 bit 0	IDLE_CTRL: 0 = META drives the garten idle signal	upstream host writes META; Apple's host never; reads 0xc0000000 (IDLE_CTRL = META)	when META's threads all block, the garten reports idle (inferred), which is what an automatic clock gate acts on	source; capture; inferred
+PMGR MISC_ACG P+0x32000 bit 0	global automatic clock gating	iOS PMGR at start; our W1/W2a (presumably)	with it on and META idle, the GPU clock may be gated; on iOS the wake comes from a kick (Fender snoop, TIMER_KICK_STATUS) or the firmware's park/wake path (inferred)	orchard; code; inferred
+Fender TIMER_SLEEP_CONTROL +0 bit 29	Apple's 'SNOOP' bit: kicks are caught by the Fender while the GPU sleeps	not written by the host; ours reads it clear	if the GPU clock is gated with snoop off, a kick is neither delivered nor latched (inferred)	code; capture; inferred

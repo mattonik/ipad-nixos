@@ -1,0 +1,14 @@
+step	working boot (Orchard A8 iOS order, A8 driver; the A9 docs here give no register-level PMGR list)	registers and values	our J81 boot	visible to our module	tag
+1	PLL1/PLL4 control	PMGR PLL1/PLL4 +8 bits 31:30 = 01	not known to be done (Orchard: not needed for the core-ID read)	yes (PMGR)	orchard
+2	power-gate block words	bit 31 set in a list from P+0x22000 (LLB/iBoot clear it each boot)	not known to be done (Orchard: not needed for the ID read)	yes	orchard
+3	device and performance tables	PMGR DVFS table (the request word P+0x1c200: bit 31 enable, bit 30 busy, bits 11:8 state)	the state-1 request locks the PLL (P+0x5004 = 0x40000000 at h11), so the table works for state 1	yes	orchard; capture
+4	MISC_ACG	P+0x32000 bit 0 = 1 (global automatic clock gating), before PS_GFX	the W1/W2a steps (presumably MISC_ACG/SOC_TVM, as Orchard's J81 note; please confirm)	yes	orchard; capture; inferred
+5	voltage manager on	-	not known	yes	orchard
+6	SOC_TVM	P+0x2d000 bit 0 = 1	W1/W2a (confirm)	yes	orchard; capture; inferred
+7	PS_GFX on	auto-PM off (bit 28), history cleared, target 0xf, poll actual 0xf	done; reads 0x3ff (actual 0xf; history bits 9:8 set)	yes	orchard; capture
+8	bridges	33 stores on the A8; 66 on J81	done (66, re-applied after the power cycle)	yes	orchard; capture
+9	Fender wake	R1 +0x10000 = list end, R1 +0 = 0x40000000, R1 +0x1000 = 0x11, poll bit 4 clear	done; Fender +0x10 = 0 already (Apple's enableGPCHostInterrupts(3))	yes	orchard; code; capture
+10	R0 gate	Fender state 1 and PLL +4 bit 30	done at h11	yes	orchard; capture
+11	firmware load, ConfigRAM list, release, alive	as Apple's	done; the list matches Apple's word for word (request 25); alive at once	yes	code; capture
+12	A9 only: self-park enable	CONTROL +0x20 = 1, armed after the epoch completes (lane IP2)	not done (our CONTROL +0x20 = 0); on the A9 the first type-8 was consumed with it at 0	yes (memory)	orchard; code
+-	before Linux: iBoot/LLB state of PMGR, clocks and the AIC	-	-	only by reading the registers	orchard; inferred
