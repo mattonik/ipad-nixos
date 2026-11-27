@@ -1,0 +1,11 @@
+address	value	PC	meaning (public name where known)	tag
+META 0x04820700	5	0x10020c70 (thread-0 MTS setup); also 0x1001fd58 and 0x1001fef4	external trigger 0 vector: routes line 0 to trigger 5. Thread 0's TXMASK includes bit 5 (inferred: the vector is the TXSTAT bit number)	fwdis; inferred
+META 0x04820708	9	0x10020cf0 (thread-1 setup)	external trigger 1 vector: routes line 1 to trigger 9 (thread 1's TXMASK has bit 9)	fwdis; inferred
+META 0x04820720	2	0x1002097c (interrupt setup)	external trigger 4 vector: routes line 4 to trigger 2 (thread 1's TXMASK has bit 2)	fwdis; inferred
+TXMASK, thread 0	0x21 (bits 0 and 5); 0x20 at 0x1001feec	0x100003fc swap, called from 0x10020c80; 0x1001fd50/0x1001feec	which triggers end the TXSTAT sleep: 0 = the thread timer, 5 = external line 0. The 0x20 form masks the timer for a while	fwdis
+META 0x04820010	1 before each sleep; read and cleared in five helpers	0x80009c04; 0x1001f568-0x1002051c	external trigger status (HWSTATEXT on META, inferred from the address): write 1 to clear line 0. The '++#16' addressing is pre-increment, so the base 0x04820000 plus 16 is the address. Checked: 0x04830000 ++#48 is upstream META_CR_SYSC_JTAG_THREAD (0x04830030)	fwdis; source; inferred
+META 0x04800020 (thread-0 TXTIMER)	the complement of (period x 1000 >> 8), the period from priv +0x2c4 or +0x270	0x80009cbc	the thread timer re-arm after a timer wake. It is not armed before the first sleep	fwdis; inferred
+TXSTAT	0x20 written before the sleep; 1 written after a timer wake; read (blocking) at 0x80009c1c	0x80009be8, 0x80009c38, 0x80009c1c	trigger status; the blocking read is the sleep	fwdis
+RGX 0xad0 / 0xad8	4 / 1	0x10020960 / 0x1002094c	META_SP_MSLVIRQENABLE (EVENT0) and MSLVIRQLEVEL (level): the META-to-host interrupt, not the MTS-to-META path	fwdis; source
+no write found	HWMASKEXT or HWLEVELEXT-type registers (0x04820030..0x04820068)	-	on META cores without a mask register, programming the vector is the enable (inferred from the Linux metag driver's 'no mask' mode); the firmware's setup looks complete	fwdis; inferred
+host side	-	-	Apple's host writes nothing in the 0x0482xxxx block (no slave-port trigger writes in the kext)	code

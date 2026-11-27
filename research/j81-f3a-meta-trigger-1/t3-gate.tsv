@@ -1,0 +1,8 @@
+gate input	required	blob f (run 74)	tag
+POLICY +8 (root +0x70)	0 or 1 (2 only with POLICY +12 = 0, or +12 = 4 with priv +0x244 = 0)	0	fwdis; capture
+0x28 object word 0 (root +0x74)	0, then 0x1000374c must return 0 (word 0 = 1 takes another path)	0	fwdis; capture
+0x1000374c	returns busy if any of: root +0x64 block +0x830, root +0x68 block +0x77c, root +0x6c block +0x75c is nonzero (the TA/3D/CU blocks of request 9's table)	zero heap blocks: passes (confirm the three words are 0)	fwdis
+priv +0x170 bit 1	clear for the normal DM pass	firmware-internal (core memory)	fwdis
+DC entry type 8	handler 0x10001f10: masks interrupts, copies state +0x1020 (the counter count, 0) to root +0x1480, then the common tail advances the consumer ((consumer + 1) & 0xff) until it equals the producer	written as Apple's template	fwdis; code
+consequence	if the pass had run, the consumer would have moved. It did not, and the gate passes, so thread 0 most likely never took trigger 5	-	inferred
+thread 1	not needed for DM0. The firmware starts it itself (0x10022620: SP from config +0x2f4, PC from config +0x2f0 via the core-register port, T1 TXSTATUS = 0x00020000, T1ENABLE = 1, priv +0x16c = 1). The call is reached from the command-stream interpreter (coremem 0x80004e90 to 0x1000d358, gated on root bytes +0x498/+0x49a), not from boot	not started (expected)	fwdis
