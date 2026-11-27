@@ -1,0 +1,66 @@
+byte offset	word	instruction	decode	confidence	source	tag
++0x00	1181	prologue	entry; A8 kernel with no threadgroup common store keeps W1 0x8189 (k_store_one)	captured (prefix equals the A10 store_marker's; g9p_isa.h g9p_prologue)	g9p_isa.h 143-153; a8/M2	orchard; captured
++0x02	8189					orchard; captured
++0x04	4100					orchard; captured
++0x06	acb7					orchard; captured
++0x08	01c8	push_init(3)	execution-mask stack in r3 (first register after r0..r2)	derived from the A10 encoder (no A8 variant in Orchard's compiler)	g9p.py push_init; g9p_isa.h	orchard; derived
++0x0a	0306					orchard; derived
++0x0c	0101					orchard; derived
++0x0e	0120					orchard; derived
++0x10	46d1					orchard; derived
++0x12	0198	r0 = common dword 0	common-store move: buffer address low word	derived (Orchard's A8 common-store move form, g9p_addr A8 path; the captured instance reads dword 1)	g9p_isa.h 426-450	orchard; derived
++0x14	0300					orchard; derived
++0x16	0181					orchard; derived
++0x18	4100					orchard; derived
++0x1a	0154					orchard; derived
++0x1c	0038					orchard; derived
++0x1e	0198	r1 = common dword 1	common-store move: buffer address high word	captured form (k_store_tid: 98 01 DD 03 85 01 00 41 54 01 38 00)	g9p_isa.h 430-436	orchard; captured
++0x20	0302					orchard; captured
++0x22	0185					orchard; captured
++0x24	4100					orchard; captured
++0x26	0154					orchard; captured
++0x28	0038					orchard; captured
++0x2a	0198	r2 = 0xcafe0001	move immediate, 32-bit form	derived from the A10 encoder (no A8 variant in Orchard's compiler)	g9p.py mov_imm	orchard; derived
++0x2c	0304					orchard; derived
++0x2e	0103					orchard; derived
++0x30	0121					orchard; derived
++0x32	cbfe					orchard; derived
++0x34	0154					orchard; derived
++0x36	0038					orchard; derived
++0x38	0900	branch_to	forward 0x0e bytes to the epilogue	derived	g9p.py branch_to	orchard; derived
++0x3a	010e					orchard; derived
++0x3c	0000					orchard; derived
++0x3e	2510	store u32 r2 -> [r0:r1]	A8-only memory form: W0 size<<11|0x0510, W1 0x0500|reg<<1, W2 0x8100|pair<<1 (store), W3 0x4020 (store)	captured (k_store_one: 2510 0504 8100 4020)	g9p_isa.h 467-480; a8/n102/SHADERS.md 'Compute'	orchard; captured
++0x40	0504					orchard; captured
++0x42	8100					orchard; captured
++0x44	4020					orchard; captured
++0x46	21c8	pop(3)	epilogue	derived	g9p.py pop	orchard; derived
++0x48	0306					orchard; derived
++0x4a	018c					orchard; derived
++0x4c	46d2					orchard; derived
++0x4e	0100	jump to end	forward 0x32 bytes	derived	g9p.py _jump	orchard; derived
++0x50	0132					orchard; derived
++0x52	0000					orchard; derived
++0x54	c000	padding	0xc000 x 22	captured pattern (A8 store kernel: code, then 0xc000 run, 0x8000 at kernel + 0x80)	a8/M2; ISA.md	orchard; captured
++0x56	c000					orchard; captured
++0x58	c000					orchard; captured
++0x5a	c000					orchard; captured
++0x5c	c000					orchard; captured
++0x5e	c000					orchard; captured
++0x60	c000					orchard; captured
++0x62	c000					orchard; captured
++0x64	c000					orchard; captured
++0x66	c000					orchard; captured
++0x68	c000					orchard; captured
++0x6a	c000					orchard; captured
++0x6c	c000					orchard; captured
++0x6e	c000					orchard; captured
++0x70	c000					orchard; captured
++0x72	c000					orchard; captured
++0x74	c000					orchard; captured
++0x76	c000					orchard; captured
++0x78	c000					orchard; captured
++0x7a	c000					orchard; captured
++0x7c	c000					orchard; captured
++0x7e	c000					orchard; captured
++0x80	8000	end	end word at byte 0x80	captured (A8 store kernel's end at +0x80 from its start: +0x1300 -> +0x1380)	a8/M2	orchard; captured

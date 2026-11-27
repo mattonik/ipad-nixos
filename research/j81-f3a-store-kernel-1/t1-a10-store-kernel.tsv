@@ -1,0 +1,67 @@
+imm	byte offset	word	instruction	decode	source	tag
+0x1357	+0x00	1181	prologue	program entry; W1 0x8189 = one buffer binding	g9p.py prologue; ISA.md 'Common prologue'	orchard; derived
+0x1357	+0x02	8189				orchard; derived
+0x1357	+0x04	4100				orchard; derived
+0x1357	+0x06	acb7				orchard; derived
+0x1357	+0x08	01c8	push_init(1)	execution-mask stack in r1	g9p.py push_init	orchard; derived
+0x1357	+0x0a	0302				orchard; derived
+0x1357	+0x0c	0101				orchard; derived
+0x1357	+0x0e	0120				orchard; derived
+0x1357	+0x10	46d1				orchard; derived
+0x1357	+0x12	2198	mov_imm(r0)	r0 = imm (16- or 32-bit form) + the 2-word tail 0154 0038	g9p.py mov_imm; ISA.md 'Move immediate'	orchard; derived
+0x1357	+0x14	0300				orchard; derived
+0x1357	+0x16	012f				orchard; derived
+0x1357	+0x18	212a				orchard; derived
+0x1357	+0x1a	0154				orchard; derived
+0x1357	+0x1c	0038				orchard; derived
+0x1357	+0x1e	0900	branch_to	forward 0xc bytes to the epilogue (before the stores)	g9p.py branch_to; ISA.md 'Program frame'	orchard; derived
+0x1357	+0x20	010c				orchard; derived
+0x1357	+0x22	0000				orchard; derived
+0x1357	+0x24	2312	store	buffer[0][0] = r0, u32 (A10 form)	g9p.py store/_mem; ISA.md 'device store'	orchard; derived
+0x1357	+0x26	0180				orchard; derived
+0x1357	+0x28	8000				orchard; derived
+0x1357	+0x2a	21c8	pop(1)	epilogue	g9p.py pop	orchard; derived
+0x1357	+0x2c	0302				orchard; derived
+0x1357	+0x2e	0184				orchard; derived
+0x1357	+0x30	46d2				orchard; derived
+0x1357	+0x32	0100	jump to end	forward 0xe bytes	g9p.py _jump/program	orchard; derived
+0x1357	+0x34	010e				orchard; derived
+0x1357	+0x36	0000				orchard; derived
+0x1357	+0x38	c000	padding	0xc000 x 4	ISA.md	orchard; derived
+0x1357	+0x3a	c000				orchard; derived
+0x1357	+0x3c	c000				orchard; derived
+0x1357	+0x3e	c000				orchard; derived
+0x1357	+0x40	8000	end	end word at byte 0x40 (64-byte boundary)	ISA.md	orchard; derived
+0xcafe0001	+0x00	1181	prologue	program entry; W1 0x8189 = one buffer binding	g9p.py prologue; ISA.md 'Common prologue'	orchard; derived
+0xcafe0001	+0x02	8189				orchard; derived
+0xcafe0001	+0x04	4100				orchard; derived
+0xcafe0001	+0x06	acb7				orchard; derived
+0xcafe0001	+0x08	01c8	push_init(1)	execution-mask stack in r1	g9p.py push_init	orchard; derived
+0xcafe0001	+0x0a	0302				orchard; derived
+0xcafe0001	+0x0c	0101				orchard; derived
+0xcafe0001	+0x0e	0120				orchard; derived
+0xcafe0001	+0x10	46d1				orchard; derived
+0xcafe0001	+0x12	0198	mov_imm(r0)	r0 = imm (16- or 32-bit form) + the 2-word tail 0154 0038	g9p.py mov_imm; ISA.md 'Move immediate'	orchard; derived
+0xcafe0001	+0x14	0300				orchard; derived
+0xcafe0001	+0x16	0103				orchard; derived
+0xcafe0001	+0x18	0121				orchard; derived
+0xcafe0001	+0x1a	cbfe				orchard; derived
+0xcafe0001	+0x1c	0154				orchard; derived
+0xcafe0001	+0x1e	0038				orchard; derived
+0xcafe0001	+0x20	0900	branch_to	forward 0xc bytes to the epilogue (before the stores)	g9p.py branch_to; ISA.md 'Program frame'	orchard; derived
+0xcafe0001	+0x22	010c				orchard; derived
+0xcafe0001	+0x24	0000				orchard; derived
+0xcafe0001	+0x26	2312	store	buffer[0][0] = r0, u32 (A10 form)	g9p.py store/_mem; ISA.md 'device store'	orchard; derived
+0xcafe0001	+0x28	0180				orchard; derived
+0xcafe0001	+0x2a	8000				orchard; derived
+0xcafe0001	+0x2c	21c8	pop(1)	epilogue	g9p.py pop	orchard; derived
+0xcafe0001	+0x2e	0302				orchard; derived
+0xcafe0001	+0x30	0184				orchard; derived
+0xcafe0001	+0x32	46d2				orchard; derived
+0xcafe0001	+0x34	0100	jump to end	forward 0xc bytes	g9p.py _jump/program	orchard; derived
+0xcafe0001	+0x36	010c				orchard; derived
+0xcafe0001	+0x38	0000				orchard; derived
+0xcafe0001	+0x3a	c000	padding	0xc000 x 3	ISA.md	orchard; derived
+0xcafe0001	+0x3c	c000				orchard; derived
+0xcafe0001	+0x3e	c000				orchard; derived
+0xcafe0001	+0x40	8000	end	end word at byte 0x40 (64-byte boundary)	ISA.md	orchard; derived

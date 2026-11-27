@@ -1,0 +1,6 @@
+record	K0	K1	K2	K3..K5	K8	PDS code	PDS data	source	tag
+0 binding DMA	0x00040008 (usc_common 1, 2 data units)	data offset or 0x2 (DMA kind; Metal 0x28042)	code offset	0, 0, 0	0x40000000	f0040000 f4060100 d3000000	{u64 entry VA, u64 entry VA + 8, 0x10000002, 0x90004001}; entry = {u64 output VA, 0x00010001}	a8/M2; g5p_cdm.h g5p_cdm_dma_task	orchard; captured
+1 store kernel	0x00002106 (usc_unified 2, pds_temp 1, 1 data unit, any cluster, no fence)	store PDS data offset	store PDS code offset	0, 0, 0	0x40000000	c2c00002 d3000000 f0024001 fc000002 d3000000	{USC offset of the kernel, 0x10, 0x80000000, 0}	a8/M2; pvr_arch_g5p_compute.c 701-727 (g4p_plain)	orchard; captured
+2 end of pass: empty USC task (K3)	0x00000004 (1 data unit, all clusters)	data offset or 0xa (DMA kind 0x2 or 0x8)	code offset	0, 0, 0	0x40000000	c2c00002 d3000000 fc000002 d3000000	{USC offset of the empty kernel, 0x10, 0, 0}	pvr_arch_g5p_compute.c g5p_compute_end_pass_g4p 884-930	orchard
+3 end of pass: fenced DOUTC (K4)	0x00000007 (fence, any cluster, 1 data unit)	data offset or 0x4 (FENCE kind)	code offset	0, 0, 0	0x40000000	c2c00002 d3000000 f0000005 d3000000	16 zero bytes	same	orchard
+terminate	0x80000000	-	-	-	-	-	-	request 32	source
