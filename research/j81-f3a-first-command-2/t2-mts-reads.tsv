@@ -1,0 +1,9 @@
+register	RGX offset	what it tells	read when	source	tag
+MTS_BGCTX_THREAD0_DM_ASSOC / THREAD1	0xb30 / 0xb38	which META thread takes background tasks per DM (bit n = DM n). If DM0 is only on thread 1 and thread 1 is off, a kick cannot run	after alive, before the kick	upstream pvr_rogue_cr_defs.h; upstream fw stop clears them, so the firmware sets them	source; inferred
+MTS_INTCTX_THREAD0_DM_ASSOC / THREAD1	0xb40 / 0xb48	the same for interrupt-context tasks	after alive	upstream	source
+MTS_GARTEN_WRAPPER_CONFIG	0xb50	META idle / fence configuration (upstream host writes it at boot; Apple and Orchard do not)	after alive	upstream pvr_meta_wrapper_init	source
+MTS_DM0..5_INTERRUPT_ENABLE	0xb58-0xb80	per-DM interrupt enables	after alive	upstream	source
+MTS_INTCTX / MTS_BGCTX	0xb98 / 0xba0	current interrupt and background context	before and after the kick	upstream	source
+MTS_BGCTX_COUNTED_SCHEDULE	0xba8	per-DM count of counted kicks pending (DM0 in bits 7:0). Count up and never back: the MTS took the kick and META never ran it	before and after the kick	upstream	source
+MTS_GPU_INT_STATUS	0xbb0	MTS interrupt status toward META	before and after the kick	upstream	source
+MTS_SCHEDULE_ENABLE	0xbc8	mask of DMs the MTS may schedule (bits 7:0). Bit 0 clear: DM0 kicks are dropped	after alive	upstream	source

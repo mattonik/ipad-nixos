@@ -1,0 +1,8 @@
+ring	Apple's host writes to wake the firmware, in order	address	value	source	tag
+device control	entry at buffer + producer*20; dmb; producer = (producer + 1) & 0xff; dmb; Fender +0x14; read GPC state; MTS_SCHEDULE	Fender 0x201e00014, Fender 0x201e01000 (read), RGX 0x201000b00	7; -; 0x10 (TASK_COUNTED | DM0) when state != 0	submitDeviceControl 0x66915e4-0x6691668	code
+TA	same doorbell pattern	RGX 0xb00	0x10	0x6690df0-0x6690e24	code
+3D	same	RGX 0xb00	0x11	0x6691018 area	code
+CL	same	RGX 0xb00	0x12	0x66911f0 area	code
+state 0 (any ring)	instead of the kick: SNOOP checks (+0 bit 29 or +0x14 bit 1), or a full restart when +0 == 0	-	-	0x6690e40-0x6690eb8 (request 17)	code
+nothing else	no META software interrupt, no AIC write, no MTS association / enable / interrupt-enable register (0xb30-0xbc8), no thread start: the kext never accesses them (by search; the 0xb30.. hits are firmware-object fields)	-	-	search	code
+run 69	exactly the device-control sequence above	-	-	capture	capture
