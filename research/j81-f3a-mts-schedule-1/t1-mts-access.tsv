@@ -1,0 +1,16 @@
+register	RGX offset	run 70	J81 host (Apple)	upstream host	Orchard	who sets it	tag
+MTS_SCHEDULE	0xb00	(write only in our runs)	written at five kick sites (t2); never read	written to kick (DM n or TASK_COUNTED)	written to kick (BRINGUP section 5)	host (kick)	code; source; orchard
+MTS_BGCTX_THREAD0_DM_ASSOC	0xb30	0x0000ffdf	never accessed	cleared at firmware stop	none documented	firmware (all DMs but bit 5 on thread 0)	code; source; capture; inferred
+MTS_BGCTX_THREAD1_DM_ASSOC	0xb38	0	never accessed	cleared at stop (META only)	none	firmware (no DM on thread 1)	code; source; capture
+MTS_INTCTX_THREAD0_DM_ASSOC	0xb40	0x0000ffff	never accessed	cleared at stop	none	firmware	code; source; capture
+MTS_INTCTX_THREAD1_DM_ASSOC	0xb48	0	never accessed	cleared at stop	none	firmware	code; source; capture
+MTS_GARTEN_WRAPPER_CONFIG	0xb50	0xc0000000 (low word)	never accessed	written at META wrapper init (IDLE_CTRL = META, FENCE_PC_BASE, FENCE_DM); 'the fence addr is set during the fw init sequence'	none	firmware for FENCE_ADDR (0xc0000000 = the firmware data base); host on upstream only	code; source; capture; inferred
+MTS_DM0..5_INTERRUPT_ENABLE	0xb58-0xb80	0xc0, 0, 0x8000, 0x12c, 0x200, 0	never accessed	never accessed	none	firmware	code; source; capture
+MTS_INTCTX	0xb98	0	never accessed	never accessed	none	hardware status	code; source; capture
+MTS_BGCTX	0xba0	0	never accessed	never accessed	none	hardware status	code; source; capture
+MTS_BGCTX_COUNTED_SCHEDULE	0xba8	0, also after the kick	never accessed	never accessed	none	hardware counter	code; source; capture
+MTS_GPU_INT_STATUS	0xbb0	0	never accessed	never accessed	none	hardware status	code; source; capture
+GARTEN_SLC	0xbb8	-	never accessed	not in the files read	none	-	code
+MTS_SCHEDULE_ENABLE	0xbc8	0	never accessed (no immediate, no register-list entry, no string)	never accessed; a plain 8-bit field (MASKFULL 0xff), no RAZ marking	none	not the host on any of the three: firmware, by elimination	code; source; capture; inferred
+META_BOOT	0xbf8	-	1 in the ConfigRAM list (0x6690c74); read once in the failure dump (0x669198c)	written MODE_EN at wrapper init	-	host (via ConfigRAM)	code; source
+0xb08-0xb28, 0xbc0	-	-	never accessed	not defined in upstream cr_defs	none	-	code; source

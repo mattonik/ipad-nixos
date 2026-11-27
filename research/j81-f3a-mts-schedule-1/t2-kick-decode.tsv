@@ -1,0 +1,8 @@
+item	value	source	tag
+MTS_SCHEDULE bits (upstream)	DM 3:0; TASK 4 (1 = counted); CONTEXT 5 (0 = background); PRIORITY 7:6; HOST 8 (0 = BG_TIMER, 1 = HOST); MASKFULL 0x1ff	pvr_rogue_cr_defs.h 1683-1713	source
+0x10	DM0, counted, background, priority 0, HOST bit clear	decode	source
+Apple's five kick sites (str to RGX 0xb00)	TA 0x6690e24 = 0x10; 3D 0x6690ffc = 0x11; CL 0x66911d4 = 0x12; kickFirmware 0x6691380 = 0x10; device control 0x6691668 = 0x10. All constants, none sets bit 8	agx disassembly	code
+what precedes every kick	GPC object vtable +0x80 (0x669c404): Fender +0x14 = 7, then vtable +0x18 (0x6698f24): state = Fender +0x1000 & 0xf. Kick if state != 0; otherwise the state-0 path (t3), which also ends in the kick	0x6691344-0x6691380, 0x6691628-0x6691668	code
+counted kick and 0xba8	upstream defines 0xba8 as one 8-bit count per DM (DM0 in 7:0). Run 70 read 0 before and 10 ms after the kick. Either the MTS never counted it (dropped, consistent with SCHEDULE_ENABLE = 0), or META took it within 10 ms; the second would normally change the firmware state, and nothing changed	cr_defs 2053-2071; capture	source; capture; inferred
+kick with SCHEDULE_ENABLE = 0	not documented upstream. Dropped is the reading that fits run 70 (no count, no 0xbb0 bit, no consumer move); queued would show as a count	-	inferred
+other DMs (0x11, 0x12)	same bit layout. With the enable mask 0 every DM is masked, so another DM tells nothing new until the mask is set (N2)	decode	inferred

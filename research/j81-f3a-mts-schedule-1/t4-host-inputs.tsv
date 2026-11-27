@@ -1,0 +1,7 @@
+host input	J81 iOS value	where Apple writes it	ours (blob f)	tag
+CONTROL +0x20 (Orchard: ctrl+0x20, the 'never-park' veto)	1 by default: accel +0xe70 bit 0 = idle power off, set in configureDevice (e70 |= 3, 0x6670b54), logged as 'Idle power off is %s (gpu_idle_poweroff=%d)', and overridable by the gpu_idle_poweroff boot-arg	0x6689fd4-0x6689fe0 (the POLICY fill, before release); also SetGPUIdlePoweroffState (0x66aefa4) at run time	not written, so 0 (the notes list no CONTROL +0x20)	code; capture
+CONTROL +0x18	accel +0xe7c (source not traced)	0x6689fe4-0x6689fe8	0	code
+CONTROL +0x1038 / +0x1040 (a perf pin)	written only when accel +0xe78 != 0; that is cleared in configureDevice (0x6670b58), so not written on a stock boot	0x6689fec-0x6689ff8	0, which matches	code
+GPC perf state at release	1: setGPCPerformanceState(1)	0x6690390	1 (0x11)	code; capture
+second Fender request, host timer tick	none before the first command	requests 18 and 20	none	code
+MTS 0xbc8	never written by the host	-	never written	code
