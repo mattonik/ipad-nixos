@@ -1,0 +1,10 @@
+word	K-field decode (Mesa cdm.xml: block_type 31:30, indirect 29, global_offsets 28, event 27, usc_common 26:18, usc_unified 17:12, pds_temp 11:8, pds_data 7:2, usc_target 1, fence 0)	used for	source	tag
+KERNEL0 0x00002106	compute, usc_common 0, usc_unified 2, pds_temp 1, pds_data 1 (one 16-byte unit; the A8 counts units directly, g5p_cdm.h G5P_CDM_DATA_UNITS), usc_target 1 (any cluster), fence 0	the kernel record (Metal uses it for the store kernels and the empty kernel on the A8)	a8/M2; g5p_cdm.h	orchard; source
+KERNEL0 0x00040008	usc_common 1 (one 64-byte chunk), pds_data 2 (32 bytes)	record 0, the binding DMA	a8/M2	orchard; source
+KERNEL0 0x00000004	pds_data 1	Metal's record 0 for the empty kernel (no binding)	a8/M2	orchard
+KERNEL1	PDS data address bits 31:4 or sd_type 3:2 or usc_common_shared bit 1: the data offset (relative to the PDS base), or 2 for the binding DMA	all records	cdm.xml; a8/M2 ('0x28042' = offset 0x28040 or shared)	source; orchard
+KERNEL2	PDS code address bits 31:4, one_wg_per_task bit 0	all records	cdm.xml	source
+KERNEL3..5	workgroup counts minus one: 0, 0, 0 for 1x1x1	kernel	cdm.xml; a8/M2	source; orchard
+KERNEL8 0x40000000	max_instances 8 (bits 31:27), workgroup size 1x1x1 minus one = 0	kernel (Apple's value for a 1x1x1 kernel); the DMA task also carries 8 << 27	g5p_cdm.h (g5p_cdm_max_instances_g4p, g5p_cdm_dma_task)	orchard
+terminate 0x80000000	STREAM_TERMINATE	after the last record	request 32	source
+record length	7 words: KERNEL0, 1, 2, 3, 4, 5, 8 (no indirect or global offsets). The A10 uses 8; the A8 uses 7	-	a8/M2; g5p_cdm.h	orchard

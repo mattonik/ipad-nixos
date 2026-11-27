@@ -1,0 +1,18 @@
+payload	byte offset	word	meaning	source	tag
+empty USC kernel (A10 native, byte-identical on the A8 under iPadOS 15)	+0x00	0x0100 (u16)	jump forward (3-word instruction)	OrchardLinux/gpu a10/ISA.md 'Program frame'; tools/a10/tools/g9p-cdm.h g9p_usc_empty_kernel; a8/M2-IOS-CAPTURE.md ('the empty kernel's bytes equal the A10 native empty kernel')	orchard
+empty USC kernel	+0x02	0x0140 (u16)	jump distance 0x40 bytes, to the end word	same	orchard
+empty USC kernel	+0x04	0x0000 (u16)	-	same	orchard
+empty USC kernel	+0x06..+0x3e	0xc000 (u16) x 29	padding	same	orchard
+empty USC kernel	+0x40	0x8000 (u16)	end of program, at a 64-byte boundary	same	orchard
+empty USC kernel	size	66 bytes; start it on a 64-byte boundary so the end word lands on one	-	ISA.md	orchard
+kernel PDS program (empty kernel), A8	+0x0	0xf4000002	DOUTU, END = 1, CC = 0	a8/M2 table 'Empty kernel: PDS code f4000002 d3000000'; a10/COMPUTE.md	orchard
+kernel PDS program	+0x4	0xd3000000	HALT	same	orchard; source
+kernel PDS data (empty kernel)	+0x0	usc_offset	the USC kernel's offset from the USC code base (Metal: 0x40)	a8/M2; g9p-cdm.h g9p_pds_kick_data	orchard
+kernel PDS data	+0x4	0x00000010	temps field (seen in every captured kernel task)	same	orchard
+kernel PDS data	+0x8..+0xf	0, 0	padding to one 16-byte data unit	-	inferred
+kernel PDS program (store kernel), A8	+0x0..+0x10	0xc2c00002 0xd3000000 0xf0024001 0xfc000002 0xd3000000	branch prologue, HALT, DOUTW (the store kernel's constant 0x80000000 into the USC), DOUTU, HALT: Metal's A8 words	a8/M2 'Store kernel PDS code'; g5p_cdm.h (A8 DOUTW 0xf0004001 or src1 << 16; DOUTU 0xfc000002 or src0 << 8)	orchard
+kernel PDS data (store kernel)	+0x0..+0xf	usc_offset, 0x10, 0x80000000, 0	USC offset, temps, the DOUTW value, 0	a8/M2	orchard
+binding DMA PDS program (record 0), A8	+0x0..+0x8	0xf0040000 0xf4060100 0xd3000000	two DOUTDs (the second with END), HALT: loads the argument-table entry into the USC common store	a8/M2 'DMA-only (binding) PDS'	orchard
+binding DMA PDS data	+0x0..+0x1f	u64 src0 (GPU VA of the argument entry), u64 src1 (entry + 8), 0x10000002, 0x90004001	the DMA sources and the two DOUTD control words	a8/M2; a10/COMPUTE.md fourth capture	orchard
+argument-table entry	+0x0..+0xb	u64 output buffer GPU VA, 0x00010001	what the store kernel reads from the common store	a8/M2 ('{u64 0x1_0029c000, 0x00010001}')	orchard
+store USC kernel	-	not published for the A8	Orchard's A8 capture: the store kernel starts with the A10 store_marker prefix and is about 0x50 bytes before its 0xc000 padding (the A10's is 0x38). Orchard's encoder for it (tools/a10/tools/isa/g9p.py store_kernel) could not be read here (blocked by the proxy), and A10 pieces cannot be assumed to give the A8 bytes	a8/M2; a10/ISA.md; a10/COMPUTE.md	orchard; inferred
