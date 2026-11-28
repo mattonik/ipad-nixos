@@ -1,0 +1,25 @@
+# ldk32_4: move immediate + register add, carry across bit 16; 1 workgroup(s) of 4; registers 7
++0x000  1181 8191 4100 acb7                      prologue (thread count at dword 4)
++0x008  01c8 030c 0101 0120 46d1                 start the mask stack in r6
++0x012  119a 8302 0101 0120 0105 0120 14f0       r1 = r0 << 2
++0x020  119d 0306 0501 4100 00a5                 in + r1: r3 = carry(s0 + r1) (result's high half)
++0x02a  0198 0304 0185 4100 0154 0038            in + r1: r2 = s1
++0x036  3199 0306 8f88 08a1                      in + r1: r3 = r2 + r3.hi
++0x03e  1199 0304 0581 4100 00a1                 in + r1: r2 = s0 + r1
++0x048  2510 0508 0104 0020                      load r4 <- [r2:r3]
++0x050  004d                                     wait for the load
++0x052  0198 030a 0101 81a1 0100 0154 0038       r5 = 0x1008000
++0x060  3199 0308 9590 00a1                      r4 = r4 + r5 (last use of both)
++0x068  119d 0306 0509 4100 00a5                 out + r1: r3 = carry(s2 + r1) (result's high half)
++0x072  0198 0304 018d 4100 0154 0038            out + r1: r2 = s3
++0x07e  3199 0306 8f88 08a1                      out + r1: r3 = r2 + r3.hi
++0x086  1199 0304 0589 4100 00a1                 out + r1: r2 = s2 + r1
++0x090  0900 010e 0000                           skip the store when no lane is active
++0x096  2510 0508 8104 4020                      store r4 -> [r2:r3]
++0x09e  21c8 030c 0198 46d2                      epilogue: pop the mask stack r6 (last-read)
++0x0a6  0100 011a 0000                           jump to the end word (to +0xc0)
++0x0ac  c000 x10  padding
++0x0c0  8000                                     end
+stream: 0004000c 00000182 000001c0 00000000 00000000 00000000 40000000 00002106 000001e0 00000200 00000000 00000000 00000000 000c0000 00000004 0000010a 00000120 00000000 00000000 00000000 40000000 00000007 00000144 00000160 00000000 00000000 00000000 40000000 80000000
+binding data: 00000240 00000003 00000248 00000003 00000280 00000003 10000002 00000000 10004002 00000000 90008001 00000000 | code: f0060000 f0080100 f40a0200 d3000000
+kernel data: 00000300 00000010 80000000 00000000 | code: c2c00002 d3000000 f0024001 fc000002 d3000000

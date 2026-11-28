@@ -1,0 +1,15 @@
+# store1: run 99 regression in the new layout; 1 workgroup(s) of 1; registers 4
++0x000  1181 8189 4100 acb7                      prologue (thread count at dword 2)
++0x008  01c8 0306 0101 0120 46d1                 start the mask stack in r3
++0x012  0198 0300 0181 4100 0154 0038            r0 = s0 (out low)
++0x01e  0198 0302 0185 4100 0154 0038            r1 = s1 (out high)
++0x02a  0198 0304 0103 0121 cbfe 0154 0038       r2 = 0xcafe0001
++0x038  0900 010e 0000                           skip the store when no lane is active
++0x03e  2510 0504 8100 4020                      store r2 -> [r0:r1]
++0x046  21c8 0306 018c 46d2                      epilogue: pop the mask stack r3 (last-read)
++0x04e  0100 0132 0000                           jump to the end word (to +0x80)
++0x054  c000 x22  padding
++0x080  8000                                     end
+stream: 00040008 00000182 000001c0 00000000 00000000 00000000 40000000 00002106 000001e0 00000200 00000000 00000000 00000000 40000000 00000004 0000010a 00000120 00000000 00000000 00000000 40000000 00000007 00000144 00000160 00000000 00000000 00000000 40000000 80000000
+binding data: 00000240 00000003 00000280 00000003 10000002 00000000 90004001 00000000 | code: f0040000 f4060100 d3000000
+kernel data: 00000300 00000010 80000000 00000000 | code: c2c00002 d3000000 f0024001 fc000002 d3000000

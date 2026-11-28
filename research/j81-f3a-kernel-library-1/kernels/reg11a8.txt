@@ -1,0 +1,18 @@
+# reg11a8: limit, expected to fail: r11 beyond an 8-register allocation (wrong value, no fault); 1 workgroup(s) of 4; registers 8
++0x000  1181 8189 4100 acb7                      prologue (thread count at dword 2)
++0x008  01c8 0308 0101 0120 46d1                 start the mask stack in r4
++0x012  119a 8302 0101 0120 0105 0120 14f0       r1 = r0 << 2
++0x020  119d 0306 0501 4100 00a5                 out + r1: r3 = carry(s0 + r1) (result's high half)
++0x02a  0198 0304 0185 4100 0154 0038            out + r1: r2 = s1
++0x036  3199 0306 8f88 08a1                      out + r1: r3 = r2 + r3.hi
++0x03e  1199 0304 0581 4100 00a1                 out + r1: r2 = s0 + r1
++0x048  0198 0316 0117 0121 5b5a 0154 0038       r11 = 0x5a5a000b
++0x056  0900 010e 0000                           skip the store when no lane is active
++0x05c  2510 0516 8104 4020                      store r11 -> [r2:r3]
++0x064  21c8 0308 0190 46d2                      epilogue: pop the mask stack r4 (last-read)
++0x06c  0100 0114 0000                           jump to the end word (to +0x80)
++0x072  c000 x7  padding
++0x080  8000                                     end
+stream: 00040008 00000182 000001c0 00000000 00000000 00000000 40000000 00002106 000001e0 00000200 00000000 00000000 00000000 000c0000 00000004 0000010a 00000120 00000000 00000000 00000000 40000000 00000007 00000144 00000160 00000000 00000000 00000000 40000000 80000000
+binding data: 00000240 00000003 00000280 00000003 10000002 00000000 90004001 00000000 | code: f0040000 f4060100 d3000000
+kernel data: 00000300 00000010 80000000 00000000 | code: c2c00002 d3000000 f0024001 fc000002 d3000000

@@ -1,0 +1,34 @@
+# vadd8x32: vector add, 256 elements; 8 workgroup(s) of 32; registers 8
++0x000  1181 0199 4100 acb7                      prologue, common-store form (thread count at dword 6)
++0x008  01c8 030e 0101 0120 46d1                 start the mask stack in r7
++0x012  1516 0002                                r1 = threadgroup word 0 (workgroup ID x)
++0x016  004d                                     wait for the load
++0x018  119a 8302 0501 0120 010b 0120 14f0       r1 = r1 << 5 (wg * N)
++0x026  3199 0302 0104 00a1                      r1 = r1 + r0 (global index)
++0x02e  119a 8304 0501 0120 0105 0120 14f0       r2 = r1 << 2 (byte offset)
++0x03c  119d 030a 0901 4100 00a5                 a + r2: r5 = carry(s0 + r2) (result's high half)
++0x046  0198 0308 0185 4100 0154 0038            a + r2: r4 = s1
++0x052  3199 030a 9790 08a1                      a + r2: r5 = r4 + r5.hi
++0x05a  1199 0308 0981 4100 00a1                 a + r2: r4 = s0 + r2
++0x064  2510 0506 0108 0020                      load r3 <- [r4:r5]
++0x06c  004d                                     wait for the load
++0x06e  119d 030a 0909 4100 00a5                 b + r2: r5 = carry(s2 + r2) (result's high half)
++0x078  0198 0308 018d 4100 0154 0038            b + r2: r4 = s3
++0x084  3199 030a 9790 08a1                      b + r2: r5 = r4 + r5.hi
++0x08c  1199 0308 0989 4100 00a1                 b + r2: r4 = s2 + r2
++0x096  2510 050c 0108 0020                      load r6 <- [r4:r5]
++0x09e  004d                                     wait for the load
++0x0a0  3199 0306 998c 00a1                      r3 = r3 + r6 (last use of both)
++0x0a8  119d 030a 0911 4100 00a5                 c + r2: r5 = carry(s4 + r2) (result's high half)
++0x0b2  0198 0308 0195 4100 0154 0038            c + r2: r4 = s5
++0x0be  3199 030a 9790 08a1                      c + r2: r5 = r4 + r5.hi
++0x0c6  1199 0308 0991 4100 00a1                 c + r2: r4 = s4 + r2
++0x0d0  0900 010e 0000                           skip the store when no lane is active
++0x0d6  2510 0506 8108 4020                      store r3 -> [r4:r5]
++0x0de  21c8 030e 019c 46d2                      epilogue: pop the mask stack r7 (last-read)
++0x0e6  0100 011a 0000                           jump to the end word (to +0x100)
++0x0ec  c000 x10  padding
++0x100  8000                                     end
+stream: 00040010 00000182 000001c0 00000000 00000000 00000000 40000000 00042106 000001e0 00000200 00000007 00000000 00000000 007c0000 00000004 0000010a 00000120 00000000 00000000 00000000 40000000 00000007 00000144 00000160 00000000 00000000 00000000 40000000 80000000
+binding data: 00000240 00000003 00000248 00000003 00000250 00000003 00000280 00000003 10000002 00000000 10004002 00000000 10008002 00000000 9000c001 00000000 | code: f0080000 f00a0100 f00c0200 f40e0300 d3000000
+kernel data: 00000300 00000010 90000002 80000000 | code: c2c00003 f0024001 d3000000 f0034001 fc000002 d3000000

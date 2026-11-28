@@ -1,0 +1,45 @@
+where	GPU VA	offset	words	meaning	evidence
+heap	0x300000040	+0x040	0x42	empty USC kernel: 0100 0140 0000, c000 x29, 8000 (driver shader, Orchard g9p_usc_empty_kernel)	J81 run 99
+heap	0x300000100	+0x100	00000040 00000010 00000000 00000000	end-of-pass PDS data {empty kernel offset, DOUTU temps 0x10, 0, 0}	J81 run 99
+heap	0x300000120	+0x120	c2c00002 d3000000 fc000002 d3000000	end-of-pass PDS code: bra_not_if1(2), HALT, DOUTU.END.CC, HALT	J81 run 99
+heap	0x300000140	+0x140	00000000 00000000 00000000 00000000	fence PDS data (zero)	J81 run 99
+heap	0x300000160	+0x160	c2c00002 d3000000 f0000005 d3000000	fence PDS code: bra_not_if1(2), HALT, DOUTC, HALT	J81 run 99
+heap	0x300000180	+0x180	00000240 00000003 00000248 00000003 00000250 00000003 00000280 00000003 10000002 00000000 10004002 00000000 10008002 00000000 9000c001 00000000	binding DMA data: src0 = args+0 (a), src1 = args+8 (b), src2 = args+16 (c), src3 = count block; control words at dwords 8, 10, 12, 14: 0x10000002 (common store, dest dword 0, 2 dwords), 0x10004002 (dest 2), 0x10008002 (dest 4), 0x9000c001 (last, dest 6, 1 dword)	J81 run 99 for 1 buffer; 3 buffers: Apple slot layout extended (inferred, vadd1x32 first)
+heap	0x3000001c0	+0x1c0	f0080000 f00a0100 f00c0200 f40e0300 d3000000	binding DMA code: DOUTD src0 ctrl d8, DOUTD src1 ctrl d10, DOUTD src2 ctrl d12, DOUTD.END src3 ctrl d14, HALT	J81 run 99 for 1 buffer; 3 buffers: Apple slot layout extended (inferred, vadd1x32 first)
+heap	0x3000001e0	+0x1e0	00000300 00000010 90000002 80000000	kernel PDS data: USC offset 0x300, DOUTU temps 0x10 (8 registers), 0x90000002 (IF1: workgroup ID q0, 64 bits -> threadgroup words 0-1: last, common store, ALL64), 0x80000000 (local ID q0 low -> r0: last, unified store, lower 32)	Mesa A8 launch with workgroup ID; iPod HW (compute64k)
+heap	0x300000200	+0x200	c2c00003 f0024001 d3000000 f0034001 fc000002 d3000000	kernel PDS code: bra_not_if1(3), DOUTW temps q0 ctrl d2 (IF1 part), HALT, DOUTW temps q0 ctrl d3, DOUTU.END.CC data q0, HALT	Mesa A8 launch with workgroup ID; iPod HW (compute64k)
+heap	0x300000240	+0x240	00000800 00000003 00000c00 00000003 00203000 00000000	argument table: u64 a VA, u64 b VA, u64 c VA	layout
+heap	0x300000280	+0x280	00200020 00000000 00000000 00000000	thread-count block {N | N << 16, 0, 0, 0} on its own 64-byte line (Apple A8 places it so)	J81 run 99
+heap	0x300000300	+0x300	0x102 bytes	the vector-add kernel (t2 vadd4x32), end word at +0x100 of the kernel	see t2
+heap	0x300000800	+0x800	128 dwords	input a[k] = 0x10008000 + k	data
+heap	0x300000c00	+0xc00	128 dwords	input b[k] = 0x01008000 + 0x100*k	data
+out	0x203000	-	1024 dwords	output c, pre-filled with 0xdead0001; expect c[k] = 0x11010000 + 0x101*k for k < 128, sentinel after	data
+stream	0x200000	+0x00	00040010	binding DMA task: KERNEL0: usc_common 1 (64 B), pds_data 4 units (A8 counts directly), any cluster	J81 run 99 (shape)
+stream	0x200004	+0x04	00000182	binding DMA task: KERNEL1 (PDS data offset | flags): binding data +0x180 | usc_common_shared (2)	J81 run 99 (shape)
+stream	0x200008	+0x08	000001c0	binding DMA task: KERNEL2 (PDS code offset)	J81 run 99 (shape)
+stream	0x20000c	+0x0c	00000000	binding DMA task: KERNEL3 workgroups x - 1	J81 run 99 (shape)
+stream	0x200010	+0x10	00000000	binding DMA task: KERNEL4 y - 1	J81 run 99 (shape)
+stream	0x200014	+0x14	00000000	binding DMA task: KERNEL5 z - 1	J81 run 99 (shape)
+stream	0x200018	+0x18	40000000	binding DMA task: KERNEL8: max_instances 8, 1x1x1 (internal one-thread task)	J81 run 99 (shape)
+stream	0x20001c	+0x1c	00042106	kernel: KERNEL0: usc_common 1 (threadgroup words), usc_unified 2 (8 registers), pds_temp 1, pds_data 1, usc_target any, no fence (A8)	J81 run 99 (shape)
+stream	0x200020	+0x20	000001e0	kernel: KERNEL1 (PDS data offset | flags): kernel data +0x1e0	J81 run 99 (shape)
+stream	0x200024	+0x24	00000200	kernel: KERNEL2 (PDS code offset)	J81 run 99 (shape)
+stream	0x200028	+0x28	00000003	kernel: KERNEL3 workgroups x - 1: 4 workgroups	J81 run 99 (shape); KERNEL3/8 values: Mesa A8 / Rogue cdm.xml, iPod HW
+stream	0x20002c	+0x2c	00000000	kernel: KERNEL4 y - 1	J81 run 99 (shape)
+stream	0x200030	+0x30	00000000	kernel: KERNEL5 z - 1	J81 run 99 (shape)
+stream	0x200034	+0x34	007c0000	kernel: KERNEL8: max_instances 0 (0 = 32), workgroup_size_x - 1 = 31	J81 run 99 (shape); KERNEL3/8 values: Mesa A8 / Rogue cdm.xml, iPod HW
+stream	0x200038	+0x38	00000004	end of pass: empty USC task: KERNEL0: pds_data 1, any cluster	J81 run 99 (shape)
+stream	0x20003c	+0x3c	0000010a	end of pass: empty USC task: KERNEL1 (PDS data offset | flags): eop data +0x100 | 0xa (Metal constants/barrier flags)	J81 run 99 (shape)
+stream	0x200040	+0x40	00000120	end of pass: empty USC task: KERNEL2 (PDS code offset)	J81 run 99 (shape)
+stream	0x200044	+0x44	00000000	end of pass: empty USC task: KERNEL3 workgroups x - 1	J81 run 99 (shape)
+stream	0x200048	+0x48	00000000	end of pass: empty USC task: KERNEL4 y - 1	J81 run 99 (shape)
+stream	0x20004c	+0x4c	00000000	end of pass: empty USC task: KERNEL5 z - 1	J81 run 99 (shape)
+stream	0x200050	+0x50	40000000	end of pass: empty USC task: KERNEL8: max_instances 8, 1x1x1 (internal one-thread task)	J81 run 99 (shape)
+stream	0x200054	+0x54	00000007	end of pass: fenced DOUTC task: KERNEL0: pds_data 1, any cluster, fence	J81 run 99 (shape)
+stream	0x200058	+0x58	00000144	end of pass: fenced DOUTC task: KERNEL1 (PDS data offset | flags): fence data +0x140 | 0x4 (fence)	J81 run 99 (shape)
+stream	0x20005c	+0x5c	00000160	end of pass: fenced DOUTC task: KERNEL2 (PDS code offset)	J81 run 99 (shape)
+stream	0x200060	+0x60	00000000	end of pass: fenced DOUTC task: KERNEL3 workgroups x - 1	J81 run 99 (shape)
+stream	0x200064	+0x64	00000000	end of pass: fenced DOUTC task: KERNEL4 y - 1	J81 run 99 (shape)
+stream	0x200068	+0x68	00000000	end of pass: fenced DOUTC task: KERNEL5 z - 1	J81 run 99 (shape)
+stream	0x20006c	+0x6c	40000000	end of pass: fenced DOUTC task: KERNEL8: max_instances 8, 1x1x1 (internal one-thread task)	J81 run 99 (shape)
+stream	0x200070	+0x70	80000000	terminate	J81 run 99

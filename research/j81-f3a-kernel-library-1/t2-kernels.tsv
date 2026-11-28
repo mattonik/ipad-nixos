@@ -1,0 +1,270 @@
+kernel	byte offset	words (16-bit, little-endian in memory)	instruction	form	evidence	tag
+store1	+0x000	1181 8189 4100 acb7	prologue (thread count at dword 2)	prologue	W1 8189: J81 run 99; 0189 (common store), 8191/8199 (2/3 buffers): Mesa A8 rule (Apple 8189 + 8 per buffer, 0189 under a common store); 0189 iPod HW via compute64k	orchard-HW
+store1	+0x008	01c8 0306 0101 0120 46d1	start the mask stack in r3	push_init	J81 run 99	J81
+store1	+0x012	0198 0300 0181 4100 0154 0038	r0 = s0 (out low)	mov_cs	J81 run 99 (dwords 0 and 1)	J81
+store1	+0x01e	0198 0302 0185 4100 0154 0038	r1 = s1 (out high)	mov_cs	J81 run 99 (dwords 0 and 1)	J81
+store1	+0x02a	0198 0304 0103 0121 cbfe 0154 0038	r2 = 0xcafe0001	mov_imm	J81 run 99 (32-bit form); 16-bit form A10 HW	J81
+store1	+0x038	0900 010e 0000	skip the store when no lane is active	jmp_none	J81 run 99 (the store skip, offset 0x0e); other offsets: A10 HW	J81
+store1	+0x03e	2510 0504 8100 4020	store r2 -> [r0:r1]	store	J81 run 99 (pair r0); other pairs/data registers: Mesa A8, iPod HW	J81
+store1	+0x046	21c8 0306 018c 46d2	epilogue: pop the mask stack r3 (last-read)	pop_final	J81 run 99	J81
+store1	+0x04e	0100 0132 0000	jump to the end word (to +0x80)	jmp_end	J81 run 99 (offset and 64-byte end rule)	J81
+store1	+0x054	c000 x22	padding	pad	J81 run 99	J81
+store1	+0x080	8000	end	end	J81 run 99	J81
+lid4	+0x000	1181 8189 4100 acb7	prologue (thread count at dword 2)	prologue	W1 8189: J81 run 99; 0189 (common store), 8191/8199 (2/3 buffers): Mesa A8 rule (Apple 8189 + 8 per buffer, 0189 under a common store); 0189 iPod HW via compute64k	orchard-HW
+lid4	+0x008	01c8 0308 0101 0120 46d1	start the mask stack in r4	push_init	J81 run 99	J81
+lid4	+0x012	119a 8302 0101 0120 0105 0120 14f0	r1 = r0 << 2 (byte offset)	shift_imm	Apple's A8 output (Orchard quotes r0 = r0 << 2) and Mesa A8; iPod HW (compute64k); not yet J81	orchard-HW
+lid4	+0x020	119d 0306 0501 4100 00a5	out + r1: r3 = carry(s0 + r1) (result's high half)	addr1_carry	Apple's A8 output (k_store_tid) as Mesa builds it; iPod HW (compute64k, after the carry-half fix b93015f0ab); not yet J81	orchard-HW
+lid4	+0x02a	0198 0304 0185 4100 0154 0038	out + r1: r2 = s1	mov_cs	J81 run 99 (dwords 0 and 1)	J81
+lid4	+0x036	3199 0306 8f88 08a1	out + r1: r3 = r2 + r3.hi	addr3_hiadd	same as addr1_carry	inferred
+lid4	+0x03e	1199 0304 0581 4100 00a1	out + r1: r2 = s0 + r1	addr4_lowadd	same as addr1_carry	inferred
+lid4	+0x048	0900 010e 0000	skip the store when no lane is active	jmp_none	J81 run 99 (the store skip, offset 0x0e); other offsets: A10 HW	J81
+lid4	+0x04e	2510 0500 8104 4020	store r0 -> [r2:r3]	store	J81 run 99 (pair r0); other pairs/data registers: Mesa A8, iPod HW	J81
+lid4	+0x056	21c8 0308 0190 46d2	epilogue: pop the mask stack r4 (last-read)	pop_final	J81 run 99	J81
+lid4	+0x05e	0100 0122 0000	jump to the end word (to +0x80)	jmp_end	J81 run 99 (offset and 64-byte end rule)	J81
+lid4	+0x064	c000 x14	padding	pad	J81 run 99	J81
+lid4	+0x080	8000	end	end	J81 run 99	J81
+ldcopy4	+0x000	1181 8191 4100 acb7	prologue (thread count at dword 4)	prologue	W1 8189: J81 run 99; 0189 (common store), 8191/8199 (2/3 buffers): Mesa A8 rule (Apple 8189 + 8 per buffer, 0189 under a common store); 0189 iPod HW via compute64k	orchard-HW
+ldcopy4	+0x008	01c8 030c 0101 0120 46d1	start the mask stack in r6	push_init	J81 run 99	J81
+ldcopy4	+0x012	119a 8302 0101 0120 0105 0120 14f0	r1 = r0 << 2	shift_imm	Apple's A8 output (Orchard quotes r0 = r0 << 2) and Mesa A8; iPod HW (compute64k); not yet J81	orchard-HW
+ldcopy4	+0x020	119d 0306 0501 4100 00a5	in + r1: r3 = carry(s0 + r1) (result's high half)	addr1_carry	Apple's A8 output (k_store_tid) as Mesa builds it; iPod HW (compute64k, after the carry-half fix b93015f0ab); not yet J81	orchard-HW
+ldcopy4	+0x02a	0198 0304 0185 4100 0154 0038	in + r1: r2 = s1	mov_cs	J81 run 99 (dwords 0 and 1)	J81
+ldcopy4	+0x036	3199 0306 8f88 08a1	in + r1: r3 = r2 + r3.hi	addr3_hiadd	same as addr1_carry	inferred
+ldcopy4	+0x03e	1199 0304 0581 4100 00a1	in + r1: r2 = s0 + r1	addr4_lowadd	same as addr1_carry	inferred
+ldcopy4	+0x048	2510 0508 0104 0020	load r4 <- [r2:r3]	load	Apple's A8 output (every load of its 25 kernels, per Orchard) and Mesa A8; not yet J81: test first (ldcopy4)	inferred
+ldcopy4	+0x050	004d	wait for the load	wait	A10 HW; Apple A8 kernels (after 1516 and after loads); A8 fragment HW (counter-0 wait)	inferred
+ldcopy4	+0x052	119d 0306 0509 4100 00a5	out + r1: r3 = carry(s2 + r1) (result's high half)	addr1_carry	Apple's A8 output (k_store_tid) as Mesa builds it; iPod HW (compute64k, after the carry-half fix b93015f0ab); not yet J81	orchard-HW
+ldcopy4	+0x05c	0198 0304 018d 4100 0154 0038	out + r1: r2 = s3	mov_imm	J81 run 99 (32-bit form); 16-bit form A10 HW	J81
+ldcopy4	+0x068	3199 0306 8f88 08a1	out + r1: r3 = r2 + r3.hi	addr3_hiadd	same as addr1_carry	inferred
+ldcopy4	+0x070	1199 0304 0589 4100 00a1	out + r1: r2 = s2 + r1	addr4_lowadd	same as addr1_carry	inferred
+ldcopy4	+0x07a	0900 010e 0000	skip the store when no lane is active	jmp_none	J81 run 99 (the store skip, offset 0x0e); other offsets: A10 HW	J81
+ldcopy4	+0x080	2510 0508 8104 4020	store r4 -> [r2:r3]	store	J81 run 99 (pair r0); other pairs/data registers: Mesa A8, iPod HW	J81
+ldcopy4	+0x088	21c8 030c 0198 46d2	epilogue: pop the mask stack r6 (last-read)	pop_final	J81 run 99	J81
+ldcopy4	+0x090	0100 0130 0000	jump to the end word (to +0xc0)	jmp_end	J81 run 99 (offset and 64-byte end rule)	J81
+ldcopy4	+0x096	c000 x21	padding	pad	J81 run 99	J81
+ldcopy4	+0x0c0	8000	end	end	J81 run 99	J81
+ldk6_4	+0x000	1181 8191 4100 acb7	prologue (thread count at dword 4)	prologue	W1 8189: J81 run 99; 0189 (common store), 8191/8199 (2/3 buffers): Mesa A8 rule (Apple 8189 + 8 per buffer, 0189 under a common store); 0189 iPod HW via compute64k	orchard-HW
+ldk6_4	+0x008	01c8 030c 0101 0120 46d1	start the mask stack in r6	push_init	J81 run 99	J81
+ldk6_4	+0x012	119a 8302 0101 0120 0105 0120 14f0	r1 = r0 << 2	shift_imm	Apple's A8 output (Orchard quotes r0 = r0 << 2) and Mesa A8; iPod HW (compute64k); not yet J81	orchard-HW
+ldk6_4	+0x020	119d 0306 0501 4100 00a5	in + r1: r3 = carry(s0 + r1) (result's high half)	addr1_carry	Apple's A8 output (k_store_tid) as Mesa builds it; iPod HW (compute64k, after the carry-half fix b93015f0ab); not yet J81	orchard-HW
+ldk6_4	+0x02a	0198 0304 0185 4100 0154 0038	in + r1: r2 = s1	mov_cs	J81 run 99 (dwords 0 and 1)	J81
+ldk6_4	+0x036	3199 0306 8f88 08a1	in + r1: r3 = r2 + r3.hi	addr3_hiadd	same as addr1_carry	inferred
+ldk6_4	+0x03e	1199 0304 0581 4100 00a1	in + r1: r2 = s0 + r1	addr4_lowadd	same as addr1_carry	inferred
+ldk6_4	+0x048	2510 0508 0104 0020	load r4 <- [r2:r3]	load	Apple's A8 output (every load of its 25 kernels, per Orchard) and Mesa A8; not yet J81: test first (ldcopy4)	inferred
+ldk6_4	+0x050	004d	wait for the load	wait	A10 HW; Apple A8 kernels (after 1516 and after loads); A8 fragment HW (counter-0 wait)	inferred
+ldk6_4	+0x052	1199 0308 1155 0120 09a1 0070	r4 = r4 + 0x2a (add immediate)	add_imm	A10 HW (pow3 loop); A8 not documented: inferred, test first (ldk6_4)	inferred
+ldk6_4	+0x05e	119d 0306 0509 4100 00a5	out + r1: r3 = carry(s2 + r1) (result's high half)	addr1_carry	Apple's A8 output (k_store_tid) as Mesa builds it; iPod HW (compute64k, after the carry-half fix b93015f0ab); not yet J81	orchard-HW
+ldk6_4	+0x068	0198 0304 018d 4100 0154 0038	out + r1: r2 = s3	mov_imm	J81 run 99 (32-bit form); 16-bit form A10 HW	J81
+ldk6_4	+0x074	3199 0306 8f88 08a1	out + r1: r3 = r2 + r3.hi	addr3_hiadd	same as addr1_carry	inferred
+ldk6_4	+0x07c	1199 0304 0589 4100 00a1	out + r1: r2 = s2 + r1	addr4_lowadd	same as addr1_carry	inferred
+ldk6_4	+0x086	0900 010e 0000	skip the store when no lane is active	jmp_none	J81 run 99 (the store skip, offset 0x0e); other offsets: A10 HW	J81
+ldk6_4	+0x08c	2510 0508 8104 4020	store r4 -> [r2:r3]	store	J81 run 99 (pair r0); other pairs/data registers: Mesa A8, iPod HW	J81
+ldk6_4	+0x094	21c8 030c 0198 46d2	epilogue: pop the mask stack r6 (last-read)	pop_final	J81 run 99	J81
+ldk6_4	+0x09c	0100 0124 0000	jump to the end word (to +0xc0)	jmp_end	J81 run 99 (offset and 64-byte end rule)	J81
+ldk6_4	+0x0a2	c000 x15	padding	pad	J81 run 99	J81
+ldk6_4	+0x0c0	8000	end	end	J81 run 99	J81
+ldk32_4	+0x000	1181 8191 4100 acb7	prologue (thread count at dword 4)	prologue	W1 8189: J81 run 99; 0189 (common store), 8191/8199 (2/3 buffers): Mesa A8 rule (Apple 8189 + 8 per buffer, 0189 under a common store); 0189 iPod HW via compute64k	orchard-HW
+ldk32_4	+0x008	01c8 030c 0101 0120 46d1	start the mask stack in r6	push_init	J81 run 99	J81
+ldk32_4	+0x012	119a 8302 0101 0120 0105 0120 14f0	r1 = r0 << 2	shift_imm	Apple's A8 output (Orchard quotes r0 = r0 << 2) and Mesa A8; iPod HW (compute64k); not yet J81	orchard-HW
+ldk32_4	+0x020	119d 0306 0501 4100 00a5	in + r1: r3 = carry(s0 + r1) (result's high half)	addr1_carry	Apple's A8 output (k_store_tid) as Mesa builds it; iPod HW (compute64k, after the carry-half fix b93015f0ab); not yet J81	orchard-HW
+ldk32_4	+0x02a	0198 0304 0185 4100 0154 0038	in + r1: r2 = s1	mov_cs	J81 run 99 (dwords 0 and 1)	J81
+ldk32_4	+0x036	3199 0306 8f88 08a1	in + r1: r3 = r2 + r3.hi	addr3_hiadd	same as addr1_carry	inferred
+ldk32_4	+0x03e	1199 0304 0581 4100 00a1	in + r1: r2 = s0 + r1	addr4_lowadd	same as addr1_carry	inferred
+ldk32_4	+0x048	2510 0508 0104 0020	load r4 <- [r2:r3]	load	Apple's A8 output (every load of its 25 kernels, per Orchard) and Mesa A8; not yet J81: test first (ldcopy4)	inferred
+ldk32_4	+0x050	004d	wait for the load	wait	A10 HW; Apple A8 kernels (after 1516 and after loads); A8 fragment HW (counter-0 wait)	inferred
+ldk32_4	+0x052	0198 030a 0101 81a1 0100 0154 0038	r5 = 0x1008000	mov_imm	J81 run 99 (32-bit form); 16-bit form A10 HW	J81
+ldk32_4	+0x060	3199 0308 9590 00a1	r4 = r4 + r5 (last use of both)	iadd	A10 HW (25/25); A8 fragment HW (integer add works); iPod compute64k (wg*32 + lid); not yet J81	inferred
+ldk32_4	+0x068	119d 0306 0509 4100 00a5	out + r1: r3 = carry(s2 + r1) (result's high half)	addr1_carry	Apple's A8 output (k_store_tid) as Mesa builds it; iPod HW (compute64k, after the carry-half fix b93015f0ab); not yet J81	orchard-HW
+ldk32_4	+0x072	0198 0304 018d 4100 0154 0038	out + r1: r2 = s3	mov_imm	J81 run 99 (32-bit form); 16-bit form A10 HW	J81
+ldk32_4	+0x07e	3199 0306 8f88 08a1	out + r1: r3 = r2 + r3.hi	addr3_hiadd	same as addr1_carry	inferred
+ldk32_4	+0x086	1199 0304 0589 4100 00a1	out + r1: r2 = s2 + r1	addr4_lowadd	same as addr1_carry	inferred
+ldk32_4	+0x090	0900 010e 0000	skip the store when no lane is active	jmp_none	J81 run 99 (the store skip, offset 0x0e); other offsets: A10 HW	J81
+ldk32_4	+0x096	2510 0508 8104 4020	store r4 -> [r2:r3]	store	J81 run 99 (pair r0); other pairs/data registers: Mesa A8, iPod HW	J81
+ldk32_4	+0x09e	21c8 030c 0198 46d2	epilogue: pop the mask stack r6 (last-read)	pop_final	J81 run 99	J81
+ldk32_4	+0x0a6	0100 011a 0000	jump to the end word (to +0xc0)	jmp_end	J81 run 99 (offset and 64-byte end rule)	J81
+ldk32_4	+0x0ac	c000 x10	padding	pad	J81 run 99	J81
+ldk32_4	+0x0c0	8000	end	end	J81 run 99	J81
+gid4x32	+0x000	1181 0189 4100 acb7	prologue, common-store form (thread count at dword 2)	prologue	W1 8189: J81 run 99; 0189 (common store), 8191/8199 (2/3 buffers): Mesa A8 rule (Apple 8189 + 8 per buffer, 0189 under a common store); 0189 iPod HW via compute64k	orchard-HW
+gid4x32	+0x008	01c8 030c 0101 0120 46d1	start the mask stack in r6	push_init	J81 run 99	J81
+gid4x32	+0x012	1516 0002	r1 = threadgroup word 0 (workgroup ID x)	tg_load	Apple's A8 output (k_store_tid/k_threadgroup) and Mesa A8; iPod HW (compute64k); not yet J81	orchard-HW
+gid4x32	+0x016	004d	wait for the load	wait	A10 HW; Apple A8 kernels (after 1516 and after loads); A8 fragment HW (counter-0 wait)	inferred
+gid4x32	+0x018	119a 8302 0501 0120 010b 0120 14f0	r1 = r1 << 5 (wg * N)	shift_imm	Apple's A8 output (Orchard quotes r0 = r0 << 2) and Mesa A8; iPod HW (compute64k); not yet J81	orchard-HW
+gid4x32	+0x026	3199 0302 0104 00a1	r1 = r1 + r0 (global index)	iadd	A10 HW (25/25); A8 fragment HW (integer add works); iPod compute64k (wg*32 + lid); not yet J81	inferred
+gid4x32	+0x02e	119a 8304 0501 0120 0105 0120 14f0	r2 = r1 << 2 (byte offset)	shift_imm	Apple's A8 output (Orchard quotes r0 = r0 << 2) and Mesa A8; iPod HW (compute64k); not yet J81	orchard-HW
+gid4x32	+0x03c	119d 030a 0901 4100 00a5	out + r2: r5 = carry(s0 + r2) (result's high half)	addr1_carry	Apple's A8 output (k_store_tid) as Mesa builds it; iPod HW (compute64k, after the carry-half fix b93015f0ab); not yet J81	orchard-HW
+gid4x32	+0x046	0198 0308 0185 4100 0154 0038	out + r2: r4 = s1	mov_cs	J81 run 99 (dwords 0 and 1)	J81
+gid4x32	+0x052	3199 030a 9790 08a1	out + r2: r5 = r4 + r5.hi	addr3_hiadd	same as addr1_carry	inferred
+gid4x32	+0x05a	1199 0308 0981 4100 00a1	out + r2: r4 = s0 + r2	addr4_lowadd	same as addr1_carry	inferred
+gid4x32	+0x064	0900 010e 0000	skip the store when no lane is active	jmp_none	J81 run 99 (the store skip, offset 0x0e); other offsets: A10 HW	J81
+gid4x32	+0x06a	2510 0502 8108 4020	store r1 -> [r4:r5]	store	J81 run 99 (pair r0); other pairs/data registers: Mesa A8, iPod HW	J81
+gid4x32	+0x072	21c8 030c 0198 46d2	epilogue: pop the mask stack r6 (last-read)	pop_final	J81 run 99	J81
+gid4x32	+0x07a	0100 0106 0000	jump to the end word (to +0x80)	jmp_end	J81 run 99 (offset and 64-byte end rule)	J81
+gid4x32	+0x080	8000	end	end	J81 run 99	J81
+vadd1x32	+0x000	1181 8199 4100 acb7	prologue (thread count at dword 6)	prologue	W1 8189: J81 run 99; 0189 (common store), 8191/8199 (2/3 buffers): Mesa A8 rule (Apple 8189 + 8 per buffer, 0189 under a common store); 0189 iPod HW via compute64k	orchard-HW
+vadd1x32	+0x008	01c8 030e 0101 0120 46d1	start the mask stack in r7	push_init	J81 run 99	J81
+vadd1x32	+0x012	119a 8304 0101 0120 0105 0120 14f0	r2 = r0 << 2 (byte offset)	shift_imm	Apple's A8 output (Orchard quotes r0 = r0 << 2) and Mesa A8; iPod HW (compute64k); not yet J81	orchard-HW
+vadd1x32	+0x020	119d 030a 0901 4100 00a5	a + r2: r5 = carry(s0 + r2) (result's high half)	addr1_carry	Apple's A8 output (k_store_tid) as Mesa builds it; iPod HW (compute64k, after the carry-half fix b93015f0ab); not yet J81	orchard-HW
+vadd1x32	+0x02a	0198 0308 0185 4100 0154 0038	a + r2: r4 = s1	mov_cs	J81 run 99 (dwords 0 and 1)	J81
+vadd1x32	+0x036	3199 030a 9790 08a1	a + r2: r5 = r4 + r5.hi	addr3_hiadd	same as addr1_carry	inferred
+vadd1x32	+0x03e	1199 0308 0981 4100 00a1	a + r2: r4 = s0 + r2	addr4_lowadd	same as addr1_carry	inferred
+vadd1x32	+0x048	2510 0506 0108 0020	load r3 <- [r4:r5]	load	Apple's A8 output (every load of its 25 kernels, per Orchard) and Mesa A8; not yet J81: test first (ldcopy4)	inferred
+vadd1x32	+0x050	004d	wait for the load	wait	A10 HW; Apple A8 kernels (after 1516 and after loads); A8 fragment HW (counter-0 wait)	inferred
+vadd1x32	+0x052	119d 030a 0909 4100 00a5	b + r2: r5 = carry(s2 + r2) (result's high half)	addr1_carry	Apple's A8 output (k_store_tid) as Mesa builds it; iPod HW (compute64k, after the carry-half fix b93015f0ab); not yet J81	orchard-HW
+vadd1x32	+0x05c	0198 0308 018d 4100 0154 0038	b + r2: r4 = s3	mov_imm	J81 run 99 (32-bit form); 16-bit form A10 HW	J81
+vadd1x32	+0x068	3199 030a 9790 08a1	b + r2: r5 = r4 + r5.hi	addr3_hiadd	same as addr1_carry	inferred
+vadd1x32	+0x070	1199 0308 0989 4100 00a1	b + r2: r4 = s2 + r2	addr4_lowadd	same as addr1_carry	inferred
+vadd1x32	+0x07a	2510 050c 0108 0020	load r6 <- [r4:r5]	load	Apple's A8 output (every load of its 25 kernels, per Orchard) and Mesa A8; not yet J81: test first (ldcopy4)	inferred
+vadd1x32	+0x082	004d	wait for the load	wait	A10 HW; Apple A8 kernels (after 1516 and after loads); A8 fragment HW (counter-0 wait)	inferred
+vadd1x32	+0x084	3199 0306 998c 00a1	r3 = r3 + r6 (last use of both)	iadd	A10 HW (25/25); A8 fragment HW (integer add works); iPod compute64k (wg*32 + lid); not yet J81	inferred
+vadd1x32	+0x08c	119d 030a 0911 4100 00a5	c + r2: r5 = carry(s4 + r2) (result's high half)	addr1_carry	Apple's A8 output (k_store_tid) as Mesa builds it; iPod HW (compute64k, after the carry-half fix b93015f0ab); not yet J81	orchard-HW
+vadd1x32	+0x096	0198 0308 0195 4100 0154 0038	c + r2: r4 = s5	mov_imm	J81 run 99 (32-bit form); 16-bit form A10 HW	J81
+vadd1x32	+0x0a2	3199 030a 9790 08a1	c + r2: r5 = r4 + r5.hi	addr3_hiadd	same as addr1_carry	inferred
+vadd1x32	+0x0aa	1199 0308 0991 4100 00a1	c + r2: r4 = s4 + r2	addr4_lowadd	same as addr1_carry	inferred
+vadd1x32	+0x0b4	0900 010e 0000	skip the store when no lane is active	jmp_none	J81 run 99 (the store skip, offset 0x0e); other offsets: A10 HW	J81
+vadd1x32	+0x0ba	2510 0506 8108 4020	store r3 -> [r4:r5]	store	J81 run 99 (pair r0); other pairs/data registers: Mesa A8, iPod HW	J81
+vadd1x32	+0x0c2	21c8 030e 019c 46d2	epilogue: pop the mask stack r7 (last-read)	pop_final	J81 run 99	J81
+vadd1x32	+0x0ca	0100 0136 0000	jump to the end word (to +0x100)	jmp_end	J81 run 99 (offset and 64-byte end rule)	J81
+vadd1x32	+0x0d0	c000 x24	padding	pad	J81 run 99	J81
+vadd1x32	+0x100	8000	end	end	J81 run 99	J81
+vadd4x32	+0x000	1181 0199 4100 acb7	prologue, common-store form (thread count at dword 6)	prologue	W1 8189: J81 run 99; 0189 (common store), 8191/8199 (2/3 buffers): Mesa A8 rule (Apple 8189 + 8 per buffer, 0189 under a common store); 0189 iPod HW via compute64k	orchard-HW
+vadd4x32	+0x008	01c8 030e 0101 0120 46d1	start the mask stack in r7	push_init	J81 run 99	J81
+vadd4x32	+0x012	1516 0002	r1 = threadgroup word 0 (workgroup ID x)	tg_load	Apple's A8 output (k_store_tid/k_threadgroup) and Mesa A8; iPod HW (compute64k); not yet J81	orchard-HW
+vadd4x32	+0x016	004d	wait for the load	wait	A10 HW; Apple A8 kernels (after 1516 and after loads); A8 fragment HW (counter-0 wait)	inferred
+vadd4x32	+0x018	119a 8302 0501 0120 010b 0120 14f0	r1 = r1 << 5 (wg * N)	shift_imm	Apple's A8 output (Orchard quotes r0 = r0 << 2) and Mesa A8; iPod HW (compute64k); not yet J81	orchard-HW
+vadd4x32	+0x026	3199 0302 0104 00a1	r1 = r1 + r0 (global index)	iadd	A10 HW (25/25); A8 fragment HW (integer add works); iPod compute64k (wg*32 + lid); not yet J81	inferred
+vadd4x32	+0x02e	119a 8304 0501 0120 0105 0120 14f0	r2 = r1 << 2 (byte offset)	shift_imm	Apple's A8 output (Orchard quotes r0 = r0 << 2) and Mesa A8; iPod HW (compute64k); not yet J81	orchard-HW
+vadd4x32	+0x03c	119d 030a 0901 4100 00a5	a + r2: r5 = carry(s0 + r2) (result's high half)	addr1_carry	Apple's A8 output (k_store_tid) as Mesa builds it; iPod HW (compute64k, after the carry-half fix b93015f0ab); not yet J81	orchard-HW
+vadd4x32	+0x046	0198 0308 0185 4100 0154 0038	a + r2: r4 = s1	mov_cs	J81 run 99 (dwords 0 and 1)	J81
+vadd4x32	+0x052	3199 030a 9790 08a1	a + r2: r5 = r4 + r5.hi	addr3_hiadd	same as addr1_carry	inferred
+vadd4x32	+0x05a	1199 0308 0981 4100 00a1	a + r2: r4 = s0 + r2	addr4_lowadd	same as addr1_carry	inferred
+vadd4x32	+0x064	2510 0506 0108 0020	load r3 <- [r4:r5]	load	Apple's A8 output (every load of its 25 kernels, per Orchard) and Mesa A8; not yet J81: test first (ldcopy4)	inferred
+vadd4x32	+0x06c	004d	wait for the load	wait	A10 HW; Apple A8 kernels (after 1516 and after loads); A8 fragment HW (counter-0 wait)	inferred
+vadd4x32	+0x06e	119d 030a 0909 4100 00a5	b + r2: r5 = carry(s2 + r2) (result's high half)	addr1_carry	Apple's A8 output (k_store_tid) as Mesa builds it; iPod HW (compute64k, after the carry-half fix b93015f0ab); not yet J81	orchard-HW
+vadd4x32	+0x078	0198 0308 018d 4100 0154 0038	b + r2: r4 = s3	mov_imm	J81 run 99 (32-bit form); 16-bit form A10 HW	J81
+vadd4x32	+0x084	3199 030a 9790 08a1	b + r2: r5 = r4 + r5.hi	addr3_hiadd	same as addr1_carry	inferred
+vadd4x32	+0x08c	1199 0308 0989 4100 00a1	b + r2: r4 = s2 + r2	addr4_lowadd	same as addr1_carry	inferred
+vadd4x32	+0x096	2510 050c 0108 0020	load r6 <- [r4:r5]	load	Apple's A8 output (every load of its 25 kernels, per Orchard) and Mesa A8; not yet J81: test first (ldcopy4)	inferred
+vadd4x32	+0x09e	004d	wait for the load	wait	A10 HW; Apple A8 kernels (after 1516 and after loads); A8 fragment HW (counter-0 wait)	inferred
+vadd4x32	+0x0a0	3199 0306 998c 00a1	r3 = r3 + r6 (last use of both)	iadd	A10 HW (25/25); A8 fragment HW (integer add works); iPod compute64k (wg*32 + lid); not yet J81	inferred
+vadd4x32	+0x0a8	119d 030a 0911 4100 00a5	c + r2: r5 = carry(s4 + r2) (result's high half)	addr1_carry	Apple's A8 output (k_store_tid) as Mesa builds it; iPod HW (compute64k, after the carry-half fix b93015f0ab); not yet J81	orchard-HW
+vadd4x32	+0x0b2	0198 0308 0195 4100 0154 0038	c + r2: r4 = s5	mov_imm	J81 run 99 (32-bit form); 16-bit form A10 HW	J81
+vadd4x32	+0x0be	3199 030a 9790 08a1	c + r2: r5 = r4 + r5.hi	addr3_hiadd	same as addr1_carry	inferred
+vadd4x32	+0x0c6	1199 0308 0991 4100 00a1	c + r2: r4 = s4 + r2	addr4_lowadd	same as addr1_carry	inferred
+vadd4x32	+0x0d0	0900 010e 0000	skip the store when no lane is active	jmp_none	J81 run 99 (the store skip, offset 0x0e); other offsets: A10 HW	J81
+vadd4x32	+0x0d6	2510 0506 8108 4020	store r3 -> [r4:r5]	store	J81 run 99 (pair r0); other pairs/data registers: Mesa A8, iPod HW	J81
+vadd4x32	+0x0de	21c8 030e 019c 46d2	epilogue: pop the mask stack r7 (last-read)	pop_final	J81 run 99	J81
+vadd4x32	+0x0e6	0100 011a 0000	jump to the end word (to +0x100)	jmp_end	J81 run 99 (offset and 64-byte end rule)	J81
+vadd4x32	+0x0ec	c000 x10	padding	pad	J81 run 99	J81
+vadd4x32	+0x100	8000	end	end	J81 run 99	J81
+wgidraw4x32	+0x000	1181 0189 4100 acb7	prologue, common-store form (thread count at dword 2)	prologue	W1 8189: J81 run 99; 0189 (common store), 8191/8199 (2/3 buffers): Mesa A8 rule (Apple 8189 + 8 per buffer, 0189 under a common store); 0189 iPod HW via compute64k	orchard-HW
+wgidraw4x32	+0x008	01c8 0308 0101 0120 46d1	start the mask stack in r4	push_init	J81 run 99	J81
+wgidraw4x32	+0x012	1516 000a	r5 = threadgroup word 0 (workgroup ID x)	tg_load	Apple's A8 output (k_store_tid/k_threadgroup) and Mesa A8; iPod HW (compute64k); not yet J81	orchard-HW
+wgidraw4x32	+0x016	004d	wait for the load	wait	A10 HW; Apple A8 kernels (after 1516 and after loads); A8 fragment HW (counter-0 wait)	inferred
+wgidraw4x32	+0x018	119a 8302 0101 0120 0105 0120 14f0	r1 = r0 << 2	shift_imm	Apple's A8 output (Orchard quotes r0 = r0 << 2) and Mesa A8; iPod HW (compute64k); not yet J81	orchard-HW
+wgidraw4x32	+0x026	119d 0306 0501 4100 00a5	out + r1: r3 = carry(s0 + r1) (result's high half)	addr1_carry	Apple's A8 output (k_store_tid) as Mesa builds it; iPod HW (compute64k, after the carry-half fix b93015f0ab); not yet J81	orchard-HW
+wgidraw4x32	+0x030	0198 0304 0185 4100 0154 0038	out + r1: r2 = s1	mov_cs	J81 run 99 (dwords 0 and 1)	J81
+wgidraw4x32	+0x03c	3199 0306 8f88 08a1	out + r1: r3 = r2 + r3.hi	addr3_hiadd	same as addr1_carry	inferred
+wgidraw4x32	+0x044	1199 0304 0581 4100 00a1	out + r1: r2 = s0 + r1	addr4_lowadd	same as addr1_carry	inferred
+wgidraw4x32	+0x04e	0900 010e 0000	skip the store when no lane is active	jmp_none	J81 run 99 (the store skip, offset 0x0e); other offsets: A10 HW	J81
+wgidraw4x32	+0x054	2510 050a 8104 4020	store r5 -> [r2:r3]	store	J81 run 99 (pair r0); other pairs/data registers: Mesa A8, iPod HW	J81
+wgidraw4x32	+0x05c	21c8 0308 0190 46d2	epilogue: pop the mask stack r4 (last-read)	pop_final	J81 run 99	J81
+wgidraw4x32	+0x064	0100 011c 0000	jump to the end word (to +0x80)	jmp_end	J81 run 99 (offset and 64-byte end rule)	J81
+wgidraw4x32	+0x06a	c000 x11	padding	pad	J81 run 99	J81
+wgidraw4x32	+0x080	8000	end	end	J81 run 99	J81
+loop5x4	+0x000	1181 8189 4100 acb7	prologue (thread count at dword 2)	prologue	W1 8189: J81 run 99; 0189 (common store), 8191/8199 (2/3 buffers): Mesa A8 rule (Apple 8189 + 8 per buffer, 0189 under a common store); 0189 iPod HW via compute64k	orchard-HW
+loop5x4	+0x008	01c8 030e 0101 0120 46d1	start the mask stack in r7	push_init	J81 run 99	J81
+loop5x4	+0x012	119a 8302 0101 0120 0105 0120 14f0	r1 = r0 << 2	shift_imm	Apple's A8 output (Orchard quotes r0 = r0 << 2) and Mesa A8; iPod HW (compute64k); not yet J81	orchard-HW
+loop5x4	+0x020	119d 0306 0501 4100 00a5	out + r1: r3 = carry(s0 + r1) (result's high half)	addr1_carry	Apple's A8 output (k_store_tid) as Mesa builds it; iPod HW (compute64k, after the carry-half fix b93015f0ab); not yet J81	orchard-HW
+loop5x4	+0x02a	0198 0304 0185 4100 0154 0038	out + r1: r2 = s1	mov_cs	J81 run 99 (dwords 0 and 1)	J81
+loop5x4	+0x036	3199 0306 8f88 08a1	out + r1: r3 = r2 + r3.hi	addr3_hiadd	same as addr1_carry	inferred
+loop5x4	+0x03e	1199 0304 0581 4100 00a1	out + r1: r2 = s0 + r1	addr4_lowadd	same as addr1_carry	inferred
+loop5x4	+0x048	0198 0308 010b 0120 0154 0038	r4 = 5 (count)	mov_imm	J81 run 99 (32-bit form); 16-bit form A10 HW	J81
+loop5x4	+0x054	0198 030a 0101 0120 0154 0038	r5 = 0 (iterations)	mov_imm	J81 run 99 (32-bit form); 16-bit form A10 HW	J81
+loop5x4	+0x060	2198 030c 017f f1ff ffff 0154 0038	r6 = 0xffffffff (-1: no register subtract on the A8)	mov_imm	J81 run 99 (32-bit form); 16-bit form A10 HW	J81
+loop5x4	+0x06e	21c8 030e 011c 86d0	loop start: two mask levels	loop_begin	A10 HW (pow3, countdown); A8: inferred (loop5x4)	inferred
+loop5x4	+0x076	1199 030a 1503 0120 09a1 0070	r5 = r5 + 1	add_imm	A10 HW (pow3 loop); A8 not documented: inferred, test first (ldk6_4)	inferred
+loop5x4	+0x082	3199 0308 1910 00a1	r4 = r4 + r6 (count - 1)	iadd	A10 HW (25/25); A8 fragment HW (integer add works); iPod compute64k (wg*32 + lid); not yet J81	inferred
+loop5x4	+0x08a	1181 1101 0120 a1b7 0070	compare r4 >u 0	cmp_imm	A10 HW (if_eq5, countdown); A8 compute not documented: inferred, test first (condodd32, loop5x4)	inferred
+loop5x4	+0x094	21c8 030e 011c 86d7	break the lanes whose compare failed (r4 == 0)	loop_break	A10 HW; A8: inferred (loop5x4)	inferred
+loop5x4	+0x09c	0900 010c 0000	leave when no lane is left (to +0xa8)	jmp_none	J81 run 99 (the store skip, offset 0x0e); other offsets: A10 HW	J81
+loop5x4	+0x0a2	0101 ffd5 feff	back to the body while any lane is active (to +0x76)	jmp_any	A10 HW (backward jump); A8: inferred (loop5x4)	inferred
+loop5x4	+0x0a8	21c8 030e 011c 86d2	after the loop: pop both levels (no last-read)	pop_levels	A10 HW; the no-last-read rule is Apple A9 compute (Mesa a9_stack, which A8 compute uses): inferred for A8, test first	inferred
+loop5x4	+0x0b0	0900 010e 0000	skip the store when no lane is active	jmp_none	J81 run 99 (the store skip, offset 0x0e); other offsets: A10 HW	J81
+loop5x4	+0x0b6	2510 050a 8104 4020	store r5 -> [r2:r3]	store	J81 run 99 (pair r0); other pairs/data registers: Mesa A8, iPod HW	J81
+loop5x4	+0x0be	21c8 030e 019c 46d2	epilogue: pop the mask stack r7 (last-read)	pop_final	J81 run 99	J81
+loop5x4	+0x0c6	0100 013a 0000	jump to the end word (to +0x100)	jmp_end	J81 run 99 (offset and 64-byte end rule)	J81
+loop5x4	+0x0cc	c000 x26	padding	pad	J81 run 99	J81
+loop5x4	+0x100	8000	end	end	J81 run 99	J81
+loopdiv32	+0x000	1181 8189 4100 acb7	prologue (thread count at dword 2)	prologue	W1 8189: J81 run 99; 0189 (common store), 8191/8199 (2/3 buffers): Mesa A8 rule (Apple 8189 + 8 per buffer, 0189 under a common store); 0189 iPod HW via compute64k	orchard-HW
+loopdiv32	+0x008	01c8 030e 0101 0120 46d1	start the mask stack in r7	push_init	J81 run 99	J81
+loopdiv32	+0x012	119a 8302 0101 0120 0105 0120 14f0	r1 = r0 << 2	shift_imm	Apple's A8 output (Orchard quotes r0 = r0 << 2) and Mesa A8; iPod HW (compute64k); not yet J81	orchard-HW
+loopdiv32	+0x020	119d 0306 0501 4100 00a5	out + r1: r3 = carry(s0 + r1) (result's high half)	addr1_carry	Apple's A8 output (k_store_tid) as Mesa builds it; iPod HW (compute64k, after the carry-half fix b93015f0ab); not yet J81	orchard-HW
+loopdiv32	+0x02a	0198 0304 0185 4100 0154 0038	out + r1: r2 = s1	mov_cs	J81 run 99 (dwords 0 and 1)	J81
+loopdiv32	+0x036	3199 0306 8f88 08a1	out + r1: r3 = r2 + r3.hi	addr3_hiadd	same as addr1_carry	inferred
+loopdiv32	+0x03e	1199 0304 0581 4100 00a1	out + r1: r2 = s0 + r1	addr4_lowadd	same as addr1_carry	inferred
+loopdiv32	+0x048	0198 0308 0107 0120 0154 0038	r4 = 3	mov_imm	J81 run 99 (32-bit form); 16-bit form A10 HW	J81
+loopdiv32	+0x054	3199 0308 1100 00c8	r4 = r0 & r4	and	A10 compiler form (basic.metal), A10 HW for xor/iadd/imul only: inferred, test first (condodd32 / loopdiv32)	inferred
+loopdiv32	+0x05c	1199 0308 1103 0120 09a1 0070	r4 = r4 + 1 (count)	add_imm	A10 HW (pow3 loop); A8 not documented: inferred, test first (ldk6_4)	inferred
+loopdiv32	+0x068	0198 030a 0101 0120 0154 0038	r5 = 0 (iterations)	mov_imm	J81 run 99 (32-bit form); 16-bit form A10 HW	J81
+loopdiv32	+0x074	2198 030c 017f f1ff ffff 0154 0038	r6 = 0xffffffff (-1: no register subtract on the A8)	mov_imm	J81 run 99 (32-bit form); 16-bit form A10 HW	J81
+loopdiv32	+0x082	21c8 030e 011c 86d0	loop start: two mask levels	loop_begin	A10 HW (pow3, countdown); A8: inferred (loop5x4)	inferred
+loopdiv32	+0x08a	1199 030a 1503 0120 09a1 0070	r5 = r5 + 1	add_imm	A10 HW (pow3 loop); A8 not documented: inferred, test first (ldk6_4)	inferred
+loopdiv32	+0x096	3199 0308 1910 00a1	r4 = r4 + r6 (count - 1)	iadd	A10 HW (25/25); A8 fragment HW (integer add works); iPod compute64k (wg*32 + lid); not yet J81	inferred
+loopdiv32	+0x09e	1181 1101 0120 a1b7 0070	compare r4 >u 0	cmp_imm	A10 HW (if_eq5, countdown); A8 compute not documented: inferred, test first (condodd32, loop5x4)	inferred
+loopdiv32	+0x0a8	21c8 030e 011c 86d7	break the lanes whose compare failed (r4 == 0)	loop_break	A10 HW; A8: inferred (loop5x4)	inferred
+loopdiv32	+0x0b0	0900 010c 0000	leave when no lane is left (to +0xbc)	jmp_none	J81 run 99 (the store skip, offset 0x0e); other offsets: A10 HW	J81
+loopdiv32	+0x0b6	0101 ffd5 feff	back to the body while any lane is active (to +0x8a)	jmp_any	A10 HW (backward jump); A8: inferred (loop5x4)	inferred
+loopdiv32	+0x0bc	21c8 030e 011c 86d2	after the loop: pop both levels (no last-read)	pop_levels	A10 HW; the no-last-read rule is Apple A9 compute (Mesa a9_stack, which A8 compute uses): inferred for A8, test first	inferred
+loopdiv32	+0x0c4	0900 010e 0000	skip the store when no lane is active	jmp_none	J81 run 99 (the store skip, offset 0x0e); other offsets: A10 HW	J81
+loopdiv32	+0x0ca	2510 050a 8104 4020	store r5 -> [r2:r3]	store	J81 run 99 (pair r0); other pairs/data registers: Mesa A8, iPod HW	J81
+loopdiv32	+0x0d2	21c8 030e 019c 46d2	epilogue: pop the mask stack r7 (last-read)	pop_final	J81 run 99	J81
+loopdiv32	+0x0da	0100 0126 0000	jump to the end word (to +0x100)	jmp_end	J81 run 99 (offset and 64-byte end rule)	J81
+loopdiv32	+0x0e0	c000 x16	padding	pad	J81 run 99	J81
+loopdiv32	+0x100	8000	end	end	J81 run 99	J81
+condodd32	+0x000	1181 8189 4100 acb7	prologue (thread count at dword 2)	prologue	W1 8189: J81 run 99; 0189 (common store), 8191/8199 (2/3 buffers): Mesa A8 rule (Apple 8189 + 8 per buffer, 0189 under a common store); 0189 iPod HW via compute64k	orchard-HW
+condodd32	+0x008	01c8 030c 0101 0120 46d1	start the mask stack in r6	push_init	J81 run 99	J81
+condodd32	+0x012	119a 8302 0101 0120 0105 0120 14f0	r1 = r0 << 2	shift_imm	Apple's A8 output (Orchard quotes r0 = r0 << 2) and Mesa A8; iPod HW (compute64k); not yet J81	orchard-HW
+condodd32	+0x020	119d 0306 0501 4100 00a5	out + r1: r3 = carry(s0 + r1) (result's high half)	addr1_carry	Apple's A8 output (k_store_tid) as Mesa builds it; iPod HW (compute64k, after the carry-half fix b93015f0ab); not yet J81	orchard-HW
+condodd32	+0x02a	0198 0304 0185 4100 0154 0038	out + r1: r2 = s1	mov_cs	J81 run 99 (dwords 0 and 1)	J81
+condodd32	+0x036	3199 0306 8f88 08a1	out + r1: r3 = r2 + r3.hi	addr3_hiadd	same as addr1_carry	inferred
+condodd32	+0x03e	1199 0304 0581 4100 00a1	out + r1: r2 = s0 + r1	addr4_lowadd	same as addr1_carry	inferred
+condodd32	+0x048	0198 0308 0103 0120 0154 0038	r4 = 1	mov_imm	J81 run 99 (32-bit form); 16-bit form A10 HW	J81
+condodd32	+0x054	3199 0308 1100 00c8	r4 = r0 & r4	and	A10 compiler form (basic.metal), A10 HW for xor/iadd/imul only: inferred, test first (condodd32 / loopdiv32)	inferred
+condodd32	+0x05c	1181 1103 0120 a1bd 0070	compare r4 == 1	cmp_imm	A10 HW (if_eq5, countdown); A8 compute not documented: inferred, test first (condodd32, loop5x4)	inferred
+condodd32	+0x066	21c8 030c 0118 46d1	push: disable the lanes whose compare failed	push_if	A10 HW (if/else tests); A8 compute: inferred, test first (condodd32)	inferred
+condodd32	+0x06e	0900 010e 0000	to the else when no lane is active (to +0x7c)	jmp_none	J81 run 99 (the store skip, offset 0x0e); other offsets: A10 HW	J81
+condodd32	+0x074	2510 0500 8104 4020	store r0 -> [r2:r3]	store	J81 run 99 (pair r0); other pairs/data registers: Mesa A8, iPod HW	J81
+condodd32	+0x07c	21c8 030c 0118 46d4	else: flip the lanes	else	A10 HW; A8: inferred (condodd32)	inferred
+condodd32	+0x084	0900 0106 0000	to the pop when no lane is active (to +0x8a)	jmp_none	J81 run 99 (the store skip, offset 0x0e); other offsets: A10 HW	J81
+condodd32	+0x08a	21c8 030c 0118 46d2	pop the if level (no last-read)	pop_levels	A10 HW; the no-last-read rule is Apple A9 compute (Mesa a9_stack, which A8 compute uses): inferred for A8, test first	inferred
+condodd32	+0x092	21c8 030c 0198 46d2	epilogue: pop the mask stack r6 (last-read)	pop_final	J81 run 99	J81
+condodd32	+0x09a	0100 0126 0000	jump to the end word (to +0xc0)	jmp_end	J81 run 99 (offset and 64-byte end rule)	J81
+condodd32	+0x0a0	c000 x16	padding	pad	J81 run 99	J81
+condodd32	+0x0c0	8000	end	end	J81 run 99	J81
+carry1	+0x000	1181 8189 4100 acb7	prologue (thread count at dword 2)	prologue	W1 8189: J81 run 99; 0189 (common store), 8191/8199 (2/3 buffers): Mesa A8 rule (Apple 8189 + 8 per buffer, 0189 under a common store); 0189 iPod HW via compute64k	orchard-HW
+carry1	+0x008	01c8 0308 0101 0120 46d1	start the mask stack in r4	push_init	J81 run 99	J81
+carry1	+0x012	0198 0302 0101 6129 0120 0154 0038	r1 = 0x203100 (offset)	mov_imm	J81 run 99 (32-bit form); 16-bit form A10 HW	J81
+carry1	+0x020	119d 0306 0501 4100 00a5	base + r1: r3 = carry(s0 + r1) (result's high half)	addr1_carry	Apple's A8 output (k_store_tid) as Mesa builds it; iPod HW (compute64k, after the carry-half fix b93015f0ab); not yet J81	orchard-HW
+carry1	+0x02a	0198 0304 0185 4100 0154 0038	base + r1: r2 = s1	mov_cs	J81 run 99 (dwords 0 and 1)	J81
+carry1	+0x036	3199 0306 8f88 08a1	base + r1: r3 = r2 + r3.hi	addr3_hiadd	same as addr1_carry	inferred
+carry1	+0x03e	1199 0304 0581 4100 00a1	base + r1: r2 = s0 + r1	addr4_lowadd	same as addr1_carry	inferred
+carry1	+0x048	2198 0300 0103 51f1 c1ff 0154 0038	r0 = 0xc0ffee01	mov_imm	J81 run 99 (32-bit form); 16-bit form A10 HW	J81
+carry1	+0x056	0900 010e 0000	skip the store when no lane is active	jmp_none	J81 run 99 (the store skip, offset 0x0e); other offsets: A10 HW	J81
+carry1	+0x05c	2510 0500 8104 4020	store r0 -> [r2:r3]	store	J81 run 99 (pair r0); other pairs/data registers: Mesa A8, iPod HW	J81
+carry1	+0x064	21c8 0308 0190 46d2	epilogue: pop the mask stack r4 (last-read)	pop_final	J81 run 99	J81
+carry1	+0x06c	0100 0114 0000	jump to the end word (to +0x80)	jmp_end	J81 run 99 (offset and 64-byte end rule)	J81
+carry1	+0x072	c000 x7	padding	pad	J81 run 99	J81
+carry1	+0x080	8000	end	end	J81 run 99	J81
+reg11a16	+0x000	1181 8189 4100 acb7	prologue (thread count at dword 2)	prologue	W1 8189: J81 run 99; 0189 (common store), 8191/8199 (2/3 buffers): Mesa A8 rule (Apple 8189 + 8 per buffer, 0189 under a common store); 0189 iPod HW via compute64k	orchard-HW
+reg11a16	+0x008	01c8 0308 0101 0120 46d1	start the mask stack in r4	push_init	J81 run 99	J81
+reg11a16	+0x012	119a 8302 0101 0120 0105 0120 14f0	r1 = r0 << 2	shift_imm	Apple's A8 output (Orchard quotes r0 = r0 << 2) and Mesa A8; iPod HW (compute64k); not yet J81	orchard-HW
+reg11a16	+0x020	119d 0306 0501 4100 00a5	out + r1: r3 = carry(s0 + r1) (result's high half)	addr1_carry	Apple's A8 output (k_store_tid) as Mesa builds it; iPod HW (compute64k, after the carry-half fix b93015f0ab); not yet J81	orchard-HW
+reg11a16	+0x02a	0198 0304 0185 4100 0154 0038	out + r1: r2 = s1	mov_cs	J81 run 99 (dwords 0 and 1)	J81
+reg11a16	+0x036	3199 0306 8f88 08a1	out + r1: r3 = r2 + r3.hi	addr3_hiadd	same as addr1_carry	inferred
+reg11a16	+0x03e	1199 0304 0581 4100 00a1	out + r1: r2 = s0 + r1	addr4_lowadd	same as addr1_carry	inferred
+reg11a16	+0x048	0198 0316 0117 0121 5b5a 0154 0038	r11 = 0x5a5a000b	mov_imm	J81 run 99 (32-bit form); 16-bit form A10 HW	J81
+reg11a16	+0x056	0900 010e 0000	skip the store when no lane is active	jmp_none	J81 run 99 (the store skip, offset 0x0e); other offsets: A10 HW	J81
+reg11a16	+0x05c	2510 0516 8104 4020	store r11 -> [r2:r3]	store	J81 run 99 (pair r0); other pairs/data registers: Mesa A8, iPod HW	J81
+reg11a16	+0x064	21c8 0308 0190 46d2	epilogue: pop the mask stack r4 (last-read)	pop_final	J81 run 99	J81
+reg11a16	+0x06c	0100 0114 0000	jump to the end word (to +0x80)	jmp_end	J81 run 99 (offset and 64-byte end rule)	J81
+reg11a16	+0x072	c000 x7	padding	pad	J81 run 99	J81
+reg11a16	+0x080	8000	end	end	J81 run 99	J81

@@ -1,0 +1,4 @@
+fill_words 1024
+fill_value 0xdead0001
+read_words 16
+expect_hex 000001110100011102000111030001110100adde0100adde0100adde0100adde0100adde0100adde0100adde0100adde0100adde0100adde0100adde0100adde
